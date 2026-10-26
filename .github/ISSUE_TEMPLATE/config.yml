@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/socialreins/socialreins/blob/main/SECURITY.md
+    about: Please email security@socialreins.com instead of opening an issue.
+  - name: Join the hosted waitlist
+    url: https://socialreins.com
+    about: Sign up for the hosted version of SocialReins.
