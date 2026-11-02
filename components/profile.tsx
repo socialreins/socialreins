@@ -22,7 +22,7 @@ export function Profile() {
     <div className="grid gap-8">
       <div className="card flex items-center gap-4 p-5">
         <span aria-hidden="true" className="grid size-14 shrink-0 place-items-center rounded-full bg-ink font-display text-2xl font-extrabold text-paper">
-          {(user.name || user.email).charAt(0).toUpperCase()}
+          {[...(user.name || user.email)][0].toUpperCase()}
         </span>
         <dl className="grid min-w-0 gap-1">
           <div className="min-w-0">
