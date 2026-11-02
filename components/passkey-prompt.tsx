@@ -30,13 +30,18 @@ export function PasskeyPrompt() {
   const [show, setShow] = useState(false);
   const checked = useRef(false);
   const ref = useRef<HTMLDialogElement>(null);
+  const pathRef = useRef(path);
+  useEffect(() => {
+    pathRef.current = path;
+  }, [path]);
 
   useEffect(() => {
     // The security page is where passkeys are added, so the prompt waits until the user leaves it.
     if (checked.current || path === "/app/security" || typeof window.PublicKeyCredential !== "function" || snoozed()) return;
     checked.current = true;
     // A failed list shows nothing.
-    listPasskeys().then((r) => setShow(Array.isArray(r) && r.length === 0));
+    // The user may have moved to the security page while the list loaded.
+    listPasskeys().then((r) => setShow(Array.isArray(r) && r.length === 0 && pathRef.current !== "/app/security"));
   }, [path]);
 
   useEffect(() => {
