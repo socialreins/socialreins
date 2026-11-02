@@ -274,12 +274,12 @@ export function PostEditor({ id }: { id?: string }) {
                           <Icon name="external" className="size-4" />
                         </a>
                       )}
-                      {post.thread.length > 0 && (
+                      {(post.thread ?? []).length > 0 && (
                         <span className="basis-full text-ink-soft">
-                          Thread: {t.parts.length} of {post.thread.length} follow-up posts out.
-                          {t.parts.map((p, i) =>
+                          Thread: {(t.parts ?? []).length} of {post.thread.length} follow-up posts out.
+                          {(t.parts ?? []).map((p, i) =>
                             p.remote_url ? (
-                              <a key={p.remote_id} href={p.remote_url} target="_blank" rel="noopener noreferrer" className="ml-2 font-bold underline">
+                              <a key={p.remote_id} href={p.remote_url} target="_blank" rel="noopener noreferrer" className="ml-2 font-bold underline" aria-label={`Post ${i + 2} on ${a ? accountName(a) : "a disconnected account"}`}>
                                 Post {i + 2}
                               </a>
                             ) : null,

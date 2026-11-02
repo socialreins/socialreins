@@ -242,7 +242,7 @@ test("a published thread links each follow-up post", async ({ page }) => {
   );
   await page.goto("/app/posts/p6");
   await expect(page.getByText("Thread: 1 of 1 follow-up posts out.")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Post 2" })).toHaveAttribute("href", part.remote_url);
+  await expect(page.getByRole("link", { name: /^Post 2 on / })).toHaveAttribute("href", part.remote_url);
 });
 
 test("publish now polls until the post is published", async ({ page }) => {
