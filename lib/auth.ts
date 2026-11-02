@@ -10,6 +10,8 @@ export type User = {
   name: string;
   username: string | null;
   current_team: Team;
+  // Site admins see /app/admin; optional until every brain sends it.
+  is_admin?: boolean;
 };
 export type MeResult = { user: User } | "signed_out" | "error";
 

@@ -97,24 +97,6 @@ test("with Turnstile on, contact waits for a token, sends it and resets the widg
   await expect(page.getByRole("button", { name: "Send" })).toBeDisabled();
 });
 
-test("with Turnstile on, the waitlist sends the token", async ({ page }) => {
-  await stubTurnstile(page);
-  await providers(page, "0xSITE");
-  await page.route("**/auth/me", (route) => route.fulfill({ status: 401, json: { error: "unauthorized" } }));
-  let sent: Record<string, unknown> | undefined;
-  await page.route("**/v1/waitlist", (route) => {
-    sent = body(route.request());
-    return route.fulfill({ status: 200, body: "{}" });
-  });
-  await page.goto("/");
-  await page.getByLabel("Email for the hosted version waitlist").fill("someone@example.com");
-  await expect(page.getByRole("button", { name: "Join the waitlist" })).toBeDisabled();
-  await solve(page, "tok-w");
-  await page.getByRole("button", { name: "Join the waitlist" }).click();
-  await expect(page.getByRole("status")).toHaveText(/on the waitlist/);
-  expect(sent).toEqual({ email: "someone@example.com", source: "landing", turnstile_token: "tok-w" });
-});
-
 test("with Turnstile on, the login link request sends the token and maps captcha_unavailable", async ({ page }) => {
   await stubTurnstile(page);
   await providers(page, "0xSITE");

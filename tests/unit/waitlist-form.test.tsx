@@ -24,8 +24,22 @@ describe("WaitlistForm", () => {
     const message = screen.getByRole("status");
     expect(message).toHaveProperty("textContent", "");
     await submit();
-    expect(message.textContent).toMatch(/on the waitlist/);
+    expect(message.textContent).toMatch(/Check your email for a link to confirm your spot/);
     expect(document.activeElement).toBe(message);
+  });
+
+  it("shows the count, refetches it after joining and sends no Turnstile token", async () => {
+    let count = 41;
+    const fetch = vi.fn((url: string) =>
+      Promise.resolve(url.endsWith("/count") ? Response.json({ count: count++ }) : new Response(null, { status: 200 })),
+    );
+    vi.stubGlobal("fetch", fetch);
+    render(<WaitlistForm />);
+    expect(await screen.findByText("41 people on the waitlist")).toBeTruthy();
+    await submit();
+    expect(await screen.findByText("42 people on the waitlist")).toBeTruthy();
+    const join = fetch.mock.calls.find(([url]) => url.endsWith("/v1/waitlist")) as unknown as [string, RequestInit];
+    expect(JSON.parse(String(join[1].body))).toEqual({ email: "a@b.co", source: "landing" });
   });
 
   it("keeps the same live region for errors and the form usable", async () => {

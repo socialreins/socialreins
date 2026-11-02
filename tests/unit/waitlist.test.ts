@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { apiUrl, joinWaitlist } from "@/lib/waitlist";
+import { apiUrl, joinWaitlist, verifyWaitlist, waitlistCount, waitlistCountText } from "@/lib/waitlist";
 
 const respond = (status: number) => vi.fn().mockResolvedValue(new Response(null, { status }));
 
@@ -24,17 +24,6 @@ describe("joinWaitlist", () => {
     expect(await joinWaitlist("a@b.co")).toBe(result);
   });
 
-  it("sends the Turnstile token when there is one and maps captcha errors", async () => {
-    const fetch = respond(200);
-    vi.stubGlobal("fetch", fetch);
-    await joinWaitlist("a@b.co", "landing", "tok");
-    expect(JSON.parse(fetch.mock.calls[0]![1].body)).toEqual({ email: "a@b.co", source: "landing", turnstile_token: "tok" });
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ error: "captcha_failed" }, { status: 422 })));
-    expect(await joinWaitlist("a@b.co", "landing", "tok")).toBe("captcha_failed");
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ error: "captcha_unavailable" }, { status: 503 })));
-    expect(await joinWaitlist("a@b.co", "landing", "tok")).toBe("captcha_unavailable");
-  });
-
   it("reports a network failure as error", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
     expect(await joinWaitlist("a@b.co")).toBe("error");
@@ -57,5 +46,58 @@ describe("joinWaitlist timeout", () => {
     expect(await pending).toBe("timeout");
     expect(timeout).toHaveBeenCalledWith(10_000);
     timeout.mockRestore();
+  });
+});
+
+describe("waitlistCount", () => {
+  it("reads the count from /v1/waitlist/count", async () => {
+    const fetch = vi.fn().mockResolvedValue(Response.json({ count: 1234 }));
+    vi.stubGlobal("fetch", fetch);
+    expect(await waitlistCount()).toBe(1234);
+    expect(fetch.mock.calls[0]![0]).toBe(`${apiUrl}/v1/waitlist/count`);
+  });
+
+  it.each([
+    ["an error status", () => Promise.resolve(Response.json({ error: "x" }, { status: 500 }))],
+    ["a bad body", () => Promise.resolve(Response.json({ count: "many" }))],
+    ["a network failure", () => Promise.reject(new TypeError("offline"))],
+  ])("is null on %s", async (_, answer) => {
+    vi.stubGlobal("fetch", vi.fn(answer));
+    expect(await waitlistCount()).toBeNull();
+  });
+
+  it("words the count", () => {
+    expect(waitlistCountText(1)).toBe("1 person on the waitlist");
+    expect(waitlistCountText(0)).toBe("0 people on the waitlist");
+    expect(waitlistCountText(1234)).toBe(`${(1234).toLocaleString()} people on the waitlist`);
+  });
+});
+
+describe("verifyWaitlist", () => {
+  it("posts the token to /v1/waitlist/verify without credentials", async () => {
+    const fetch = vi.fn().mockResolvedValue(Response.json({ status: "verified" }));
+    vi.stubGlobal("fetch", fetch);
+    expect(await verifyWaitlist("abc123")).toBe("verified");
+    const [url, init] = fetch.mock.calls[0]!;
+    expect(url).toBe(`${apiUrl}/v1/waitlist/verify`);
+    expect(init).toMatchObject({ method: "POST" });
+    expect(init.credentials).toBeUndefined();
+    expect(JSON.parse(init.body)).toEqual({ token: "abc123" });
+  });
+
+  it.each([
+    [422, "invalid"],
+    [429, "rate_limited"],
+    [500, "error"],
+  ])("maps %i to %s", async (status, result) => {
+    vi.stubGlobal("fetch", respond(status));
+    expect(await verifyWaitlist("abc")).toBe(result);
+  });
+
+  it("calls a missing token invalid without asking brain", async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    expect(await verifyWaitlist("")).toBe("invalid");
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

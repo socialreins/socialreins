@@ -31,6 +31,7 @@ const nav: { href: string; label: string; icon: IconName }[] = [
   { href: "/app/api-tokens", label: "API tokens", icon: "key" },
   { href: "/app/security", label: "Security", icon: "security" },
 ];
+const adminNav = { href: "/app/admin", label: "Admin", icon: "admin" } as const;
 
 // The session cookie is on the API host, invisible to Next server code, so the check runs here, once for every app page.
 export function AppShell({ children }: { children: ReactNode }) {
@@ -47,6 +48,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [router]);
 
   const user = typeof me === "object" && me ? me.user : null;
+  const links = user?.is_admin ? [...nav, adminNav] : nav;
   const session: Session | null = user && {
     user,
     setTeam: (t) => setMe({ user: { ...user, current_team: t } }),
@@ -117,8 +119,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             >
               {/* Following a link closes the menu on small screens. */}
               <nav aria-label="App" onClick={(e) => (e.target as Element).closest("a") && setOpen(false)}>
-                <Suspense fallback={<NavLinks path="" />}>
-                  <CurrentNavLinks />
+                <Suspense fallback={<NavLinks path="" items={links} />}>
+                  <CurrentNavLinks items={links} />
                 </Suspense>
               </nav>
               {/* minmax(0,1fr): a long team name or email truncates instead of widening the sidebar. */}
@@ -143,14 +145,16 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 }
 
-function CurrentNavLinks() {
-  return <NavLinks path={usePathname()} />;
+type NavItem = (typeof nav)[number];
+
+function CurrentNavLinks({ items }: { items: NavItem[] }) {
+  return <NavLinks path={usePathname()} items={items} />;
 }
 
-function NavLinks({ path }: { path: string }) {
+function NavLinks({ path, items }: { path: string; items: NavItem[] }) {
   return (
     <ul className="grid gap-0.5">
-      {nav.map((item) => {
+      {items.map((item) => {
         const active = path === item.href || path.startsWith(`${item.href}/`);
         return (
           <li key={item.href}>
