@@ -9,12 +9,14 @@ const signedIn = (page: Page, passkeys: unknown[] = []) =>
   ]);
 
 test("app links to the security page", async ({ page }) => {
-  await signedIn(page);
+  await signedIn(page, [key]);
   await page.goto("/app");
-  await page.getByRole("link", { name: "Security", exact: true }).click();
+  const nav = page.getByRole("navigation", { name: "App" });
+  await nav.getByRole("link", { name: "Sign-in and security", exact: true }).click();
   await expect(page).toHaveURL("/app/security");
-  await expect(page.getByRole("heading", { name: "Security", level: 1 })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Security", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("heading", { name: "Sign-in and security", level: 1 })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Sign-in and security", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(nav.getByRole("link", { name: "Passkeys", exact: true })).not.toHaveAttribute("aria-current");
   await expect(page.locator('input[type="password"]')).toHaveCount(0);
 });
 

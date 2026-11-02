@@ -5,6 +5,7 @@ import { flushSync } from "react-dom";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { addPasskey, getMe, safeNext, type AddResult, type MeResult, type Passkey } from "@/lib/auth";
+import { snoozePasskeyPrompt } from "@/components/passkey-prompt";
 import { linkButton, signInLink } from "@/components/team-ui";
 
 const noSubscribe = () => () => {};
@@ -73,7 +74,7 @@ export function Welcome() {
           </button>
         </div>
       </div>
-      <Link href={next} className={`justify-self-start ${linkButton}`}>
+      <Link href={next} className={`justify-self-start ${linkButton}`} onClick={snoozePasskeyPrompt}>
         Skip for now
       </Link>
     </div>
