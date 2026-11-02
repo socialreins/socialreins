@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   checkPost,
+  checkThread,
   createPost,
   deletePost,
   fromLocalInput,
@@ -110,6 +111,13 @@ describe("post checks", () => {
     expect(checkPost("hi", Array(5).fill("https://example.com/a.png"))).toBe("too_many_images");
     expect(checkPost("hi", ["http://example.com/a.png"])).toBe("invalid_media");
     expect(checkPost("hi", ["https://"])).toBe("invalid_media");
+  });
+
+  it("checks every post of a thread and names the follow-up at fault", () => {
+    expect(checkThread("hi", [], [{ body: "two", media: [] }])).toBeNull();
+    expect(checkThread("", [], [{ body: "two", media: [] }])).toEqual({ failure: "empty_post" });
+    expect(checkThread("hi", [], [{ body: "ok", media: [] }, { body: " ", media: [] }])).toEqual({ failure: "empty_post", part: 2 });
+    expect(checkThread("hi", [], Array(26).fill({ body: "x", media: [] }))).toEqual({ failure: "too_many_parts" });
   });
 });
 

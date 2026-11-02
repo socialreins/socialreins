@@ -10,13 +10,18 @@ export type Target = {
   remote_url: string | null;
   error: string | null;
   published_at: string | null;
+  // The thread posts published so far, in order.
+  parts: { remote_id: string; remote_url: string | null; published_at: string | null }[];
 };
+// A follow-up post of a thread: a reply to the one before.
+export type ThreadPart = { body: string; media: string[] };
 export type Post = {
   id: string;
   social_set_id: string;
   platform: "bluesky";
   body: string;
   media: string[];
+  thread: ThreadPart[];
   status: PostStatus;
   scheduled_at: string | null;
   published_at: string | null;
@@ -33,6 +38,7 @@ export type PostInput = {
   platform: "bluesky";
   body: string;
   media: string[];
+  thread?: ThreadPart[];
   // ISO time to publish; null keeps the post a draft. A past time means now.
   scheduled_at: string | null;
   // A list to put the post in; one it is already in would move it to the end.
@@ -44,6 +50,7 @@ export type PostFilter = { social_set_id?: string; status?: PostStatus; from?: s
 export const MAX_GRAPHEMES = 300;
 export const MAX_BYTES = 3000;
 export const MAX_IMAGES = 4;
+export const MAX_PARTS = 25;
 
 const enc = encodeURIComponent;
 
@@ -83,6 +90,18 @@ export function checkPost(body: string, media: string[]): Failure | null {
   if (graphemes(body) > MAX_GRAPHEMES || utf8Bytes(body) > MAX_BYTES) return "too_long";
   if (media.length > MAX_IMAGES) return "too_many_images";
   if (media.some((m) => !/^https:\/\/[^\s/]+\/?\S*$/.test(m))) return "invalid_media";
+  return null;
+}
+
+// checkPost for the first post and every part; `part` is the 1-based follow-up at fault, as brain answers.
+export function checkThread(body: string, media: string[], thread: ThreadPart[]): { failure: Failure; part?: number } | null {
+  const first = checkPost(body, media);
+  if (first) return { failure: first };
+  if (thread.length > MAX_PARTS) return { failure: "too_many_parts" };
+  for (const [i, p] of thread.entries()) {
+    const failure = checkPost(p.body, p.media);
+    if (failure) return { failure, part: i + 1 };
+  }
   return null;
 }
 

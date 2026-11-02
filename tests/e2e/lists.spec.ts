@@ -14,6 +14,7 @@ const post = (id: string, extra: Record<string, unknown> = {}) => ({
   platform: "bluesky",
   body: `Body of ${id}`,
   media: [] as string[],
+  thread: [] as { body: string; media: string[] }[],
   status: "scheduled",
   scheduled_at: "2026-11-12T09:30:00Z" as string | null,
   published_at: null,

@@ -90,6 +90,7 @@ const codes = [
   "default_set_required",
   "too_long",
   "too_many_images",
+  "too_many_parts",
   "invalid_media",
   "empty_post",
   "invalid_set",

@@ -33,6 +33,7 @@ const post = (id: string, extra: Record<string, unknown> = {}) => ({
   platform: "bluesky",
   body: `Body of ${id}`,
   media: [] as string[],
+  thread: [] as { body: string; media: string[] }[],
   status: "draft",
   scheduled_at: null as string | null,
   published_at: null as string | null,
@@ -52,6 +53,7 @@ const target = (extra: Record<string, unknown> = {}) => ({
   remote_url: "https://bsky.app/profile/alice.bsky.social/post/1",
   error: null,
   published_at: "2026-11-03T08:00:00Z",
+  parts: [] as Record<string, unknown>[],
   ...extra,
 });
 
@@ -195,8 +197,52 @@ test("schedule sends the local time as UTC and moves to the post's address", asy
     platform: "bluesky",
     body: "Launch day",
     media: ["https://example.com/a.png"],
+    thread: [],
     scheduled_at: "2026-11-20T08:30:00.000Z",
   });
+});
+
+test("a thread is written, checked, previewed and sent in order", async ({ page }) => {
+  await brain(page);
+  let sent: Record<string, unknown> | undefined;
+  await page.route("**/v1/posts", (route) => {
+    sent = route.request().postDataJSON();
+    return route.fulfill({ status: 201, json: post("p1", sent) });
+  });
+  await page.goto("/app/posts/new");
+  await page.getByLabel("Post", { exact: true }).fill("One");
+  await page.getByRole("button", { name: "Add to thread" }).click();
+  await expect(page.getByRole("textbox", { name: "Post 2" })).toBeFocused();
+  await page.getByRole("textbox", { name: "Post 2" }).fill("Two");
+  await page.getByRole("button", { name: "Add to thread" }).click();
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Post 3 of the thread: Write something" })).toBeVisible();
+  expect(sent).toBeUndefined();
+  await page.getByRole("button", { name: "Remove post 3" }).click();
+  await expect(page.getByRole("button", { name: "Add to thread" })).toBeFocused();
+  await expect(page.getByRole("region", { name: "Preview" }).getByText("Two")).toBeVisible();
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page).toHaveURL("/app/posts/p1");
+  expect(sent?.thread).toEqual([{ body: "Two", media: [] }]);
+  await expect(page.getByRole("textbox", { name: "Post 2" })).toHaveValue("Two");
+});
+
+test("a published thread links each follow-up post", async ({ page }) => {
+  await brain(page);
+  const part = { remote_id: "at://did:plc:alice/app.bsky.feed.post/2", remote_url: "https://bsky.app/profile/alice.bsky.social/post/2", published_at: null };
+  await page.route("**/v1/posts/p6", (route) =>
+    route.fulfill({
+      json: post("p6", {
+        status: "published",
+        published_at: "2026-11-03T08:00:00Z",
+        thread: [{ body: "Two", media: [] }],
+        targets: [target({ parts: [part] })],
+      }),
+    }),
+  );
+  await page.goto("/app/posts/p6");
+  await expect(page.getByText("Thread: 1 of 1 follow-up posts out.")).toBeVisible();
+  await expect(page.getByRole("link", { name: /^Post 2 on / })).toHaveAttribute("href", part.remote_url);
 });
 
 test("publish now polls until the post is published", async ({ page }) => {
