@@ -42,14 +42,47 @@ test("the waitlist count shows nothing when brain can't say", async ({ page }) =
   await expect(page.getByText(/on the waitlist$/)).toHaveCount(0);
 });
 
-test("the waitlist verified page confirms the spot or explains a bad link", async ({ page }) => {
-  await page.goto("/waitlist/verified");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Your spot is confirmed");
+test("the waitlist verify page confirms only on a click, then moves focus to the result", async ({ page }) => {
+  const sent: unknown[] = [];
+  await page.route("**/v1/waitlist/verify", (route) => {
+    sent.push(route.request().postDataJSON());
+    return route.fulfill({ json: { status: "verified" } });
+  });
+  await page.goto("/waitlist/verify?token=ab12");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Confirm your spot on the SocialReins waitlist");
+  await page.waitForLoadState("networkidle");
+  expect(sent).toEqual([]);
+  await page.getByRole("button", { name: "Confirm my email" }).click();
+  const done = page.getByRole("heading", { level: 1, name: "Your spot is confirmed" });
+  await expect(done).toBeFocused();
   await expect(page.getByRole("link", { name: "Back to the home page" })).toHaveAttribute("href", "/");
-  await page.goto("/waitlist/verified?error=invalid_link");
+  expect(sent).toEqual([{ token: "ab12" }]);
+});
+
+test("the waitlist verify page explains a bad link, a missing token and other failures", async ({ page }) => {
+  let answer = { status: 422, json: { error: "invalid_link" } };
+  await page.route("**/v1/waitlist/verify", (route) => route.fulfill(answer));
+  await page.goto("/waitlist/verify?token=bad");
+  await page.getByRole("button", { name: "Confirm my email" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("That link didn't work");
-  await expect(page.getByText(/Join the waitlist again/)).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "Join again from the home page." })).toBeVisible();
   await expect(page.getByRole("link", { name: "home page" })).toHaveAttribute("href", "/");
+
+  let asked = false;
+  await page.unroute("**/v1/waitlist/verify");
+  await page.route("**/v1/waitlist/verify", (route) => ((asked = true), route.fulfill(answer)));
+  await page.goto("/waitlist/verify");
+  await page.getByRole("button", { name: "Confirm my email" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("That link didn't work");
+  expect(asked).toBe(false);
+
+  answer = { status: 429, json: { error: "rate_limited" } };
+  await page.goto("/waitlist/verify?token=ab12");
+  await page.getByRole("button", { name: "Confirm my email" }).click();
+  await expect(page.getByRole("status").filter({ hasText: /Wait a minute, then try again/ })).toBeVisible();
+  answer = { status: 500, json: { error: "internal" } };
+  await page.getByRole("button", { name: "Confirm my email" }).click();
+  await expect(page.getByRole("status").filter({ hasText: /couldn't be confirmed. Try again/ })).toBeVisible();
 });
 
 test("the header GitHub menu shows the GitHub mark", async ({ page }) => {

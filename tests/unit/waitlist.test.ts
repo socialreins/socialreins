@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { apiUrl, joinWaitlist, waitlistCount, waitlistCountText } from "@/lib/waitlist";
+import { apiUrl, joinWaitlist, verifyWaitlist, waitlistCount, waitlistCountText } from "@/lib/waitlist";
 
 const respond = (status: number) => vi.fn().mockResolvedValue(new Response(null, { status }));
 
@@ -70,5 +70,34 @@ describe("waitlistCount", () => {
     expect(waitlistCountText(1)).toBe("1 person on the waitlist");
     expect(waitlistCountText(0)).toBe("0 people on the waitlist");
     expect(waitlistCountText(1234)).toBe(`${(1234).toLocaleString()} people on the waitlist`);
+  });
+});
+
+describe("verifyWaitlist", () => {
+  it("posts the token to /v1/waitlist/verify without credentials", async () => {
+    const fetch = vi.fn().mockResolvedValue(Response.json({ status: "verified" }));
+    vi.stubGlobal("fetch", fetch);
+    expect(await verifyWaitlist("abc123")).toBe("verified");
+    const [url, init] = fetch.mock.calls[0]!;
+    expect(url).toBe(`${apiUrl}/v1/waitlist/verify`);
+    expect(init).toMatchObject({ method: "POST" });
+    expect(init.credentials).toBeUndefined();
+    expect(JSON.parse(init.body)).toEqual({ token: "abc123" });
+  });
+
+  it.each([
+    [422, "invalid"],
+    [429, "rate_limited"],
+    [500, "error"],
+  ])("maps %i to %s", async (status, result) => {
+    vi.stubGlobal("fetch", respond(status));
+    expect(await verifyWaitlist("abc")).toBe(result);
+  });
+
+  it("calls a missing token invalid without asking brain", async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    expect(await verifyWaitlist("")).toBe("invalid");
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

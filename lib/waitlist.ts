@@ -49,3 +49,25 @@ export async function waitlistCount(): Promise<number | null> {
 }
 
 export const waitlistCountText = (n: number) => `${n.toLocaleString()} ${n === 1 ? "person" : "people"} on the waitlist`;
+
+export type VerifyResult = "verified" | "invalid" | "rate_limited" | "timeout" | "error";
+
+// Confirms a spot with the token from brain's email link. Only a click calls this, never a page load,
+// because mail scanners open links.
+export async function verifyWaitlist(token: string): Promise<VerifyResult> {
+  if (!token) return "invalid";
+  try {
+    const res = await fetch(`${apiUrl}/v1/waitlist/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (res.ok) return "verified";
+    if (res.status === 422) return "invalid";
+    if (res.status === 429) return "rate_limited";
+    return "error";
+  } catch (e) {
+    return e instanceof DOMException && e.name === "TimeoutError" ? "timeout" : "error";
+  }
+}
