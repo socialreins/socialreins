@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getMe, requestLink, signOut } from "@/lib/auth";
+import { cleanName, getMe, requestLink, signOut, updateName } from "@/lib/auth";
 import { apiUrl } from "@/lib/waitlist";
 
 const respond = (status: number, body: unknown = null) =>
@@ -67,6 +67,37 @@ describe("getMe", () => {
     expect(await getMe()).toBe("error");
     vi.stubGlobal("fetch", offline());
     expect(await getMe()).toBe("error");
+  });
+});
+
+describe("updateName", () => {
+  it("patches /auth/me with the name and returns the user", async () => {
+    const user = { id: "1", email: "a@b.co", name: "Mira", username: null };
+    const fetch = respond(200, user);
+    vi.stubGlobal("fetch", fetch);
+    expect(await updateName("Mira")).toEqual(user);
+    const [url, init] = fetch.mock.calls[0]!;
+    expect(url).toBe(`${apiUrl}/auth/me`);
+    expect(init).toMatchObject({ method: "PATCH", credentials: "include" });
+    expect(JSON.parse(init.body)).toEqual({ name: "Mira" });
+  });
+
+  it("maps invalid_name and a lost session", async () => {
+    vi.stubGlobal("fetch", respond(422, { error: "invalid_name" }));
+    expect(await updateName("")).toBe("invalid_name");
+    vi.stubGlobal("fetch", respond(401, { error: "unauthorized" }));
+    expect(await updateName("Mira")).toBe("signed_out");
+  });
+});
+
+describe("cleanName", () => {
+  it("trims and takes 1 to 80 characters", () => {
+    expect(cleanName("  Mira ")).toBe("Mira");
+    expect(cleanName("   ")).toBeNull();
+    expect(cleanName("a".repeat(80))).toBe("a".repeat(80));
+    expect(cleanName("a".repeat(81))).toBeNull();
+    // Counted as characters, not UTF-16 units.
+    expect(cleanName("😀".repeat(80))).toBe("😀".repeat(80));
   });
 });
 

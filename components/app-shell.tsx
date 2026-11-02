@@ -11,7 +11,7 @@ import { PasskeyPrompt } from "@/components/passkey-prompt";
 import { TeamSwitcher } from "@/components/team-switcher";
 import { Icon, type IconName } from "@/components/ui";
 
-type Session = { user: User; setTeam: (t: Team) => void; refresh: () => Promise<void> };
+type Session = { user: User; setUser: (u: User) => void; setTeam: (t: Team) => void; refresh: () => Promise<void> };
 const SessionContext = createContext<Session | null>(null);
 
 // The signed-in user, checked once by the shell. Only for components rendered under /app.
@@ -105,6 +105,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const groups = user?.is_admin ? [...nav, adminGroup] : nav;
   const session: Session | null = user && {
     user,
+    setUser: (u) => setMe({ user: u }),
     setTeam: (t) => setMe({ user: { ...user, current_team: t } }),
     refresh: async () => {
       const r = await getMe();

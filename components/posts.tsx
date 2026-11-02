@@ -15,7 +15,7 @@ export const postMessages: Partial<Record<Failure, ReactNode>> = {
   too_long: "Bluesky posts can be at most 300 characters (and 3000 bytes).",
   too_many_images: "Add at most 4 images.",
   too_many_parts: "A thread can have at most 25 follow-up posts.",
-  invalid_media: "Images must be https links to JPEG, PNG, WebP or GIF files of 1 MB or less.",
+  invalid_media: "Images must be public https links to JPEG, PNG, WebP or GIF files of 1 MB or less, or Google Drive share links.",
   empty_post: "Write something or add an image first.",
   invalid_set: "That set no longer exists. Pick another one.",
   unsupported_platform: "Only Bluesky can publish today.",

@@ -83,14 +83,14 @@ test("the mobile menu shows the groups", async ({ page }) => {
   await expect(group(page, "Profile settings")).toBeHidden();
 });
 
-test("the profile page shows the user, read-only, with links to security", async ({ page }) => {
+test("the profile page shows the user, with links to security", async ({ page }) => {
   await brain(page);
   await page.goto("/app/profile");
   const main = page.getByRole("main");
   await expect(main.getByRole("heading", { name: "Profile", level: 1 })).toBeVisible();
   await expect(main.getByText("Mira", { exact: true })).toBeVisible();
   await expect(main.getByText("me@example.com")).toBeVisible();
-  await expect(main.getByRole("textbox")).toHaveCount(0);
+  await expect(main.getByLabel("Name", { exact: true })).toHaveValue("Mira");
   await expect(main.getByRole("link", { name: /Passkeys/ })).toHaveAttribute("href", "/app/security#passkeys");
   await expect(nav(page).getByRole("link", { name: "Profile", exact: true })).toHaveAttribute("aria-current", "page");
 });
@@ -157,4 +157,44 @@ test("no passkey dialog on the security page, or after skipping it on /welcome",
   await expect(page).toHaveURL("/app/posts");
   await page.waitForTimeout(500);
   await expect(dialog(page)).toHaveCount(0);
+});
+
+test("the profile name is saved and shows in the sidebar", async ({ page }) => {
+  await brain(page);
+  const sent: unknown[] = [];
+  await page.route("**/auth/me", (route) => {
+    if (route.request().method() !== "PATCH") return route.fallback();
+    const body = route.request().postDataJSON();
+    sent.push(body);
+    if (body.name === "Bad") return route.fulfill({ status: 422, json: { error: "invalid_name" } });
+    return route.fulfill({ json: { ...user, name: body.name } });
+  });
+  await page.goto("/app/profile");
+  const main = page.getByRole("main");
+  const account = page.locator("p", { hasText: "Signed in as" });
+  await expect(account).toContainText("Mira");
+
+  // Empty or too long: checked here, no request.
+  await main.getByLabel("Name", { exact: true }).fill("   ");
+  await main.getByRole("button", { name: "Save" }).click();
+  await expect(main.getByRole("alert")).toHaveText("Use 1 to 80 characters.");
+  await expect(main.getByLabel("Name", { exact: true })).toHaveAttribute("aria-invalid", "true");
+  await main.getByLabel("Name", { exact: true }).fill("a".repeat(81));
+  await main.getByRole("button", { name: "Save" }).click();
+  await expect(main.getByRole("alert")).toHaveText("Use 1 to 80 characters.");
+  expect(sent).toEqual([]);
+
+  // brain's invalid_name gets the same message.
+  await main.getByLabel("Name", { exact: true }).fill("Bad");
+  await main.getByRole("button", { name: "Save" }).click();
+  await expect(main.getByRole("alert")).toHaveText("Use 1 to 80 characters.");
+
+  await main.getByLabel("Name", { exact: true }).fill("  Mira Stone ");
+  await main.getByRole("button", { name: "Save" }).click();
+  await expect(main.getByRole("status")).toHaveText("Your name is saved.");
+  await expect(main.getByRole("status")).toBeFocused();
+  expect(sent).toEqual([{ name: "Bad" }, { name: "Mira Stone" }]);
+  await expect(main.getByLabel("Name", { exact: true })).toHaveValue("Mira Stone");
+  await expect(main.getByText("Mira Stone", { exact: true })).toBeVisible();
+  await expect(account).toContainText("Mira Stone");
 });

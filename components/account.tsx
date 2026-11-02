@@ -20,6 +20,7 @@ export function Account() {
           {(user.name || user.email).charAt(0).toUpperCase()}
         </span>
         <p className="min-w-0 text-sm leading-snug">
+          {user.name && <span className="block truncate font-bold">{user.name}</span>}
           <span className="block text-ink-soft">Signed in as</span>{" "}
           <strong className="block truncate" title={user.email}>
             {user.email}

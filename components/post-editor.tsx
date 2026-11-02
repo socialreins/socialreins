@@ -52,8 +52,6 @@ export function PostEditor({ id }: { id?: string }) {
   // Bumped after Publish now, to move focus onto the status line that follows the post.
   const [sent, setSent] = useState(0);
   const statusRef = useRef<HTMLParagraphElement>(null);
-  const addRef = useRef<HTMLButtonElement>(null);
-  const imageRefs = useRef<(HTMLInputElement | null)[]>([]);
   const addPartRef = useRef<HTMLButtonElement>(null);
   const partRefs = useRef<(HTMLTextAreaElement | null)[]>([]);
   const { busy, problem, done, run } = useAction();
@@ -121,8 +119,9 @@ export function PostEditor({ id }: { id?: string }) {
 
   async function save(mode: "draft" | "schedule" | "publish") {
     flushSync(() => setLocal(null));
-    const images = media.map((m) => m.trim()).filter(Boolean);
-    const invalid = checkThread(body, images, thread);
+    const images = links(media);
+    const parts = thread.map((p) => ({ ...p, media: links(p.media) }));
+    const invalid = checkThread(body, images, parts);
     if (invalid) return setLocal(<>{invalid.part ? `Post ${invalid.part + 1} of the thread: ` : ""}{postMessages[invalid.failure]}</>);
     if (mode === "schedule" && !at) return setLocal("Pick a date and time to schedule the post.");
     const input: PostInput = {
@@ -130,7 +129,7 @@ export function PostEditor({ id }: { id?: string }) {
       platform: "bluesky",
       body,
       media: images,
-      thread,
+      thread: parts,
       scheduled_at: mode === "schedule" ? fromLocalInput(at) : null,
       list_id: listChoices.some((l) => l.id === listId) ? listId : undefined,
     };
@@ -187,7 +186,7 @@ export function PostEditor({ id }: { id?: string }) {
 
   const preview = (
     <Preview
-      posts={[{ body, media: media.map((m) => m.trim()).filter(Boolean) }, ...thread]}
+      posts={[{ body, media }, ...thread].map((p) => ({ ...p, media: links(p.media) }))}
       account={accounts.find((a) => a.provider === "bluesky" && a.set_ids.includes(setId))}
     />
   );
@@ -305,11 +304,6 @@ export function PostEditor({ id }: { id?: string }) {
     save(mode || "draft");
   }
 
-  function addImage() {
-    flushSync(() => setMedia((list) => [...list, ""]));
-    imageRefs.current[media.length]?.focus();
-  }
-
   function addPart() {
     flushSync(() => setThread((list) => [...list, { body: "", media: [] }]));
     partRefs.current[thread.length]?.focus();
@@ -318,11 +312,6 @@ export function PostEditor({ id }: { id?: string }) {
   function removePart(i: number) {
     flushSync(() => setThread((list) => list.filter((_, j) => j !== i)));
     addPartRef.current?.focus();
-  }
-
-  function removeImage(i: number) {
-    flushSync(() => setMedia((list) => list.filter((_, j) => j !== i)));
-    addRef.current?.focus();
   }
 
   return (
@@ -393,41 +382,7 @@ export function PostEditor({ id }: { id?: string }) {
                 </p>
               )}
             </div>
-            <fieldset className="grid gap-2">
-              <legend className="label">Images</legend>
-              <p className="hint">Up to {MAX_IMAGES}. Public https links to JPEG, PNG, WebP or GIF files of 1 MB or less.</p>
-              {media.length > 0 && (
-                <ul className="grid gap-2">
-                  {media.map((m, i) => (
-                    <li key={i} className="flex items-end gap-2">
-                      <label className="grid flex-1 gap-1 text-sm font-bold">
-                        Image {i + 1} link
-                        <input
-                          ref={(el) => {
-                            imageRefs.current[i] = el;
-                          }}
-                          type="url"
-                          inputMode="url"
-                          placeholder="https://"
-                          className="field font-normal"
-                          value={m}
-                          onChange={(e) => setMedia((list) => list.map((v, j) => (j === i ? e.target.value : v)))}
-                        />
-                      </label>
-                      <button type="button" className="icon-btn mb-1" aria-label={`Remove image ${i + 1}`} onClick={() => removeImage(i)}>
-                        <Icon name="close" className="size-4" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {media.length < MAX_IMAGES && (
-                <button ref={addRef} type="button" className="btn btn-secondary btn-sm justify-self-start" onClick={addImage}>
-                  <Icon name="image" className="size-4" />
-                  Add image
-                </button>
-              )}
-            </fieldset>
+            <ImageLinks media={media} onChange={setMedia} />
             <fieldset className="grid gap-2">
               <legend className="label">Thread</legend>
               <p className="hint">Follow-up posts go out as replies, each to the one before, on every account.</p>
@@ -458,8 +413,9 @@ export function PostEditor({ id }: { id?: string }) {
                           aria-describedby={`post-part-${i}-count`}
                         />
                         <p id={`post-part-${i}-count`} className={`justify-self-end text-sm ${n > MAX_GRAPHEMES ? "font-bold text-signal-deep" : "text-ink-soft"}`}>
-                          {n} of {MAX_GRAPHEMES} characters{p.media.length ? `, ${p.media.length} image${p.media.length > 1 ? "s" : ""} added through the API` : ""}
+                          {n} of {MAX_GRAPHEMES} characters
                         </p>
+                        <ImageLinks media={p.media} post={i + 2} onChange={(m) => setThread((list) => list.map((v, j) => (j === i ? { ...v, media: m } : v)))} />
                       </li>
                     );
                   })}
@@ -512,6 +468,71 @@ export function PostEditor({ id }: { id?: string }) {
       </div>
       {preview}
     </div>
+  );
+}
+
+const links = (media: string[]) => media.map((m) => m.trim()).filter(Boolean);
+
+// The image links of one post. `post` is its number in a thread; the first post leaves it out.
+function ImageLinks({ media, post, onChange }: { media: string[]; post?: number; onChange: (media: string[]) => void }) {
+  const addRef = useRef<HTMLButtonElement>(null);
+  const imageRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const of = post ? ` of post ${post}` : "";
+
+  function addImage() {
+    flushSync(() => onChange([...media, ""]));
+    imageRefs.current[media.length]?.focus();
+  }
+
+  function removeImage(i: number) {
+    flushSync(() => onChange(media.filter((_, j) => j !== i)));
+    addRef.current?.focus();
+  }
+
+  return (
+    <fieldset className="grid gap-2">
+      <legend className={post ? "text-sm font-bold" : "label"}>
+        Images<span className="sr-only">{of}</span>
+      </legend>
+      {!post && (
+        <p className="hint">
+          Up to {MAX_IMAGES}. Public https links to JPEG, PNG, WebP or GIF files of 1 MB or less, or Google Drive share links.
+        </p>
+      )}
+      {media.length > 0 && (
+        <ul className="grid gap-2">
+          {media.map((m, i) => (
+            <li key={i} className="flex items-end gap-2">
+              <label className="grid flex-1 gap-1 text-sm font-bold">
+                <span>
+                  Image {i + 1} link<span className="sr-only">{of}</span>
+                </span>
+                <input
+                  ref={(el) => {
+                    imageRefs.current[i] = el;
+                  }}
+                  type="url"
+                  inputMode="url"
+                  placeholder="https://"
+                  className="field font-normal"
+                  value={m}
+                  onChange={(e) => onChange(media.map((v, j) => (j === i ? e.target.value : v)))}
+                />
+              </label>
+              <button type="button" className="icon-btn mb-1" aria-label={`Remove image ${i + 1}${of}`} onClick={() => removeImage(i)}>
+                <Icon name="close" className="size-4" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {media.length < MAX_IMAGES && (
+        <button ref={addRef} type="button" className="btn btn-secondary btn-sm justify-self-start" onClick={addImage}>
+          <Icon name="image" className="size-4" />
+          Add image<span className="sr-only">{post ? ` to post ${post}` : ""}</span>
+        </button>
+      )}
+    </fieldset>
   );
 }
 
