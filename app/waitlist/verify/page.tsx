@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { LogoMark } from "@/components/logo";
 import { WaitlistVerify, WaitlistVerifyWithToken } from "@/components/waitlist-verify";
 
-export const metadata: Metadata = { title: "Confirm your spot: SocialReins", robots: { index: false } };
+export const metadata: Metadata = { title: "Confirm your spot: SocialReins", robots: { index: false }, referrer: "no-referrer" };
 
 // Brain's waitlist email links here with ?token=; only the button confirms, never the page load.
 export default function Verify() {

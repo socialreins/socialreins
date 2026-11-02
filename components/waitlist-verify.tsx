@@ -24,7 +24,7 @@ export function WaitlistVerify({ token }: { token: string }) {
   const doneRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
-    if (status === "verified") doneRef.current?.focus();
+    if (status === "verified" || status === "invalid") doneRef.current?.focus();
   }, [status]);
 
   async function confirm() {
@@ -51,7 +51,9 @@ export function WaitlistVerify({ token }: { token: string }) {
   if (status === "invalid")
     return (
       <div className="grid gap-3">
-        <h1 className={title}>That link didn&apos;t work</h1>
+        <h1 ref={doneRef} tabIndex={-1} className={`${title} focus:outline-none`}>
+          That link didn&apos;t work
+        </h1>
         <p role="alert" className="text-ink-soft">
           Join again from the{" "}
           <Link href="/" className={link}>
