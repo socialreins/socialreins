@@ -162,7 +162,7 @@ test("compose checks length, images and schedule before asking brain", async ({ 
   await expect(page.getByLabel("Image 1 link")).toBeFocused();
   await page.getByLabel("Image 1 link").fill("http://example.com/a.png");
   await page.getByRole("button", { name: "Save draft" }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "must be https links" })).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "must be public https links" })).toBeVisible();
   await page.getByLabel("Image 1 link").fill("");
   await page.getByRole("button", { name: "Schedule" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "Pick a date and time" })).toBeVisible();
@@ -171,7 +171,7 @@ test("compose checks length, images and schedule before asking brain", async ({ 
   // brain still judges, e.g. an image over 1 MB.
   await page.getByLabel("Image 1 link").fill("https://example.com/huge.png");
   await page.getByRole("button", { name: "Save draft" }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "must be https links" })).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "must be public https links" })).toBeVisible();
   expect(creates).toBe(1);
 });
 
@@ -225,6 +225,44 @@ test("a thread is written, checked, previewed and sent in order", async ({ page 
   await expect(page).toHaveURL("/app/posts/p1");
   expect(sent?.thread).toEqual([{ body: "Two", media: [] }]);
   await expect(page.getByRole("textbox", { name: "Post 2" })).toHaveValue("Two");
+});
+
+test("each thread post takes its own images", async ({ page }) => {
+  await brain(page);
+  let sent: Record<string, unknown> | undefined;
+  await page.route("**/v1/posts", (route) => {
+    sent = route.request().postDataJSON();
+    return route.fulfill({ status: 201, json: post("p1", sent) });
+  });
+  await page.goto("/app/posts/new");
+  await page.getByLabel("Post", { exact: true }).fill("One");
+  await page.getByRole("button", { name: "Add to thread" }).click();
+  await page.getByRole("textbox", { name: "Post 2", exact: true }).fill("Two");
+
+  const add = page.getByRole("button", { name: "Add image to post 2" });
+  await add.click();
+  await expect(page.getByLabel("Image 1 link of post 2")).toBeFocused();
+  await page.getByLabel("Image 1 link of post 2").fill("https://drive.google.com/file/d/abc/view");
+  await add.click();
+  await expect(page.getByLabel("Image 2 link of post 2")).toBeFocused();
+  await page.getByLabel("Image 2 link of post 2").fill("http://example.com/b.png");
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Post 2 of the thread:" })).toBeVisible();
+  expect(sent).toBeUndefined();
+
+  await page.getByRole("button", { name: "Remove image 2 of post 2" }).click();
+  await expect(add).toBeFocused();
+  // The first post's images are separate.
+  await expect(page.getByLabel("Image 1 link", { exact: true })).toHaveCount(0);
+  const preview = page.getByRole("region", { name: "Preview" });
+  await expect(preview.getByRole("listitem")).toHaveCount(1);
+  await expect(preview.getByRole("listitem")).toHaveText("view");
+
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page).toHaveURL("/app/posts/p1");
+  expect(sent?.media).toEqual([]);
+  expect(sent?.thread).toEqual([{ body: "Two", media: ["https://drive.google.com/file/d/abc/view"] }]);
+  await expect(page.getByLabel("Image 1 link of post 2")).toHaveValue("https://drive.google.com/file/d/abc/view");
 });
 
 test("a published thread links each follow-up post", async ({ page }) => {

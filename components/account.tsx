@@ -17,9 +17,10 @@ export function Account() {
     <div className="grid grid-cols-[minmax(0,1fr)] gap-2 border-t border-ink/10 px-2 pt-4">
       <div className="flex items-center gap-3">
         <span aria-hidden="true" className="grid size-9 shrink-0 place-items-center rounded-full bg-ink/10 font-bold">
-          {(user.name || user.email).charAt(0).toUpperCase()}
+          {[...(user.name || user.email)][0].toUpperCase()}
         </span>
         <p className="min-w-0 text-sm leading-snug">
+          {user.name && <span className="block truncate font-bold">{user.name}</span>}
           <span className="block text-ink-soft">Signed in as</span>{" "}
           <strong className="block truncate" title={user.email}>
             {user.email}

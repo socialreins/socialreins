@@ -262,3 +262,11 @@ export function safeNext(raw: string | null | undefined): string {
 // A full-page navigation, not a fetch: brain sends the browser to Google and back to `next`.
 export const googleStartUrl = (next?: string | null) =>
   `${apiUrl}/auth/google/start?next=${encodeURIComponent(safeNext(next))}`;
+
+// brain trims the name and takes 1 to 80 characters (code points), else 422 invalid_name.
+export const MAX_NAME = 80;
+export const cleanName = (name: string) => {
+  const n = name.trim();
+  return n && [...n].length <= MAX_NAME ? n : null;
+};
+export const updateName = (name: string) => api<User>("/auth/me", "PATCH", { name });
