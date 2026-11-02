@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import type { Failure } from "@/lib/auth";
 import { listConnections, type Connection } from "@/lib/connections";
 import {
-  checkPost,
+  checkThread,
   createPost,
   deletePost,
   fromLocalInput,
@@ -14,11 +14,13 @@ import {
   graphemes,
   MAX_GRAPHEMES,
   MAX_IMAGES,
+  MAX_PARTS,
   publishPost,
   toLocalInput,
   updatePost,
   type Post,
   type PostInput,
+  type ThreadPart,
 } from "@/lib/posts";
 import { fitsList, listLists, partLabel, type PostList } from "@/lib/lists";
 import { listSets, type SocialSet } from "@/lib/sets";
@@ -40,6 +42,7 @@ export function PostEditor({ id }: { id?: string }) {
   const [setId, setSetId] = useState("");
   const [body, setBody] = useState("");
   const [media, setMedia] = useState<string[]>([]);
+  const [thread, setThread] = useState<ThreadPart[]>([]);
   const [at, setAt] = useState("");
   const [lists, setLists] = useState<PostList[]>([]);
   const [listId, setListId] = useState("");
@@ -51,6 +54,8 @@ export function PostEditor({ id }: { id?: string }) {
   const statusRef = useRef<HTMLParagraphElement>(null);
   const addRef = useRef<HTMLButtonElement>(null);
   const imageRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const addPartRef = useRef<HTMLButtonElement>(null);
+  const partRefs = useRef<(HTMLTextAreaElement | null)[]>([]);
   const { busy, problem, done, run } = useAction();
   const confirmRef = useRef<HTMLButtonElement>(null);
   const askRef = useRef<HTMLButtonElement>(null);
@@ -60,6 +65,7 @@ export function PostEditor({ id }: { id?: string }) {
     setSetId(p.social_set_id);
     setBody(p.body);
     setMedia(p.media);
+    setThread(p.thread ?? []);
     setAt(toLocalInput(p.status === "scheduled" ? p.scheduled_at : null));
     setListId("");
   }
@@ -116,14 +122,15 @@ export function PostEditor({ id }: { id?: string }) {
   async function save(mode: "draft" | "schedule" | "publish") {
     flushSync(() => setLocal(null));
     const images = media.map((m) => m.trim()).filter(Boolean);
-    const invalid = checkPost(body, images);
-    if (invalid) return setLocal(postMessages[invalid]);
+    const invalid = checkThread(body, images, thread);
+    if (invalid) return setLocal(<>{invalid.part ? `Post ${invalid.part + 1} of the thread: ` : ""}{postMessages[invalid.failure]}</>);
     if (mode === "schedule" && !at) return setLocal("Pick a date and time to schedule the post.");
     const input: PostInput = {
       social_set_id: setId,
       platform: "bluesky",
       body,
       media: images,
+      thread,
       scheduled_at: mode === "schedule" ? fromLocalInput(at) : null,
       list_id: listChoices.some((l) => l.id === listId) ? listId : undefined,
     };
@@ -180,8 +187,7 @@ export function PostEditor({ id }: { id?: string }) {
 
   const preview = (
     <Preview
-      body={body}
-      media={media.map((m) => m.trim()).filter(Boolean)}
+      posts={[{ body, media: media.map((m) => m.trim()).filter(Boolean) }, ...thread]}
       account={accounts.find((a) => a.provider === "bluesky" && a.set_ids.includes(setId))}
     />
   );
@@ -268,6 +274,18 @@ export function PostEditor({ id }: { id?: string }) {
                           <Icon name="external" className="size-4" />
                         </a>
                       )}
+                      {post.thread.length > 0 && (
+                        <span className="basis-full text-ink-soft">
+                          Thread: {t.parts.length} of {post.thread.length} follow-up posts out.
+                          {t.parts.map((p, i) =>
+                            p.remote_url ? (
+                              <a key={p.remote_id} href={p.remote_url} target="_blank" rel="noopener noreferrer" className="ml-2 font-bold underline">
+                                Post {i + 2}
+                              </a>
+                            ) : null,
+                          )}
+                        </span>
+                      )}
                     </li>
                   );
                 })}
@@ -290,6 +308,16 @@ export function PostEditor({ id }: { id?: string }) {
   function addImage() {
     flushSync(() => setMedia((list) => [...list, ""]));
     imageRefs.current[media.length]?.focus();
+  }
+
+  function addPart() {
+    flushSync(() => setThread((list) => [...list, { body: "", media: [] }]));
+    partRefs.current[thread.length]?.focus();
+  }
+
+  function removePart(i: number) {
+    flushSync(() => setThread((list) => list.filter((_, j) => j !== i)));
+    addPartRef.current?.focus();
   }
 
   function removeImage(i: number) {
@@ -400,6 +428,50 @@ export function PostEditor({ id }: { id?: string }) {
                 </button>
               )}
             </fieldset>
+            <fieldset className="grid gap-2">
+              <legend className="label">Thread</legend>
+              <p className="hint">Follow-up posts go out as replies, each to the one before, on every account.</p>
+              {thread.length > 0 && (
+                <ol className="grid gap-3">
+                  {thread.map((p, i) => {
+                    const n = graphemes(p.body);
+                    return (
+                      <li key={i} className="grid gap-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <label htmlFor={`post-part-${i}`} className="text-sm font-bold">
+                            Post {i + 2}
+                          </label>
+                          <button type="button" className="icon-btn" aria-label={`Remove post ${i + 2}`} onClick={() => removePart(i)}>
+                            <Icon name="close" className="size-4" />
+                          </button>
+                        </div>
+                        <textarea
+                          id={`post-part-${i}`}
+                          ref={(el) => {
+                            partRefs.current[i] = el;
+                          }}
+                          rows={3}
+                          className="field resize-y"
+                          value={p.body}
+                          onChange={(e) => setThread((list) => list.map((v, j) => (j === i ? { ...v, body: e.target.value } : v)))}
+                          aria-invalid={n > MAX_GRAPHEMES || undefined}
+                          aria-describedby={`post-part-${i}-count`}
+                        />
+                        <p id={`post-part-${i}-count`} className={`justify-self-end text-sm ${n > MAX_GRAPHEMES ? "font-bold text-signal-deep" : "text-ink-soft"}`}>
+                          {n} of {MAX_GRAPHEMES} characters{p.media.length ? `, ${p.media.length} image${p.media.length > 1 ? "s" : ""} added through the API` : ""}
+                        </p>
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+              {thread.length < MAX_PARTS && (
+                <button ref={addPartRef} type="button" className="btn btn-secondary btn-sm justify-self-start" onClick={addPart}>
+                  <Icon name="plus" className="size-4" />
+                  Add to thread
+                </button>
+              )}
+            </fieldset>
           </div>
           {messages}
           <div className="card grid gap-4 p-5">
@@ -455,13 +527,22 @@ const fileName = (url: string) => {
 };
 
 // Roughly how the post looks on Bluesky. Images show as tiles: the CSP only allows Bluesky's own image CDN.
-function Preview({ body, media, account }: { body: string; media: string[]; account?: Connection }) {
-  const parts = body.split(rich);
+function Preview({ posts, account }: { posts: ThreadPart[]; account?: Connection }) {
   return (
     <section aria-labelledby="preview-heading" className="grid gap-3 lg:sticky lg:top-10">
       <h2 id="preview-heading" className="font-display text-lg font-extrabold tracking-tight">
         Preview
       </h2>
+      {posts.map((p, i) => (
+        <PreviewPost key={i} body={p.body} media={p.media} account={account} />
+      ))}
+    </section>
+  );
+}
+
+function PreviewPost({ body, media, account }: { body: string; media: string[]; account?: Connection }) {
+  const parts = body.split(rich);
+  return (
       <div className="card flex gap-3 p-4">
         {account ? (
           <Avatar connection={account} />
@@ -507,6 +588,5 @@ function Preview({ body, media, account }: { body: string; media: string[]; acco
           )}
         </div>
       </div>
-    </section>
   );
 }
