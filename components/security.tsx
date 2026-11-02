@@ -63,6 +63,8 @@ function PasskeysSection() {
 
   useEffect(() => {
     listPasskeys().then(setKeys);
+    // On a full page load the browser looks for #passkeys before the app shell has rendered it.
+    if (location.hash === "#passkeys") document.getElementById("passkeys")?.scrollIntoView();
   }, []);
 
   useEffect(() => {
@@ -108,7 +110,7 @@ function PasskeysSection() {
   }
 
   return (
-    <section aria-labelledby="passkeys-heading" className="grid gap-3">
+    <section id="passkeys" aria-labelledby="passkeys-heading" className="grid scroll-mt-6 gap-3">
       <h2 id="passkeys-heading" className="font-display text-xl font-extrabold tracking-tight">
         Passkeys
       </h2>

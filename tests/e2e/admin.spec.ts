@@ -31,16 +31,18 @@ async function brain(page: Page, isAdmin = true) {
   return asked;
 }
 
-test("the Admin link shows only for site admins", async ({ page }) => {
+test("the Admin group and its Waitlist link show only for site admins", async ({ page }) => {
   await brain(page, false);
   await page.goto("/app/posts");
   await expect(page.getByRole("link", { name: "Posts", exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Admin", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Admin", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Waitlist", exact: true })).toHaveCount(0);
 
   await page.unrouteAll();
   await brain(page, true);
   await page.goto("/app/posts");
-  await page.getByRole("link", { name: "Admin", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Admin", exact: true })).toHaveAttribute("aria-expanded", "true");
+  await page.getByRole("link", { name: "Waitlist", exact: true }).click();
   await expect(page).toHaveURL(/\/app\/admin$/);
   await expect(page.getByRole("heading", { name: "Admin", level: 1 })).toBeVisible();
 });
