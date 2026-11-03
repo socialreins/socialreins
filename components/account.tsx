@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "@/lib/auth";
 import { useSession } from "@/components/app-shell";
 import { Icon } from "@/components/ui";
@@ -27,6 +28,9 @@ export function Account() {
           </strong>
         </p>
       </div>
+      <Suspense fallback={null}>
+        <AdminLink />
+      </Suspense>
       <button
         type="button"
         disabled={signingOut}
@@ -48,5 +52,18 @@ export function Account() {
         </p>
       )}
     </div>
+  );
+}
+
+// Site admins switch between the app and the admin console here; nobody else sees it.
+function AdminLink() {
+  const { user } = useSession();
+  const inAdmin = usePathname().startsWith("/admin");
+  if (!user.is_admin) return null;
+  return (
+    <Link href={inAdmin ? "/app" : "/admin"} className="btn btn-quiet btn-sm justify-self-start">
+      <Icon name={inAdmin ? "left" : "admin"} className="size-4" />
+      {inAdmin ? "Back to the app" : "Admin console"}
+    </Link>
   );
 }

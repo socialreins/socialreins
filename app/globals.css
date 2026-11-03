@@ -174,3 +174,13 @@ body { margin: 0; font-family: var(--font-body); font-size: 1.0625rem; line-heig
 .app-main .waitlist button:not([class]):hover { background: #a92c08; }
 .app-main .waitlist-done { border-radius: 0.5rem; font-size: 0.875rem; }
 .app-main :is(.waitlist-note, .waitlist-error) { font-size: 0.8125rem; }
+/* The admin console wears indigo instead of orange, so it is never mistaken for the app. */
+.admin-root {
+  --color-signal: #6366f1; --color-signal-deep: #4338ca;
+  --side: #f4f5fb; --line: #e2e4ee; --line-soft: #eef0f6;
+}
+.admin-root .btn-primary:hover:not(:disabled) { background: #3730a3; }
+/* Errors stay red in the console; only the accent turns indigo. */
+.admin-root :is(.waitlist-error, .btn-danger) { color: #c2330a; }
+.admin-root :is(.field, input, select, textarea)[aria-invalid] { border-color: #c2330a; }
+.admin-root header { box-shadow: inset 0 2px 0 var(--color-signal-deep); }
