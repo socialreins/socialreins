@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { Failure, Team } from "@/lib/auth";
@@ -36,7 +37,9 @@ export function TopBar({ session, pages, collapsed, onToggle }: { session: boole
             </li>
             <li aria-hidden="true" className="text-[var(--line)]">/</li>
             <li className="min-w-0">
-              <SetMenu />
+              <Suspense fallback={null}>
+                <TeamSets />
+              </Suspense>
             </li>
             <Suspense fallback={null}>
               <PageCrumb pages={pages} />
@@ -54,7 +57,7 @@ function PageCrumb({ pages }: { pages: NavItem[] }) {
   if (!page) return null;
   return (
     <>
-      <li aria-hidden="true" className="text-[var(--line)]">/</li>
+      <li aria-hidden="true" className="hidden text-[var(--line)] sm:block">/</li>
       <li className="hidden truncate px-2 text-ink-soft sm:block">
         <span aria-current="page">{page.label}</span>
       </li>
@@ -68,7 +71,7 @@ function Menu({ id, trigger, onOpen, children }: { id: string; trigger: ReactNod
   const panel = useRef<HTMLDivElement>(null);
   return (
     <>
-      <button ref={button} type="button" popoverTarget={id} aria-haspopup="true" className={crumb}>
+      <button ref={button} type="button" popoverTarget={id} className={crumb}>
         {trigger}
         <Icon name="down" className="size-3.5 text-[var(--faint)]" />
       </button>
@@ -76,11 +79,12 @@ function Menu({ id, trigger, onOpen, children }: { id: string; trigger: ReactNod
         ref={panel}
         id={id}
         popover="auto"
-        onToggle={(e) => {
+        // Placed before it shows, so it never paints in the wrong spot.
+        onBeforeToggle={(e) => {
           if ((e.nativeEvent as ToggleEvent).newState !== "open") return;
           const r = button.current!.getBoundingClientRect();
           panel.current!.style.top = `${r.bottom + 4}px`;
-          panel.current!.style.left = `${Math.max(8, Math.min(r.left, innerWidth - panel.current!.offsetWidth - 8))}px`;
+          panel.current!.style.left = `${Math.max(8, Math.min(r.left, innerWidth - 296))}px`;
           onOpen?.();
         }}
         className="app-root fixed m-0 w-72 max-w-[calc(100vw-1rem)] rounded-lg bg-paper p-1.5 text-sm shadow-[0_0_0_1px_var(--line),0_10px_30px_rgb(0_0_0/0.12)] [inset:auto]"
@@ -100,11 +104,14 @@ function TeamMenu() {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const nameRef = useRef<HTMLInputElement>(null);
+  const newRef = useRef<HTMLButtonElement>(null);
   const { busy, problem, done, run } = useAction();
 
-  useEffect(() => {
-    if (creating) nameRef.current?.focus();
-  }, [creating]);
+  // Focus follows the form: into the name field when it opens, back to "New team" when it closes.
+  function openCreate(open: boolean) {
+    flushSync(() => setCreating(open));
+    (open ? nameRef : newRef).current?.focus();
+  }
 
   function onSwitch(t: Team) {
     run("switch", () => switchTeam(t.id), (team) => {
@@ -190,13 +197,13 @@ function TeamMenu() {
             <button type="submit" className="btn btn-primary btn-sm" disabled={busy !== null}>
               {busy === "create" ? "Creating..." : "Create team"}
             </button>
-            <button type="button" className="btn btn-quiet btn-sm" onClick={() => setCreating(false)}>
+            <button type="button" className="btn btn-quiet btn-sm" onClick={() => openCreate(false)}>
               Cancel
             </button>
           </div>
         </form>
       ) : (
-        <button type="button" className={item} onClick={() => setCreating(true)}>
+        <button ref={newRef} type="button" className={item} onClick={() => openCreate(true)}>
           <Icon name="plus" className="size-4 text-ink-soft" />
           New team
         </button>
@@ -212,14 +219,24 @@ function TeamMenu() {
   );
 }
 
-function SetMenu() {
+// Keyed by team, so a team switch starts the set menu fresh instead of checking the new team's set against the old team's sets.
+function TeamSets() {
+  return <SetMenu key={useSession().user.current_team.id} path={usePathname()} />;
+}
+
+function SetMenu({ path }: { path: string }) {
   const [current, setCurrent] = useCurrentSet();
   const [sets, setSets] = useState<SocialSet[] | Failure | null>(null);
 
   // The name of a picked set is needed before the menu opens; with all sets, nothing to load yet.
+  // Loaded again on each page change, so a set deleted on the Sets page drops out of the filter.
   useEffect(() => {
-    if (current) listSets().then(setSets);
-  }, [current]);
+    let live = true;
+    if (current) listSets().then((r) => live && setSets(r));
+    return () => {
+      live = false;
+    };
+  }, [current, path]);
   // A set deleted elsewhere falls back to all sets.
   useEffect(() => {
     if (current && Array.isArray(sets) && !sets.some((s) => s.id === current)) setCurrent("");
