@@ -7,9 +7,13 @@ import type { Failure } from "@/lib/auth";
 import { useSession } from "@/components/app-shell";
 import {
   connectBluesky,
+  connectResult,
+  connectResultText,
+  connectUrl,
   disconnect,
   listConnections,
   listProviders,
+  oauthProviders,
   providerState,
   safeAvatar,
   type Connection,
@@ -64,11 +68,15 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
   const disconnectRefs = useRef(new Map<string, HTMLButtonElement>());
   const confirmRef = useRef<HTMLButtonElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  // How an OAuth connect went, from brain's redirect back here. The shell renders this page in the browser only.
+  const [returned] = useState(() => connectResult(window.location.search));
 
   const reload = () => listConnections().then(setList);
   useEffect(() => {
     listConnections().then(setList);
     listSets().then(setSets);
+    // Drop the flags so a reload doesn't show the message again.
+    if (connectResult(window.location.search)) window.history.replaceState(null, "", window.location.pathname);
   }, []);
 
   useEffect(() => {
@@ -109,6 +117,11 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
             Manage sets
           </Link>
         </div>
+        {returned && (
+          <p role={returned.error ? "alert" : "status"} className={returned.error ? "waitlist-error" : "waitlist-done"}>
+            {connectResultText(returned, platformOf(returned.provider)?.name ?? returned.provider)}
+          </p>
+        )}
         <Status problem={problem} done={done} overrides={connectMessages} />
         {list === null ? (
           <div role="status" className="h-28 rounded-2xl bg-ink/5 motion-safe:animate-pulse">
@@ -174,7 +187,7 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
                     (confirming === c.id ? (
                       <div className="grid gap-2 rounded-xl bg-canvas p-3">
                         <p id={`confirm-${c.id}`} className="text-sm">
-                          Disconnect {name}? SocialReins will forget its stored password.
+                          Disconnect {name}? SocialReins will forget its stored {c.provider === "bluesky" ? "password" : "sign-in"}.
                         </p>
                         <div className="flex flex-wrap gap-2">
                           <button
@@ -347,6 +360,7 @@ function AddAccount({ connected, onConnected }: { connected: Connection[]; onCon
   const known = Array.isArray(providers) ? providers : [];
   const bluesky = platforms.find((p) => p.id === "bluesky")!;
   const blueskyReady = providerState("bluesky", known) === "available";
+  const oauth = platforms.filter((p) => oauthProviders.has(p.id) && providerState(p.id, known) === "available");
   const groups = (["coming_soon", "not_configured"] as const).map((state) => ({
     state,
     list: platforms.filter((p) => providerState(p.id, known) === state && !(p.id === "bluesky" && blueskyReady)),
@@ -433,6 +447,32 @@ function AddAccount({ connected, onConnected }: { connected: Connection[]; onCon
               <Status problem={problem} done={done} overrides={connectMessages} />
             </form>
           )}
+          {oauth.map((p) => (
+            <div key={p.id} className="card grid gap-4 p-5">
+              <div className="flex items-center gap-3">
+                <span className="grid size-10 place-items-center rounded-xl bg-canvas" style={{ color: p.color }}>
+                  <PlatformIcon platform={p} className="size-6" />
+                </span>
+                <h3 className="font-display text-lg font-extrabold tracking-tight">
+                  Connect {p.name}
+                </h3>
+                <span className="badge tone ml-auto" data-status="published">
+                  Available
+                </span>
+              </div>
+              <p id={`${p.id}-note`} className="hint">
+                You sign in on {p.name} and come back here. Connecting an account again renews its sign-in and keeps its posts
+                and sets.
+              </p>
+              <a
+                href={connectUrl(p.id)}
+                className="btn btn-primary justify-self-start"
+                aria-describedby={`${p.id}-note`}
+              >
+                Connect {p.name}
+              </a>
+            </div>
+          ))}
           {groups.map(
             ({ state, list }) =>
               list.length > 0 && (

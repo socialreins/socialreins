@@ -120,6 +120,34 @@ for (const [code, status, text] of [
   });
 }
 
+test("Connect Threads goes through brain and says how it went", async ({ page }) => {
+  await signedIn(page, "owner");
+  const threadsOn = providers.map((p) => (p.provider === "threads" ? { ...p, configured: true } : p));
+  await page.route("**/v1/connections/providers", (route) => route.fulfill({ json: threadsOn }));
+  await page.goto("/app/connections");
+  // brain sends the browser to Threads and back; here it comes straight back connected.
+  const back = new URL("/app/connections?connected=threads", page.url()).href;
+  await page.route("http://localhost:8080/connections/threads/redirect", (route) =>
+    route.fulfill({ status: 303, headers: { location: back } }),
+  );
+  const link = page.getByRole("link", { name: "Connect Threads" });
+  await expect(link).toHaveAttribute("href", "http://localhost:8080/connections/threads/redirect");
+  const group = page.getByRole("heading", { name: "Not set up on this server", level: 3 }).locator("xpath=following-sibling::ul[1]");
+  await expect(group).not.toContainText("Threads");
+  await link.click();
+  await expect(page.getByRole("status").filter({ hasText: "Connected your Threads account." })).toBeVisible();
+  // The flags are dropped, so a reload doesn't repeat the message.
+  await expect(page).toHaveURL("/app/connections");
+});
+
+test("a refused OAuth connect is explained", async ({ page }) => {
+  await signedIn(page, "owner");
+  await page.goto("/app/connections?connect_error=cancelled&provider=threads");
+  await expect(page.getByRole("alert").filter({ hasText: "Threads connection was cancelled." })).toBeVisible();
+  await expect(page).toHaveURL("/app/connections");
+  await expect(page.getByRole("link", { name: "Connect Threads" })).toHaveCount(0);
+});
+
 test("disconnect asks first, then removes the account", async ({ page }) => {
   await signedIn(page, "owner");
   let method = "";

@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   connectBluesky,
+  connectResult,
+  connectResultText,
+  connectUrl,
   disconnect,
   listConnections,
   listProviders,
@@ -87,6 +90,27 @@ describe("provider state", () => {
     expect(providerState("x", providers)).toBe("not_configured");
     expect(providerState("youtube", providers)).toBe("not_configured");
     expect(providerState("bluesky", [])).toBe("not_configured");
+    expect(providerState("threads", [{ provider: "threads", configured: true }])).toBe("available");
+  });
+
+  it("sends OAuth connects to brain's redirect for the provider", () => {
+    expect(connectUrl("threads")).toBe(`${apiUrl}/connections/threads/redirect`);
+    expect(connectUrl("instagram")).toBe(`${apiUrl}/connections/meta/redirect`);
+  });
+
+  it("reads how a connect went from the URL brain sent back", () => {
+    expect(connectResult("?connected=threads")).toEqual({ provider: "threads", error: null });
+    expect(connectResult("?connect_error=cancelled&provider=threads")).toEqual({ provider: "threads", error: "cancelled" });
+    expect(connectResult("?state=x")).toBeNull();
+    expect(connectResult("")).toBeNull();
+    expect(connectResult("?connected=anything%20you%20like")).toBeNull();
+    expect(connectResult("?connect_error=cancelled&provider=evil")).toBeNull();
+    const text = (search: string) => connectResultText(connectResult(search)!, "Threads");
+    expect(text("?connected=threads")).toBe("Connected your Threads account.");
+    expect(text("?connect_error=cancelled&provider=threads")).toBe("Threads connection was cancelled.");
+    expect(text("?connect_error=threads_failed&provider=threads")).toMatch(/^Threads didn't let SocialReins connect/);
+    expect(text("?connect_error=forbidden&provider=threads")).toMatch(/owners and admins/);
+    expect(text("?connect_error=whatever&provider=threads")).toBe("Something went wrong connecting Threads. Try again.");
   });
 
   it("only keeps avatars from Bluesky's CDN", () => {
