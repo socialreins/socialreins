@@ -26,3 +26,11 @@ test("landing footer links both pages", async ({ page }) => {
   await expect(footer.getByRole("link", { name: "Privacy" })).toHaveAttribute("href", "/privacy");
   await expect(footer.getByRole("link", { name: "Terms" })).toHaveAttribute("href", "/terms");
 });
+
+test("data deletion page explains how to delete data", async ({ page }) => {
+  await page.goto("/data-deletion");
+  await expect(page.getByRole("heading", { name: "Data Deletion", level: 1 })).toBeVisible();
+  await expect(page.getByText(/token or app password is deleted at once/)).toBeVisible();
+  await expect(page.getByRole("link", { name: "contact us" })).toHaveAttribute("href", "/contact");
+  await expect(page.getByRole("link", { name: "Privacy Policy" })).toHaveAttribute("href", "/privacy");
+});
