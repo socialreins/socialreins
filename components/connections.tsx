@@ -52,13 +52,27 @@ export const accountName = (c: Connection) => c.display_name || (c.handle ? `@${
 
 // The account's avatar from Bluesky's CDN, else its initial. Decorative: the name is always next to it.
 export function Avatar({ connection: c, size = "size-10" }: { connection: Connection; size?: string }) {
-  const avatar = safeAvatar(c.avatar_url);
-  return avatar ? (
+  return <Picture url={c.avatar_url} name={accountName(c)} size={size} />;
+}
+
+// A remote picture, else the name's initial: also when it fails to load, as Meta's signed CDN links expire.
+function Picture({ url, name, size, bg = "bg-canvas" }: { url: string | null; name: string; size: string; bg?: string }) {
+  const [broken, setBroken] = useState(false);
+  const picture = broken ? null : safeAvatar(url);
+  return picture ? (
     // eslint-disable-next-line @next/next/no-img-element -- a remote avatar, no Next image loader configured
-    <img src={avatar} alt="" width={40} height={40} referrerPolicy="no-referrer" className={`${size} rounded-full`} />
+    <img
+      src={picture}
+      alt=""
+      width={40}
+      height={40}
+      referrerPolicy="no-referrer"
+      className={`${size} rounded-full`}
+      onError={() => setBroken(true)}
+    />
   ) : (
-    <span aria-hidden="true" className={`grid ${size} place-items-center rounded-full bg-canvas font-bold`}>
-      {accountName(c).replace(/^@/, "").charAt(0).toUpperCase()}
+    <span aria-hidden="true" className={`grid ${size} place-items-center rounded-full ${bg} font-bold`}>
+      {name.replace(/^@/, "").charAt(0).toUpperCase()}
     </span>
   );
 }
@@ -351,7 +365,8 @@ const pickMessages: Partial<Record<Failure, string>> = {
 function MetaPicker({ team, onConnected }: { team: string; onConnected: () => void }) {
   const [choices, setChoices] = useState<MetaChoices | Failure | null>(null);
   const [checked, setChecked] = useState<string[]>([]);
-  const [open, setOpen] = useState(true);
+  // open: the form; stale: brain no longer holds the pick, so only the error stays; finished: only the outcome stays.
+  const [stage, setStage] = useState<"open" | "stale" | "finished">("open");
   const { busy, problem, done, run } = useAction();
 
   useEffect(() => {
@@ -366,8 +381,13 @@ function MetaPicker({ team, onConnected }: { team: string; onConnected: () => vo
 
   async function onPick(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    await run("pick", () => pickMeta(ids("facebook"), ids("instagram")), (saved) => {
-      setOpen(false);
+    const call = async () => {
+      const r = await pickMeta(ids("facebook"), ids("instagram"));
+      if (r === "not_found" || r === "invalid_pick") setStage("stale");
+      return r;
+    };
+    await run("pick", call, (saved) => {
+      setStage("finished");
       onConnected();
       return saved.length === 1 ? "Connected 1 account." : `Connected ${saved.length} accounts.`;
     });
@@ -375,7 +395,7 @@ function MetaPicker({ team, onConnected }: { team: string; onConnected: () => vo
 
   async function onCancel() {
     await run("cancel", cancelMetaPick, () => {
-      setOpen(false);
+      setStage("finished");
       return "Nothing was connected.";
     });
   }
@@ -388,7 +408,6 @@ function MetaPicker({ team, onConnected }: { team: string; onConnected: () => vo
           <legend className="mb-1 font-bold">{legend}</legend>
           {list.map((c) => {
             const key = `${platform}:${c.id}`;
-            const picture = safeAvatar(c.picture_url);
             return (
               <label key={key} className="flex items-center gap-3 rounded-xl bg-canvas px-3 py-2">
                 <input
@@ -397,14 +416,7 @@ function MetaPicker({ team, onConnected }: { team: string; onConnected: () => vo
                   onChange={(e) => setChecked((ks) => (e.target.checked ? [...ks, key] : ks.filter((k) => k !== key)))}
                 />
                 <span className="relative shrink-0">
-                  {picture ? (
-                    // eslint-disable-next-line @next/next/no-img-element -- a remote avatar, no Next image loader configured
-                    <img src={picture} alt="" width={32} height={32} referrerPolicy="no-referrer" className="size-8 rounded-full" />
-                  ) : (
-                    <span aria-hidden="true" className="grid size-8 place-items-center rounded-full bg-paper font-bold">
-                      {c.name.charAt(0).toUpperCase()}
-                    </span>
-                  )}
+                  <Picture url={c.picture_url} name={c.name} size="size-8" bg="bg-paper" />
                   {p && (
                     <span className="absolute -right-1 -bottom-1 grid size-4 place-items-center rounded-full bg-paper" style={{ color: p.color }}>
                       <PlatformIcon platform={p} className="size-3" />
@@ -420,6 +432,8 @@ function MetaPicker({ team, onConnected }: { team: string; onConnected: () => vo
     );
   };
 
+  const status = <Status problem={problem} done={done} overrides={pickMessages} />;
+  if (stage === "finished") return status;
   return (
     <section aria-labelledby="meta-pick-heading" className="card grid gap-4 p-5">
       <div>
@@ -428,7 +442,7 @@ function MetaPicker({ team, onConnected }: { team: string; onConnected: () => vo
         </h3>
         <p className="text-ink-soft">Facebook shared these with SocialReins. Pick the ones {team} should post to.</p>
       </div>
-      {open &&
+      {stage === "open" &&
         (choices === null ? (
           <div role="status" className="h-24 rounded-2xl bg-ink/5 motion-safe:animate-pulse">
             <span className="sr-only">Loading Pages...</span>
@@ -454,7 +468,7 @@ function MetaPicker({ team, onConnected }: { team: string; onConnected: () => vo
             </div>
           </form>
         ))}
-      <Status problem={problem} done={done} overrides={pickMessages} />
+      {status}
     </section>
   );
 }
