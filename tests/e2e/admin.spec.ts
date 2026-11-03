@@ -31,26 +31,41 @@ async function brain(page: Page, isAdmin = true) {
   return asked;
 }
 
-test("the Admin group and its Waitlist link show only for site admins", async ({ page }) => {
+test("only site admins get the Admin console link, and it opens a separate console", async ({ page }) => {
   await brain(page, false);
   await page.goto("/app/posts");
   await expect(page.getByRole("link", { name: "Posts", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Admin", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Admin console" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Waitlist", exact: true })).toHaveCount(0);
 
   await page.unrouteAll();
   await brain(page, true);
   await page.goto("/app/posts");
-  await expect(page.getByRole("button", { name: "Admin", exact: true })).toHaveAttribute("aria-expanded", "true");
-  await page.getByRole("link", { name: "Waitlist", exact: true }).click();
-  await expect(page).toHaveURL(/\/app\/admin$/);
-  await expect(page.getByRole("heading", { name: "Admin", level: 1 })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Waitlist", exact: true })).toHaveCount(0);
+  await page.getByRole("link", { name: "Admin console" }).click();
+  await expect(page).toHaveURL("/admin/waitlist");
+  await expect(page.getByRole("heading", { name: "Waitlist", level: 1 })).toBeVisible();
+  await expect(page.locator(".admin-root")).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Admin console");
+  await expect(page.getByRole("link", { name: "Posts", exact: true })).toHaveCount(0);
+  await page.getByRole("link", { name: "Back to the app" }).click();
+  await expect(page).toHaveURL("/app");
+});
+
+test("the admin console sends a non-admin to the app, and the old address redirects", async ({ page }) => {
+  await brain(page, false);
+  await page.goto("/admin/waitlist");
+  await expect(page).toHaveURL("/app");
+  await page.unrouteAll();
+  await brain(page, true);
+  await page.goto("/app/admin");
+  await expect(page).toHaveURL("/admin/waitlist");
 });
 
 test("the admin page shows waitlist totals and signups, filtered in ?verified=", async ({ page }) => {
   const asked = await brain(page);
-  await page.goto("/app/admin");
-  await expect(page.getByRole("heading", { name: "Waitlist" })).toBeVisible();
+  await page.goto("/admin/waitlist");
+  await expect(page.getByRole("heading", { name: "Signups" })).toBeVisible();
   const total = page.locator("dl > div");
   await expect(total.nth(0)).toHaveText("Total1,200");
   await expect(total.nth(1)).toHaveText("Verified700");
@@ -65,20 +80,21 @@ test("the admin page shows waitlist totals and signups, filtered in ?verified=",
 
   const filter = page.getByRole("navigation", { name: "Filter" });
   await filter.getByRole("link", { name: "Verified", exact: true }).click();
-  await expect(page).toHaveURL(/\/app\/admin\?verified=true$/);
+  await expect(page).toHaveURL(/\/admin\/waitlist\?verified=true$/);
   await expect(rows).toHaveCount(1);
   await expect(rows.nth(0)).toContainText("old@example.com");
   await filter.getByRole("link", { name: "Not verified" }).click();
-  await expect(page).toHaveURL(/\/app\/admin\?verified=false$/);
+  await expect(page).toHaveURL(/\/admin\/waitlist\?verified=false$/);
   await expect(rows.nth(0)).toContainText("new@example.com");
   await expect(filter.getByRole("link", { name: "Not verified" })).toHaveAttribute("aria-current", "true");
   expect(asked).toEqual(["all", "true", "false"]);
 });
 
 test("the admin page tells a non-admin they have no access", async ({ page }) => {
-  await brain(page, false);
+  await brain(page, true);
+  // brain decides; an admin flag that is stale still gets brain's refusal shown.
   await page.route(/\/v1\/admin\/waitlist(\?.*)?$/, (route) => route.fulfill({ status: 403, json: { error: "forbidden" } }));
-  await page.goto("/app/admin");
+  await page.goto("/admin/waitlist");
   await expect(page.getByRole("main").getByRole("alert")).toHaveText("You don't have access to the admin panel.");
   await expect(page.getByRole("table")).toHaveCount(0);
 });

@@ -57,7 +57,8 @@ const nav: NavGroup[] = [
     ],
   },
 ];
-const adminGroup: NavGroup = { label: "Admin", items: [{ href: "/app/admin", label: "Waitlist", icon: "admin" }] };
+// The admin console at /admin, for site admins only; it has its own nav and colours.
+const adminNav: NavGroup[] = [{ label: "", items: [{ href: "/admin/waitlist", label: "Waitlist", icon: "admin" }] }];
 
 // Sidebar preferences in localStorage. The server snapshot is null, so hydration matches and the stored value applies right after.
 const listeners = new Set<() => void>();
@@ -94,7 +95,7 @@ export function useCurrentSet(): [string, (id: string) => void] {
 }
 
 // The session cookie is on the API host, invisible to Next server code, so the check runs here, once for every app page.
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({ children, admin = false }: { children: ReactNode; admin?: boolean }) {
   const router = useRouter();
   const [me, setMe] = useState<MeResult | null>(null);
   const [open, setOpen] = useState(false);
@@ -105,12 +106,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     getMe().then((r) => {
       if (r === "signed_out") router.replace("/login");
+      // brain refuses admin calls from anyone else; this only spares them a page of errors.
+      else if (admin && typeof r === "object" && !r.user.is_admin) router.replace("/app");
       else setMe(r);
     });
-  }, [router]);
+  }, [router, admin]);
 
   const user = typeof me === "object" && me ? me.user : null;
-  const groups = user?.is_admin ? [...nav, adminGroup] : nav;
+  const groups = admin ? adminNav : nav;
   const session: Session | null = user && {
     user,
     setUser: (u) => setMe({ user: u }),
@@ -148,7 +151,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <SessionContext.Provider value={session}>
-      <div className={`app-root min-h-dvh md:grid ${collapsed ? "md:grid-cols-[4rem_minmax(0,1fr)]" : "md:grid-cols-[15rem_minmax(0,1fr)]"}`}>
+      <div className={`app-root ${admin ? "admin-root" : ""} min-h-dvh md:grid ${collapsed ? "md:grid-cols-[4rem_minmax(0,1fr)]" : "md:grid-cols-[15rem_minmax(0,1fr)]"}`}>
         <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-20 focus:rounded-full focus:bg-paper focus:px-4 focus:py-2 focus:font-bold">
           Skip to content
         </a>
@@ -162,9 +165,10 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div
               className={`flex items-center justify-between gap-3 px-4 py-3 md:h-12 md:border-b md:border-[var(--line)] md:py-0 ${collapsed ? "md:justify-center md:px-0" : "md:px-4"}`}
             >
-              <Link href="/app" className="flex items-center gap-2 font-display text-base font-bold tracking-tight">
+              <Link href={admin ? "/admin" : "/app"} className="flex items-center gap-2 font-display text-base font-bold tracking-tight">
                 <LogoMark className="size-7" />
                 <span className={collapsed ? "md:sr-only" : ""}>SocialReins</span>
+                {admin && <span className={`badge bg-signal-deep text-paper ${collapsed ? "md:sr-only" : ""}`}>Admin</span>}
               </Link>
               <button
                 ref={menuRef}
@@ -203,6 +207,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="flex min-w-0 flex-col">
           <TopBar
             session={session !== null}
+            admin={admin}
             pages={groups.flatMap((g) => g.items)}
             collapsed={collapsed}
             onToggle={() => store("sidebar-collapsed", collapsed ? "0" : "1")}

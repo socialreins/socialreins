@@ -39,7 +39,7 @@ export function Admin() {
   return (
     <section aria-labelledby="waitlist-heading" className="grid gap-4">
       <h2 id="waitlist-heading" className={heading}>
-        Waitlist
+        Signups
       </h2>
       {isFailure(data) ? (
         <p role="alert" className="waitlist-error">
@@ -64,7 +64,7 @@ export function Admin() {
               <Link
                 key={f.label}
                 aria-current={verified === f.value ? "true" : undefined}
-                href={f.value === null ? "/app/admin" : `/app/admin?verified=${f.value}`}
+                href={f.value === null ? "/admin/waitlist" : `/admin/waitlist?verified=${f.value}`}
                 className={`rounded-full px-3 py-1.5 text-center text-sm font-bold ${verified === f.value ? "bg-paper text-ink shadow-sm" : "text-ink-soft hover:text-ink"}`}
               >
                 {f.label}

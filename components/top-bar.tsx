@@ -15,7 +15,7 @@ const crumb = "flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 font-bold 
 const item = "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-ink/[0.045]";
 
 // Above every app page: the sidebar toggle, then where you are as Team / Set / page; team and set open menus to switch.
-export function TopBar({ session, pages, collapsed, onToggle }: { session: boolean; pages: NavItem[]; collapsed: boolean; onToggle: () => void }) {
+export function TopBar({ session, admin, pages, collapsed, onToggle }: { session: boolean; admin: boolean; pages: NavItem[]; collapsed: boolean; onToggle: () => void }) {
   return (
     <header className="flex h-12 items-center gap-1 border-b border-[var(--line)] bg-paper px-3 text-sm sm:px-6 md:sticky md:top-0 md:z-[5]">
       <button
@@ -32,15 +32,25 @@ export function TopBar({ session, pages, collapsed, onToggle }: { session: boole
       {session && (
         <nav aria-label="Breadcrumb" className="min-w-0">
           <ol className="flex min-w-0 items-center gap-0.5">
-            <li className="min-w-0">
-              <TeamMenu />
-            </li>
-            <li aria-hidden="true" className="text-[var(--line)]">/</li>
-            <li className="min-w-0">
-              <Suspense fallback={null}>
-                <TeamSets />
-              </Suspense>
-            </li>
+            {admin ? (
+              <li className="min-w-0">
+                <Link href="/admin" className={crumb}>
+                  Admin console
+                </Link>
+              </li>
+            ) : (
+              <>
+                <li className="min-w-0">
+                  <TeamMenu />
+                </li>
+                <li aria-hidden="true" className="text-[var(--line)]">/</li>
+                <li className="min-w-0">
+                  <Suspense fallback={null}>
+                    <TeamSets />
+                  </Suspense>
+                </li>
+              </>
+            )}
             <Suspense fallback={null}>
               <PageCrumb pages={pages} />
             </Suspense>
