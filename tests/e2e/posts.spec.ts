@@ -525,6 +525,62 @@ test("each platform can have its own text, counted against its own limit", async
   await expect(page.getByRole("region", { name: "Same post on other platforms" }).getByRole("link", { name: "Threads post" })).toBeVisible();
 });
 
+test("custom text no longer counts once its platform is the only one left", async ({ page }) => {
+  await brain(page, { accounts: [alice, threadsAcc] });
+  let sent: Record<string, unknown> | undefined;
+  await page.route("**/v1/posts", (route) => {
+    sent = route.request().postDataJSON();
+    return route.fulfill({ status: 201, json: post("p1", sent) });
+  });
+  await page.goto("/app/posts/new");
+  await page.getByLabel("Post", { exact: true }).fill("Main words");
+  await page.getByRole("button", { name: "Customize for Bluesky" }).click();
+  await page.getByRole("textbox", { name: "Bluesky text" }).fill("Own words");
+  await page.getByRole("group", { name: "Post to" }).getByRole("checkbox", { name: /Threads/ }).uncheck();
+  await expect(page.getByRole("textbox", { name: "Bluesky text" })).toHaveCount(0);
+  await expect(page.getByText("Bluesky: 10 of 300 characters")).toBeVisible();
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page).toHaveURL("/app/posts/p1");
+  expect(sent).toMatchObject({ platform: "bluesky", body: "Main words" });
+});
+
+test("a group publish that stops partway names what is left and carries on", async ({ page }) => {
+  await brain(page, { accounts: [alice, threadsAcc, instaAcc] });
+  const platformsById: Record<string, string> = { "g-b": "bluesky", "g-t": "threads", "g-i": "instagram" };
+  let state: Post[] = [];
+  const published: string[] = [];
+  let refused = false;
+  await page.route("**/v1/post-groups", (route) => {
+    state = Object.entries(platformsById).map(([id, platform]) => post(id, { platform, group_id: "g1", media: ["https://example.com/a.jpg"] }));
+    return route.fulfill({ status: 201, json: { group_id: "g1", posts: state } });
+  });
+  await page.route(/\/v1\/posts\/g-.\/publish$/, (route) => {
+    const id = route.request().url().split("/").at(-2)!;
+    published.push(id);
+    if (id === "g-t" && !refused) {
+      refused = true;
+      return route.fulfill({ status: 429, json: { error: "rate_limited" } });
+    }
+    state = state.map((p) => (p.id === id ? { ...p, status: "queued" } : p));
+    return route.fulfill({ status: 202, json: state.find((p) => p.id === id) });
+  });
+  // Brain keeps them queued, so the page does not settle while the test looks.
+  await page.route(/\/v1\/posts\?group_id=g1$/, (route) => route.fulfill({ json: state }));
+  await page.goto("/app/posts/new");
+  await page.getByLabel("Post", { exact: true }).fill("Hello all");
+  await page.getByRole("button", { name: "Add image" }).click();
+  await page.getByLabel("Image 1 link").fill("https://example.com/a.jpg");
+  await page.getByRole("button", { name: "Publish now" }).click();
+
+  await expect(page.getByRole("alert").filter({ hasText: "Too many publish" })).toBeVisible();
+  await expect(page.getByText("Not published yet on Threads and Instagram.")).toBeVisible();
+  expect(published).toEqual(["g-b", "g-t"]);
+  await page.getByRole("button", { name: "Publish the rest" }).click();
+  await expect(page.getByText(/Not published yet/)).toHaveCount(0);
+  expect(published).toEqual(["g-b", "g-t", "g-t", "g-i"]);
+  await expect(page.getByRole("region", { name: "Same post on other platforms" }).getByText("Publishing")).toHaveCount(2);
+});
+
 test("calendar marks each post with its platform", async ({ page }) => {
   await page.clock.setFixedTime(new Date("2026-11-10T12:00:00+01:00"));
   await brain(page);

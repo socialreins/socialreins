@@ -67,6 +67,8 @@ export function PostEditor({ id }: { id?: string }) {
   const [custom, setCustom] = useState<Partial<Record<Platform, string>>>({});
   // Every post of this post's group, this one included; empty for a single post.
   const [group, setGroup] = useState<Post[]>([]);
+  // Group posts still to publish after Publish now stopped partway, in order.
+  const [unsent, setUnsent] = useState<string[]>([]);
   const [at, setAt] = useState("");
   const [lists, setLists] = useState<PostList[]>([]);
   const [listId, setListId] = useState("");
@@ -172,7 +174,7 @@ export function PostEditor({ id }: { id?: string }) {
     // Customized text, and an empty thread where the platform can't post one, so brain takes the rest.
     const overrides: PostGroupInput["overrides"] = {};
     for (const p of selected) {
-      const o = { body: custom[p], thread: limits[p].thread || parts.length === 0 ? undefined : [] };
+      const o = { body: customFor(p), thread: limits[p].thread || parts.length === 0 ? undefined : [] };
       if (o.body !== undefined || o.thread) overrides[p] = o;
     }
     let made = 1;
@@ -183,7 +185,10 @@ export function PostEditor({ id }: { id?: string }) {
         // Keep this editor mounted on the new post's own address.
         if (!postId) window.history.replaceState(null, "", `/app/posts/${saved.id}`);
         load(saved);
-        return mode === "publish" ? publishPost(saved.id) : saved;
+        if (mode !== "publish") return saved;
+        // Group posts a failed Publish now left behind go out with this one.
+        const r = await publishAll([saved.id, ...unsent.filter((u) => u !== saved.id)]);
+        return isFailure(r) ? r : r[0]!;
       }
       const g = await createPostGroup({ ...shared, platforms: selected, body, media: images, thread: parts, overrides });
       if (isFailure(g)) return g;
@@ -194,20 +199,38 @@ export function PostEditor({ id }: { id?: string }) {
       load(posts[0]!);
       setGroup(posts);
       if (mode !== "publish") return posts[0]!;
-      const queued: Post[] = [];
-      for (const p of posts) {
-        const r = await publishPost(p.id);
-        if (isFailure(r)) return r;
-        queued.push(r);
-        setGroup(posts.map((x) => queued.find((q) => q.id === x.id) ?? x));
-      }
-      return queued[0]!;
+      const r = await publishAll(posts.map((p) => p.id));
+      return isFailure(r) ? r : r[0]!;
     }, (p) => {
       load(p);
       // The status line says Publishing and updates itself; a separate message would go stale.
       if (mode === "publish") return void setSent((n) => n + 1);
       if (p.status === "scheduled") return `${made > 1 ? `Scheduled ${made} posts, one per platform, for` : "Scheduled for"} ${when(p.scheduled_at!)}.`;
       return made > 1 ? `Saved ${made} drafts, one per platform.` : "Draft saved.";
+    });
+  }
+
+  // Publishes `ids` in order. On a failure the rest stay in `unsent`, so a retry carries on from there.
+  async function publishAll(ids: string[]): Promise<Post[] | Failure> {
+    const queued: Post[] = [];
+    for (const [i, id] of ids.entries()) {
+      const r = await publishPost(id);
+      if (isFailure(r)) {
+        setUnsent(ids.slice(i));
+        return r;
+      }
+      queued.push(r);
+      setGroup((g) => g.map((x) => (x.id === r.id ? r : x)));
+    }
+    setUnsent([]);
+    return queued;
+  }
+
+  async function publishRest() {
+    await run("publish", () => publishAll(unsent), (queued) => {
+      const mine = queued.find((p) => p.id === postId);
+      if (mine) load(mine);
+      setSent((n) => n + 1);
     });
   }
 
@@ -249,11 +272,13 @@ export function PostEditor({ id }: { id?: string }) {
   const selected = post ? available : (chosen ?? available).filter((p) => available.includes(p));
   const threadable = selected.filter((p) => limits[p].thread);
   const noThread = selected.filter((p) => !limits[p].thread);
-  const mainPlatforms = selected.filter((p) => custom[p] === undefined);
+  // Custom text counts only while its box shows: two or more platforms, this one ticked.
+  const customFor = (p: Platform) => (selected.length > 1 && selected.includes(p) ? custom[p] : undefined);
+  const mainPlatforms = selected.filter((p) => customFor(p) === undefined);
   const images = links(media);
   const parts = thread.map((p) => ({ ...p, media: links(p.media) }));
   // One platform's post: its own text if customized, and the thread only where it can post one.
-  const entry = (p: Platform) => ({ body: custom[p] ?? body, media: images, thread: limits[p].thread ? parts : [] });
+  const entry = (p: Platform) => ({ body: customFor(p) ?? body, media: images, thread: limits[p].thread ? parts : [] });
   // Shared images must fit every chosen platform.
   const cap = (list: Platform[]) => (list.length ? Math.min(...list.map((p) => limits[p].media)) : limits.bluesky.media);
   const mediaProblems = selected.flatMap((p) =>
@@ -334,6 +359,20 @@ export function PostEditor({ id }: { id?: string }) {
         </p>
       )}
       <Status problem={shownProblem} done={done} overrides={postMessages} />
+      {unsent.length > 0 && (
+        <div className="card flex flex-wrap items-center gap-3 p-4">
+          <p className="min-w-0 flex-1">
+            Not published yet on {names(unsent.map((u) => group.find((g) => g.id === u)?.platform ?? "").filter(Boolean))}.
+            {editable ? " Publish now sends them too." : ""}
+          </p>
+          {!editable && (
+            <button type="button" className="btn btn-primary btn-sm" disabled={busy !== null} onClick={publishRest}>
+              <Icon name="send" className="size-4" />
+              {busy === "publish" ? "Publishing..." : "Publish the rest"}
+            </button>
+          )}
+        </div>
+      )}
     </>
   );
 
