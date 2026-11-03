@@ -156,7 +156,7 @@ test("no passkey dialog on the security page, or after skipping it on /welcome",
 
   await page.goto("/welcome");
   await page.getByRole("link", { name: "Skip for now" }).click();
-  await expect(page).toHaveURL("/app/posts");
+  await expect(page).toHaveURL("/app");
   await page.waitForTimeout(500);
   await expect(dialog(page)).toHaveCount(0);
 });

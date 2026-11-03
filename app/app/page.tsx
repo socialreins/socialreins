@@ -1,6 +1,21 @@
-import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+import Link from "next/link";
+import { Dashboard } from "@/components/dashboard";
+import { Icon, PageHeader } from "@/components/ui";
 
-// Posts is the app's home; brain's emailed sign-in link lands here.
+export const metadata: Metadata = { title: "SocialReins" };
+
+// The app's landing page; brain's emailed sign-in link lands here.
 export default function AppHome() {
-  redirect("/app/posts");
+  return (
+    <>
+      <PageHeader title="Home">
+        <Link href="/app/posts/new" className="btn btn-primary">
+          <Icon name="plus" className="size-4" />
+          New post
+        </Link>
+      </PageHeader>
+      <Dashboard />
+    </>
+  );
 }
