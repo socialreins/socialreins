@@ -75,10 +75,11 @@ export function BlueskyNote() {
 function PostChip({ post: p }: { post: Post }) {
   const remote = p.targets.filter((t) => t.remote_url && t.status === "published");
   return (
-    <li className="tone flex min-w-0 items-center rounded-md text-xs" data-status={p.status}>
-      <Link href={`/app/posts/${p.id}`} className="min-w-0 flex-1 truncate rounded-md px-1.5 py-1 hover:underline">
+    <li className="flex min-w-0 items-center rounded text-xs hover:bg-ink/[0.045]">
+      <span aria-hidden="true" className="dot ml-1.5 shrink-0" data-status={p.status} />
+      <Link href={`/app/posts/${p.id}`} className="min-w-0 flex-1 truncate px-1.5 py-1 hover:underline">
         {p.lists.length > 0 && <span className="block truncate font-bold">{p.lists.map(partLabel).join(", ")}</span>}
-        <strong>{time(postDay(p)!)}</strong> {snippet(p)}
+        <span className="text-ink-soft tabular-nums">{time(postDay(p)!)}</span> {snippet(p)}
       </Link>
       <span className="sr-only">{statusName[p.status]}</span>
       {remote.map((t) => (
@@ -208,7 +209,7 @@ export function Posts() {
               <thead>
                 <tr>
                   {weekdays.map((w) => (
-                    <th key={w} scope="col" className="border-b border-ink/10 px-2 py-2 text-left text-xs font-bold text-ink-soft">
+                    <th key={w} scope="col" className="border-b border-[var(--line)] bg-[var(--side)] px-2.5 py-2 text-left text-xs font-normal text-ink-soft">
                       {w}
                     </th>
                   ))}
@@ -224,15 +225,15 @@ export function Posts() {
                         <td
                           key={j}
                           aria-current={today ? "date" : undefined}
-                          className={`h-28 border-ink/10 p-1.5 align-top [&:not(:last-child)]:border-r ${i > 0 ? "border-t" : ""} ${
-                            day ? (today ? "bg-signal/5" : "") : "bg-canvas"
+                          className={`h-28 border-[var(--line-soft)] p-1.5 align-top [&:not(:last-child)]:border-r ${i > 0 ? "border-t" : ""} ${
+                            day ? (today ? "bg-signal/[0.04]" : "") : "bg-[var(--side)]"
                           }`}
                         >
                           {day && (
                             <>
                               <p
-                                className={`mb-1 grid size-6 place-items-center rounded-full text-xs font-bold ${
-                                  today ? "bg-signal text-paper" : "text-ink-soft"
+                                className={`mb-1 inline-grid h-5 min-w-5 place-items-center rounded px-1 text-xs tabular-nums ${
+                                  today ? "bg-signal font-bold text-paper" : "text-ink-soft"
                                 }`}
                               >
                                 {day.getDate()}

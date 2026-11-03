@@ -43,7 +43,7 @@ export function Icon({ name, className = "size-5" }: { name: IconName; className
 // A page's title with its main action on the right; `back` adds a link up one level.
 export function PageHeader({ title, back, children }: { title: string; back?: { href: string; label: string }; children?: ReactNode }) {
   return (
-    <div className="mb-8 grid gap-1">
+    <div className="mb-6 grid gap-1">
       {back && (
         <Link href={back.href} className="flex items-center gap-1 justify-self-start text-sm font-bold text-ink-soft hover:text-ink">
           <Icon name="left" className="size-4" />
@@ -51,7 +51,7 @@ export function PageHeader({ title, back, children }: { title: string; back?: { 
         </Link>
       )}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-display text-3xl font-extrabold tracking-tight">{title}</h1>
+        <h1 className="font-display text-3xl font-bold tracking-tight">{title}</h1>
         {children && <div className="flex flex-wrap items-center gap-2">{children}</div>}
       </div>
     </div>
