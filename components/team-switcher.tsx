@@ -56,7 +56,7 @@ export function TeamSwitcher() {
   return (
     <section aria-label="Team" className="card grid grid-cols-[minmax(0,1fr)] gap-3 p-3 text-sm">
       <div className="flex items-center gap-3">
-        <span aria-hidden="true" className="grid size-7 shrink-0 place-items-center rounded-md bg-signal font-display font-bold text-paper">
+        <span aria-hidden="true" className="grid size-7 shrink-0 place-items-center rounded-md bg-signal-deep font-display font-bold text-paper">
           {current.name.charAt(0).toUpperCase()}
         </span>
         <p className="min-w-0 leading-snug">

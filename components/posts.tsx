@@ -233,7 +233,7 @@ export function Posts() {
                             <>
                               <p
                                 className={`mb-1 inline-grid h-5 min-w-5 place-items-center rounded px-1 text-xs tabular-nums ${
-                                  today ? "bg-signal font-bold text-paper" : "text-ink-soft"
+                                  today ? "bg-signal-deep font-bold text-paper" : "text-ink-soft"
                                 }`}
                               >
                                 {day.getDate()}
