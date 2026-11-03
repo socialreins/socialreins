@@ -22,6 +22,7 @@ import { listPosts, type Post } from "@/lib/posts";
 import { listSets, type SocialSet } from "@/lib/sets";
 import { snippet, StatusBadge } from "@/components/posts";
 import { isFailure, linkButton, problemText, Status, useAction } from "@/components/team-ui";
+import { useCurrentSet } from "@/components/app-shell";
 import { Icon } from "@/components/ui";
 
 const heading = "font-display text-xl font-extrabold tracking-tight";
@@ -49,7 +50,8 @@ export function Lists() {
   const [lists, setLists] = useState<PostList[] | Failure | null>(null);
   const sets = useSets();
   const [name, setName] = useState("");
-  const [setId, setSetId] = useState("");
+  // A new list starts in the set picked in the top bar.
+  const [setId, setSetId] = useState(useCurrentSet()[0]);
   const [open, setOpen] = useState<{ kind: "rename" | "delete"; id: string } | null>(null);
   const [newName, setNewName] = useState("");
   const { busy, problem, failedKey, done, run } = useAction();

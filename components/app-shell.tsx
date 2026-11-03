@@ -8,7 +8,7 @@ import { getMe, type MeResult, type Team, type User } from "@/lib/auth";
 import { Account } from "@/components/account";
 import { LogoMark } from "@/components/logo";
 import { PasskeyPrompt } from "@/components/passkey-prompt";
-import { TeamSwitcher } from "@/components/team-switcher";
+import { TopBar } from "@/components/top-bar";
 import { Icon, type IconName } from "@/components/ui";
 
 type Session = { user: User; setUser: (u: User) => void; setTeam: (t: Team) => void; refresh: () => Promise<void> };
@@ -21,7 +21,7 @@ export function useSession() {
   return s;
 }
 
-type NavItem = { href: string; label: string; icon: IconName };
+export type NavItem = { href: string; label: string; icon: IconName };
 type NavGroup = { label: string; items: NavItem[] };
 const nav: NavGroup[] = [
   {
@@ -83,6 +83,13 @@ function store(key: string, value: string) {
     localStorage.setItem(key, value);
   } catch {}
   listeners.forEach((f) => f());
+}
+
+// The set picked in the top bar, per team on this device; "" means all sets.
+export function useCurrentSet(): [string, (id: string) => void] {
+  const team = useSession().user.current_team.id;
+  const key = `current-set:${team}`;
+  return [useStored(key) ?? "", (id) => store(key, id)];
 }
 
 // The session cookie is on the API host, invisible to Next server code, so the check runs here, once for every app page.
@@ -152,23 +159,12 @@ export function AppShell({ children }: { children: ReactNode }) {
         >
           <div className="flex h-full flex-col">
             <div
-              className={`flex items-center justify-between gap-3 px-4 py-3 md:pt-4 md:pb-3 ${collapsed ? "md:flex-col md:px-0" : "md:px-4"}`}
+              className={`flex items-center justify-between gap-3 px-4 py-3 md:h-12 md:border-b md:border-[var(--line)] md:py-0 ${collapsed ? "md:justify-center md:px-0" : "md:px-4"}`}
             >
               <Link href="/app/posts" className="flex items-center gap-2 font-display text-base font-bold tracking-tight">
                 <LogoMark className="size-7" />
                 <span className={collapsed ? "md:sr-only" : ""}>SocialReins</span>
               </Link>
-              <button
-                type="button"
-                className="icon-btn hidden md:inline-grid"
-                aria-expanded={!collapsed}
-                aria-controls="app-menu"
-                aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-                title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-                onClick={() => store("sidebar-collapsed", collapsed ? "0" : "1")}
-              >
-                <Icon name="sidebar" />
-              </button>
               <button
                 ref={menuRef}
                 type="button"
@@ -183,7 +179,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
             <div
               id="app-menu"
-              className={`${open ? "flex" : "hidden"} max-h-[calc(100dvh-4rem)] min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-2.5 pb-4 md:flex md:max-h-none`}
+              className={`${open ? "flex" : "hidden"} max-h-[calc(100dvh-4rem)] min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-2.5 pb-4 md:pt-3 md:flex md:max-h-none`}
             >
               {/* Following a link closes the menu on small screens. */}
               <nav aria-label="App" onClick={(e) => (e.target as Element).closest("a") && setOpen(false)}>
@@ -193,14 +189,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               </nav>
               {/* minmax(0,1fr): a long team name or email truncates instead of widening the sidebar. */}
               <div className={`mt-auto grid grid-cols-[minmax(0,1fr)] gap-4 ${collapsed ? "md:hidden" : ""}`}>
-                {session ? (
-                  <>
-                    <TeamSwitcher />
-                    <Account />
-                  </>
-                ) : (
-                  <div className="h-28 rounded-2xl bg-ink/5 motion-safe:animate-pulse" />
-                )}
+                {session ? <Account /> : <div className="h-16 rounded-2xl bg-ink/5 motion-safe:animate-pulse" />}
               </div>
             </div>
           </div>
@@ -210,9 +199,17 @@ export function AppShell({ children }: { children: ReactNode }) {
             <PasskeyPrompt />
           </Suspense>
         )}
-        <main id="main" tabIndex={-1} className="app-main mx-auto w-full max-w-7xl px-4 py-6 focus:outline-none sm:px-8 md:py-8">
-          {content}
-        </main>
+        <div className="flex min-w-0 flex-col">
+          <TopBar
+            session={session !== null}
+            pages={groups.flatMap((g) => g.items)}
+            collapsed={collapsed}
+            onToggle={() => store("sidebar-collapsed", collapsed ? "0" : "1")}
+          />
+          <main id="main" tabIndex={-1} className="app-main mx-auto w-full max-w-7xl px-4 py-6 focus:outline-none sm:px-8 md:py-8">
+            {content}
+          </main>
+        </div>
       </div>
     </SessionContext.Provider>
   );
@@ -233,7 +230,7 @@ function NavGroups({ path, groups, collapsed }: { path: string; groups: NavGroup
 }
 
 // Hash links (Passkeys) point into a page another link already marks as current.
-const isActive = (path: string, href: string) => !href.includes("#") && (path === href || path.startsWith(`${href}/`));
+export const isActive = (path: string, href: string) => !href.includes("#") && (path === href || path.startsWith(`${href}/`));
 
 function NavSection({ path, group, collapsed, first }: { path: string; group: NavGroup; collapsed: boolean; first: boolean }) {
   const key = `sidebar-group:${group.label}`;

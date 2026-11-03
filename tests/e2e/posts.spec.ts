@@ -107,8 +107,17 @@ test("calendar shows the month's posts, drafts below, with filter and month step
   await page.getByRole("button", { name: "Next month" }).click();
   await expect(page.getByRole("heading", { name: "December 2026" })).toBeVisible();
   await expect.poll(() => queries.some((q) => q.get("from") === "2026-11-30T23:00:00.000Z")).toBe(true);
-  await page.getByLabel("Set").selectOption("s1");
+  await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "All sets" }).click();
+  await page.locator("#set-menu").getByRole("button", { name: "Clients" }).click();
+  await expect(page.locator("#set-menu")).toBeHidden();
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "Clients" })).toBeVisible();
   await expect.poll(() => queries.some((q) => q.get("social_set_id") === "s1" && q.get("status") === "draft")).toBe(true);
+
+  // The picked set is the default for a new post, and survives a reload.
+  await page.reload();
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "Clients" })).toBeVisible();
+  await page.goto("/app/posts/new");
+  await expect(page.getByLabel("Set")).toHaveValue("s1");
 });
 
 test("on a phone the month is a list of days, not a wide grid", async ({ page }) => {

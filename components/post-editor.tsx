@@ -27,6 +27,7 @@ import { listSets, type SocialSet } from "@/lib/sets";
 import { accountName, Avatar } from "@/components/connections";
 import { BlueskyNote, postMessages, StatusBadge, statusName } from "@/components/posts";
 import { isFailure, problemText, Status, useAction } from "@/components/team-ui";
+import { useCurrentSet } from "@/components/app-shell";
 import { Icon } from "@/components/ui";
 
 const POLL_MS = 2000;
@@ -40,6 +41,8 @@ export function PostEditor({ id }: { id?: string }) {
   const [sets, setSets] = useState<SocialSet[] | Failure | null>(null);
   const [accounts, setAccounts] = useState<Connection[]>([]);
   const [setId, setSetId] = useState("");
+  // Read once: the set picked in the top bar when the editor opened.
+  const startSet = useRef(useCurrentSet()[0]);
   const [body, setBody] = useState("");
   const [media, setMedia] = useState<string[]>([]);
   const [thread, setThread] = useState<ThreadPart[]>([]);
@@ -71,7 +74,8 @@ export function PostEditor({ id }: { id?: string }) {
   useEffect(() => {
     listSets().then((r) => {
       setSets(r);
-      if (Array.isArray(r) && r[0]) setSetId((v) => v || r[0]!.id);
+      // A new post starts in the set picked in the top bar.
+      if (Array.isArray(r) && r[0]) setSetId((v) => v || (r.some((s) => s.id === startSet.current) ? startSet.current : r[0]!.id));
     });
     listConnections().then((r) => Array.isArray(r) && setAccounts(r));
     listLists().then((r) => Array.isArray(r) && setLists(r));
