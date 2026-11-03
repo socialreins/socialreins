@@ -63,8 +63,11 @@ test("lists accounts and the provider grid", async ({ page }) => {
   await expect(page.getByText(/Bluesky, @alice\.bsky\.social\. Connected .*\./)).toBeVisible();
   await expect(page.getByRole("form", { name: "Connect Bluesky" }).getByText("Available")).toBeVisible();
   const group = (name: string) => page.getByRole("heading", { name, level: 3 }).locator("xpath=following-sibling::ul[1]");
-  await expect(group("Coming soon")).toContainText("Facebook");
-  await expect(group("Coming soon")).toContainText("Instagram");
+  // Facebook and Instagram connect together, with one card.
+  const meta = page.getByRole("link", { name: "Connect Facebook and Instagram" });
+  await expect(meta).toHaveAttribute("href", "http://localhost:8080/connections/meta/redirect");
+  await expect(meta).toHaveCount(1);
+  await expect(page.getByRole("heading", { name: "Coming soon", level: 3 })).toHaveCount(0);
   await expect(group("Not set up on this server")).toContainText("YouTube");
   await expect(group("Not set up on this server")).not.toContainText("Bluesky");
   const link = page.getByRole("link", { name: "open App passwords" });
@@ -200,9 +203,122 @@ test("a connect that times out reloads the list, since brain may still finish", 
   expect(loads.list).toBe(2);
 });
 
-test("the CSP allows only Bluesky's image path for avatars", async ({ request }) => {
+test("the CSP allows only Bluesky's image path and Meta's image CDNs for avatars", async ({ request }) => {
   const csp = (await request.get("/app/connections")).headers()["content-security-policy"];
-  expect(csp).toContain("img-src 'self' data: https://cdn.bsky.app/img/;");
+  expect(csp).toContain("img-src 'self' data: https://cdn.bsky.app/img/ https://*.fbcdn.net https://*.cdninstagram.com;");
+});
+
+const metaChoices = {
+  facebook: [
+    { id: "101", name: "Cafe", picture_url: "https://scontent.xx.fbcdn.net/101.jpg" },
+    { id: "102", name: "Shop", picture_url: null },
+  ],
+  instagram: [{ id: "1784", name: "cafe", picture_url: null }],
+};
+
+test("a Meta login opens the picker and connects the picked accounts", async ({ page }) => {
+  const loads = await signedIn(page, "owner");
+  await page.route("https://scontent.xx.fbcdn.net/**", (route) => route.fulfill({ status: 404 }));
+  const bodies: unknown[] = [];
+  await page.route("**/v1/connections/meta/pick", (route) => {
+    if (route.request().method() === "GET") return route.fulfill({ json: metaChoices });
+    bodies.push(route.request().postDataJSON());
+    return route.fulfill({ status: 201, json: [{ ...alice, id: "c9", provider: "facebook" }, { ...alice, id: "c10", provider: "instagram" }] });
+  });
+  await page.goto("/app/connections?pick=meta");
+  const picker = page.getByRole("region", { name: "Pick accounts to connect" });
+  await expect(picker.getByRole("group", { name: "Facebook Pages" }).getByRole("checkbox")).toHaveCount(2);
+  await expect(picker.getByRole("checkbox", { name: "cafe", exact: true })).toBeChecked();
+  // The flag is dropped, so a reload doesn't reopen it.
+  await expect(page).toHaveURL("/app/connections");
+  await picker.getByRole("checkbox", { name: "Shop" }).uncheck();
+  await picker.getByRole("button", { name: "Connect selected" }).click();
+  await expect(page.getByText("Connected 2 accounts.")).toBeFocused();
+  // The whole picker goes; the outcome stays.
+  await expect(picker).toHaveCount(0);
+  expect(bodies).toEqual([{ facebook: ["101"], instagram: ["1784"] }]);
+  expect(loads.list).toBe(2);
+});
+
+test("the Meta picker can be cancelled, and says when nothing is picked", async ({ page }) => {
+  await signedIn(page, "owner");
+  let method = "";
+  await page.route("**/v1/connections/meta/pick", (route) => {
+    if (route.request().method() === "GET") return route.fulfill({ json: metaChoices });
+    method = route.request().method();
+    return route.fulfill({ status: 204 });
+  });
+  await page.goto("/app/connections?pick=meta");
+  const picker = page.getByRole("region", { name: "Pick accounts to connect" });
+  for (const name of ["Cafe", "Shop", "cafe"]) await picker.getByRole("checkbox", { name, exact: true }).uncheck();
+  await expect(picker.getByRole("button", { name: "Connect selected" })).toBeDisabled();
+  await picker.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByText("Nothing was connected.")).toBeFocused();
+  await expect(picker).toHaveCount(0);
+  expect(method).toBe("DELETE");
+});
+
+test("a broken Meta picture shows the initial", async ({ page }) => {
+  await signedIn(page, "owner", [{ ...alice, provider: "facebook", display_name: "Cafe", avatar_url: "https://scontent.xx.fbcdn.net/gone.jpg" }]);
+  await page.route("https://scontent.xx.fbcdn.net/**", (route) => route.fulfill({ status: 403 }));
+  await page.goto("/app/connections");
+  const card = page.getByRole("listitem").filter({ hasText: "Cafe" });
+  await expect(card.getByText("C", { exact: true })).toBeVisible();
+  await expect(card.locator("img")).toHaveCount(0);
+});
+
+test("a Meta pick that expires before Connect hides the form and says so", async ({ page }) => {
+  await signedIn(page, "owner");
+  let posts = 0;
+  await page.route("**/v1/connections/meta/pick", (route) => {
+    if (route.request().method() === "GET") return route.fulfill({ json: metaChoices });
+    posts++;
+    return route.fulfill({ status: 404, json: { error: "not_found" } });
+  });
+  await page.goto("/app/connections?pick=meta");
+  const picker = page.getByRole("region", { name: "Pick accounts to connect" });
+  await picker.getByRole("button", { name: "Connect selected" }).click();
+  await expect(picker.getByRole("alert").filter({ hasText: "That Facebook sign-in expired" })).toBeVisible();
+  await expect(picker.getByRole("button", { name: "Connect selected" })).toHaveCount(0);
+  await expect(picker.getByRole("checkbox")).toHaveCount(0);
+  expect(posts).toBe(1);
+});
+
+test("a Meta pick with nothing new says everything is connected", async ({ page }) => {
+  await signedIn(page, "owner");
+  await page.route("**/v1/connections/meta/pick", (route) => route.fulfill({ json: { facebook: [], instagram: [] } }));
+  await page.goto("/app/connections?pick=meta");
+  const picker = page.getByRole("region", { name: "Pick accounts to connect" });
+  await expect(picker.getByText("Every Page and Instagram account from that sign-in is already connected.")).toBeVisible();
+  await expect(picker.getByRole("button", { name: "Connect selected" })).toHaveCount(0);
+});
+
+test("an expired Meta pick asks to connect again", async ({ page }) => {
+  await signedIn(page, "owner");
+  await page.route("**/v1/connections/meta/pick", (route) => route.fulfill({ status: 404, json: { error: "not_found" } }));
+  await page.goto("/app/connections?pick=meta");
+  await expect(page.getByRole("alert").filter({ hasText: "That Facebook sign-in expired" })).toBeVisible();
+});
+
+test("members never see the Meta picker", async ({ page }) => {
+  await signedIn(page, "member");
+  let asked = false;
+  await page.route("**/v1/connections/meta/pick", (route) => {
+    asked = true;
+    return route.fulfill({ json: metaChoices });
+  });
+  await page.goto("/app/connections?pick=meta");
+  await expect(page.getByText("Alice", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Pick accounts to connect" })).toHaveCount(0);
+  expect(asked).toBe(false);
+});
+
+test("a refused Meta connect is explained under one name", async ({ page }) => {
+  await signedIn(page, "owner");
+  await page.goto("/app/connections?connect_error=no_pages&provider=meta");
+  await expect(page.getByRole("alert").filter({ hasText: "Facebook didn't share any Pages." })).toBeVisible();
+  await page.goto("/app/connections?connect_error=meta_failed&provider=meta");
+  await expect(page.getByRole("alert").filter({ hasText: "Facebook and Instagram didn't let SocialReins connect" })).toBeVisible();
 });
 
 test("a member sees the list read-only", async ({ page }) => {

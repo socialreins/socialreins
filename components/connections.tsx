@@ -6,17 +6,25 @@ import Link from "next/link";
 import type { Failure } from "@/lib/auth";
 import { useSession } from "@/components/app-shell";
 import {
+  cancelMetaPick,
   connectBluesky,
   connectResult,
   connectResultText,
   connectUrl,
   disconnect,
+  getMetaPick,
   listConnections,
   listProviders,
+  metaName,
+  metaPickPending,
   oauthProviders,
+  pickMeta,
+  providerKey,
   providerState,
   safeAvatar,
   type Connection,
+  type MetaChoice,
+  type MetaChoices,
   type Provider,
 } from "@/lib/connections";
 import { listSets, setAccountSets, setNames, type SocialSet } from "@/lib/sets";
@@ -44,13 +52,27 @@ export const accountName = (c: Connection) => c.display_name || (c.handle ? `@${
 
 // The account's avatar from Bluesky's CDN, else its initial. Decorative: the name is always next to it.
 export function Avatar({ connection: c, size = "size-10" }: { connection: Connection; size?: string }) {
-  const avatar = safeAvatar(c.avatar_url);
-  return avatar ? (
+  return <Picture url={c.avatar_url} name={accountName(c)} size={size} />;
+}
+
+// A remote picture, else the name's initial: also when it fails to load, as Meta's signed CDN links expire.
+function Picture({ url, name, size, bg = "bg-canvas" }: { url: string | null; name: string; size: string; bg?: string }) {
+  const [broken, setBroken] = useState(false);
+  const picture = broken ? null : safeAvatar(url);
+  return picture ? (
     // eslint-disable-next-line @next/next/no-img-element -- a remote avatar, no Next image loader configured
-    <img src={avatar} alt="" width={40} height={40} referrerPolicy="no-referrer" className={`${size} rounded-full`} />
+    <img
+      src={picture}
+      alt=""
+      width={40}
+      height={40}
+      referrerPolicy="no-referrer"
+      className={`${size} rounded-full`}
+      onError={() => setBroken(true)}
+    />
   ) : (
-    <span aria-hidden="true" className={`grid ${size} place-items-center rounded-full bg-canvas font-bold`}>
-      {accountName(c).replace(/^@/, "").charAt(0).toUpperCase()}
+    <span aria-hidden="true" className={`grid ${size} place-items-center rounded-full ${bg} font-bold`}>
+      {name.replace(/^@/, "").charAt(0).toUpperCase()}
     </span>
   );
 }
@@ -70,13 +92,16 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
   const headingRef = useRef<HTMLHeadingElement>(null);
   // How an OAuth connect went, from brain's redirect back here. The shell renders this page in the browser only.
   const [returned] = useState(() => connectResult(window.location.search));
+  // brain sent the browser back from a Meta login with Pages and Instagram accounts to pick.
+  const [picking] = useState(() => canManage && metaPickPending(window.location.search));
 
   const reload = () => listConnections().then(setList);
   useEffect(() => {
     listConnections().then(setList);
     listSets().then(setSets);
     // Drop the flags so a reload doesn't show the message again.
-    if (connectResult(window.location.search)) window.history.replaceState(null, "", window.location.pathname);
+    const search = window.location.search;
+    if (connectResult(search) || metaPickPending(search)) window.history.replaceState(null, "", window.location.pathname);
   }, []);
 
   useEffect(() => {
@@ -119,9 +144,13 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
         </div>
         {returned && (
           <p role={returned.error ? "alert" : "status"} className={returned.error ? "waitlist-error" : "waitlist-done"}>
-            {connectResultText(returned, platformOf(returned.provider)?.name ?? returned.provider)}
+            {connectResultText(
+              returned,
+              returned.provider === "meta" ? metaName : (platformOf(returned.provider)?.name ?? returned.provider),
+            )}
           </p>
         )}
+        {picking && <MetaPicker team={team} onConnected={reload} />}
         <Status problem={problem} done={done} overrides={connectMessages} />
         {list === null ? (
           <div role="status" className="h-28 rounded-2xl bg-ink/5 motion-safe:animate-pulse">
@@ -326,6 +355,124 @@ function SetsEditor({
   );
 }
 
+const pickMessages: Partial<Record<Failure, string>> = {
+  not_found: `That Facebook sign-in expired. Connect ${metaName} again.`,
+  invalid_pick: `Those accounts are no longer offered. Connect ${metaName} again.`,
+  forbidden: "Only team owners and admins can connect or disconnect accounts.",
+};
+
+// The Pages and Instagram accounts a Meta login shared that the team doesn't have yet. brain holds their tokens.
+function MetaPicker({ team, onConnected }: { team: string; onConnected: () => void }) {
+  const [choices, setChoices] = useState<MetaChoices | Failure | null>(null);
+  const [checked, setChecked] = useState<string[]>([]);
+  // open: the form; stale: brain no longer holds the pick, so only the error stays; finished: only the outcome stays.
+  const [stage, setStage] = useState<"open" | "stale" | "finished">("open");
+  const { busy, problem, done, run } = useAction();
+
+  useEffect(() => {
+    getMetaPick().then((r) => {
+      setChoices(r);
+      // Everything starts picked: connecting what Facebook just shared is the usual intent.
+      if (!isFailure(r)) setChecked([...r.facebook.map((c) => `facebook:${c.id}`), ...r.instagram.map((c) => `instagram:${c.id}`)]);
+    });
+  }, []);
+
+  const ids = (platform: string) => checked.filter((k) => k.startsWith(`${platform}:`)).map((k) => k.slice(platform.length + 1));
+
+  async function onPick(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const call = async () => {
+      const r = await pickMeta(ids("facebook"), ids("instagram"));
+      if (r === "not_found" || r === "invalid_pick") setStage("stale");
+      return r;
+    };
+    await run("pick", call, (saved) => {
+      setStage("finished");
+      onConnected();
+      return saved.length === 1 ? "Connected 1 account." : `Connected ${saved.length} accounts.`;
+    });
+  }
+
+  async function onCancel() {
+    await run("cancel", cancelMetaPick, () => {
+      setStage("finished");
+      return "Nothing was connected.";
+    });
+  }
+
+  const group = (platform: "facebook" | "instagram", legend: string, list: MetaChoice[]) => {
+    const p = platformOf(platform);
+    return (
+      list.length > 0 && (
+        <fieldset className="grid gap-2">
+          <legend className="mb-1 font-bold">{legend}</legend>
+          {list.map((c) => {
+            const key = `${platform}:${c.id}`;
+            return (
+              <label key={key} className="flex items-center gap-3 rounded-xl bg-canvas px-3 py-2">
+                <input
+                  type="checkbox"
+                  checked={checked.includes(key)}
+                  onChange={(e) => setChecked((ks) => (e.target.checked ? [...ks, key] : ks.filter((k) => k !== key)))}
+                />
+                <span className="relative shrink-0">
+                  <Picture url={c.picture_url} name={c.name} size="size-8" bg="bg-paper" />
+                  {p && (
+                    <span className="absolute -right-1 -bottom-1 grid size-4 place-items-center rounded-full bg-paper" style={{ color: p.color }}>
+                      <PlatformIcon platform={p} className="size-3" />
+                    </span>
+                  )}
+                </span>
+                <span className="truncate font-bold">{c.name}</span>
+              </label>
+            );
+          })}
+        </fieldset>
+      )
+    );
+  };
+
+  const status = <Status problem={problem} done={done} overrides={pickMessages} />;
+  if (stage === "finished") return status;
+  return (
+    <section aria-labelledby="meta-pick-heading" className="card grid gap-4 p-5">
+      <div>
+        <h3 id="meta-pick-heading" className="font-display text-lg font-extrabold tracking-tight">
+          Pick accounts to connect
+        </h3>
+        <p className="text-ink-soft">Facebook shared these with SocialReins. Pick the ones {team} should post to.</p>
+      </div>
+      {stage === "open" &&
+        (choices === null ? (
+          <div role="status" className="h-24 rounded-2xl bg-ink/5 motion-safe:animate-pulse">
+            <span className="sr-only">Loading Pages...</span>
+          </div>
+        ) : isFailure(choices) ? (
+          <p role="alert" className="waitlist-error">
+            {problemText(choices, pickMessages)}
+          </p>
+        ) : choices.facebook.length + choices.instagram.length === 0 ? (
+          <p className="text-ink-soft">Every Page and Instagram account from that sign-in is already connected.</p>
+        ) : (
+          <form onSubmit={onPick} className="grid gap-4">
+            {group("facebook", "Facebook Pages", choices.facebook)}
+            {group("instagram", "Instagram accounts", choices.instagram)}
+            <p className="hint">Instagram accounts post through the Facebook Page they are linked to.</p>
+            <div className="flex flex-wrap gap-2">
+              <button type="submit" className="btn btn-primary btn-sm" disabled={busy !== null || checked.length === 0}>
+                {busy === "pick" ? "Connecting..." : "Connect selected"}
+              </button>
+              <button type="button" className="btn btn-quiet btn-sm" disabled={busy !== null} onClick={onCancel}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        ))}
+      {status}
+    </section>
+  );
+}
+
 const stateText = { coming_soon: "Coming soon", not_configured: "Not set up on this server" };
 
 function AddAccount({ connected, onConnected }: { connected: Connection[]; onConnected: () => void }) {
@@ -361,6 +508,11 @@ function AddAccount({ connected, onConnected }: { connected: Connection[]; onCon
   const bluesky = platforms.find((p) => p.id === "bluesky")!;
   const blueskyReady = providerState("bluesky", known) === "available";
   const oauth = platforms.filter((p) => oauthProviders.has(p.id) && providerState(p.id, known) === "available");
+  // One card per brain provider: Facebook and Instagram connect together through Meta.
+  const cards = [...new Set(oauth.map((p) => providerKey(p.id)))].map((key) => {
+    const list = oauth.filter((p) => providerKey(p.id) === key);
+    return { key, list, name: key === "meta" ? metaName : list[0]!.name };
+  });
   const groups = (["coming_soon", "not_configured"] as const).map((state) => ({
     state,
     list: platforms.filter((p) => providerState(p.id, known) === state && !(p.id === "bluesky" && blueskyReady)),
@@ -447,29 +599,28 @@ function AddAccount({ connected, onConnected }: { connected: Connection[]; onCon
               <Status problem={problem} done={done} overrides={connectMessages} />
             </form>
           )}
-          {oauth.map((p) => (
-            <div key={p.id} className="card grid gap-4 p-5">
+          {cards.map(({ key, list, name }) => (
+            <div key={key} className="card grid gap-4 p-5">
               <div className="flex items-center gap-3">
-                <span className="grid size-10 place-items-center rounded-xl bg-canvas" style={{ color: p.color }}>
-                  <PlatformIcon platform={p} className="size-6" />
-                </span>
+                {list.map((p) => (
+                  <span key={p.id} className="grid size-10 place-items-center rounded-xl bg-canvas" style={{ color: p.color }}>
+                    <PlatformIcon platform={p} className="size-6" />
+                  </span>
+                ))}
                 <h3 className="font-display text-lg font-extrabold tracking-tight">
-                  Connect {p.name}
+                  Connect {name}
                 </h3>
                 <span className="badge tone ml-auto" data-status="published">
                   Available
                 </span>
               </div>
-              <p id={`${p.id}-note`} className="hint">
-                You sign in on {p.name} and come back here. Connecting an account again renews its sign-in and keeps its posts
-                and sets.
+              <p id={`${key}-note`} className="hint">
+                {key === "meta"
+                  ? "You sign in with Facebook, then pick which Pages and linked Instagram professional accounts to connect. Connecting again renews their sign-in and keeps their posts and sets."
+                  : `You sign in on ${name} and come back here. Connecting an account again renews its sign-in and keeps its posts and sets.`}
               </p>
-              <a
-                href={connectUrl(p.id)}
-                className="btn btn-primary justify-self-start"
-                aria-describedby={`${p.id}-note`}
-              >
-                Connect {p.name}
+              <a href={connectUrl(list[0]!.id)} className="btn btn-primary justify-self-start" aria-describedby={`${key}-note`}>
+                Connect {name}
               </a>
             </div>
           ))}
