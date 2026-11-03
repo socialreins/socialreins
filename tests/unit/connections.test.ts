@@ -103,6 +103,8 @@ describe("provider state", () => {
     expect(connectResult("?connect_error=cancelled&provider=threads")).toEqual({ provider: "threads", error: "cancelled" });
     expect(connectResult("?state=x")).toBeNull();
     expect(connectResult("")).toBeNull();
+    expect(connectResult("?connected=anything%20you%20like")).toBeNull();
+    expect(connectResult("?connect_error=cancelled&provider=evil")).toBeNull();
     const text = (search: string) => connectResultText(connectResult(search)!, "Threads");
     expect(text("?connected=threads")).toBe("Connected your Threads account.");
     expect(text("?connect_error=cancelled&provider=threads")).toBe("Threads connection was cancelled.");

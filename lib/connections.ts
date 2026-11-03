@@ -43,9 +43,12 @@ export type ConnectResult = { provider: string; error: string | null };
 export function connectResult(search: string): ConnectResult | null {
   const q = new URLSearchParams(search);
   const connected = q.get("connected");
-  if (connected) return { provider: connected, error: null };
   const error = q.get("connect_error");
-  return error ? { provider: q.get("provider") ?? "", error } : null;
+  const provider = connected ?? q.get("provider") ?? "";
+  // Only our own providers, so a crafted link can't put arbitrary text on the page.
+  if (!oauthProviders.has(provider)) return null;
+  if (connected) return { provider, error: null };
+  return error ? { provider, error } : null;
 }
 
 export function connectResultText({ provider, error }: ConnectResult, name: string): string {
