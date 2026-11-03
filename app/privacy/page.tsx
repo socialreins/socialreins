@@ -73,6 +73,13 @@ export default function Privacy() {
           To delete your account and its data, <ContactLink /> using the email address on your account, and we will confirm
           when it is done.
         </li>
+        <li>
+          Step by step instructions are on the{" "}
+          <Link href="/data-deletion" className="font-bold underline decoration-signal decoration-2 underline-offset-4 hover:text-signal-deep">
+            Data Deletion
+          </Link>{" "}
+          page.
+        </li>
       </ul>
 
       <h2>Self-hosted SocialReins</h2>
