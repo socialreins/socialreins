@@ -180,4 +180,7 @@ body { margin: 0; font-family: var(--font-body); font-size: 1.0625rem; line-heig
   --side: #f4f5fb; --line: #e2e4ee; --line-soft: #eef0f6;
 }
 .admin-root .btn-primary:hover:not(:disabled) { background: #3730a3; }
+/* Errors stay red in the console; only the accent turns indigo. */
+.admin-root :is(.waitlist-error, .btn-danger) { color: #c2330a; }
+.admin-root :is(.field, input, select, textarea)[aria-invalid] { border-color: #c2330a; }
 .admin-root header { box-shadow: inset 0 2px 0 var(--color-signal-deep); }

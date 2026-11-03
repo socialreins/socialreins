@@ -199,7 +199,8 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
             </div>
           </div>
         </aside>
-        {session && (
+        {/* The passkey prompt belongs to the app; admins see it there. */}
+        {session && !admin && (
           <Suspense fallback={null}>
             <PasskeyPrompt />
           </Suspense>
