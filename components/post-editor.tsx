@@ -2,30 +2,36 @@
 
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Failure } from "@/lib/auth";
 import { listConnections, type Connection } from "@/lib/connections";
 import {
+  charCount,
   checkThread,
   createPost,
+  createPostGroup,
   deletePost,
   fromLocalInput,
   getPost,
-  graphemes,
-  MAX_GRAPHEMES,
-  MAX_IMAGES,
+  limits,
+  listPosts,
   MAX_PARTS,
+  publishing,
   publishPost,
   toLocalInput,
   updatePost,
+  type Platform,
   type Post,
+  type PostGroupInput,
   type PostInput,
   type ThreadPart,
 } from "@/lib/posts";
 import { fitsList, listLists, partLabel, type PostList } from "@/lib/lists";
 import { listSets, type SocialSet } from "@/lib/sets";
 import { accountName, Avatar } from "@/components/connections";
-import { BlueskyNote, postMessages, StatusBadge, statusName } from "@/components/posts";
+import { platformName } from "@/components/platform-icons";
+import { AccountNote, PlatformMark, postMessages, StatusBadge, statusName } from "@/components/posts";
 import { isFailure, problemText, Status, useAction } from "@/components/team-ui";
 import { useCurrentSet } from "@/components/app-shell";
 import { Icon } from "@/components/ui";
@@ -33,7 +39,16 @@ import { Icon } from "@/components/ui";
 const POLL_MS = 2000;
 const POLL_FOR_MS = 60_000;
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+const names = (list: string[]) => new Intl.ListFormat("en", { type: "conjunction" }).format(list.map(platformName));
 
+// What a check failure means for one platform, naming its own limit.
+function platformProblem(platform: Platform, failure: Failure): ReactNode {
+  const name = platformName(platform);
+  if (failure === "too_long") return `${name} takes at most ${limits[platform].chars.toLocaleString("en")} characters.`;
+  if (failure === "too_many_images") return `${name} takes at most ${limits[platform].media} images.`;
+  if (failure === "thread_not_supported") return `${name} can't post threads.`;
+  return postMessages[failure] ?? failure;
+}
 
 export function PostEditor({ id }: { id?: string }) {
   const router = useRouter();
@@ -46,6 +61,14 @@ export function PostEditor({ id }: { id?: string }) {
   const [body, setBody] = useState("");
   const [media, setMedia] = useState<string[]>([]);
   const [thread, setThread] = useState<ThreadPart[]>([]);
+  // The platforms ticked for a new post; null means every platform with an account in the set.
+  const [chosen, setChosen] = useState<Platform[] | null>(null);
+  // Per-platform text that replaces the main post on that platform.
+  const [custom, setCustom] = useState<Partial<Record<Platform, string>>>({});
+  // Every post of this post's group, this one included; empty for a single post.
+  const [group, setGroup] = useState<Post[]>([]);
+  // Group posts still to publish after Publish now stopped partway, in order.
+  const [unsent, setUnsent] = useState<string[]>([]);
   const [at, setAt] = useState("");
   const [lists, setLists] = useState<PostList[]>([]);
   const [listId, setListId] = useState("");
@@ -67,6 +90,7 @@ export function PostEditor({ id }: { id?: string }) {
     setBody(p.body);
     setMedia(p.media);
     setThread(p.thread ?? []);
+    setCustom({});
     setAt(toLocalInput(p.status === "scheduled" ? p.scheduled_at : null));
     setListId("");
   }
@@ -81,17 +105,20 @@ export function PostEditor({ id }: { id?: string }) {
     listLists().then((r) => Array.isArray(r) && setLists(r));
     if (id)
       getPost(id).then((r) => {
-        if (isFailure(r)) setPost(r);
-        else load(r);
+        if (isFailure(r)) return setPost(r);
+        load(r);
+        if (r.group_id) listPosts({ group_id: r.group_id }).then((g) => Array.isArray(g) && setGroup(g));
       });
   }, [id]);
 
   const postId = post && !isFailure(post) ? post.id : undefined;
   const status = post && !isFailure(post) ? post.status : undefined;
+  const groupId = post && !isFailure(post) ? post.group_id : null;
+  const pending = status === "queued" || group.some((g) => g.status === "queued");
 
   // After Publish now brain answers "queued"; ask again every 2s, for up to a minute.
   useEffect(() => {
-    if (status !== "queued" || !postId) return;
+    if (!pending || !postId) return;
     const started = Date.now();
     const timer = setInterval(async () => {
       if (Date.now() - started > POLL_FOR_MS) {
@@ -99,11 +126,19 @@ export function PostEditor({ id }: { id?: string }) {
         setPollNote("Still publishing. Reload in a minute to see how it went.");
         return;
       }
-      const r = await getPost(postId);
-      if (!isFailure(r)) setPost(r);
+      if (!groupId) {
+        const r = await getPost(postId);
+        if (!isFailure(r)) setPost(r);
+        return;
+      }
+      const g = await listPosts({ group_id: groupId });
+      if (isFailure(g)) return;
+      setGroup(g);
+      const mine = g.find((p) => p.id === postId);
+      if (mine) setPost(mine);
     }, POLL_MS);
     return () => clearInterval(timer);
-  }, [status, postId]);
+  }, [pending, postId, groupId]);
 
   useEffect(() => {
     if (confirming) confirmRef.current?.focus();
@@ -123,33 +158,79 @@ export function PostEditor({ id }: { id?: string }) {
 
   async function save(mode: "draft" | "schedule" | "publish") {
     flushSync(() => setLocal(null));
-    const images = links(media);
-    const parts = thread.map((p) => ({ ...p, media: links(p.media) }));
-    const invalid = checkThread(body, images, parts);
-    if (invalid) return setLocal(<>{invalid.part ? `Post ${invalid.part + 1} of the thread: ` : ""}{postMessages[invalid.failure]}</>);
+    if (selected.length === 0) return setLocal("Pick at least one platform to post to.");
+    for (const p of selected) {
+      const e = entry(p);
+      const invalid = checkThread(e.body, e.media, e.thread, p);
+      if (invalid) return setLocal(<>{invalid.part ? `Post ${invalid.part + 1} of the thread: ` : ""}{platformProblem(p, invalid.failure)}</>);
+    }
     if (mode === "schedule" && !at) return setLocal("Pick a date and time to schedule the post.");
-    const input: PostInput = {
+    const shared = {
       social_set_id: setId,
-      platform: "bluesky",
-      body,
-      media: images,
-      thread: parts,
       scheduled_at: mode === "schedule" ? fromLocalInput(at) : null,
       list_id: listChoices.some((l) => l.id === listId) ? listId : undefined,
     };
+    const input: PostInput = { ...shared, platform: selected[0]!, ...entry(selected[0]!) };
+    // Customized text, and an empty thread where the platform can't post one, so brain takes the rest.
+    const overrides: PostGroupInput["overrides"] = {};
+    for (const p of selected) {
+      const o = { body: customFor(p), thread: limits[p].thread || parts.length === 0 ? undefined : [] };
+      if (o.body !== undefined || o.thread) overrides[p] = o;
+    }
+    let made = 1;
     await run(mode, async () => {
-      const saved = postId ? await updatePost(postId, input) : await createPost(input);
-      if (isFailure(saved)) return saved;
-      // Keep this editor mounted on the new post's own address.
-      if (!postId) window.history.replaceState(null, "", `/app/posts/${saved.id}`);
-      load(saved);
-      return mode === "publish" ? publishPost(saved.id) : saved;
+      if (postId || selected.length === 1) {
+        const saved = postId ? await updatePost(postId, input) : await createPost(input);
+        if (isFailure(saved)) return saved;
+        // Keep this editor mounted on the new post's own address.
+        if (!postId) window.history.replaceState(null, "", `/app/posts/${saved.id}`);
+        load(saved);
+        if (mode !== "publish") return saved;
+        // Group posts a failed Publish now left behind go out with this one.
+        const r = await publishAll([saved.id, ...unsent.filter((u) => u !== saved.id)]);
+        return isFailure(r) ? r : r[0]!;
+      }
+      const g = await createPostGroup({ ...shared, platforms: selected, body, media: images, thread: parts, overrides });
+      if (isFailure(g)) return g;
+      const posts = g.posts;
+      made = posts.length;
+      // The editor carries on as the first post; the others are listed below it.
+      window.history.replaceState(null, "", `/app/posts/${posts[0]!.id}`);
+      load(posts[0]!);
+      setGroup(posts);
+      if (mode !== "publish") return posts[0]!;
+      const r = await publishAll(posts.map((p) => p.id));
+      return isFailure(r) ? r : r[0]!;
     }, (p) => {
       load(p);
       // The status line says Publishing and updates itself; a separate message would go stale.
       if (mode === "publish") return void setSent((n) => n + 1);
-      if (p.status === "scheduled") return `Scheduled for ${when(p.scheduled_at!)}.`;
-      return "Draft saved.";
+      if (p.status === "scheduled") return `${made > 1 ? `Scheduled ${made} posts, one per platform, for` : "Scheduled for"} ${when(p.scheduled_at!)}.`;
+      return made > 1 ? `Saved ${made} drafts, one per platform.` : "Draft saved.";
+    });
+  }
+
+  // Publishes `ids` in order. On a failure the rest stay in `unsent`, so a retry carries on from there.
+  async function publishAll(ids: string[]): Promise<Post[] | Failure> {
+    const queued: Post[] = [];
+    for (const [i, id] of ids.entries()) {
+      const r = await publishPost(id);
+      if (isFailure(r)) {
+        setUnsent(ids.slice(i));
+        return r;
+      }
+      queued.push(r);
+      setGroup((g) => g.map((x) => (x.id === r.id ? r : x)));
+    }
+    setUnsent([]);
+    return queued;
+  }
+
+  async function publishRest() {
+    await run("publish", () => publishAll(unsent), (queued) => {
+      const mine = queued.find((p) => p.id === postId);
+      if (mine) load(mine);
+      setSent((n) => n + 1);
     });
   }
 
@@ -166,7 +247,7 @@ export function PostEditor({ id }: { id?: string }) {
     }, (r) => {
       if (r === "ok") return;
       load(r);
-      return "Taken down from Bluesky.";
+      return `Taken down from ${platformName(r.platform)}.`;
     });
     flushSync(() => setConfirming(false));
     if (takedown !== null) {
@@ -181,24 +262,70 @@ export function PostEditor({ id }: { id?: string }) {
   // Lists this set's post can join; one it is already in is left out, since sending it would move the post to the end.
   const listChoices = lists.filter((l) => fitsList(l, setId) && !inLists.some((x) => x.id === l.id));
   const editable = !status || status === "draft" || status === "scheduled";
-  const count = graphemes(body);
-  const over = count > MAX_GRAPHEMES;
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const setName = Array.isArray(sets) ? sets.find((s) => s.id === (post as Post | null)?.social_set_id)?.name : undefined;
   const byId = new Map(accounts.map((a) => [a.id, a]));
   const shownProblem = local ? null : problem;
+  const inSet = (p: Platform) => accounts.filter((a) => a.provider === p && a.set_ids.includes(setId));
+  // A saved post keeps its platform; a new one offers each platform with an account in the set.
+  const available: Platform[] = post ? [post.platform] : publishing.filter((p) => inSet(p).length > 0);
+  const selected = post ? available : (chosen ?? available).filter((p) => available.includes(p));
+  const threadable = selected.filter((p) => limits[p].thread);
+  const noThread = selected.filter((p) => !limits[p].thread);
+  // Custom text counts only while its box shows: two or more platforms, this one ticked.
+  const customFor = (p: Platform) => (selected.length > 1 && selected.includes(p) ? custom[p] : undefined);
+  const mainPlatforms = selected.filter((p) => customFor(p) === undefined);
+  const images = links(media);
+  const parts = thread.map((p) => ({ ...p, media: links(p.media) }));
+  // One platform's post: its own text if customized, and the thread only where it can post one.
+  const entry = (p: Platform) => ({ body: customFor(p) ?? body, media: images, thread: limits[p].thread ? parts : [] });
+  // Shared images must fit every chosen platform.
+  const cap = (list: Platform[]) => (list.length ? Math.min(...list.map((p) => limits[p].media)) : limits.bluesky.media);
+  const mediaProblems = selected.flatMap((p) =>
+    p === "instagram" && images.length === 0 ? [platformProblem(p, "media_required")] : images.length > limits[p].media ? [platformProblem(p, "too_many_images")] : [],
+  );
+  const shown = selected[0];
+  const others = group.filter((g) => g.id !== postId);
 
   const preview = (
     <Preview
-      posts={[{ body, media }, ...thread].map((p) => ({ ...p, media: links(p.media) }))}
-      account={accounts.find((a) => a.provider === "bluesky" && a.set_ids.includes(setId))}
+      posts={shown ? [{ body: entry(shown).body, media: images }, ...entry(shown).thread] : [{ body, media: images }]}
+      platform={shown ?? "bluesky"}
+      account={shown ? inSet(shown)[0] : undefined}
     />
+  );
+
+  const siblings = others.length > 0 && (
+    <section aria-labelledby="group-heading" className="grid gap-3">
+      <h2 id="group-heading" className="font-display text-lg font-extrabold tracking-tight">
+        Same post on other platforms
+      </h2>
+      <ul className="card divide-y divide-ink/10">
+        {others.map((g) => (
+          <li key={g.id} className="flex flex-wrap items-center gap-3 p-4 text-sm">
+            <PlatformMark platform={g.platform} className="size-5" />
+            <Link href={`/app/posts/${g.id}`} className="min-w-0 flex-1 font-bold hover:underline">
+              {platformName(g.platform)} post
+            </Link>
+            <StatusBadge status={g.status} />
+            {g.targets
+              .filter((t) => t.remote_url && t.status === "published")
+              .map((t) => (
+                <a key={t.id} href={t.remote_url!} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm">
+                  View on {platformName(g.platform)}
+                  <Icon name="external" className="size-4" />
+                </a>
+              ))}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 
   const confirm = confirming ? (
     <div className="card grid gap-3 p-4">
       <p id="remove-q">
-        {status === "published" ? "Take this post down from Bluesky? It stays here as taken down." : "Delete this post? This can't be undone."}
+        {status === "published" ? `Take this post down from ${platformName(post!.platform)}? It stays here as taken down.` : "Delete this post? This can't be undone."}
       </p>
       <div className="flex flex-wrap gap-2">
         <button ref={confirmRef} type="button" className="btn btn-primary btn-sm" aria-describedby="remove-q" disabled={busy !== null} onClick={remove}>
@@ -232,6 +359,20 @@ export function PostEditor({ id }: { id?: string }) {
         </p>
       )}
       <Status problem={shownProblem} done={done} overrides={postMessages} />
+      {unsent.length > 0 && (
+        <div className="card flex flex-wrap items-center gap-3 p-4">
+          <p className="min-w-0 flex-1">
+            Not published yet on {names(unsent.map((u) => group.find((g) => g.id === u)?.platform ?? "").filter(Boolean))}.
+            {editable ? " Publish now sends them too." : ""}
+          </p>
+          {!editable && (
+            <button type="button" className="btn btn-primary btn-sm" disabled={busy !== null} onClick={publishRest}>
+              <Icon name="send" className="size-4" />
+              {busy === "publish" ? "Publishing..." : "Publish the rest"}
+            </button>
+          )}
+        </div>
+      )}
     </>
   );
 
@@ -273,7 +414,7 @@ export function PostEditor({ id }: { id?: string }) {
                       </span>
                       {t.remote_url && t.status === "published" && (
                         <a href={t.remote_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm">
-                          View on Bluesky
+                          View on {platformName(post.platform)}
                           <Icon name="external" className="size-4" />
                         </a>
                       )}
@@ -295,6 +436,7 @@ export function PostEditor({ id }: { id?: string }) {
               </ul>
             </section>
           )}
+          {siblings}
           {post.status === "published" && confirm}
         </div>
         {preview}
@@ -318,10 +460,20 @@ export function PostEditor({ id }: { id?: string }) {
     addPartRef.current?.focus();
   }
 
+  function customize(p: Platform) {
+    flushSync(() => setCustom((c) => ({ ...c, [p]: body })));
+    document.getElementById(`post-body-${p}`)?.focus();
+  }
+
+  function uncustomize(p: Platform) {
+    flushSync(() => setCustom((c) => Object.fromEntries(Object.entries(c).filter(([k]) => k !== p))));
+    document.getElementById(`customize-${p}`)?.focus();
+  }
+
   return (
     <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_24rem]">
       <div className="grid gap-5">
-        <BlueskyNote />
+        <AccountNote />
         {status === "scheduled" && post && (
           <p className="flex flex-wrap items-center gap-3 font-bold">
             <StatusBadge status="scheduled" />
@@ -335,7 +487,17 @@ export function PostEditor({ id }: { id?: string }) {
               <label htmlFor="post-set" className="label">
                 Set
               </label>
-              <select id="post-set" className="field" value={setId} onChange={(e) => setSetId(e.target.value)} required aria-describedby="post-set-note">
+              <select
+                id="post-set"
+                className="field"
+                value={setId}
+                onChange={(e) => {
+                  setSetId(e.target.value);
+                  setChosen(null);
+                }}
+                required
+                aria-describedby="post-set-note"
+              >
                 {Array.isArray(sets) &&
                   sets.map((s) => (
                     <option key={s.id} value={s.id}>
@@ -344,9 +506,39 @@ export function PostEditor({ id }: { id?: string }) {
                   ))}
               </select>
               <p id="post-set-note" className="hint">
-                The post goes to every Bluesky account in this set.
+                {post ? `The post goes to every ${platformName(post.platform)} account in this set.` : "Each platform gets its own post, sent to every account of that platform in this set."}
               </p>
             </div>
+            {!post && (
+              <fieldset className="grid gap-2">
+                <legend className="label">Post to</legend>
+                {available.length === 0 ? (
+                  <p className="hint">
+                    No connected account is in this set. Add one on{" "}
+                    <Link href="/app/connections" className="font-bold underline">
+                      Connections
+                    </Link>
+                    .
+                  </p>
+                ) : (
+                  <ul className="flex flex-wrap gap-2">
+                    {available.map((p) => (
+                      <li key={p}>
+                        <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={selected.includes(p)}
+                            onChange={() => setChosen(publishing.filter((x) => (x === p ? !selected.includes(p) : selected.includes(x))))}
+                          />
+                          <PlatformMark platform={p} className="size-4" named />
+                          <span className="text-ink-soft">{inSet(p).map(accountName).join(", ")}</span>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </fieldset>
+            )}
             <div className="grid gap-1.5">
               <label htmlFor="post-list" className="label">
                 List
@@ -374,26 +566,62 @@ export function PostEditor({ id }: { id?: string }) {
                 placeholder="What do you want to say?"
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
-                aria-invalid={over || undefined}
+                aria-invalid={mainPlatforms.some((p) => charCount(p, body) > limits[p].chars) || undefined}
                 aria-describedby="post-count"
               />
-              <p id="post-count" className={`justify-self-end text-sm ${over ? "font-bold text-signal-deep" : count > MAX_GRAPHEMES - 20 ? "text-signal-deep" : "text-ink-soft"}`}>
-                {count} of {MAX_GRAPHEMES} characters
-              </p>
-              {over && (
-                <p role="alert" className="waitlist-error">
-                  That is {count - MAX_GRAPHEMES} over Bluesky&apos;s limit of {MAX_GRAPHEMES} characters.
-                </p>
-              )}
+              <Counts id="post-count" text={body} platforms={mainPlatforms} alerts />
             </div>
-            <ImageLinks media={media} onChange={setMedia} />
+            {selected.length > 1 &&
+              selected.map((p) =>
+                custom[p] === undefined ? (
+                  <button key={p} id={`customize-${p}`} type="button" className="btn btn-quiet btn-sm justify-self-start" onClick={() => customize(p)}>
+                    <Icon name="plus" className="size-4" />
+                    Customize for {platformName(p)}
+                  </button>
+                ) : (
+                  <div key={p} className="grid gap-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <label htmlFor={`post-body-${p}`} className="label">
+                        {platformName(p)} text
+                      </label>
+                      <button type="button" className="icon-btn" aria-label={`Use the main post on ${platformName(p)}`} onClick={() => uncustomize(p)}>
+                        <Icon name="close" className="size-4" />
+                      </button>
+                    </div>
+                    <textarea
+                      id={`post-body-${p}`}
+                      rows={4}
+                      className="field resize-y"
+                      value={custom[p]}
+                      onChange={(e) => setCustom((c) => ({ ...c, [p]: e.target.value }))}
+                      aria-invalid={charCount(p, custom[p]!) > limits[p].chars || undefined}
+                      aria-describedby={`post-body-${p}-count`}
+                    />
+                    <Counts id={`post-body-${p}-count`} text={custom[p]!} platforms={[p]} alerts />
+                  </div>
+                ),
+              )}
+            <ImageLinks media={media} max={cap(selected)} onChange={setMedia} />
+            {mediaProblems.length > 0 && (
+              <ul className="grid gap-1">
+                {mediaProblems.map((m, i) => (
+                  <li key={i} className="waitlist-error">
+                    {m}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {threadable.length > 0 && (
             <fieldset className="grid gap-2">
               <legend className="label">Thread</legend>
-              <p className="hint">Follow-up posts go out as replies, each to the one before, on every account.</p>
+              <p className="hint">
+                Follow-up posts go out as replies, each to the one before, on every account.
+                {noThread.length > 0 && ` ${names(noThread)} can't post threads, so ${noThread.length > 1 ? "they get" : "it gets"} only the first post.`}
+              </p>
               {thread.length > 0 && (
                 <ol className="grid gap-3">
                   {thread.map((p, i) => {
-                    const n = graphemes(p.body);
+                    const over = threadable.some((x) => charCount(x, p.body) > limits[x].chars);
                     return (
                       <li key={i} className="grid gap-1">
                         <div className="flex items-center justify-between gap-2">
@@ -413,13 +641,11 @@ export function PostEditor({ id }: { id?: string }) {
                           className="field resize-y"
                           value={p.body}
                           onChange={(e) => setThread((list) => list.map((v, j) => (j === i ? { ...v, body: e.target.value } : v)))}
-                          aria-invalid={n > MAX_GRAPHEMES || undefined}
+                          aria-invalid={over || undefined}
                           aria-describedby={`post-part-${i}-count`}
                         />
-                        <p id={`post-part-${i}-count`} className={`justify-self-end text-sm ${n > MAX_GRAPHEMES ? "font-bold text-signal-deep" : "text-ink-soft"}`}>
-                          {n} of {MAX_GRAPHEMES} characters
-                        </p>
-                        <ImageLinks media={p.media} post={i + 2} onChange={(m) => setThread((list) => list.map((v, j) => (j === i ? { ...v, media: m } : v)))} />
+                        <Counts id={`post-part-${i}-count`} text={p.body} platforms={threadable} />
+                        <ImageLinks media={p.media} max={cap(threadable)} post={i + 2} onChange={(m) => setThread((list) => list.map((v, j) => (j === i ? { ...v, media: m } : v)))} />
                       </li>
                     );
                   })}
@@ -432,6 +658,7 @@ export function PostEditor({ id }: { id?: string }) {
                 </button>
               )}
             </fieldset>
+            )}
           </div>
           {messages}
           <div className="card grid gap-4 p-5">
@@ -468,6 +695,7 @@ export function PostEditor({ id }: { id?: string }) {
             </div>
           </div>
         </form>
+        {siblings}
         {postId && confirm}
       </div>
       {preview}
@@ -477,8 +705,32 @@ export function PostEditor({ id }: { id?: string }) {
 
 const links = (media: string[]) => media.map((m) => m.trim()).filter(Boolean);
 
+// "N of M characters" for each platform; `alerts` also says how far over a limit the text is.
+function Counts({ id, text, platforms, alerts }: { id: string; text: string; platforms: Platform[]; alerts?: boolean }) {
+  const counts = platforms.map((p) => ({ p, n: charCount(p, text), max: limits[p].chars }));
+  return (
+    <>
+      <ul id={id} className="flex flex-wrap justify-end gap-x-4 text-sm">
+        {counts.map(({ p, n, max }) => (
+          <li key={p} className={n > max ? "font-bold text-signal-deep" : n > max - 20 ? "text-signal-deep" : "text-ink-soft"}>
+            {platformName(p)}: {n.toLocaleString("en")} of {max.toLocaleString("en")} characters
+          </li>
+        ))}
+      </ul>
+      {alerts &&
+        counts
+          .filter(({ n, max }) => n > max)
+          .map(({ p, n, max }) => (
+            <p key={p} role="alert" className="waitlist-error">
+              That is {(n - max).toLocaleString("en")} over {platformName(p)}&apos;s limit of {max.toLocaleString("en")} characters.
+            </p>
+          ))}
+    </>
+  );
+}
+
 // The image links of one post. `post` is its number in a thread; the first post leaves it out.
-function ImageLinks({ media, post, onChange }: { media: string[]; post?: number; onChange: (media: string[]) => void }) {
+function ImageLinks({ media, max, post, onChange }: { media: string[]; max: number; post?: number; onChange: (media: string[]) => void }) {
   const addRef = useRef<HTMLButtonElement>(null);
   const imageRefs = useRef<(HTMLInputElement | null)[]>([]);
   const of = post ? ` of post ${post}` : "";
@@ -500,7 +752,8 @@ function ImageLinks({ media, post, onChange }: { media: string[]; post?: number;
       </legend>
       {!post && (
         <p className="hint">
-          Up to {MAX_IMAGES}. Public https links to JPEG, PNG, WebP or GIF files of 1 MB or less, or Google Drive share links.
+          Up to {max}. Public https links to image or video files, or Google Drive share links. Bluesky takes JPEG, PNG, WebP or GIF of 1 MB
+          or less; Instagram takes JPEG, MP4 or MOV.
         </p>
       )}
       {media.length > 0 && (
@@ -530,7 +783,7 @@ function ImageLinks({ media, post, onChange }: { media: string[]; post?: number;
           ))}
         </ul>
       )}
-      {media.length < MAX_IMAGES && (
+      {media.length < max && (
         <button ref={addRef} type="button" className="btn btn-secondary btn-sm justify-self-start" onClick={addImage}>
           <Icon name="image" className="size-4" />
           Add image<span className="sr-only">{post ? ` to post ${post}` : ""}</span>
@@ -551,21 +804,21 @@ const fileName = (url: string) => {
   }
 };
 
-// Roughly how the post looks on Bluesky. Images show as tiles: the CSP only allows Bluesky's own image CDN.
-function Preview({ posts, account }: { posts: ThreadPart[]; account?: Connection }) {
+// Roughly how the post looks on its first platform. Images show as tiles: the CSP only allows Bluesky's own image CDN.
+function Preview({ posts, platform, account }: { posts: ThreadPart[]; platform: Platform; account?: Connection }) {
   return (
     <section aria-labelledby="preview-heading" className="grid gap-3 lg:sticky lg:top-10">
       <h2 id="preview-heading" className="font-display text-lg font-extrabold tracking-tight">
         Preview
       </h2>
       {posts.map((p, i) => (
-        <PreviewPost key={i} body={p.body} media={p.media} account={account} />
+        <PreviewPost key={i} body={p.body} media={p.media} platform={platform} account={account} />
       ))}
     </section>
   );
 }
 
-function PreviewPost({ body, media, account }: { body: string; media: string[]; account?: Connection }) {
+function PreviewPost({ body, media, platform, account }: { body: string; media: string[]; platform: Platform; account?: Connection }) {
   const parts = body.split(rich);
   return (
       <div className="card flex gap-3 p-4">
@@ -576,7 +829,7 @@ function PreviewPost({ body, media, account }: { body: string; media: string[]; 
         )}
         <div className="grid min-w-0 flex-1 gap-1.5">
           <p className="truncate text-[0.95rem] leading-tight">
-            <strong>{account ? accountName(account) : "Your Bluesky account"}</strong>{" "}
+            <strong>{account ? accountName(account) : `Your ${platformName(platform)} account`}</strong>{" "}
             <span className="text-ink-soft">{account?.handle ? `@${account.handle}` : ""} now</span>
           </p>
           {body.trim() ? (

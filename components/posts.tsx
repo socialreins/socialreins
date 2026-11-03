@@ -5,21 +5,25 @@ import Link from "next/link";
 import type { Failure } from "@/lib/auth";
 import { listConnections } from "@/lib/connections";
 import { partLabel } from "@/lib/lists";
-import { listPosts, monthRange, monthWeeks, postDay, sameDay, type Post, type PostStatus } from "@/lib/posts";
+import { isPlatform, listPosts, monthRange, monthWeeks, postDay, sameDay, type Post, type PostStatus } from "@/lib/posts";
 import { listSets, type SocialSet } from "@/lib/sets";
-import { PlatformIcon, platforms } from "@/components/platform-icons";
+import { PlatformIcon, platformName, platformOf } from "@/components/platform-icons";
 import { isFailure, problemText } from "@/components/team-ui";
 import { useCurrentSet } from "@/components/app-shell";
 import { Icon } from "@/components/ui";
 
 export const postMessages: Partial<Record<Failure, ReactNode>> = {
-  too_long: "Bluesky posts can be at most 300 characters (and 3000 bytes).",
-  too_many_images: "Add at most 4 images.",
+  too_long: "The post is too long: at most 300 characters (and 3000 bytes) on Bluesky, 500 on Threads, 2200 on Instagram.",
+  too_many_images: "Too many images: at most 4 on Bluesky, 20 on Threads, 10 on Facebook and Instagram.",
+  media_required: "Instagram needs at least one image or video.",
+  thread_not_supported: "Facebook and Instagram can't post threads.",
+  invalid_override: "A customized platform isn't one the post goes to.",
+  no_accounts: "This set has no connected account to post to.",
   too_many_parts: "A thread can have at most 25 follow-up posts.",
   invalid_media: "Images must be public https links to JPEG, PNG, WebP or GIF files of 1 MB or less, or Google Drive share links.",
   empty_post: "Write something or add an image first.",
   invalid_set: "That set no longer exists. Pick another one.",
-  unsupported_platform: "Only Bluesky can publish today.",
+  unsupported_platform: "That platform can't publish yet.",
   too_many_posts: "This team has 2000 posts, the most allowed. Delete some first.",
   not_editable: "This post is publishing or already went out, so it can't change. Reload to see it.",
   not_deletable: "A post that is publishing or failed can't be deleted.",
@@ -39,7 +43,7 @@ export const statusName: Record<PostStatus, string> = {
 
 const time = (d: Date) => d.toLocaleTimeString(undefined, { timeStyle: "short" });
 export const snippet = (p: Post) => (p.body.trim() ? p.body.trim().slice(0, 60) + (p.body.trim().length > 60 ? "..." : "") : "(images only)");
-const bluesky = platforms.find((p) => p.id === "bluesky")!;
+const bluesky = platformOf("bluesky")!;
 const legend: PostStatus[] = ["scheduled", "queued", "published", "failed", "deleted"];
 
 export function StatusBadge({ status }: { status: PostStatus }) {
@@ -50,11 +54,11 @@ export function StatusBadge({ status }: { status: PostStatus }) {
   );
 }
 
-// Shown when the team has no Bluesky account, since posts go to every Bluesky account of their set.
-export function BlueskyNote() {
+// Shown when the team has no account brain publishes to, since posts go to the accounts of their set.
+export function AccountNote() {
   const [missing, setMissing] = useState(false);
   useEffect(() => {
-    listConnections().then((r) => setMissing(Array.isArray(r) && !r.some((c) => c.provider === "bluesky")));
+    listConnections().then((r) => setMissing(Array.isArray(r) && !r.some((c) => isPlatform(c.provider))));
   }, []);
   if (!missing) return null;
   return (
@@ -64,12 +68,25 @@ export function BlueskyNote() {
       </span>
       <p className="min-w-0 flex-1 basis-60">
         <strong className="block">Connect an account first</strong>
-        <span className="text-ink-soft">No Bluesky account is connected to this team yet, so posts have nowhere to go.</span>
+        <span className="text-ink-soft">No Bluesky, Threads, Facebook or Instagram account is connected to this team yet, so posts have nowhere to go.</span>
       </p>
       <Link href="/app/connections" className="btn btn-primary">
         Connect an account
       </Link>
     </div>
+  );
+}
+
+// A platform's icon, named for screen readers, or beside its name with `named`.
+export function PlatformMark({ platform, className = "size-3.5", named }: { platform: string; className?: string; named?: boolean }) {
+  const p = platformOf(platform);
+  return (
+    <>
+      <span className="inline-flex shrink-0 align-[-0.15em]" style={{ color: p?.color }} title={named ? undefined : platformName(platform)}>
+        {p && <PlatformIcon platform={p} className={className} />}
+      </span>
+      {named ? <span className="font-bold">{platformName(platform)}</span> : <span className="sr-only">{platformName(platform)}: </span>}
+    </>
   );
 }
 
@@ -80,7 +97,7 @@ function PostChip({ post: p }: { post: Post }) {
       <span aria-hidden="true" className="dot ml-1.5 shrink-0" data-status={p.status} />
       <Link href={`/app/posts/${p.id}`} className="min-w-0 flex-1 truncate px-1.5 py-1 hover:underline">
         {p.lists.length > 0 && <span className="block truncate font-bold">{p.lists.map(partLabel).join(", ")}</span>}
-        <span className="text-ink-soft tabular-nums">{time(postDay(p)!)}</span> {snippet(p)}
+        <PlatformMark platform={p.platform} /> <span className="text-ink-soft tabular-nums">{time(postDay(p)!)}</span> {snippet(p)}
       </Link>
       <span className="sr-only">{statusName[p.status]}</span>
       {remote.map((t) => (
@@ -89,7 +106,7 @@ function PostChip({ post: p }: { post: Post }) {
           href={t.remote_url!}
           target="_blank"
           rel="noopener noreferrer"
-          aria-label="View on Bluesky"
+          aria-label={`View on ${platformName(p.platform)}`}
           className="shrink-0 rounded-md p-1 hover:bg-ink/10"
         >
           <Icon name="external" className="size-3.5" />
@@ -163,7 +180,7 @@ export function Posts() {
 
   return (
     <div className="grid gap-10">
-      <BlueskyNote />
+      <AccountNote />
       <section aria-labelledby="month-heading" className="grid gap-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -271,7 +288,7 @@ export function Posts() {
             {drafts.map((p) => (
               <li key={p.id} className="tone relative grid content-start gap-2 rounded-2xl bg-paper p-4 hover:bg-ink/[0.02]" data-status="draft">
                 <Link href={`/app/posts/${p.id}`} className="font-bold text-ink after:absolute after:inset-0 after:rounded-2xl">
-                  {snippet(p)}
+                  <PlatformMark platform={p.platform} className="size-4" /> {snippet(p)}
                 </Link>
                 {p.lists.length > 0 && <p className="text-sm font-bold">{p.lists.map(partLabel).join(", ")}</p>}
                 <p className="text-sm text-ink-soft">

@@ -8,7 +8,7 @@ import { listConnections, type Connection } from "@/lib/connections";
 import { authorName, kindName, listInboxes, listItems, relativeTime, type Item } from "@/lib/inbox";
 import { listPosts, type Post } from "@/lib/posts";
 import { useCurrentSet } from "@/components/app-shell";
-import { BlueskyNote, snippet, StatusBadge } from "@/components/posts";
+import { AccountNote, PlatformMark, snippet, StatusBadge } from "@/components/posts";
 import { isFailure, problemText } from "@/components/team-ui";
 
 const DAY = 86_400_000;
@@ -64,7 +64,7 @@ export function Dashboard() {
 
   return (
     <div className="grid gap-6">
-      <BlueskyNote />
+      <AccountNote />
       <section aria-labelledby="summary-heading">
         <h2 id="summary-heading" className="sr-only">
           Summary
@@ -227,7 +227,7 @@ function PostRows({ posts, at, detail }: { posts: Post[]; at: (p: Post) => strin
           <Link href={`/app/posts/${p.id}`} className="grid grid-cols-[8.5rem_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5 hover:bg-ink/[0.025]">
             <span className="text-sm text-ink-soft tabular-nums">{when(at(p))}</span>
             <span className="min-w-0">
-              <span className="block truncate">{snippet(p)}</span>
+              <span className="block truncate"><PlatformMark platform={p.platform} /> {snippet(p)}</span>
               {detail?.(p) && <span className="block truncate text-sm text-signal-deep">{detail(p)}</span>}
             </span>
             <StatusBadge status={p.status} />

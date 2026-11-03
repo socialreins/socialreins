@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  charCount,
   checkPost,
   checkThread,
   createPost,
+  createPostGroup,
+  limits,
   deletePost,
   fromLocalInput,
   getPost,
@@ -50,6 +53,20 @@ describe("post requests", () => {
     expect(JSON.parse(init.body as string)).toEqual(body);
   });
 
+  it("creates a post group and lists a group's posts", async () => {
+    const group = { ...input, platforms: ["bluesky", "instagram"] as const, overrides: { instagram: { body: "Insta" } } };
+    let fetch = reply(201, { group_id: "g1", posts: [] });
+    vi.stubGlobal("fetch", fetch);
+    expect(await createPostGroup({ ...group, platforms: [...group.platforms] })).toEqual({ group_id: "g1", posts: [] });
+    expect(call(fetch)[0]).toBe(`${apiUrl}/v1/post-groups`);
+    expect(call(fetch)[1]).toMatchObject({ method: "POST" });
+    expect(JSON.parse(call(fetch)[1].body as string)).toMatchObject({ platforms: ["bluesky", "instagram"], overrides: { instagram: { body: "Insta" } } });
+    fetch = reply(200, []);
+    vi.stubGlobal("fetch", fetch);
+    await listPosts({ group_id: "g1" });
+    expect(call(fetch)[0]).toBe(`${apiUrl}/v1/posts?group_id=g1`);
+  });
+
   it("gets and publishes a post", async () => {
     let fetch = reply(200, { id: "p1" });
     vi.stubGlobal("fetch", fetch);
@@ -69,6 +86,10 @@ describe("post requests", () => {
     [422, "empty_post"],
     [422, "invalid_set"],
     [422, "unsupported_platform"],
+    [422, "media_required"],
+    [422, "thread_not_supported"],
+    [422, "invalid_override"],
+    [422, "no_accounts"],
     [409, "too_many_posts"],
     [409, "not_editable"],
     [429, "publish_quota"],
@@ -111,6 +132,45 @@ describe("post checks", () => {
     expect(checkPost("hi", Array(5).fill("https://example.com/a.png"))).toBe("too_many_images");
     expect(checkPost("hi", ["http://example.com/a.png"])).toBe("invalid_media");
     expect(checkPost("hi", ["https://"])).toBe("invalid_media");
+  });
+
+  it("counts graphemes on Bluesky and code points elsewhere, as brain does", () => {
+    expect(charCount("bluesky", "é")).toBe(1);
+    expect(charCount("threads", "é")).toBe(2);
+    expect(charCount("instagram", "🦀")).toBe(1);
+  });
+
+  it("applies each platform's limits from brain", () => {
+    const img = (n: number) => Array(n).fill("https://example.com/a.jpg");
+    expect(limits).toEqual({
+      bluesky: { chars: 300, media: 4, thread: true },
+      threads: { chars: 500, media: 20, thread: true },
+      facebook: { chars: 63_206, media: 10, thread: false },
+      instagram: { chars: 2200, media: 10, thread: false },
+    });
+    expect(checkPost("a".repeat(500), [], "threads")).toBeNull();
+    expect(checkPost("a".repeat(501), [], "threads")).toBe("too_long");
+    expect(checkPost("x", img(20), "threads")).toBeNull();
+    expect(checkPost("x", img(21), "threads")).toBe("too_many_images");
+    expect(checkPost("a".repeat(63_206), img(10), "facebook")).toBeNull();
+    expect(checkPost("a".repeat(63_207), [], "facebook")).toBe("too_long");
+    expect(checkPost("x", img(11), "facebook")).toBe("too_many_images");
+    expect(checkPost("no picture", [], "instagram")).toBe("media_required");
+    expect(checkPost("", img(1), "instagram")).toBeNull();
+    expect(checkPost(" ", [], "instagram")).toBe("empty_post");
+    expect(checkPost("a".repeat(2200), img(10), "instagram")).toBeNull();
+    expect(checkPost("a".repeat(2201), img(1), "instagram")).toBe("too_long");
+    // A long Instagram caption without media: brain answers media_required first.
+    expect(checkPost("a".repeat(2201), [], "instagram")).toBe("media_required");
+  });
+
+  it("allows threads only on Bluesky and Threads", () => {
+    const part = [{ body: "two", media: ["https://example.com/a.jpg"] }];
+    expect(checkThread("hi", [], part, "threads")).toBeNull();
+    expect(checkThread("hi", [], [{ body: "a".repeat(501), media: [] }], "threads")).toEqual({ failure: "too_long", part: 1 });
+    expect(checkThread("hi", [], part, "facebook")).toEqual({ failure: "thread_not_supported" });
+    expect(checkThread("hi", ["https://example.com/a.jpg"], part, "instagram")).toEqual({ failure: "thread_not_supported" });
+    expect(checkThread("hi", [], [], "facebook")).toBeNull();
   });
 
   it("checks every post of a thread and names the follow-up at fault", () => {

@@ -15,10 +15,12 @@ export type Target = {
 };
 // A follow-up post of a thread: a reply to the one before.
 export type ThreadPart = { body: string; media: string[] };
+// The platforms brain publishes to.
+export type Platform = "bluesky" | "threads" | "facebook" | "instagram";
 export type Post = {
   id: string;
   social_set_id: string;
-  platform: "bluesky";
+  platform: Platform;
   body: string;
   media: string[];
   thread: ThreadPart[];
@@ -32,10 +34,12 @@ export type Post = {
   targets: Target[];
   // The lists the post is in, with its 1-based position ("Part N") in each.
   lists: { id: string; name: string; position: number }[];
+  // Ties the posts of one POST /v1/post-groups call; null for a single post.
+  group_id: string | null;
 };
 export type PostInput = {
   social_set_id: string;
-  platform: "bluesky";
+  platform: Platform;
   body: string;
   media: string[];
   thread?: ThreadPart[];
@@ -44,12 +48,24 @@ export type PostInput = {
   // A list to put the post in; one it is already in would move it to the end.
   list_id?: string;
 };
-export type PostFilter = { social_set_id?: string; status?: PostStatus; from?: string; to?: string };
+// One post per platform, each with the shared body, media and thread unless overridden.
+export type PostGroupInput = Omit<PostInput, "platform"> & {
+  platforms: Platform[];
+  overrides?: Partial<Record<Platform, { body?: string; media?: string[]; thread?: ThreadPart[] }>>;
+};
+export type PostFilter = { social_set_id?: string; status?: PostStatus; from?: string; to?: string; group_id?: string };
 
-// Bluesky's limits, as brain checks them.
-export const MAX_GRAPHEMES = 300;
+// Each platform's limits, as brain's crates/core/src/post.rs checks them. `chars` counts graphemes
+// on Bluesky and Unicode code points elsewhere; `media` is images or videos per post.
+export const limits: Record<Platform, { chars: number; media: number; thread: boolean }> = {
+  bluesky: { chars: 300, media: 4, thread: true },
+  threads: { chars: 500, media: 20, thread: true },
+  facebook: { chars: 63_206, media: 10, thread: false },
+  instagram: { chars: 2200, media: 10, thread: false },
+};
+export const publishing = Object.keys(limits) as Platform[];
+export const isPlatform = (p: string): p is Platform => p in limits;
 export const MAX_BYTES = 3000;
-export const MAX_IMAGES = 4;
 export const MAX_PARTS = 25;
 
 const enc = encodeURIComponent;
@@ -60,6 +76,8 @@ export function listPosts(filter: PostFilter = {}) {
 }
 export const getPost = (id: string) => api<Post>(`/v1/posts/${enc(id)}`);
 export const createPost = (input: PostInput) => api<Post>("/v1/posts", "POST", input);
+export const createPostGroup = (input: PostGroupInput) =>
+  api<{ group_id: string; posts: Post[] }>("/v1/post-groups", "POST", input);
 export const updatePost = (id: string, input: PostInput) => api<Post>(`/v1/posts/${enc(id)}`, "PUT", input);
 // 202 with the post queued; poll getPost until it is published or failed.
 export const publishPost = (id: string) => api<Post>(`/v1/posts/${enc(id)}/publish`, "POST");
@@ -84,22 +102,33 @@ const segmenter = typeof Intl !== "undefined" && "Segmenter" in Intl ? new Intl.
 export const graphemes = (text: string) => (segmenter ? [...segmenter.segment(text)].length : [...text].length);
 export const utf8Bytes = (text: string) => new TextEncoder().encode(text).length;
 
-// Mirrors brain's checks, so most mistakes show before a request. brain stays the judge.
-export function checkPost(body: string, media: string[]): Failure | null {
+// The length brain checks against limits[platform].chars.
+export const charCount = (platform: Platform, text: string) => (platform === "bluesky" ? graphemes(text) : [...text].length);
+
+// Mirrors brain's checks, in brain's order, so most mistakes show before a request. brain stays the judge.
+export function checkPost(body: string, media: string[], platform: Platform = "bluesky"): Failure | null {
+  const max = limits[platform];
   if (!body.trim() && media.length === 0) return "empty_post";
-  if (graphemes(body) > MAX_GRAPHEMES || utf8Bytes(body) > MAX_BYTES) return "too_long";
-  if (media.length > MAX_IMAGES) return "too_many_images";
+  if (platform === "instagram" && media.length === 0) return "media_required";
+  if (charCount(platform, body) > max.chars || (platform === "bluesky" && utf8Bytes(body) > MAX_BYTES)) return "too_long";
+  if (media.length > max.media) return "too_many_images";
   if (media.some((m) => !/^https:\/\/[^\s/]+\/?\S*$/.test(m))) return "invalid_media";
   return null;
 }
 
 // checkPost for the first post and every part; `part` is the 1-based follow-up at fault, as brain answers.
-export function checkThread(body: string, media: string[], thread: ThreadPart[]): { failure: Failure; part?: number } | null {
-  const first = checkPost(body, media);
+export function checkThread(
+  body: string,
+  media: string[],
+  thread: ThreadPart[],
+  platform: Platform = "bluesky",
+): { failure: Failure; part?: number } | null {
+  const first = checkPost(body, media, platform);
   if (first) return { failure: first };
+  if (thread.length > 0 && !limits[platform].thread) return { failure: "thread_not_supported" };
   if (thread.length > MAX_PARTS) return { failure: "too_many_parts" };
   for (const [i, p] of thread.entries()) {
-    const failure = checkPost(p.body, p.media);
+    const failure = checkPost(p.body, p.media, platform);
     if (failure) return { failure, part: i + 1 };
   }
   return null;

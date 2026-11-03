@@ -29,12 +29,11 @@ import {
 } from "@/lib/connections";
 import { listSets, setAccountSets, setNames, type SocialSet } from "@/lib/sets";
 import { manages } from "@/lib/teams";
-import { PlatformIcon, platforms } from "@/components/platform-icons";
+import { PlatformIcon, platformOf, platforms } from "@/components/platform-icons";
 import { isFailure, problemText, Status, useAction } from "@/components/team-ui";
 
 const heading = "font-display text-xl font-extrabold tracking-tight";
 const date = (iso: string) => new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
-const platformOf = (id: string) => platforms.find((p) => p.id === id);
 
 const connectMessages: Partial<Record<Failure, string>> = {
   invalid_handle: "That handle wasn't found on Bluesky. Check it, for example alice.bsky.social.",
