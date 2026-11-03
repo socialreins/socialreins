@@ -140,22 +140,22 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <SessionContext.Provider value={session}>
-      <div className={`min-h-dvh md:grid ${collapsed ? "md:grid-cols-[4.75rem_minmax(0,1fr)]" : "md:grid-cols-[16rem_minmax(0,1fr)]"}`}>
+      <div className={`app-root min-h-dvh md:grid ${collapsed ? "md:grid-cols-[4rem_minmax(0,1fr)]" : "md:grid-cols-[15rem_minmax(0,1fr)]"}`}>
         <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-20 focus:rounded-full focus:bg-paper focus:px-4 focus:py-2 focus:font-bold">
           Skip to content
         </a>
         <aside
-          className="sticky top-0 z-10 border-b border-ink/10 bg-canvas md:h-dvh md:border-r md:border-b-0"
+          className="sticky top-0 z-10 border-b border-[var(--line)] bg-[var(--side)] md:h-dvh md:border-r md:border-b-0"
           onKeyDown={(e) => {
             if (e.key === "Escape" && open) closeMenu();
           }}
         >
           <div className="flex h-full flex-col">
             <div
-              className={`flex items-center justify-between gap-3 px-4 py-3 md:pt-6 md:pb-5 ${collapsed ? "md:flex-col md:px-0" : "md:px-5"}`}
+              className={`flex items-center justify-between gap-3 px-4 py-3 md:pt-4 md:pb-3 ${collapsed ? "md:flex-col md:px-0" : "md:px-4"}`}
             >
-              <Link href="/app/posts" className="flex items-center gap-2.5 font-display text-lg font-extrabold tracking-tight">
-                <LogoMark className="size-8" />
+              <Link href="/app/posts" className="flex items-center gap-2 font-display text-base font-bold tracking-tight">
+                <LogoMark className="size-7" />
                 <span className={collapsed ? "md:sr-only" : ""}>SocialReins</span>
               </Link>
               <button
@@ -183,7 +183,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
             <div
               id="app-menu"
-              className={`${open ? "flex" : "hidden"} max-h-[calc(100dvh-4rem)] flex-1 flex-col gap-6 overflow-y-auto px-3 pb-5 md:flex md:max-h-none`}
+              className={`${open ? "flex" : "hidden"} max-h-[calc(100dvh-4rem)] min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-2.5 pb-4 md:flex md:max-h-none`}
             >
               {/* Following a link closes the menu on small screens. */}
               <nav aria-label="App" onClick={(e) => (e.target as Element).closest("a") && setOpen(false)}>
@@ -210,7 +210,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <PasskeyPrompt />
           </Suspense>
         )}
-        <main id="main" tabIndex={-1} className="app-main mx-auto w-full max-w-6xl px-4 py-8 focus:outline-none sm:px-8 md:py-10">
+        <main id="main" tabIndex={-1} className="app-main mx-auto w-full max-w-7xl px-4 py-6 focus:outline-none sm:px-8 md:py-8">
           {content}
         </main>
       </div>
@@ -224,7 +224,7 @@ function CurrentNavGroups(props: { groups: NavGroup[]; collapsed: boolean }) {
 
 function NavGroups({ path, groups, collapsed }: { path: string; groups: NavGroup[]; collapsed: boolean }) {
   return (
-    <div className={`grid gap-4 ${collapsed ? "md:gap-2" : ""}`}>
+    <div className={`grid gap-3 ${collapsed ? "md:gap-2" : ""}`}>
       {groups.map((group, i) => (
         <NavSection key={group.label} path={path} group={group} collapsed={collapsed} first={i === 0} />
       ))}
@@ -244,22 +244,22 @@ function NavSection({ path, group, collapsed, first }: { path: string; group: Na
   const id = `nav-${group.label.toLowerCase().replaceAll(" ", "-")}`;
 
   return (
-    <div className={collapsed && !first ? "md:border-t md:border-ink/10 md:pt-2" : ""}>
+    <div className={collapsed && !first ? "md:border-t md:border-[var(--line)] md:pt-2" : ""}>
       <button
         type="button"
         aria-expanded={open}
         aria-controls={id}
         aria-disabled={holdsPage || undefined}
-        className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-1 text-xs font-bold tracking-wider text-ink-soft uppercase ${
+        className={`flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-1 text-xs text-[var(--faint)] ${
           holdsPage ? "cursor-default" : "hover:text-ink"
         } ${collapsed ? "md:hidden" : ""}`}
         onClick={() => !holdsPage && store(key, closed ? "open" : "closed")}
       >
         {group.label}
-        {!holdsPage && <Icon name="down" className={`size-4 transition-transform ${open ? "" : "-rotate-90"}`} />}
+        {!holdsPage && <Icon name="down" className={`size-3.5 transition-transform ${open ? "" : "-rotate-90"}`} />}
       </button>
       {/* The rail shows every group, since its headings are hidden. */}
-      <ul id={id} className={`mt-1 gap-0.5 ${open ? "grid" : "hidden"} ${collapsed ? "md:mt-0 md:grid" : ""}`}>
+      <ul id={id} className={`mt-0.5 gap-px ${open ? "grid" : "hidden"} ${collapsed ? "md:mt-0 md:grid" : ""}`}>
         {group.items.map((item) => {
           const active = isActive(path, item.href);
           return (
@@ -268,11 +268,11 @@ function NavSection({ path, group, collapsed, first }: { path: string; group: Na
                 href={item.href}
                 aria-current={active ? "page" : undefined}
                 title={collapsed ? item.label : undefined}
-                className={`flex items-center gap-3 rounded-xl px-3 py-2 font-bold ${collapsed ? "md:justify-center" : ""} ${
-                  active ? "bg-ink text-paper" : "text-ink-soft hover:bg-ink/5 hover:text-ink"
+                className={`app-nav-link flex items-center gap-2.5 rounded-md px-2.5 py-1.5 ${collapsed ? "md:justify-center" : ""} ${
+                  active ? "" : "text-[#3f3b37] hover:bg-ink/[0.045] hover:text-ink"
                 }`}
               >
-                <Icon name={item.icon} className={`size-5 ${active ? "text-signal" : ""}`} />
+                <Icon name={item.icon} className={`size-4 ${active ? "" : "text-[var(--faint)]"}`} />
                 <span className={collapsed ? "md:sr-only" : ""}>{item.label}</span>
               </Link>
             </li>
