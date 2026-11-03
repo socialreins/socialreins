@@ -118,6 +118,8 @@ const codes = [
   "invalid_order",
   "invalid_position",
   "invalid_url",
+  "invalid_pick",
+  "nothing_picked",
 ] as const;
 export type Failure = (typeof codes)[number] | "rate_limited" | "signed_out" | "timeout" | "error";
 export type Passkey = { id: string; name: string; created_at: string; last_used_at: string | null };

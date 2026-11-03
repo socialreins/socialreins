@@ -27,12 +27,25 @@ export const disconnect = (id: string) => api(`/v1/connections/${encodeURICompon
 
 // brain names Facebook and Instagram together as "meta".
 export const providerKey = (platform: string) => (platform === "facebook" || platform === "instagram" ? "meta" : platform);
+export const metaName = "Facebook and Instagram";
 
 // Platforms that connect by OAuth: a full-page navigation to brain, which sends the browser to the
-// platform and back to /app/connections. Add meta, linkedin or x here once brain has their flow.
-export const oauthProviders = new Set(["threads"]);
+// platform and back to /app/connections. Add linkedin or x here once brain has their flow.
+export const oauthProviders = new Set(["threads", "facebook", "instagram"]);
 // Platforms with a connect flow in this web app. The rest wait for theirs.
 export const connectable = new Set(["bluesky", ...oauthProviders]);
+// The provider names brain's callback puts in the URL.
+const callbackProviders = new Set([...oauthProviders].map(providerKey));
+
+// One Meta login connects Pages and their Instagram accounts; brain keeps the granted ones (tokens
+// included) for 15 minutes and lands on ?pick=meta so the user picks which to connect.
+export type MetaChoice = { id: string; name: string; picture_url: string | null };
+export type MetaChoices = { facebook: MetaChoice[]; instagram: MetaChoice[] };
+export const metaPickPending = (search: string) => new URLSearchParams(search).get("pick") === "meta";
+export const getMetaPick = () => api<MetaChoices>("/v1/connections/meta/pick");
+export const pickMeta = (facebook: string[], instagram: string[]) =>
+  api<Connection[]>("/v1/connections/meta/pick", "POST", { facebook, instagram });
+export const cancelMetaPick = () => api("/v1/connections/meta/pick", "DELETE");
 
 // brain checks the session and the role, and connects to the current team.
 export const connectUrl = (platform: string) =>
@@ -46,7 +59,7 @@ export function connectResult(search: string): ConnectResult | null {
   const error = q.get("connect_error");
   const provider = connected ?? q.get("provider") ?? "";
   // Only our own providers, so a crafted link can't put arbitrary text on the page.
-  if (!oauthProviders.has(provider)) return null;
+  if (!callbackProviders.has(provider)) return null;
   if (connected) return { provider, error: null };
   return error ? { provider, error } : null;
 }
@@ -55,7 +68,12 @@ export function connectResultText({ provider, error }: ConnectResult, name: stri
   const platform = name || "the platform";
   switch (error) {
     case null:
-      return `Connected your ${platform} account.`;
+      // brain only says connected=meta when every granted account was already here.
+      return provider === "meta"
+        ? `Your ${platform} accounts were already connected. Their sign-ins are renewed.`
+        : `Connected your ${platform} account.`;
+    case "no_pages":
+      return "Facebook didn't share any Pages. Connect again and pick at least one Page when Facebook asks.";
     case "not_configured":
       return `${platform} isn't set up on this server.`;
     case "unauthorized":
@@ -82,5 +100,16 @@ export function providerState(platform: string, providers: Provider[]): Provider
   return connectable.has(platform) ? "available" : "coming_soon";
 }
 
-// Only Bluesky's image CDN path is allowed by the CSP's img-src (proxy.ts), so anything else falls back to an initial.
-export const safeAvatar = (url: string | null) => (url?.startsWith("https://cdn.bsky.app/img/") ? url : null);
+// Only Bluesky's image CDN path and Meta's image CDNs are allowed by the CSP's img-src (proxy.ts), so anything else
+// falls back to an initial.
+const metaImageHosts = [".fbcdn.net", ".cdninstagram.com"];
+export function safeAvatar(url: string | null) {
+  if (!url) return null;
+  if (url.startsWith("https://cdn.bsky.app/img/")) return url;
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" && metaImageHosts.some((h) => u.hostname.endsWith(h)) ? url : null;
+  } catch {
+    return null;
+  }
+}

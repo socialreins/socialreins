@@ -7,6 +7,7 @@ import {
   disconnect,
   listConnections,
   listProviders,
+  metaPickPending,
   providerState,
   safeAvatar,
 } from "@/lib/connections";
@@ -85,8 +86,9 @@ describe("provider state", () => {
   ];
   it("knows which platforms can connect now", () => {
     expect(providerState("bluesky", providers)).toBe("available");
-    expect(providerState("facebook", providers)).toBe("coming_soon");
-    expect(providerState("instagram", providers)).toBe("coming_soon");
+    expect(providerState("facebook", providers)).toBe("available");
+    expect(providerState("instagram", providers)).toBe("available");
+    expect(providerState("linkedin", [{ provider: "linkedin", configured: true }])).toBe("coming_soon");
     expect(providerState("x", providers)).toBe("not_configured");
     expect(providerState("youtube", providers)).toBe("not_configured");
     expect(providerState("bluesky", [])).toBe("not_configured");
@@ -113,7 +115,28 @@ describe("provider state", () => {
     expect(text("?connect_error=whatever&provider=threads")).toBe("Something went wrong connecting Threads. Try again.");
   });
 
-  it("only keeps avatars from Bluesky's CDN", () => {
+  it("reads Meta's results under brain's provider name", () => {
+    expect(connectResult("?connected=meta")).toEqual({ provider: "meta", error: null });
+    // Only brain's provider names, never the platforms it covers.
+    expect(connectResult("?connected=facebook")).toBeNull();
+    expect(connectResult("?connect_error=cancelled&provider=instagram")).toBeNull();
+    const text = (search: string) => connectResultText(connectResult(search)!, "Facebook and Instagram");
+    expect(text("?connected=meta")).toMatch(/already connected/);
+    expect(text("?connect_error=meta_failed&provider=meta")).toMatch(/^Facebook and Instagram didn't let SocialReins connect/);
+    expect(text("?connect_error=no_pages&provider=meta")).toMatch(/didn't share any Pages/);
+    expect(metaPickPending("?pick=meta")).toBe(true);
+    expect(metaPickPending("?pick=other")).toBe(false);
+    expect(metaPickPending("")).toBe(false);
+  });
+
+  it("only keeps avatars from Bluesky's and Meta's CDNs", () => {
+    const fb = "https://scontent-ams2-1.xx.fbcdn.net/v/t39/p.jpg?oh=1";
+    expect(safeAvatar(fb)).toBe(fb);
+    expect(safeAvatar("https://scontent.cdninstagram.com/p.jpg")).toBe("https://scontent.cdninstagram.com/p.jpg");
+    expect(safeAvatar("https://fbcdn.net.evil.com/p.jpg")).toBeNull();
+    expect(safeAvatar("https://evilfbcdn.net/p.jpg")).toBeNull();
+    expect(safeAvatar("http://scontent.xx.fbcdn.net/p.jpg")).toBeNull();
+    expect(safeAvatar("not a url")).toBeNull();
     expect(safeAvatar("https://cdn.bsky.app/img/avatar/plain/x.jpg")).toBe("https://cdn.bsky.app/img/avatar/plain/x.jpg");
     expect(safeAvatar("https://cdn.bsky.app.evil.com/x.jpg")).toBeNull();
     expect(safeAvatar("http://cdn.bsky.app/img/x.jpg")).toBeNull();
