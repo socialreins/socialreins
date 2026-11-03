@@ -24,6 +24,7 @@ export function useSession() {
 export type NavItem = { href: string; label: string; icon: IconName };
 type NavGroup = { label: string; items: NavItem[] };
 const nav: NavGroup[] = [
+  { label: "", items: [{ href: "/app", label: "Home", icon: "home" }] },
   {
     label: "Publish",
     items: [
@@ -161,7 +162,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div
               className={`flex items-center justify-between gap-3 px-4 py-3 md:h-12 md:border-b md:border-[var(--line)] md:py-0 ${collapsed ? "md:justify-center md:px-0" : "md:px-4"}`}
             >
-              <Link href="/app/posts" className="flex items-center gap-2 font-display text-base font-bold tracking-tight">
+              <Link href="/app" className="flex items-center gap-2 font-display text-base font-bold tracking-tight">
                 <LogoMark className="size-7" />
                 <span className={collapsed ? "md:sr-only" : ""}>SocialReins</span>
               </Link>
@@ -223,25 +224,29 @@ function NavGroups({ path, groups, collapsed }: { path: string; groups: NavGroup
   return (
     <div className={`grid gap-3 ${collapsed ? "md:gap-2" : ""}`}>
       {groups.map((group, i) => (
-        <NavSection key={group.label} path={path} group={group} collapsed={collapsed} first={i === 0} />
+        <NavSection key={group.label || "home"} path={path} group={group} collapsed={collapsed} first={i === 0} />
       ))}
     </div>
   );
 }
 
 // Hash links (Passkeys) point into a page another link already marks as current.
-export const isActive = (path: string, href: string) => !href.includes("#") && (path === href || path.startsWith(`${href}/`));
+// Home (/app) matches only itself, or it would hold every page.
+export const isActive = (path: string, href: string) =>
+  !href.includes("#") && (path === href || (href !== "/app" && path.startsWith(`${href}/`)));
 
 function NavSection({ path, group, collapsed, first }: { path: string; group: NavGroup; collapsed: boolean; first: boolean }) {
   const key = `sidebar-group:${group.label}`;
   const closed = useStored(key) === "closed";
   // The group holding the current page always stays open.
   const holdsPage = group.items.some((item) => isActive(path, item.href));
-  const open = holdsPage || !closed;
-  const id = `nav-${group.label.toLowerCase().replaceAll(" ", "-")}`;
+  // A group without a label (Home) has no heading and is always open.
+  const open = holdsPage || !closed || !group.label;
+  const id = `nav-${group.label.toLowerCase().replaceAll(" ", "-") || "home"}`;
 
   return (
     <div className={collapsed && !first ? "md:border-t md:border-[var(--line)] md:pt-2" : ""}>
+      {group.label && (
       <button
         type="button"
         aria-expanded={open}
@@ -255,6 +260,7 @@ function NavSection({ path, group, collapsed, first }: { path: string; group: Na
         {group.label}
         {!holdsPage && <Icon name="down" className={`size-3.5 transition-transform ${open ? "" : "-rotate-90"}`} />}
       </button>
+      )}
       {/* The rail shows every group, since its headings are hidden. */}
       <ul id={id} className={`mt-0.5 gap-px ${open ? "grid" : "hidden"} ${collapsed ? "md:mt-0 md:grid" : ""}`}>
         {group.items.map((item) => {

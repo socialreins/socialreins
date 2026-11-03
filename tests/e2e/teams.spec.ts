@@ -172,7 +172,7 @@ test("a member sees no management controls and can leave", async ({ page }) => {
   await expect(page.getByRole("combobox")).toHaveCount(0);
   await page.getByRole("button", { name: "Leave team" }).click();
   await page.getByRole("button", { name: "Yes, leave" }).click();
-  await expect(page).toHaveURL("/app/posts");
+  await expect(page).toHaveURL("/app");
   expect(left).toBe("DELETE /v1/team/members/u-me");
 });
 
@@ -213,7 +213,7 @@ test("an owner deletes the team after typing its name, signing in again when nee
   await del.click();
   await expect(page.getByRole("alert").filter({ hasText: "your only team" })).toBeVisible();
   await del.click();
-  await expect(page).toHaveURL("/app/posts");
+  await expect(page).toHaveURL("/app");
   expect(bodies).toEqual([{}, {}, {}]);
 });
 

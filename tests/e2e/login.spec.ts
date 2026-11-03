@@ -37,7 +37,7 @@ test("passkey sign-in with a virtual authenticator goes to the app", async ({ pa
   await page.route("**/auth/me", (route) => route.fulfill({ json: user }));
   await page.goto("/login");
   await page.getByRole("button", { name: "Sign in with a passkey" }).click();
-  await expect(page).toHaveURL("/app/posts");
+  await expect(page).toHaveURL("/app");
   expect(finish?.challenge_id).toBe("c1");
   expect(finish?.credential.rawId).toBe(Buffer.from("cred-1").toString("base64url"));
   expect(finish?.credential.response.userHandle).toBe(Buffer.from("user-1").toString("base64url"));
