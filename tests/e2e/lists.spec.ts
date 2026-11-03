@@ -39,7 +39,9 @@ const list = (extra: Record<string, unknown> = {}) => ({
 async function brain(page: Page) {
   await page.route("**/auth/me", (route) => route.fulfill({ json: me }));
   await page.route(/\/v1\/social-sets$/, (route) => route.fulfill({ json: sets }));
-  await page.route("**/v1/connections", (route) => route.fulfill({ json: [] }));
+  // A Bluesky account in the Default set, so the editor has a platform to post to.
+  const alice = { id: "c1", provider: "bluesky", external_id: "did:plc:alice", handle: "alice.bsky.social", display_name: "Alice", avatar_url: null, set_ids: ["d"] };
+  await page.route("**/v1/connections", (route) => route.fulfill({ json: [alice] }));
 }
 
 test("app links to lists", async ({ page }) => {

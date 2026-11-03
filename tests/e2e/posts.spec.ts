@@ -43,6 +43,7 @@ const post = (id: string, extra: Record<string, unknown> = {}) => ({
   updated_at: "2026-11-01T10:00:00Z",
   targets: [] as Record<string, unknown>[],
   lists: [] as { id: string; name: string; position: number }[],
+  group_id: null as string | null,
   ...extra,
 });
 const target = (extra: Record<string, unknown> = {}) => ({
@@ -98,8 +99,8 @@ test("calendar shows the month's posts, drafts below, with filter and month step
   await page.goto("/app/posts");
   await expect(page.getByRole("heading", { name: "November 2026" })).toBeVisible();
   const table = page.getByRole("table", { name: "Posts in November 2026" });
-  await expect(table.getByRole("link", { name: /^10:30.*Launch day$/ })).toHaveAttribute("href", "/app/posts/p-sched");
-  await expect(table.getByRole("link", { name: /^0?9:00.*Hello Bluesky$/ })).toHaveAttribute("href", "/app/posts/p-pub");
+  await expect(table.getByRole("link", { name: /10:30.*Launch day$/ })).toHaveAttribute("href", "/app/posts/p-sched");
+  await expect(table.getByRole("link", { name: /0?9:00.*Hello Bluesky$/ })).toHaveAttribute("href", "/app/posts/p-pub");
   await expect(table.getByRole("link", { name: "View on Bluesky" })).toHaveAttribute("href", "https://bsky.app/profile/alice.bsky.social/post/1");
   await expect(page.getByRole("region", { name: "Drafts" }).getByRole("link", { name: "An unfinished thought" })).toHaveAttribute("href", "/app/posts/p-draft");
   expect(queries[0]?.get("to")).toBe("2026-11-30T23:00:00.000Z");
@@ -139,7 +140,7 @@ test("on a phone the month is a list of days, not a wide grid", async ({ page })
 test("a team without Bluesky sees a note linking to connections", async ({ page }) => {
   await brain(page, { accounts: [] });
   await page.goto("/app/posts/new");
-  const note = page.getByText("No Bluesky account is connected to this team yet");
+  const note = page.getByText("No Bluesky, Threads, Facebook or Instagram account is connected to this team yet");
   await expect(note).toBeVisible();
   await expect(page.getByRole("link", { name: "Connect an account" })).toHaveAttribute("href", "/app/connections");
 });
@@ -185,7 +186,7 @@ test("compose checks length, images and schedule before asking brain", async ({ 
 });
 
 test("schedule sends the local time as UTC and moves to the post's address", async ({ page }) => {
-  await brain(page);
+  await brain(page, { accounts: [{ ...alice, set_ids: ["d", "s1"] }] });
   let sent: Record<string, unknown> | undefined;
   await page.route("**/v1/posts", (route) => {
     sent = route.request().postDataJSON();
@@ -395,4 +396,148 @@ test("a draft can be edited and deleted", async ({ page }) => {
   await page.getByRole("button", { name: "Yes, delete" }).click();
   await expect(page).toHaveURL("/app/posts");
   expect(calls).toEqual(["GET", "PUT", "DELETE"]);
+});
+
+const account = (id: string, provider: string, name: string) => ({ ...alice, id, provider, external_id: id, handle: null, display_name: name });
+const threadsAcc = account("c2", "threads", "Alice on Threads");
+const instaAcc = account("c3", "instagram", "Alice on Instagram");
+
+test("a post for several platforms is one group, published on each", async ({ page }) => {
+  await brain(page, { accounts: [alice, threadsAcc, instaAcc] });
+  const ids = { bluesky: "g-b", threads: "g-t", instagram: "g-i" } as const;
+  const owner: Record<string, string> = { "g-b": "c1", "g-t": "c2", "g-i": "c3" };
+  let sent: Record<string, unknown> | undefined;
+  let state: Post[] = [];
+  const published: string[] = [];
+  await page.route("**/v1/post-groups", (route) => {
+    sent = route.request().postDataJSON();
+    state = (Object.keys(ids) as (keyof typeof ids)[]).map((p) => post(ids[p], { platform: p, group_id: "g1", body: "Hello all", media: ["https://example.com/a.jpg"] }));
+    return route.fulfill({ status: 201, json: { group_id: "g1", posts: state } });
+  });
+  await page.route(/\/v1\/posts\/g-.\/publish$/, (route) => {
+    const id = route.request().url().split("/").at(-2)!;
+    published.push(id);
+    state = state.map((p) => (p.id === id ? { ...p, status: "queued" } : p));
+    return route.fulfill({ status: 202, json: state.find((p) => p.id === id) });
+  });
+  await page.route(/\/v1\/posts\?group_id=g1$/, (route) => {
+    state = state.map((p) => ({
+      ...p,
+      status: "published",
+      published_at: "2026-11-03T08:00:00Z",
+      targets: [target({ id: `t-${p.id}`, social_account_id: owner[p.id], remote_url: `https://example.com/${p.platform}/1` })],
+    }));
+    return route.fulfill({ json: state });
+  });
+  await page.goto("/app/posts/new");
+  const to = page.getByRole("group", { name: "Post to" });
+  // Every platform with an account in the set is ticked to start with.
+  for (const name of [/Bluesky/, /Threads/, /Instagram/]) await expect(to.getByRole("checkbox", { name })).toBeChecked();
+  await page.getByLabel("Post", { exact: true }).fill("Hello all");
+  await expect(page.getByText("Bluesky: 9 of 300 characters")).toBeVisible();
+  await expect(page.getByText("Threads: 9 of 500 characters")).toBeVisible();
+  await expect(page.getByText("Instagram: 9 of 2,200 characters")).toBeVisible();
+  await page.getByRole("button", { name: "Add image" }).click();
+  await page.getByLabel("Image 1 link").fill("https://example.com/a.jpg");
+  await page.getByRole("button", { name: "Add to thread" }).click();
+  await page.getByRole("textbox", { name: "Post 2" }).fill("Two");
+  await expect(page.getByText("Instagram can't post threads, so it gets only the first post.")).toBeVisible();
+  await page.getByRole("button", { name: "Publish now" }).click();
+
+  await expect(page).toHaveURL("/app/posts/g-b");
+  await expect(page.getByRole("status").filter({ hasText: /^Published on / })).toBeVisible({ timeout: 10_000 });
+  expect(sent).toEqual({
+    social_set_id: "d",
+    platforms: ["bluesky", "threads", "instagram"],
+    body: "Hello all",
+    media: ["https://example.com/a.jpg"],
+    thread: [{ body: "Two", media: [] }],
+    scheduled_at: null,
+    overrides: { instagram: { thread: [] } },
+  });
+  expect(published).toEqual(["g-b", "g-t", "g-i"]);
+  await expect(page.getByRole("link", { name: "View on Bluesky" })).toHaveAttribute("href", "https://example.com/bluesky/1");
+  const others = page.getByRole("region", { name: "Same post on other platforms" });
+  await expect(others.getByRole("link", { name: "Threads post" })).toHaveAttribute("href", "/app/posts/g-t");
+  await expect(others.getByRole("link", { name: "View on Threads" })).toHaveAttribute("href", "https://example.com/threads/1");
+  await expect(others.getByRole("link", { name: "View on Instagram" })).toHaveAttribute("href", "https://example.com/instagram/1");
+});
+
+test("Instagram without an image is flagged before brain is asked", async ({ page }) => {
+  await brain(page, { accounts: [alice, instaAcc] });
+  let sent: Record<string, unknown> | undefined;
+  await page.route("**/v1/posts", (route) => {
+    sent = route.request().postDataJSON();
+    return route.fulfill({ status: 201, json: post("p1", sent) });
+  });
+  await page.goto("/app/posts/new");
+  await page.getByLabel("Post", { exact: true }).fill("Words only");
+  const warning = page.getByRole("listitem").filter({ hasText: "Instagram needs at least one image or video." });
+  await expect(warning).toBeVisible();
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Instagram needs at least one image or video." })).toBeVisible();
+  expect(sent).toBeUndefined();
+
+  // Without Instagram it is a single Bluesky post.
+  await page.getByRole("group", { name: "Post to" }).getByRole("checkbox", { name: /Instagram/ }).uncheck();
+  await expect(warning).toHaveCount(0);
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page).toHaveURL("/app/posts/p1");
+  expect(sent).toMatchObject({ platform: "bluesky", body: "Words only" });
+});
+
+test("each platform can have its own text, counted against its own limit", async ({ page }) => {
+  await brain(page, { accounts: [alice, threadsAcc] });
+  let sent: Record<string, unknown> | undefined;
+  await page.route("**/v1/post-groups", (route) => {
+    sent = route.request().postDataJSON();
+    return route.fulfill({
+      status: 201,
+      json: { group_id: "g1", posts: [post("g-b", { platform: "bluesky", group_id: "g1", body: "Short" }), post("g-t", { platform: "threads", group_id: "g1" })] },
+    });
+  });
+  await page.goto("/app/posts/new");
+  const body = page.getByLabel("Post", { exact: true });
+  await body.fill("a".repeat(301));
+  await expect(page.getByRole("alert").filter({ hasText: "1 over Bluesky's limit of 300" })).toBeVisible();
+  await expect(body).toHaveAttribute("aria-invalid", "true");
+
+  await page.getByRole("button", { name: "Customize for Bluesky" }).click();
+  const own = page.getByRole("textbox", { name: "Bluesky text" });
+  await expect(own).toBeFocused();
+  await expect(own).toHaveValue("a".repeat(301));
+  await own.fill("Short");
+  await expect(page.getByText("Bluesky: 5 of 300 characters")).toBeVisible();
+  await expect(page.getByText("Threads: 301 of 500 characters")).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "over" })).toHaveCount(0);
+  await expect(body).not.toHaveAttribute("aria-invalid", "true");
+
+  await page.getByRole("button", { name: "Use the main post on Bluesky" }).click();
+  await expect(page.getByRole("button", { name: "Customize for Bluesky" })).toBeFocused();
+  await expect(page.getByRole("alert").filter({ hasText: "1 over Bluesky's limit" })).toBeVisible();
+  await page.getByRole("button", { name: "Customize for Bluesky" }).click();
+  await own.fill("Short");
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page.getByText("Saved 2 drafts, one per platform.")).toBeVisible();
+  expect(sent).toMatchObject({ platforms: ["bluesky", "threads"], body: "a".repeat(301), overrides: { bluesky: { body: "Short" } } });
+  await expect(page).toHaveURL("/app/posts/g-b");
+  await expect(page.getByLabel("Post", { exact: true })).toHaveValue("Short");
+  await expect(page.getByRole("region", { name: "Same post on other platforms" }).getByRole("link", { name: "Threads post" })).toBeVisible();
+});
+
+test("calendar marks each post with its platform", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-11-10T12:00:00+01:00"));
+  await brain(page);
+  await page.route(/\/v1\/posts(\?.*)?$/, (route) =>
+    route.fulfill({
+      json:
+        new URL(route.request().url()).searchParams.get("status") === "draft"
+          ? []
+          : ["bluesky", "instagram"].map((p) => post(`p-${p}`, { platform: p, group_id: "g1", status: "scheduled", scheduled_at: "2026-11-12T09:30:00Z", body: "Launch day" })),
+    }),
+  );
+  await page.goto("/app/posts");
+  const table = page.getByRole("table", { name: "Posts in November 2026" });
+  await expect(table.getByRole("link", { name: /^Bluesky: 10:30.*Launch day$/ })).toHaveAttribute("href", "/app/posts/p-bluesky");
+  await expect(table.getByRole("link", { name: /^Instagram: 10:30.*Launch day$/ })).toHaveAttribute("href", "/app/posts/p-instagram");
 });
