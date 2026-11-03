@@ -14,10 +14,11 @@ export default function DataDeletion() {
       </p>
 
       <h2>Remove a connected account</h2>
-      <ol>
+      <ul>
         <li>Sign in and open Accounts.</li>
-        <li>Choose Disconnect on the account. Its stored token or app password is deleted at once.</li>
-      </ol>
+        <li>Choose Disconnect on the account, then Yes, disconnect. Its stored token or app password is deleted at once.</li>
+        <li>Only team owners and admins can disconnect. Other members can ask one of them, or <ContactLink />.</li>
+      </ul>
       <p>
         For Facebook, Instagram or Threads you can also remove SocialReins in your Facebook or Instagram settings under
         Apps and websites. That stops SocialReins from using the account; disconnect it here as well to delete the stored
@@ -26,7 +27,7 @@ export default function DataDeletion() {
 
       <h2>Delete your whole account</h2>
       <p>
-        <ContactLink /> from the email address on your account and ask for it to be deleted. We delete your account and the
+        To delete everything, <ContactLink /> from the email address on your account and ask for it to be deleted. We delete your account and the
         data tied to it, including your connected accounts and posts, and confirm by email when it is done.
       </p>
 

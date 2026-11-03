@@ -11,6 +11,7 @@ test("privacy policy covers Google user data and is dated", async ({ page }) => 
     "https://developers.google.com/terms/api-services-user-data-policy",
   );
   await expect(page.getByRole("link", { name: "contact us" }).first()).toHaveAttribute("href", "/contact");
+  await expect(page.getByRole("link", { name: "Data Deletion" })).toHaveAttribute("href", "/data-deletion");
 });
 
 test("terms are dated and link the privacy policy", async ({ page }) => {
@@ -31,6 +32,6 @@ test("data deletion page explains how to delete data", async ({ page }) => {
   await page.goto("/data-deletion");
   await expect(page.getByRole("heading", { name: "Data Deletion", level: 1 })).toBeVisible();
   await expect(page.getByText(/token or app password is deleted at once/)).toBeVisible();
-  await expect(page.getByRole("link", { name: "contact us" })).toHaveAttribute("href", "/contact");
+  await expect(page.getByRole("link", { name: "contact us" }).first()).toHaveAttribute("href", "/contact");
   await expect(page.getByRole("link", { name: "Privacy Policy" })).toHaveAttribute("href", "/privacy");
 });
