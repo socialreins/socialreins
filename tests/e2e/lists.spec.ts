@@ -122,7 +122,7 @@ test("adds, reorders and removes posts in a list", async ({ page }) => {
 
   await page.goto("/app/lists/l1");
   await expect(page.getByRole("heading", { name: "Series" })).toBeVisible();
-  await expect(page.getByText("All sets")).toBeVisible();
+  await expect(page.locator("#main").getByText("All sets")).toBeVisible();
   const items = page.getByRole("list", { name: "Posts in Series" }).getByRole("listitem");
   await expect(items).toHaveCount(1);
 

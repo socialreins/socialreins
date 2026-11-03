@@ -50,23 +50,27 @@ test("app shows the team switcher, switches and creates a team", async ({ page }
     return route.fulfill({ json: { id: "t2", name: "Beta", role: "member" } });
   });
   await page.goto("/app");
-  const team = page.getByRole("region", { name: "Team" });
-  await expect(team).toContainText("AcmeOwner");
-  await expect(page.getByRole("link", { name: "Manage team" })).toHaveAttribute("href", "/app/team");
-  await page.getByRole("button", { name: "Switch", exact: true }).click();
+  const crumbs = page.getByRole("navigation", { name: "Breadcrumb" });
+  await crumbs.getByRole("button", { name: "Acme", exact: true }).click();
+  const team = page.locator("#team-menu");
+  await expect(team.getByRole("button", { name: /Acme/ })).toHaveAttribute("aria-current", "true");
+  await expect(team.getByRole("link", { name: "Manage team" })).toHaveAttribute("href", "/app/team");
+  await team.getByRole("button", { name: /Beta/ }).click();
   await expect(page.getByText("Switched to Beta.")).toBeFocused();
   expect(switched).toEqual({ team_id: "t2" });
-  await expect(team).toContainText("BetaMember");
+  await expect(crumbs.getByRole("button", { name: "Beta", exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "New team" }).click();
+  await team.getByRole("button", { name: "New team" }).click();
   await expect(page.getByLabel("New team name")).toBeFocused();
   await page.getByLabel("New team name").fill("Gamma");
   await page.getByRole("button", { name: "Create team" }).click();
   await expect(page.getByText("Created Gamma. It is now your current team.")).toBeFocused();
-  await expect(team).toContainText("GammaOwner");
+  await expect(crumbs.getByRole("button", { name: "Gamma", exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(team).toBeHidden();
 });
 
-test("long team names and emails stay inside the sidebar", async ({ page }) => {
+test("long team names stay inside the top bar and emails inside the sidebar", async ({ page }) => {
   const long = "Bytech Social Media Marketing Agency International";
   await page.route("**/auth/me", (route) =>
     route.fulfill({ json: me("owner", { email: "someone.with.a.really.long.address@example-company.com", current_team: { id: "t1", name: long, role: "owner" } }) }),
@@ -75,11 +79,15 @@ test("long team names and emails stay inside the sidebar", async ({ page }) => {
     route.fulfill({ json: [{ id: "t1", name: long, role: "owner" }, { id: "t2", name: `${long} Second Office`, role: "member" }] }),
   );
   await page.goto("/app");
-  const team = page.getByRole("region", { name: "Team" });
-  await expect(team).toContainText(long);
-  await expect(page.getByLabel("Switch to another team")).toBeVisible();
-  const [card, aside] = await Promise.all([team.boundingBox(), page.locator("aside").boundingBox()]);
-  expect(card!.x + card!.width).toBeLessThanOrEqual(aside!.x + aside!.width);
+  const button = page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: long });
+  await expect(button).toBeVisible();
+  const [box, bar] = await Promise.all([button.boundingBox(), page.locator("header").boundingBox()]);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(bar!.x + bar!.width);
+  await button.click();
+  const panel = await page.locator("#team-menu").boundingBox();
+  expect(panel!.x + panel!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  const [account, aside] = await Promise.all([page.getByText("someone.with.a.really.long.address@example-company.com").boundingBox(), page.locator("aside").boundingBox()]);
+  expect(account!.x + account!.width).toBeLessThanOrEqual(aside!.x + aside!.width);
 });
 
 test("app explains when sign-in can't be checked", async ({ page }) => {

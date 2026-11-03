@@ -140,6 +140,8 @@ test("Escape closes the passkey dialog and hides it too", async ({ page }) => {
   await expect(dialog(page)).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(dialog(page)).toHaveCount(0);
+  // The close event, which saves the snooze, runs a moment after the dialog hides.
+  await expect(page.locator("#main")).toBeFocused();
   await page.reload();
   await page.waitForTimeout(500);
   await expect(dialog(page)).toHaveCount(0);

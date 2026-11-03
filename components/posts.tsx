@@ -9,6 +9,7 @@ import { listPosts, monthRange, monthWeeks, postDay, sameDay, type Post, type Po
 import { listSets, type SocialSet } from "@/lib/sets";
 import { PlatformIcon, platforms } from "@/components/platform-icons";
 import { isFailure, problemText } from "@/components/team-ui";
+import { useCurrentSet } from "@/components/app-shell";
 import { Icon } from "@/components/ui";
 
 export const postMessages: Partial<Record<Failure, ReactNode>> = {
@@ -127,7 +128,8 @@ function MonthList({ posts, y, m, title }: { posts: Post[]; y: number; m: number
 export function Posts() {
   const now = new Date();
   const [month, setMonth] = useState({ y: now.getFullYear(), m: now.getMonth() });
-  const [setId, setSetId] = useState("");
+  // The set picked in the top bar filters the calendar and drafts.
+  const [setId] = useCurrentSet();
   const [sets, setSets] = useState<SocialSet[] | Failure | null>(null);
   const [posts, setPosts] = useState<Post[] | Failure | null>(null);
   const [drafts, setDrafts] = useState<Post[] | Failure | null>(null);
@@ -175,19 +177,6 @@ export function Posts() {
               {title}
             </h2>
           </div>
-          {Array.isArray(sets) && (
-            <label className="flex items-center gap-2 text-sm font-bold">
-              Set
-              <select value={setId} onChange={(e) => setSetId(e.target.value)} className="field w-auto py-1.5 font-normal">
-                <option value="">All sets</option>
-                {sets.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
         </div>
         {posts === null ? (
           <div className="h-96 rounded-2xl bg-ink/5 motion-safe:animate-pulse" role="status">
