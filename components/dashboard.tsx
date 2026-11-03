@@ -177,7 +177,10 @@ function Tile({ href, label, value, alert }: { href: string; label: string; valu
       <Link href={href} className="card grid gap-1 px-4 py-3 hover:shadow-[0_0_0_1px_#cfcac4,0_1px_2px_rgb(0_0_0/0.04)]">
         <span className="text-sm text-ink-soft">{label}</span>
         {value === null ? (
-          <span className="h-7 w-10 rounded bg-ink/5 motion-safe:animate-pulse" aria-label="Loading" />
+          <>
+            <span className="sr-only">Loading</span>
+            <span aria-hidden="true" className="h-7 w-10 rounded bg-ink/5 motion-safe:animate-pulse" />
+          </>
         ) : (
           <span className={`text-2xl font-bold tabular-nums ${alert ? "text-signal-deep" : ""}`}>{value}</span>
         )}
