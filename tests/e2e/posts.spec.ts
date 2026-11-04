@@ -140,7 +140,7 @@ test("on a phone the month is a list of days, not a wide grid", async ({ page })
 test("a team without Bluesky sees a note linking to connections", async ({ page }) => {
   await brain(page, { accounts: [] });
   await page.goto("/app/posts/new");
-  const note = page.getByText("No Bluesky, Threads, LinkedIn, YouTube, Facebook or Instagram account is connected to this team yet");
+  const note = page.getByText("No Bluesky, Threads, LinkedIn, X, YouTube, Facebook or Instagram account is connected to this team yet");
   await expect(note).toBeVisible();
   await expect(page.getByRole("link", { name: "Connect an account" })).toHaveAttribute("href", "/app/connections");
 });
@@ -505,6 +505,51 @@ test("LinkedIn takes 3000 characters and no thread", async ({ page }) => {
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page).toHaveURL("/app/posts/p1");
   expect(sent).toMatchObject({ platform: "linkedin", body: "a".repeat(3000) });
+});
+
+const xAcc = { ...account("c6", "x", "Ann on X"), handle: "ann_lee" };
+
+test("X counts its own way, takes four images and a thread", async ({ page }) => {
+  await brain(page, { accounts: [xAcc] });
+  let sent: Record<string, unknown> | undefined;
+  await page.route("**/v1/posts", (route) => {
+    sent = route.request().postDataJSON();
+    return route.fulfill({ status: 201, json: post("p1", sent) });
+  });
+  await page.goto("/app/posts/new");
+  const body = page.getByLabel("Post", { exact: true });
+  const over = (text: string) => page.getByRole("alert").filter({ hasText: text });
+
+  // A link counts 23 however long it is, a Japanese character 2.
+  await body.fill(`${"a".repeat(256)} https://example.com/${"b".repeat(80)}`);
+  await expect(page.getByText("X: 280 of 280 characters")).toBeVisible();
+  await body.fill(`${"a".repeat(257)} https://example.com/${"b".repeat(80)}`);
+  await expect(over("1 over X's limit of 280")).toBeVisible();
+  await body.fill("日".repeat(141));
+  await expect(page.getByText("X: 282 of 280 characters")).toBeVisible();
+  await body.fill("日".repeat(140));
+  await expect(page.getByText("X: 280 of 280 characters")).toBeVisible();
+  await expect(page.getByText(/X takes up to 4 JPEG, PNG or WebP images, or one GIF or MP4 or MOV video\./)).toBeVisible();
+
+  // Four images at most.
+  await body.fill("Hello X");
+  for (const n of [1, 2, 3, 4]) {
+    await page.getByRole("button", { name: "Add image" }).click();
+    await page.getByLabel(`Image ${n} link`).fill(`https://example.com/${n}.png`);
+  }
+  await expect(page.getByRole("button", { name: "Add image" })).toHaveCount(0);
+
+  // Threads are allowed.
+  await page.getByRole("button", { name: "Add to thread" }).click();
+  await page.getByRole("textbox", { name: "Post 2" }).fill("Two");
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page).toHaveURL("/app/posts/p1");
+  expect(sent).toMatchObject({
+    platform: "x",
+    body: "Hello X",
+    media: [1, 2, 3, 4].map((n) => `https://example.com/${n}.png`),
+    thread: [{ body: "Two", media: [] }],
+  });
 });
 
 const youtubeAcc = account("c5", "youtube", "Ann on YouTube");

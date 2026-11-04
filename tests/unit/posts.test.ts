@@ -18,6 +18,7 @@ import {
   toLocalInput,
   updatePost,
   utf8Bytes,
+  xWeight,
   youtubeText,
 } from "@/lib/posts";
 import { apiUrl } from "@/lib/waitlist";
@@ -206,6 +207,7 @@ describe("post checks", () => {
       facebook: { chars: 63_206, media: 10, thread: false },
       instagram: { chars: 2200, media: 10, thread: false },
       youtube: { chars: 100, media: 1, thread: false },
+      x: { chars: 280, media: 4, thread: true },
     });
     expect(checkPost("a".repeat(500), [], "threads")).toBeNull();
     expect(checkPost("a".repeat(501), [], "threads")).toBe("too_long");
@@ -224,6 +226,40 @@ describe("post checks", () => {
     expect(checkPost("a".repeat(2201), img(1), "instagram")).toBe("too_long");
     // A long Instagram caption without media: brain answers media_required first.
     expect(checkPost("a".repeat(2201), [], "instagram")).toBe("media_required");
+  });
+
+  it("counts an X post's weight as brain does: links 23, CJK and emoji 2", () => {
+    expect(xWeight("hello")).toBe(5);
+    expect(xWeight("é ü")).toBe(3);
+    expect(xWeight("日本")).toBe(4);
+    expect(xWeight("🙂")).toBe(2);
+    expect(xWeight("https://example.com/a/very/long/path?x=1")).toBe(23);
+    expect(xWeight("http://a.co")).toBe(23);
+    expect(xWeight("see https://example.com.")).toBe(4 + 23 + 1);
+    expect(xWeight("example.com/x")).toBe(23);
+    expect(xWeight("e.g. this")).toBe(9);
+    expect(xWeight("a\nb  c")).toBe(6);
+    expect(charCount("x", "日本")).toBe(4);
+  });
+
+  it("takes 280 weighted characters, 4 images and threads on X", () => {
+    const img = (n: number) => Array(n).fill("https://example.com/a.jpg");
+    expect(checkPost("a".repeat(280), [], "x")).toBeNull();
+    expect(checkPost("a".repeat(281), [], "x")).toBe("too_long");
+    expect(checkPost("日".repeat(140), [], "x")).toBeNull();
+    expect(checkPost("日".repeat(141), [], "x")).toBe("too_long");
+    const link = (n: number) => `${"a".repeat(n)} https://example.com/${"b".repeat(80)}`;
+    expect(checkPost(link(256), [], "x")).toBeNull();
+    expect(checkPost(link(257), [], "x")).toBe("too_long");
+    expect(checkPost("x", img(4), "x")).toBeNull();
+    expect(checkPost("x", img(5), "x")).toBe("too_many_images");
+    expect(checkPost("", img(1), "x")).toBeNull();
+    expect(checkPost(" ", [], "x")).toBe("empty_post");
+    expect(checkThread("one", [], [{ body: "two", media: img(4) }], "x")).toBeNull();
+    expect(checkThread("one", [], [{ body: "two", media: [] }, { body: "a".repeat(281), media: [] }], "x")).toEqual({
+      failure: "too_long",
+      part: 2,
+    });
   });
 
   it("takes one video on YouTube, titled by the first line", () => {

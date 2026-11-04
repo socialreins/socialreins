@@ -88,7 +88,7 @@ describe("provider state", () => {
     expect(providerState("bluesky", providers)).toBe("available");
     expect(providerState("facebook", providers)).toBe("available");
     expect(providerState("instagram", providers)).toBe("available");
-    expect(providerState("x", [{ provider: "x", configured: true }])).toBe("coming_soon");
+    expect(providerState("x", [{ provider: "x", configured: true }])).toBe("available");
     expect(providerState("linkedin", [{ provider: "linkedin", configured: true }])).toBe("available");
     expect(providerState("x", providers)).toBe("not_configured");
     expect(providerState("youtube", providers)).toBe("not_configured");
@@ -103,6 +103,20 @@ describe("provider state", () => {
     expect(connectUrl("instagram")).toBe(`${apiUrl}/connections/meta/redirect`);
     expect(connectUrl("linkedin")).toBe(`${apiUrl}/connections/linkedin/redirect`);
     expect(connectUrl("youtube")).toBe(`${apiUrl}/connections/youtube/redirect`);
+    expect(connectUrl("x")).toBe(`${apiUrl}/connections/x/redirect`);
+  });
+
+  it("explains how an X connect went", () => {
+    expect(connectResult("?connected=x")).toEqual({ provider: "x", error: null });
+    const text = (search: string) => connectResultText(connectResult(search)!, "X");
+    expect(text("?connected=x")).toBe("Connected your X account.");
+    expect(text("?connect_error=cancelled&provider=x")).toBe("X connection was cancelled.");
+    expect(text("?connect_error=expired&provider=x")).toBe("That X sign-in expired or didn't start in this browser. Try again.");
+    expect(text("?connect_error=x_failed&provider=x")).toMatch(/^X didn't let SocialReins connect/);
+    expect(text("?connect_error=missing_scopes&provider=x")).toBe(
+      "Tick every permission when X asks, they are all needed to post, upload media and delete posts.",
+    );
+    expect(text("?connect_error=not_configured&provider=x")).toBe("X isn't set up on this server.");
   });
 
   it("explains how a YouTube connect went", () => {
@@ -165,6 +179,8 @@ describe("provider state", () => {
     expect(safeAvatar("https://yt3.ggpht.com/abc=s240")).toBe("https://yt3.ggpht.com/abc=s240");
     expect(safeAvatar("https://yt3.googleusercontent.com/abc")).toBe("https://yt3.googleusercontent.com/abc");
     expect(safeAvatar("https://yt3.ggpht.com.evil.com/abc")).toBeNull();
+    expect(safeAvatar("https://pbs.twimg.com/profile_images/1/a_normal.jpg")).toBe("https://pbs.twimg.com/profile_images/1/a_normal.jpg");
+    expect(safeAvatar("https://pbs.twimg.com.evil.com/a.jpg")).toBeNull();
     expect(safeAvatar("https://evil.com/yt3.ggpht.com")).toBeNull();
     expect(safeAvatar("http://yt3.ggpht.com/abc")).toBeNull();
     expect(safeAvatar("https://cdn.bsky.app/img/avatar/plain/x.jpg")).toBe("https://cdn.bsky.app/img/avatar/plain/x.jpg");
