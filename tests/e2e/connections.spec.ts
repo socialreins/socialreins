@@ -143,6 +143,29 @@ test("Connect Threads goes through brain and says how it went", async ({ page })
   await expect(page).toHaveURL("/app/connections");
 });
 
+test("Connect LinkedIn goes through brain and says how it went", async ({ page }) => {
+  await signedIn(page, "owner");
+  const on = providers.map((p) => (p.provider === "linkedin" ? { ...p, configured: true } : p));
+  await page.route("**/v1/connections/providers", (route) => route.fulfill({ json: on }));
+  await page.goto("/app/connections");
+  const back = new URL("/app/connections?connected=linkedin", page.url()).href;
+  await page.route("http://localhost:8080/connections/linkedin/redirect", (route) =>
+    route.fulfill({ status: 303, headers: { location: back } }),
+  );
+  const link = page.getByRole("link", { name: "Connect LinkedIn" });
+  await expect(link).toHaveAttribute("href", "http://localhost:8080/connections/linkedin/redirect");
+  await link.click();
+  await expect(page.getByRole("status").filter({ hasText: "Connected your LinkedIn account." })).toBeVisible();
+  await expect(page).toHaveURL("/app/connections");
+});
+
+test("a LinkedIn connect brain refused is explained", async ({ page }) => {
+  await signedIn(page, "owner");
+  await page.goto("/app/connections?connect_error=linkedin_failed&provider=linkedin");
+  await expect(page.getByRole("alert").filter({ hasText: "LinkedIn didn't let SocialReins connect the account." })).toBeVisible();
+  await expect(page).toHaveURL("/app/connections");
+});
+
 test("a refused OAuth connect is explained", async ({ page }) => {
   await signedIn(page, "owner");
   await page.goto("/app/connections?connect_error=cancelled&provider=threads");

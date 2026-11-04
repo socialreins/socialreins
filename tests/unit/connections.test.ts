@@ -88,7 +88,8 @@ describe("provider state", () => {
     expect(providerState("bluesky", providers)).toBe("available");
     expect(providerState("facebook", providers)).toBe("available");
     expect(providerState("instagram", providers)).toBe("available");
-    expect(providerState("linkedin", [{ provider: "linkedin", configured: true }])).toBe("coming_soon");
+    expect(providerState("x", [{ provider: "x", configured: true }])).toBe("coming_soon");
+    expect(providerState("linkedin", [{ provider: "linkedin", configured: true }])).toBe("available");
     expect(providerState("x", providers)).toBe("not_configured");
     expect(providerState("youtube", providers)).toBe("not_configured");
     expect(providerState("bluesky", [])).toBe("not_configured");
@@ -98,6 +99,15 @@ describe("provider state", () => {
   it("sends OAuth connects to brain's redirect for the provider", () => {
     expect(connectUrl("threads")).toBe(`${apiUrl}/connections/threads/redirect`);
     expect(connectUrl("instagram")).toBe(`${apiUrl}/connections/meta/redirect`);
+    expect(connectUrl("linkedin")).toBe(`${apiUrl}/connections/linkedin/redirect`);
+  });
+
+  it("explains how a LinkedIn connect went", () => {
+    expect(connectResult("?connected=linkedin")).toEqual({ provider: "linkedin", error: null });
+    const text = (search: string) => connectResultText(connectResult(search)!, "LinkedIn");
+    expect(text("?connected=linkedin")).toBe("Connected your LinkedIn account.");
+    expect(text("?connect_error=cancelled&provider=linkedin")).toBe("LinkedIn connection was cancelled.");
+    expect(text("?connect_error=linkedin_failed&provider=linkedin")).toMatch(/^LinkedIn didn't let SocialReins connect/);
   });
 
   it("reads how a connect went from the URL brain sent back", () => {

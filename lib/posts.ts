@@ -16,7 +16,7 @@ export type Target = {
 // A follow-up post of a thread: a reply to the one before.
 export type ThreadPart = { body: string; media: string[] };
 // The platforms brain publishes to.
-export type Platform = "bluesky" | "threads" | "facebook" | "instagram";
+export type Platform = "bluesky" | "threads" | "linkedin" | "facebook" | "instagram";
 export type Post = {
   id: string;
   social_set_id: string;
@@ -60,6 +60,7 @@ export type PostFilter = { social_set_id?: string; status?: PostStatus; from?: s
 export const limits: Record<Platform, { chars: number; media: number; thread: boolean }> = {
   bluesky: { chars: 300, media: 4, thread: true },
   threads: { chars: 500, media: 20, thread: true },
+  linkedin: { chars: 3000, media: 20, thread: false },
   facebook: { chars: 63_206, media: 10, thread: false },
   instagram: { chars: 2200, media: 10, thread: false },
 };
