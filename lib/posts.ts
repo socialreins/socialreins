@@ -16,7 +16,7 @@ export type Target = {
 // A follow-up post of a thread: a reply to the one before.
 export type ThreadPart = { body: string; media: string[] };
 // The platforms brain publishes to.
-export type Platform = "bluesky" | "threads" | "linkedin" | "facebook" | "instagram";
+export type Platform = "bluesky" | "threads" | "linkedin" | "facebook" | "instagram" | "youtube";
 export type Post = {
   id: string;
   social_set_id: string;
@@ -56,14 +56,18 @@ export type PostGroupInput = Omit<PostInput, "platform"> & {
 export type PostFilter = { social_set_id?: string; status?: PostStatus; from?: string; to?: string; group_id?: string };
 
 // Each platform's limits, as brain's crates/core/src/post.rs checks them. `chars` counts graphemes
-// on Bluesky and Unicode code points elsewhere; `media` is images or videos per post.
+// on Bluesky and Unicode code points elsewhere (on YouTube it is the title's, the body's first line);
+// `media` is images or videos per post.
 export const limits: Record<Platform, { chars: number; media: number; thread: boolean }> = {
   bluesky: { chars: 300, media: 4, thread: true },
   threads: { chars: 500, media: 20, thread: true },
   linkedin: { chars: 3000, media: 20, thread: false },
   facebook: { chars: 63_206, media: 10, thread: false },
   instagram: { chars: 2200, media: 10, thread: false },
+  youtube: { chars: 100, media: 1, thread: false },
 };
+// A YouTube video's description (the body after its first line) is limited in UTF-8 bytes.
+export const YOUTUBE_DESCRIPTION_BYTES = 5000;
 export const publishing = Object.keys(limits) as Platform[];
 export const isPlatform = (p: string): p is Platform => p in limits;
 export const MAX_BYTES = 3000;
@@ -127,15 +131,30 @@ const segmenter =typeof Intl !== "undefined" && "Segmenter" in Intl ? new Intl.S
 export const graphemes = (text: string) => (segmenter ? [...segmenter.segment(text)].length : [...text].length);
 export const utf8Bytes = (text: string) => new TextEncoder().encode(text).length;
 
+// A YouTube post's title (the body's first line) and description (the rest), as brain's youtube_text splits them.
+export function youtubeText(body: string) {
+  const text = body.trim();
+  const at = text.indexOf("\n");
+  return at < 0 ? { title: text, description: "" } : { title: text.slice(0, at).trim(), description: text.slice(at + 1).trim() };
+}
+
 // The length brain checks against limits[platform].chars.
-export const charCount = (platform: Platform, text: string) => (platform === "bluesky" ? graphemes(text) : [...text].length);
+export const charCount = (platform: Platform, text: string) =>
+  platform === "bluesky" ? graphemes(text) : [...(platform === "youtube" ? youtubeText(text).title : text)].length;
+
+// Whether the text is over the platform's limit; YouTube also limits its description's bytes.
+export const overLimit = (platform: Platform, text: string) =>
+  charCount(platform, text) > limits[platform].chars ||
+  (platform === "youtube" && utf8Bytes(youtubeText(text).description) > YOUTUBE_DESCRIPTION_BYTES);
 
 // Mirrors brain's checks, in brain's order, so most mistakes show before a request. brain stays the judge.
 export function checkPost(body: string, media: string[], platform: Platform = "bluesky"): Failure | null {
   const max = limits[platform];
-  if (!body.trim() && media.length === 0) return "empty_post";
-  if (platform === "instagram" && media.length === 0) return "media_required";
-  if (charCount(platform, body) > max.chars || (platform === "bluesky" && utf8Bytes(body) > MAX_BYTES)) return "too_long";
+  // A YouTube video needs a title, so it needs a body even with its video.
+  if (!body.trim() && (media.length === 0 || platform === "youtube")) return "empty_post";
+  if ((platform === "instagram" || platform === "youtube") && media.length === 0) return "media_required";
+  if (platform === "youtube" && /[<>]/.test(body)) return "invalid_text";
+  if (overLimit(platform, body) || (platform === "bluesky" && utf8Bytes(body) > MAX_BYTES)) return "too_long";
   if (media.length > max.media) return "too_many_images";
   if (media.some((m) => !/^https:\/\/[^\s/]+\/?\S*$/.test(m))) return "invalid_media";
   return null;

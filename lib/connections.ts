@@ -31,7 +31,7 @@ export const metaName = "Facebook and Instagram";
 
 // Platforms that connect by OAuth: a full-page navigation to brain, which sends the browser to the
 // platform and back to /app/connections. Add x here once brain has its flow.
-export const oauthProviders = new Set(["threads", "linkedin", "facebook", "instagram"]);
+export const oauthProviders = new Set(["threads", "linkedin", "youtube", "facebook", "instagram"]);
 // Platforms with a connect flow in this web app. The rest wait for theirs.
 export const connectable = new Set(["bluesky", ...oauthProviders]);
 // The provider names brain's callback puts in the URL.
@@ -74,6 +74,10 @@ export function connectResultText({ provider, error }: ConnectResult, name: stri
         : `Connected your ${platform} account.`;
     case "no_pages":
       return "Facebook didn't share any Pages. Connect again and pick at least one Page when Facebook asks.";
+    case "no_channel":
+      return "That Google account has no YouTube channel. Create one on YouTube, then connect again.";
+    case "missing_scopes":
+      return "Tick every permission when YouTube asks, they are all needed to upload and delete videos.";
     case "not_configured":
       return `${platform} isn't set up on this server.`;
     case "unauthorized":
@@ -100,15 +104,17 @@ export function providerState(platform: string, providers: Provider[]): Provider
   return connectable.has(platform) ? "available" : "coming_soon";
 }
 
-// Only Bluesky's image CDN path and Meta's image CDNs are allowed by the CSP's img-src (proxy.ts), so anything else
-// falls back to an initial.
+// Only Bluesky's image CDN path, Meta's image CDNs and YouTube's channel pictures are allowed by the CSP's img-src
+// (proxy.ts), so anything else falls back to an initial.
 const metaImageHosts = [".fbcdn.net", ".cdninstagram.com"];
+const youtubeImageHosts = ["yt3.ggpht.com", "yt3.googleusercontent.com"];
 export function safeAvatar(url: string | null) {
   if (!url) return null;
   if (url.startsWith("https://cdn.bsky.app/img/")) return url;
   try {
     const u = new URL(url);
-    return u.protocol === "https:" && metaImageHosts.some((h) => u.hostname.endsWith(h)) ? url : null;
+    const allowed = metaImageHosts.some((h) => u.hostname.endsWith(h)) || youtubeImageHosts.includes(u.hostname);
+    return u.protocol === "https:" && allowed ? url : null;
   } catch {
     return null;
   }

@@ -140,7 +140,7 @@ test("on a phone the month is a list of days, not a wide grid", async ({ page })
 test("a team without Bluesky sees a note linking to connections", async ({ page }) => {
   await brain(page, { accounts: [] });
   await page.goto("/app/posts/new");
-  const note = page.getByText("No Bluesky, Threads, LinkedIn, Facebook or Instagram account is connected to this team yet");
+  const note = page.getByText("No Bluesky, Threads, LinkedIn, YouTube, Facebook or Instagram account is connected to this team yet");
   await expect(note).toBeVisible();
   await expect(page.getByRole("link", { name: "Connect an account" })).toHaveAttribute("href", "/app/connections");
 });
@@ -505,6 +505,57 @@ test("LinkedIn takes 3000 characters and no thread", async ({ page }) => {
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page).toHaveURL("/app/posts/p1");
   expect(sent).toMatchObject({ platform: "linkedin", body: "a".repeat(3000) });
+});
+
+const youtubeAcc = account("c5", "youtube", "Ann on YouTube");
+
+test("YouTube needs one video and takes its title from the first line", async ({ page }) => {
+  await brain(page, { accounts: [youtubeAcc] });
+  let sent: Record<string, unknown> | undefined;
+  await page.route("**/v1/posts", (route) => {
+    sent = route.request().postDataJSON();
+    return route.fulfill({ status: 201, json: post("p1", sent) });
+  });
+  await page.goto("/app/posts/new");
+  const body = page.getByLabel("Post", { exact: true });
+  const warning = (text: string) => page.getByRole("listitem").filter({ hasText: text });
+  const over = (text: string) => page.getByRole("alert").filter({ hasText: text });
+
+  // What YouTube needs shows before anything is typed, with the privacy caveat.
+  await expect(warning("YouTube needs a title: write it as the first line of the post.")).toBeVisible();
+  await expect(warning("YouTube needs one MP4 or MOV video: add its link.")).toBeVisible();
+  await expect(page.getByText("until Google has audited the YouTube API project behind this server, YouTube keeps new uploads private")).toBeVisible();
+  await expect(page.getByText("YouTube takes exactly one MP4 or MOV video.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add to thread" })).toHaveCount(0);
+
+  // The first line is counted as the title in characters, the rest as the description in bytes.
+  await body.fill(`${"a".repeat(101)}\nAbout it`);
+  await expect(page.getByText("YouTube title: 101 of 100 characters")).toBeVisible();
+  await expect(over("1 over YouTube title's limit of 100 characters")).toBeVisible();
+  await body.fill(`My title\n${"é".repeat(2501)}`);
+  await expect(page.getByText("YouTube description: 5,002 of 5,000 bytes")).toBeVisible();
+  await expect(over("2 over YouTube description's limit of 5,000 bytes")).toBeVisible();
+  await body.fill("a <b> c");
+  await expect(warning("YouTube doesn't allow < or > in a title or description.")).toBeVisible();
+  await body.fill("My title\nSecond line");
+  await expect(page.getByText("YouTube title: 8 of 100 characters")).toBeVisible();
+  await expect(page.getByText("YouTube description: 11 of 5,000 bytes")).toBeVisible();
+  await expect(warning("YouTube needs a title")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Preview" }).locator("xpath=..").getByText("My title", { exact: true })).toBeVisible();
+
+  // Without the video nothing is sent.
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(over("YouTube needs one MP4 or MOV video: add its link.")).toBeVisible();
+  expect(sent).toBeUndefined();
+
+  // One video at most: the add button goes once it is there.
+  await page.getByRole("button", { name: "Add image" }).click();
+  await page.getByLabel("Image 1 link").fill("https://example.com/clip.mp4");
+  await expect(page.getByRole("button", { name: "Add image" })).toHaveCount(0);
+  await expect(warning("YouTube needs one MP4 or MOV video")).toHaveCount(0);
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page).toHaveURL("/app/posts/p1");
+  expect(sent).toMatchObject({ platform: "youtube", body: "My title\nSecond line", media: ["https://example.com/clip.mp4"], thread: [] });
 });
 
 test("each platform can have its own text, counted against its own limit", async ({ page }) => {

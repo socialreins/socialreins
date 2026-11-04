@@ -92,6 +92,8 @@ describe("provider state", () => {
     expect(providerState("linkedin", [{ provider: "linkedin", configured: true }])).toBe("available");
     expect(providerState("x", providers)).toBe("not_configured");
     expect(providerState("youtube", providers)).toBe("not_configured");
+    expect(providerState("youtube", [{ provider: "youtube", configured: true }])).toBe("available");
+    expect(providerState("tiktok", [{ provider: "tiktok", configured: true }])).toBe("coming_soon");
     expect(providerState("bluesky", [])).toBe("not_configured");
     expect(providerState("threads", [{ provider: "threads", configured: true }])).toBe("available");
   });
@@ -100,6 +102,19 @@ describe("provider state", () => {
     expect(connectUrl("threads")).toBe(`${apiUrl}/connections/threads/redirect`);
     expect(connectUrl("instagram")).toBe(`${apiUrl}/connections/meta/redirect`);
     expect(connectUrl("linkedin")).toBe(`${apiUrl}/connections/linkedin/redirect`);
+    expect(connectUrl("youtube")).toBe(`${apiUrl}/connections/youtube/redirect`);
+  });
+
+  it("explains how a YouTube connect went", () => {
+    expect(connectResult("?connected=youtube")).toEqual({ provider: "youtube", error: null });
+    const text = (search: string) => connectResultText(connectResult(search)!, "YouTube");
+    expect(text("?connected=youtube")).toBe("Connected your YouTube account.");
+    expect(text("?connect_error=cancelled&provider=youtube")).toBe("YouTube connection was cancelled.");
+    expect(text("?connect_error=youtube_failed&provider=youtube")).toMatch(/^YouTube didn't let SocialReins connect/);
+    expect(text("?connect_error=no_channel&provider=youtube")).toMatch(/no YouTube channel/);
+    expect(text("?connect_error=missing_scopes&provider=youtube")).toBe(
+      "Tick every permission when YouTube asks, they are all needed to upload and delete videos.",
+    );
   });
 
   it("explains how a LinkedIn connect went", () => {
@@ -147,6 +162,11 @@ describe("provider state", () => {
     expect(safeAvatar("https://evilfbcdn.net/p.jpg")).toBeNull();
     expect(safeAvatar("http://scontent.xx.fbcdn.net/p.jpg")).toBeNull();
     expect(safeAvatar("not a url")).toBeNull();
+    expect(safeAvatar("https://yt3.ggpht.com/abc=s240")).toBe("https://yt3.ggpht.com/abc=s240");
+    expect(safeAvatar("https://yt3.googleusercontent.com/abc")).toBe("https://yt3.googleusercontent.com/abc");
+    expect(safeAvatar("https://yt3.ggpht.com.evil.com/abc")).toBeNull();
+    expect(safeAvatar("https://evil.com/yt3.ggpht.com")).toBeNull();
+    expect(safeAvatar("http://yt3.ggpht.com/abc")).toBeNull();
     expect(safeAvatar("https://cdn.bsky.app/img/avatar/plain/x.jpg")).toBe("https://cdn.bsky.app/img/avatar/plain/x.jpg");
     expect(safeAvatar("https://cdn.bsky.app.evil.com/x.jpg")).toBeNull();
     expect(safeAvatar("http://cdn.bsky.app/img/x.jpg")).toBeNull();
