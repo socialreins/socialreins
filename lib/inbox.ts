@@ -46,7 +46,13 @@ export type ItemPage = { items: Item[]; next_cursor: string | null };
 // Bluesky's limits as brain checks them: a public reply is a post, a DM is a chat message.
 export const MAX_PUBLIC = 300;
 export const MAX_DM = 1000;
-export const maxFor = (kind: Kind) => (kind === "dm" ? MAX_DM : MAX_PUBLIC);
+// Facebook takes comments of 8000 characters and messages of 2000; Instagram comments of 2200 and messages of 1000.
+const META_MAX: Record<string, { public: number; dm: number }> = { facebook: { public: 8000, dm: 2000 }, instagram: { public: 2200, dm: 1000 } };
+export const maxFor = (kind: Kind, provider?: string) => {
+  const meta = provider ? META_MAX[provider] : undefined;
+  if (meta) return kind === "dm" ? meta.dm : meta.public;
+  return kind === "dm" ? MAX_DM : MAX_PUBLIC;
+};
 
 export const kindName: Record<Kind, string> = { comment: "Comment", mention: "Mention", dm: "DM" };
 
