@@ -19,12 +19,14 @@ import {
   MAX_PARTS,
   publishing,
   publishPost,
+  takeDownAll,
   toLocalInput,
   updatePost,
   type Platform,
   type Post,
   type PostGroupInput,
   type PostInput,
+  type Takedown,
   type ThreadPart,
 } from "@/lib/posts";
 import { fitsList, listLists, partLabel, type PostList } from "@/lib/lists";
@@ -76,6 +78,10 @@ export function PostEditor({ id }: { id?: string }) {
   const [local, setLocal] = useState<ReactNode>(null);
   const [confirming, setConfirming] = useState(false);
   const [pollNote, setPollNote] = useState("");
+  // Take down all: the one confirmation, and what happened to each post (kept across a retry).
+  const [askingAll, setAskingAll] = useState(false);
+  const [downs, setDowns] = useState<(Takedown & { platform: Platform })[] | null>(null);
+  const [downsShown, setDownsShown] = useState(0);
   // Bumped after Publish now, to move focus onto the status line that follows the post.
   const [sent, setSent] = useState(0);
   const statusRef = useRef<HTMLParagraphElement>(null);
@@ -84,6 +90,9 @@ export function PostEditor({ id }: { id?: string }) {
   const { busy, problem, done, run } = useAction();
   const confirmRef = useRef<HTMLButtonElement>(null);
   const askRef = useRef<HTMLButtonElement>(null);
+  const askAllRef = useRef<HTMLButtonElement>(null);
+  const confirmAllRef = useRef<HTMLButtonElement>(null);
+  const downsRef = useRef<HTMLDivElement>(null);
 
   function load(p: Post) {
     setPost(p);
@@ -147,6 +156,14 @@ export function PostEditor({ id }: { id?: string }) {
   useEffect(() => {
     if (confirming) confirmRef.current?.focus();
   }, [confirming]);
+
+  useEffect(() => {
+    if (askingAll) confirmAllRef.current?.focus();
+  }, [askingAll]);
+
+  useEffect(() => {
+    if (downsShown) downsRef.current?.focus();
+  }, [downsShown]);
 
   useEffect(() => {
     if (sent) statusRef.current?.focus();
@@ -262,6 +279,26 @@ export function PostEditor({ id }: { id?: string }) {
     else if (!ok) askRef.current?.focus();
   }
 
+  // Takes `items` down one by one, then reads the group again so the list and this page show the result.
+  async function takeDownGroup(items: { id: string; platform: Platform }[]) {
+    flushSync(() => setAskingAll(false));
+    await run("takedown-all", async () => {
+      const r = await takeDownAll(items.map((i) => i.id));
+      const g = await listPosts({ group_id: groupId! });
+      if (Array.isArray(g)) {
+        setGroup(g);
+        const mine = g.find((p) => p.id === postId);
+        if (mine) setPost(mine);
+      }
+      return r;
+    }, (r) => {
+      const platform = (id: string) => items.find((i) => i.id === id)!.platform;
+      const fresh = r.map((t) => ({ ...t, platform: platform(t.id) }));
+      setDowns((old) => (old ? old.map((o) => fresh.find((f) => f.id === o.id) ?? o) : fresh));
+      setDownsShown((n) => n + 1);
+    });
+  }
+
   const inLists = post && !isFailure(post) ? post.lists : [];
   // Lists this set's post can join; one it is already in is left out, since sending it would move the post to the end.
   const listChoices = lists.filter((l) => fitsList(l, setId) && !inLists.some((x) => x.id === l.id));
@@ -290,6 +327,11 @@ export function PostEditor({ id }: { id?: string }) {
   );
   const shown = selected[0];
   const others = group.filter((g) => g.id !== postId);
+  // The group with this page's own post as it now stands, and the posts still up.
+  const members = group.map((g) => (post && g.id === post.id ? post : g));
+  const live = members.filter((g) => g.status === "published");
+  const left = (downs ?? []).filter((d) => d.state === "failed" || d.state === "waiting");
+  const downNames = (downs ?? []).filter((d) => d.state === "down").map((d) => d.platform);
 
   const preview = (
     <Preview
@@ -323,6 +365,58 @@ export function PostEditor({ id }: { id?: string }) {
           </li>
         ))}
       </ul>
+      {live.length > 0 &&
+        (askingAll ? (
+          <div className="card grid gap-3 p-4">
+            <p id="remove-all-q">
+              Take {live.length === 1 ? "this post" : `these ${live.length} posts`} down from {names(live.map((g) => g.platform))}? {live.length === 1 ? "It stays" : "They stay"} here as taken down.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button ref={confirmAllRef} type="button" className="btn btn-primary btn-sm" aria-describedby="remove-all-q" disabled={busy !== null} onClick={() => takeDownGroup(live)}>
+                Yes, take {live.length === 1 ? "it" : "them all"} down
+              </button>
+              <button
+                type="button"
+                className="btn btn-quiet btn-sm"
+                onClick={() => {
+                  flushSync(() => setAskingAll(false));
+                  askAllRef.current?.focus();
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button ref={askAllRef} type="button" className="btn btn-quiet btn-danger btn-sm justify-self-start" disabled={busy !== null} onClick={() => setAskingAll(true)}>
+            <Icon name="trash" className="size-4" />
+            {busy === "takedown-all" ? "Taking down..." : "Take down all"}
+          </button>
+        ))}
+      {downs && (
+        <div key={downsShown} ref={downsRef} tabIndex={-1} role={left.length ? "alert" : "status"} className="card grid gap-3 p-4">
+          <p className="font-bold">
+            {downNames.length > 0 && `Taken down from ${names(downNames)}. `}
+            {left.length > 0 ? `Still to take down: ${names(left.map((d) => d.platform))}.` : downNames.length === 0 && "Those posts were already gone."}
+          </p>
+          <ul className="grid gap-1 text-sm">
+            {downs.map((d) => (
+              <li key={d.id}>
+                <PlatformMark platform={d.platform} named />:{" "}
+                {d.state === "down" ? "taken down" : d.state === "gone" ? "already gone" : d.state === "failed" ? (d.message || problemText(d.failure ?? "error", postMessages)) : "not tried yet"}
+              </li>
+            ))}
+          </ul>
+          {left.length > 0 && (
+            <div className="flex flex-wrap items-center gap-3">
+              {left.some((d) => d.state === "waiting") && <p className="min-w-0 flex-1">{postMessages.rate_limited}</p>}
+              <button type="button" className="btn btn-primary btn-sm" disabled={busy !== null} onClick={() => takeDownGroup(left)}>
+                {busy === "takedown-all" ? "Taking down..." : `Retry ${names(left.map((d) => d.platform))}`}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </section>
   );
 
