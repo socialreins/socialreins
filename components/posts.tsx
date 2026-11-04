@@ -13,10 +13,10 @@ import { useCurrentSet } from "@/components/app-shell";
 import { Icon } from "@/components/ui";
 
 export const postMessages: Partial<Record<Failure, ReactNode>> = {
-  too_long: "The post is too long: at most 300 characters (and 3000 bytes) on Bluesky, 500 on Threads, 2200 on Instagram.",
-  too_many_images: "Too many images: at most 4 on Bluesky, 20 on Threads, 10 on Facebook and Instagram.",
+  too_long: "The post is too long: at most 300 characters (and 3000 bytes) on Bluesky, 500 on Threads, 3000 on LinkedIn, 2200 on Instagram.",
+  too_many_images: "Too many images: at most 4 on Bluesky, 20 on Threads and LinkedIn, 10 on Facebook and Instagram.",
   media_required: "Instagram needs at least one image or video.",
-  thread_not_supported: "Facebook and Instagram can't post threads.",
+  thread_not_supported: "LinkedIn, Facebook and Instagram can't post threads.",
   invalid_override: "A customized platform isn't one the post goes to.",
   no_accounts: "This set has no connected account to post to.",
   too_many_parts: "A thread can have at most 25 follow-up posts.",
@@ -68,7 +68,7 @@ export function AccountNote() {
       </span>
       <p className="min-w-0 flex-1 basis-60">
         <strong className="block">Connect an account first</strong>
-        <span className="text-ink-soft">No Bluesky, Threads, Facebook or Instagram account is connected to this team yet, so posts have nowhere to go.</span>
+        <span className="text-ink-soft">No Bluesky, Threads, LinkedIn, Facebook or Instagram account is connected to this team yet, so posts have nowhere to go.</span>
       </p>
       <Link href="/app/connections" className="btn btn-primary">
         Connect an account

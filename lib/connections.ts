@@ -30,8 +30,8 @@ export const providerKey = (platform: string) => (platform === "facebook" || pla
 export const metaName = "Facebook and Instagram";
 
 // Platforms that connect by OAuth: a full-page navigation to brain, which sends the browser to the
-// platform and back to /app/connections. Add linkedin or x here once brain has their flow.
-export const oauthProviders = new Set(["threads", "facebook", "instagram"]);
+// platform and back to /app/connections. Add x here once brain has its flow.
+export const oauthProviders = new Set(["threads", "linkedin", "facebook", "instagram"]);
 // Platforms with a connect flow in this web app. The rest wait for theirs.
 export const connectable = new Set(["bluesky", ...oauthProviders]);
 // The provider names brain's callback puts in the URL.

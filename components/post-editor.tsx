@@ -759,7 +759,7 @@ function ImageLinks({ media, max, post, onChange }: { media: string[]; max: numb
       {!post && (
         <p className="hint">
           Up to {max}. Public https links to image or video files, or Google Drive share links. Bluesky takes JPEG, PNG, WebP or GIF of 1 MB
-          or less; Instagram takes JPEG, MP4 or MOV.
+          or less; Instagram takes JPEG, MP4 or MOV; LinkedIn takes JPEG, PNG or GIF images, or one MP4 video on its own.
         </p>
       )}
       {media.length > 0 && (

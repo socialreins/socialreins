@@ -145,6 +145,7 @@ describe("post checks", () => {
     expect(limits).toEqual({
       bluesky: { chars: 300, media: 4, thread: true },
       threads: { chars: 500, media: 20, thread: true },
+      linkedin: { chars: 3000, media: 20, thread: false },
       facebook: { chars: 63_206, media: 10, thread: false },
       instagram: { chars: 2200, media: 10, thread: false },
     });
@@ -152,6 +153,9 @@ describe("post checks", () => {
     expect(checkPost("a".repeat(501), [], "threads")).toBe("too_long");
     expect(checkPost("x", img(20), "threads")).toBeNull();
     expect(checkPost("x", img(21), "threads")).toBe("too_many_images");
+    expect(checkPost("a".repeat(3000), img(20), "linkedin")).toBeNull();
+    expect(checkPost("a".repeat(3001), [], "linkedin")).toBe("too_long");
+    expect(checkPost("x", img(21), "linkedin")).toBe("too_many_images");
     expect(checkPost("a".repeat(63_206), img(10), "facebook")).toBeNull();
     expect(checkPost("a".repeat(63_207), [], "facebook")).toBe("too_long");
     expect(checkPost("x", img(11), "facebook")).toBe("too_many_images");
@@ -169,6 +173,7 @@ describe("post checks", () => {
     expect(checkThread("hi", [], part, "threads")).toBeNull();
     expect(checkThread("hi", [], [{ body: "a".repeat(501), media: [] }], "threads")).toEqual({ failure: "too_long", part: 1 });
     expect(checkThread("hi", [], part, "facebook")).toEqual({ failure: "thread_not_supported" });
+    expect(checkThread("hi", [], part, "linkedin")).toEqual({ failure: "thread_not_supported" });
     expect(checkThread("hi", ["https://example.com/a.jpg"], part, "instagram")).toEqual({ failure: "thread_not_supported" });
     expect(checkThread("hi", [], [], "facebook")).toBeNull();
   });

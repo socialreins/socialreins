@@ -140,7 +140,7 @@ test("on a phone the month is a list of days, not a wide grid", async ({ page })
 test("a team without Bluesky sees a note linking to connections", async ({ page }) => {
   await brain(page, { accounts: [] });
   await page.goto("/app/posts/new");
-  const note = page.getByText("No Bluesky, Threads, Facebook or Instagram account is connected to this team yet");
+  const note = page.getByText("No Bluesky, Threads, LinkedIn, Facebook or Instagram account is connected to this team yet");
   await expect(note).toBeVisible();
   await expect(page.getByRole("link", { name: "Connect an account" })).toHaveAttribute("href", "/app/connections");
 });
@@ -484,6 +484,27 @@ test("Instagram without an image is flagged before brain is asked", async ({ pag
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page).toHaveURL("/app/posts/p1");
   expect(sent).toMatchObject({ platform: "bluesky", body: "Words only" });
+});
+
+const linkedinAcc = account("c4", "linkedin", "Alice on LinkedIn");
+
+test("LinkedIn takes 3000 characters and no thread", async ({ page }) => {
+  await brain(page, { accounts: [linkedinAcc] });
+  let sent: Record<string, unknown> | undefined;
+  await page.route("**/v1/posts", (route) => {
+    sent = route.request().postDataJSON();
+    return route.fulfill({ status: 201, json: post("p1", sent) });
+  });
+  await page.goto("/app/posts/new");
+  const body = page.getByLabel("Post", { exact: true });
+  await body.fill("a".repeat(3001));
+  await expect(page.getByRole("alert").filter({ hasText: "1 over LinkedIn's limit of 3,000" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add to thread" })).toHaveCount(0);
+  await body.fill("a".repeat(3000));
+  await expect(page.getByText("LinkedIn: 3,000 of 3,000 characters")).toBeVisible();
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page).toHaveURL("/app/posts/p1");
+  expect(sent).toMatchObject({ platform: "linkedin", body: "a".repeat(3000) });
 });
 
 test("each platform can have its own text, counted against its own limit", async ({ page }) => {
