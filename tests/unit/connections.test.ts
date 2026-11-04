@@ -112,6 +112,9 @@ describe("provider state", () => {
     expect(text("?connect_error=cancelled&provider=youtube")).toBe("YouTube connection was cancelled.");
     expect(text("?connect_error=youtube_failed&provider=youtube")).toMatch(/^YouTube didn't let SocialReins connect/);
     expect(text("?connect_error=no_channel&provider=youtube")).toMatch(/no YouTube channel/);
+    expect(text("?connect_error=missing_scopes&provider=youtube")).toBe(
+      "Tick every permission when YouTube asks, they are all needed to upload and delete videos.",
+    );
   });
 
   it("explains how a LinkedIn connect went", () => {

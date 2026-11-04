@@ -76,6 +76,8 @@ export function connectResultText({ provider, error }: ConnectResult, name: stri
       return "Facebook didn't share any Pages. Connect again and pick at least one Page when Facebook asks.";
     case "no_channel":
       return "That Google account has no YouTube channel. Create one on YouTube, then connect again.";
+    case "missing_scopes":
+      return "Tick every permission when YouTube asks, they are all needed to upload and delete videos.";
     case "not_configured":
       return `${platform} isn't set up on this server.`;
     case "unauthorized":

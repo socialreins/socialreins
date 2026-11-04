@@ -189,6 +189,8 @@ test("a YouTube connect brain refused is explained", async ({ page }) => {
   await expect(page).toHaveURL("/app/connections");
   await page.goto("/app/connections?connect_error=no_channel&provider=youtube");
   await expect(page.getByRole("alert").filter({ hasText: "That Google account has no YouTube channel." })).toBeVisible();
+  await page.goto("/app/connections?connect_error=missing_scopes&provider=youtube");
+  await expect(page.getByRole("alert").filter({ hasText: "Tick every permission when YouTube asks" })).toBeVisible();
 });
 
 test("a connected YouTube channel shows its name and handle", async ({ page }) => {
