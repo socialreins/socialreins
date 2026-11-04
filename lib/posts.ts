@@ -16,7 +16,7 @@ export type Target = {
 // A follow-up post of a thread: a reply to the one before.
 export type ThreadPart = { body: string; media: string[] };
 // The platforms brain publishes to.
-export type Platform = "bluesky" | "threads" | "linkedin" | "facebook" | "instagram" | "youtube";
+export type Platform = "bluesky" | "threads" | "linkedin" | "facebook" | "instagram" | "youtube" | "x";
 export type Post = {
   id: string;
   social_set_id: string;
@@ -56,8 +56,8 @@ export type PostGroupInput = Omit<PostInput, "platform"> & {
 export type PostFilter = { social_set_id?: string; status?: PostStatus; from?: string; to?: string; group_id?: string };
 
 // Each platform's limits, as brain's crates/core/src/post.rs checks them. `chars` counts graphemes
-// on Bluesky and Unicode code points elsewhere (on YouTube it is the title's, the body's first line);
-// `media` is images or videos per post.
+// on Bluesky, X's weighted count on X (`xWeight`) and Unicode code points elsewhere (on YouTube it is the
+// title's, the body's first line); `media` is images or videos per post (on X 4 images, or one GIF or video).
 export const limits: Record<Platform, { chars: number; media: number; thread: boolean }> = {
   bluesky: { chars: 300, media: 4, thread: true },
   threads: { chars: 500, media: 20, thread: true },
@@ -65,6 +65,7 @@ export const limits: Record<Platform, { chars: number; media: number; thread: bo
   facebook: { chars: 63_206, media: 10, thread: false },
   instagram: { chars: 2200, media: 10, thread: false },
   youtube: { chars: 100, media: 1, thread: false },
+  x: { chars: 280, media: 4, thread: true },
 };
 // A YouTube video's description (the body after its first line) is limited in UTF-8 bytes.
 export const YOUTUBE_DESCRIPTION_BYTES = 5000;
@@ -138,9 +139,38 @@ export function youtubeText(body: string) {
   return at < 0 ? { title: text, description: "" } : { title: text.slice(0, at).trim(), description: text.slice(at + 1).trim() };
 }
 
+// What X counts a post as, as brain's x_weight does: most Latin, Greek, Cyrillic and punctuation characters 1,
+// everything else (CJK, emoji) 2, and every link (http(s):// or a bare domain) 23. Conservative: a bare domain
+// counts as a link even where X would not, so a post may be refused that X would take, never the reverse.
+const X_LINK = 23;
+const xLink = (word: string) => {
+  if (/^https?:\/\//.test(word)) return true;
+  const labels = (word.split(/[/?#]/)[0] ?? "").split(".");
+  const tld = labels[labels.length - 1] ?? "";
+  return labels.length >= 2 && labels.every((l) => /^[A-Za-z0-9-]+$/.test(l)) && /^[A-Za-z]{2,}$/.test(tld);
+};
+const xCharWeight = (c: string) => {
+  const n = c.codePointAt(0)!;
+  return n <= 0x10ff || (n >= 0x2000 && n <= 0x200d) || (n >= 0x2010 && n <= 0x201f) || (n >= 0x2032 && n <= 0x2037) ? 1 : 2;
+};
+export function xWeight(text: string) {
+  let total = 0;
+  for (const piece of text.split(/(\s+)/)) {
+    // Trailing punctuation stays out of the link, as X does.
+    const bare = piece.replace(/[.,;:!?)"']+$/, "");
+    if (!/^\s*$/.test(piece) && xLink(bare)) total += X_LINK + [...piece.slice(bare.length)].reduce((n, c) => n + xCharWeight(c), 0);
+    else total += [...piece].reduce((n, c) => n + xCharWeight(c), 0);
+  }
+  return total;
+}
+
 // The length brain checks against limits[platform].chars.
 export const charCount = (platform: Platform, text: string) =>
-  platform === "bluesky" ? graphemes(text) : [...(platform === "youtube" ? youtubeText(text).title : text)].length;
+  platform === "bluesky"
+    ? graphemes(text)
+    : platform === "x"
+      ? xWeight(text)
+      : [...(platform === "youtube" ? youtubeText(text).title : text)].length;
 
 // Whether the text is over the platform's limit; YouTube also limits its description's bytes.
 export const overLimit = (platform: Platform, text: string) =>

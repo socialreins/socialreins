@@ -201,6 +201,40 @@ test("a connected YouTube channel shows its name and handle", async ({ page }) =
   await expect(page.getByText(/YouTube, @annleemakes\. Connected /)).toBeVisible();
 });
 
+test("Connect X goes through brain and says how it went", async ({ page }) => {
+  await signedIn(page, "owner");
+  const on = providers.map((p) => (p.provider === "x" ? { ...p, configured: true } : p));
+  await page.route("**/v1/connections/providers", (route) => route.fulfill({ json: on }));
+  await page.goto("/app/connections");
+  const back = new URL("/app/connections?connected=x", page.url()).href;
+  await page.route("http://localhost:8080/connections/x/redirect", (route) =>
+    route.fulfill({ status: 303, headers: { location: back } }),
+  );
+  const link = page.getByRole("link", { name: "Connect X" });
+  await expect(link).toHaveAttribute("href", "http://localhost:8080/connections/x/redirect");
+  await link.click();
+  await expect(page.getByRole("status").filter({ hasText: "Connected your X account." })).toBeVisible();
+  await expect(page).toHaveURL("/app/connections");
+});
+
+test("an X connect brain refused is explained", async ({ page }) => {
+  await signedIn(page, "owner");
+  await page.goto("/app/connections?connect_error=x_failed&provider=x");
+  await expect(page.getByRole("alert").filter({ hasText: "X didn't let SocialReins connect the account." })).toBeVisible();
+  await expect(page).toHaveURL("/app/connections");
+  await page.goto("/app/connections?connect_error=missing_scopes&provider=x");
+  await expect(page.getByRole("alert").filter({ hasText: "Tick every permission when X asks" })).toBeVisible();
+});
+
+test("a connected X account shows its name and handle, and asks for a reconnect when flagged", async ({ page }) => {
+  const x = { ...alice, id: "c8", provider: "x", external_id: "2244994945", handle: "ann_lee", display_name: "Ann Lee", avatar_url: null };
+  await signedIn(page, "owner", [x, { ...x, id: "c9", handle: "bob_x", display_name: "Bob", reconnect: true }]);
+  await page.goto("/app/connections");
+  await expect(page.getByText(/X, @ann_lee\. Connected /)).toBeVisible();
+  await expect(page.getByText("Reconnect needed.")).toHaveCount(1);
+  await expect(page.getByRole("link", { name: "Reconnect Bob" })).toHaveAttribute("href", "http://localhost:8080/connections/x/redirect");
+});
+
 test("a refused OAuth connect is explained", async ({ page }) => {
   await signedIn(page, "owner");
   await page.goto("/app/connections?connect_error=cancelled&provider=threads");
@@ -261,10 +295,10 @@ test("a connect that times out reloads the list, since brain may still finish", 
   expect(loads.list).toBe(2);
 });
 
-test("the CSP allows only Bluesky's image path and Meta's and YouTube's image CDNs for avatars", async ({ request }) => {
+test("the CSP allows only Bluesky's image path and Meta's, YouTube's and X's image CDNs for avatars", async ({ request }) => {
   const csp = (await request.get("/app/connections")).headers()["content-security-policy"];
   expect(csp).toContain(
-    "img-src 'self' data: https://cdn.bsky.app/img/ https://*.fbcdn.net https://*.cdninstagram.com https://yt3.ggpht.com https://yt3.googleusercontent.com;",
+    "img-src 'self' data: https://cdn.bsky.app/img/ https://*.fbcdn.net https://*.cdninstagram.com https://yt3.ggpht.com https://yt3.googleusercontent.com https://pbs.twimg.com;",
   );
 });
 

@@ -12,6 +12,8 @@ export type Connection = {
   set_ids: string[];
   // Bluesky: the app password may read and send DMs. brain re-checks it on every poll.
   dm_access: boolean;
+  // X: the platform refused to renew the token, so the account must be connected again. Absent otherwise.
+  reconnect?: boolean;
   created_at: string;
 };
 export type Provider = { provider: string; configured: boolean };
@@ -30,8 +32,8 @@ export const providerKey = (platform: string) => (platform === "facebook" || pla
 export const metaName = "Facebook and Instagram";
 
 // Platforms that connect by OAuth: a full-page navigation to brain, which sends the browser to the
-// platform and back to /app/connections. Add x here once brain has its flow.
-export const oauthProviders = new Set(["threads", "linkedin", "youtube", "facebook", "instagram"]);
+// platform and back to /app/connections.
+export const oauthProviders = new Set(["threads", "linkedin", "x", "youtube", "facebook", "instagram"]);
 // Platforms with a connect flow in this web app. The rest wait for theirs.
 export const connectable = new Set(["bluesky", ...oauthProviders]);
 // The provider names brain's callback puts in the URL.
@@ -77,7 +79,9 @@ export function connectResultText({ provider, error }: ConnectResult, name: stri
     case "no_channel":
       return "That Google account has no YouTube channel. Create one on YouTube, then connect again.";
     case "missing_scopes":
-      return "Tick every permission when YouTube asks, they are all needed to upload and delete videos.";
+      return provider === "x"
+        ? "Tick every permission when X asks, they are all needed to post, upload media and delete posts."
+        : "Tick every permission when YouTube asks, they are all needed to upload and delete videos.";
     case "not_configured":
       return `${platform} isn't set up on this server.`;
     case "unauthorized":
@@ -104,16 +108,16 @@ export function providerState(platform: string, providers: Provider[]): Provider
   return connectable.has(platform) ? "available" : "coming_soon";
 }
 
-// Only Bluesky's image CDN path, Meta's image CDNs and YouTube's channel pictures are allowed by the CSP's img-src
-// (proxy.ts), so anything else falls back to an initial.
+// Only Bluesky's image CDN path, Meta's image CDNs, YouTube's channel pictures and X's profile pictures are allowed by the
+// CSP's img-src (proxy.ts), so anything else falls back to an initial.
 const metaImageHosts = [".fbcdn.net", ".cdninstagram.com"];
-const youtubeImageHosts = ["yt3.ggpht.com", "yt3.googleusercontent.com"];
+const exactImageHosts = ["yt3.ggpht.com", "yt3.googleusercontent.com", "pbs.twimg.com"];
 export function safeAvatar(url: string | null) {
   if (!url) return null;
   if (url.startsWith("https://cdn.bsky.app/img/")) return url;
   try {
     const u = new URL(url);
-    const allowed = metaImageHosts.some((h) => u.hostname.endsWith(h)) || youtubeImageHosts.includes(u.hostname);
+    const allowed = metaImageHosts.some((h) => u.hostname.endsWith(h)) || exactImageHosts.includes(u.hostname);
     return u.protocol === "https:" && allowed ? url : null;
   } catch {
     return null;

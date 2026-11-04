@@ -194,6 +194,19 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
                       </span>
                     </p>
                   )}
+                  {c.reconnect && (
+                    <p className="rounded-xl bg-canvas p-3 text-sm">
+                      <strong>Reconnect needed.</strong>{" "}
+                      <span className="text-ink-soft">
+                        {platform?.name ?? c.provider} no longer accepts this account&apos;s sign-in, so posts to it fail until it is connected again.
+                      </span>{" "}
+                      {canManage && oauthProviders.has(c.provider) && (
+                        <a href={connectUrl(c.provider)} className="font-bold underline">
+                          Reconnect {name}
+                        </a>
+                      )}
+                    </p>
+                  )}
                   {Array.isArray(sets) && (
                     <ul aria-label={`Sets for ${name}`} className="flex flex-wrap gap-1.5">
                       {setNames(c.set_ids, sets).map((n) => (

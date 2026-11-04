@@ -14,8 +14,8 @@ import { Icon } from "@/components/ui";
 
 export const postMessages: Partial<Record<Failure, ReactNode>> = {
   too_long:
-    "The post is too long: at most 300 characters (and 3000 bytes) on Bluesky, 500 on Threads, 3000 on LinkedIn, 2200 on Instagram. On YouTube the first line is the title, at most 100 characters, and the rest the description, at most 5000 bytes.",
-  too_many_images: "Too many images: at most 4 on Bluesky, 20 on Threads and LinkedIn, 10 on Facebook and Instagram, one video on YouTube.",
+    "The post is too long: at most 300 characters (and 3000 bytes) on Bluesky, 500 on Threads, 3000 on LinkedIn, 2200 on Instagram, 280 on X (a link counts as 23, an emoji as 2). On YouTube the first line is the title, at most 100 characters, and the rest the description, at most 5000 bytes.",
+  too_many_images: "Too many images: at most 4 on Bluesky and X, 20 on Threads and LinkedIn, 10 on Facebook and Instagram, one video on YouTube.",
   media_required: "Instagram needs at least one image or video, and YouTube needs one video.",
   invalid_text: "YouTube doesn't allow < or > in a title or description.",
   thread_not_supported: "LinkedIn, Facebook, Instagram and YouTube can't post threads.",
@@ -70,7 +70,7 @@ export function AccountNote() {
       </span>
       <p className="min-w-0 flex-1 basis-60">
         <strong className="block">Connect an account first</strong>
-        <span className="text-ink-soft">No Bluesky, Threads, LinkedIn, YouTube, Facebook or Instagram account is connected to this team yet, so posts have nowhere to go.</span>
+        <span className="text-ink-soft">No Bluesky, Threads, LinkedIn, X, YouTube, Facebook or Instagram account is connected to this team yet, so posts have nowhere to go.</span>
       </p>
       <Link href="/app/connections" className="btn btn-primary">
         Connect an account
