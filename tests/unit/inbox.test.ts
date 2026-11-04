@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { listItems, mergeFresh, relativeTime, replyToItem, setItemState, type Item } from "@/lib/inbox";
+import { listItems, maxFor, mergeFresh, relativeTime, replyToItem, setItemState, type Item } from "@/lib/inbox";
 import { apiUrl } from "@/lib/waitlist";
 
 const call = (fetch: ReturnType<typeof vi.fn>) => fetch.mock.calls[0] as unknown as [string, RequestInit];
@@ -68,5 +68,17 @@ describe("mergeFresh", () => {
   it("replaces the list when a full fresh page shares nothing with it", () => {
     const got = mergeFresh(page([["a", "2026-01-01"]]), { items: [item("z", "2026-01-09")], next_cursor: "z" });
     expect(got).toEqual({ items: [item("z", "2026-01-09")], next: "z" });
+  });
+});
+
+describe("reply limits", () => {
+  it("uses each platform's own limits", () => {
+    expect(maxFor("comment")).toBe(300);
+    expect(maxFor("comment", "bluesky")).toBe(300);
+    expect(maxFor("dm", "bluesky")).toBe(1000);
+    expect(maxFor("comment", "facebook")).toBe(8000);
+    expect(maxFor("dm", "facebook")).toBe(2000);
+    expect(maxFor("comment", "instagram")).toBe(2200);
+    expect(maxFor("dm", "instagram")).toBe(1000);
   });
 });

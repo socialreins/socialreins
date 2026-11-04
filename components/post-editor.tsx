@@ -55,6 +55,7 @@ export function PostEditor({ id }: { id?: string }) {
   const [post, setPost] = useState<Post | Failure | null>(null);
   const [sets, setSets] = useState<SocialSet[] | Failure | null>(null);
   const [accounts, setAccounts] = useState<Connection[]>([]);
+  const [accountsLoaded, setAccountsLoaded] = useState(false);
   const [setId, setSetId] = useState("");
   // Read once: the set picked in the top bar when the editor opened.
   const startSet = useRef(useCurrentSet()[0]);
@@ -101,7 +102,10 @@ export function PostEditor({ id }: { id?: string }) {
       // A new post starts in the set picked in the top bar.
       if (Array.isArray(r) && r[0]) setSetId((v) => v || (r.some((s) => s.id === startSet.current) ? startSet.current : r[0]!.id));
     });
-    listConnections().then((r) => Array.isArray(r) && setAccounts(r));
+    listConnections().then((r) => {
+      if (Array.isArray(r)) setAccounts(r);
+      setAccountsLoaded(true);
+    });
     listLists().then((r) => Array.isArray(r) && setLists(r));
     if (id)
       getPost(id).then((r) => {
@@ -512,7 +516,9 @@ export function PostEditor({ id }: { id?: string }) {
             {!post && (
               <fieldset className="grid gap-2">
                 <legend className="label">Post to</legend>
-                {available.length === 0 ? (
+                {available.length === 0 && !accountsLoaded ? (
+                  <p className="hint">Loading accounts...</p>
+                ) : available.length === 0 ? (
                   <p className="hint">
                     No connected account is in this set. Add one on{" "}
                     <Link href="/app/connections" className="font-bold underline">

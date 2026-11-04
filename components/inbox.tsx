@@ -30,6 +30,7 @@ import { manages } from "@/lib/teams";
 import { useSession } from "@/components/app-shell";
 import { accountName } from "@/components/connections";
 import { InboxEditor, inboxMessages } from "@/components/inbox-editor";
+import { platformName } from "@/components/platform-icons";
 import { isFailure, problemText, Status, useAction } from "@/components/team-ui";
 import { Icon } from "@/components/ui";
 
@@ -428,7 +429,8 @@ function Detail({ item, account, focus, onChange }: { item: Item; account?: Conn
   const action = useAction();
   const reply = useAction();
   const headingRef = useRef<HTMLHeadingElement>(null);
-  const max = maxFor(item.kind);
+  const max = maxFor(item.kind, account?.provider);
+  const platform = platformName(account?.provider ?? "bluesky");
   const count = graphemes(text);
   const dm = item.kind === "dm";
 
@@ -490,7 +492,7 @@ function Detail({ item, account, focus, onChange }: { item: Item; account?: Conn
             <time dateTime={item.received_at}>{when(item.received_at)}</time>
             {item.remote_url && (
               <a href={item.remote_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 font-bold hover:text-ink">
-                View on Bluesky
+                View on {platform}
                 <Icon name="external" className="size-3.5" />
               </a>
             )}
@@ -508,7 +510,7 @@ function Detail({ item, account, focus, onChange }: { item: Item; account?: Conn
                 <a href={r.remote_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 font-bold hover:text-ink">
                   View
                   <Icon name="external" className="size-3.5" />
-                  <span className="sr-only">reply on Bluesky</span>
+                  <span className="sr-only">reply on {platform}</span>
                 </a>
               )}
             </p>
@@ -531,7 +533,7 @@ function Detail({ item, account, focus, onChange }: { item: Item; account?: Conn
           }}
           aria-describedby="reply-count"
           aria-invalid={count > max || undefined}
-          placeholder={dm ? `Message ${authorName(item.author)}` : `Reply to ${authorName(item.author)} on Bluesky`}
+          placeholder={dm ? `Message ${authorName(item.author)}` : `Reply to ${authorName(item.author)} on ${platform}`}
         />
         <div className="flex flex-wrap items-center gap-3">
           <button type="submit" className="btn btn-primary" disabled={reply.busy !== null || !text.trim() || count > max}>
