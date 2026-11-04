@@ -669,3 +669,81 @@ test("calendar marks each post with its platform", async ({ page }) => {
   await expect(table.getByRole("link", { name: /^Bluesky: 10:30.*Launch day$/ })).toHaveAttribute("href", "/app/posts/p-bluesky");
   await expect(table.getByRole("link", { name: /^Instagram: 10:30.*Launch day$/ })).toHaveAttribute("href", "/app/posts/p-instagram");
 });
+
+// A group of posts, one per platform, with the given statuses. DELETE takes a published post down, except
+// where `refuse` answers that post's first DELETE differently. Opens the Bluesky post; returns the DELETEs seen.
+async function groupPage(page: Page, statuses: Record<string, string>, refuse: Record<string, () => { status: number; json: unknown }> = {}) {
+  await brain(page, { accounts: [alice, threadsAcc, instaAcc] });
+  const platforms: Record<string, string> = { "g-b": "bluesky", "g-t": "threads", "g-i": "instagram" };
+  let state: Post[] = Object.entries(statuses).map(([id, status]) =>
+    post(id, { platform: platforms[id], group_id: "g1", status, published_at: status === "published" ? "2026-11-03T08:00:00Z" : null }),
+  );
+  const deleted: string[] = [];
+  await page.route(/\/v1\/posts\/g-.$/, (route) => {
+    const id = route.request().url().split("/").at(-1)!;
+    if (route.request().method() === "GET") return route.fulfill({ json: state.find((p) => p.id === id) });
+    deleted.push(id);
+    const answer = refuse[id];
+    if (answer) {
+      delete refuse[id];
+      return route.fulfill(answer());
+    }
+    state = state.map((p) => (p.id === id ? { ...p, status: "deleted" } : p));
+    return route.fulfill({ json: state.find((p) => p.id === id) });
+  });
+  await page.route(/\/v1\/posts\?group_id=g1$/, (route) => route.fulfill({ json: state }));
+  await page.goto("/app/posts/g-b");
+  return deleted;
+}
+
+test("take down all asks once, names the platforms and takes each post down in turn", async ({ page }) => {
+  const deleted = await groupPage(page, { "g-b": "published", "g-t": "published", "g-i": "published" });
+  await page.getByRole("button", { name: "Take down all" }).click();
+  await expect(page.getByText("Take these 3 posts down from Bluesky, Threads, and Instagram?")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Yes, take them all down" })).toBeFocused();
+  expect(deleted).toEqual([]);
+  await page.getByRole("button", { name: "Yes, take them all down" }).click();
+  const report = page.getByRole("status").filter({ hasText: "Taken down from Bluesky, Threads, and Instagram." });
+  await expect(report).toBeFocused();
+  await expect(report.getByRole("listitem")).toHaveText(["Bluesky: taken down", "Threads: taken down", "Instagram: taken down"]);
+  expect(deleted).toEqual(["g-b", "g-t", "g-i"]);
+  await expect(page.getByRole("button", { name: "Take down all" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Same post on other platforms" }).getByText("Taken down", { exact: true })).toHaveCount(2);
+});
+
+test("take down all names the platforms still up after a failure and retries only those", async ({ page }) => {
+  const deleted = await groupPage(
+    page,
+    { "g-b": "published", "g-t": "published", "g-i": "published" },
+    { "g-t": () => ({ status: 422, json: { error: "takedown_failed", message: "Threads token expired. Reconnect, then try again." } }) },
+  );
+  await page.getByRole("button", { name: "Take down all" }).click();
+  await page.getByRole("button", { name: "Yes, take them all down" }).click();
+  const report = page.getByRole("alert").filter({ hasText: "Still to take down: Threads." });
+  await expect(report).toBeFocused();
+  await expect(report).toContainText("Taken down from Bluesky and Instagram.");
+  await expect(report.getByRole("listitem")).toHaveText(["Bluesky: taken down", "Threads: Threads token expired. Reconnect, then try again.", "Instagram: taken down"]);
+  expect(deleted).toEqual(["g-b", "g-t", "g-i"]);
+  await report.getByRole("button", { name: "Retry Threads" }).click();
+  const done = page.getByRole("status").filter({ hasText: "Taken down from Bluesky, Threads, and Instagram." });
+  await expect(done).toBeFocused();
+  expect(deleted).toEqual(["g-b", "g-t", "g-i", "g-t"]);
+  await expect(page.getByRole("button", { name: /Retry/ })).toHaveCount(0);
+});
+
+test("take down all leaves posts that are not published alone, and is hidden when none is", async ({ page }) => {
+  const deleted = await groupPage(page, { "g-b": "published", "g-t": "draft", "g-i": "failed" });
+  await page.getByRole("button", { name: "Take down all" }).click();
+  await expect(page.getByText("Take this post down from Bluesky?").first()).toBeVisible();
+  await page.getByRole("button", { name: "Yes, take it down" }).first().click();
+  await expect(page.getByRole("status").filter({ hasText: "Taken down from Bluesky." })).toBeFocused();
+  expect(deleted).toEqual(["g-b"]);
+  await expect(page.getByRole("button", { name: "Take down all" })).toHaveCount(0);
+});
+
+test("take down all is hidden when no post of the group is published", async ({ page }) => {
+  const deleted = await groupPage(page, { "g-b": "draft", "g-t": "scheduled", "g-i": "failed" });
+  await expect(page.getByRole("region", { name: "Same post on other platforms" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Take down all" })).toHaveCount(0);
+  expect(deleted).toEqual([]);
+});

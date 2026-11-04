@@ -102,7 +102,31 @@ export async function deletePost(id: string): Promise<DeleteResult> {
   return failure(res);
 }
 
-const segmenter = typeof Intl !== "undefined" && "Segmenter" in Intl ? new Intl.Segmenter(undefined, { granularity: "grapheme" }) : null;
+// What happened to one post of a take-down-all run. "waiting": not tried, because brain's rate limit stopped the run.
+export type Takedown =
+  | { id: string; state: "down" | "gone" | "waiting" }
+  | { id: string; state: "failed"; failure?: Failure; message?: string };
+
+// Takes `ids` down one request after another, never in parallel: brain allows 10 publish or take-down
+// calls a minute per user, and a group has at most one post per platform. A failure of one post does not
+// stop the others; a rate limit does, since every later call would be refused too.
+export async function takeDownAll(ids: string[]): Promise<Takedown[]> {
+  const out: Takedown[] = [];
+  for (const id of ids) {
+    const r = await deletePost(id);
+    if (r === "rate_limited") {
+      out.push(...ids.slice(out.length).map((id) => ({ id, state: "waiting" as const })));
+      break;
+    }
+    if (r === "not_found") out.push({ id, state: "gone" });
+    else if (typeof r === "string" && r !== "ok") out.push({ id, state: "failed", failure: r });
+    else if (typeof r === "object" && "takedownFailed" in r) out.push({ id, state: "failed", message: r.takedownFailed });
+    else out.push({ id, state: "down" });
+  }
+  return out;
+}
+
+const segmenter =typeof Intl !== "undefined" && "Segmenter" in Intl ? new Intl.Segmenter(undefined, { granularity: "grapheme" }) : null;
 // What Bluesky counts as characters: user-perceived graphemes, so an emoji family is one.
 export const graphemes = (text: string) => (segmenter ? [...segmenter.segment(text)].length : [...text].length);
 export const utf8Bytes = (text: string) => new TextEncoder().encode(text).length;

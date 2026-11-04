@@ -14,6 +14,7 @@ import {
   monthRange,
   monthWeeks,
   publishPost,
+  takeDownAll,
   toLocalInput,
   updatePost,
   utf8Bytes,
@@ -112,6 +113,61 @@ describe("post requests", () => {
     expect(await deletePost("p1")).toBe("not_deletable");
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new DOMException("slow", "TimeoutError")));
     expect(await deletePost("p1")).toBe("timeout");
+  });
+});
+
+describe("take down all", () => {
+  // Answers each DELETE from `answers` by post id and records the order and any overlap.
+  function brain(answers: Record<string, () => Response>) {
+    const calls: string[] = [];
+    let open = 0;
+    let overlap = false;
+    vi.stubGlobal("fetch", async (url: string) => {
+      const id = url.split("/").at(-1)!;
+      calls.push(id);
+      overlap ||= ++open > 1;
+      await new Promise((r) => setTimeout(r, 1));
+      open--;
+      return answers[id]!();
+    });
+    return { calls, overlapped: () => overlap };
+  }
+  const gone = () => Response.json({ id: "x", status: "deleted" });
+
+  it("takes the posts down one after another, in order", async () => {
+    const b = brain({ a: gone, b: gone, c: gone });
+    expect(await takeDownAll(["a", "b", "c"])).toEqual([
+      { id: "a", state: "down" },
+      { id: "b", state: "down" },
+      { id: "c", state: "down" },
+    ]);
+    expect(b.calls).toEqual(["a", "b", "c"]);
+    expect(b.overlapped()).toBe(false);
+  });
+
+  it("keeps going after a failure and reports each post", async () => {
+    brain({
+      a: () => Response.json({ error: "takedown_failed", message: "Revoked." }, { status: 422 }),
+      b: () => Response.json({ error: "not_found" }, { status: 404 }),
+      c: () => Response.json({ error: "not_deletable" }, { status: 409 }),
+      d: gone,
+    });
+    expect(await takeDownAll(["a", "b", "c", "d"])).toEqual([
+      { id: "a", state: "failed", message: "Revoked." },
+      { id: "b", state: "gone" },
+      { id: "c", state: "failed", failure: "not_deletable" },
+      { id: "d", state: "down" },
+    ]);
+  });
+
+  it("stops at brain's rate limit and leaves the rest waiting", async () => {
+    const b = brain({ a: gone, b: () => Response.json({ error: "rate_limited" }, { status: 429 }), c: gone });
+    expect(await takeDownAll(["a", "b", "c"])).toEqual([
+      { id: "a", state: "down" },
+      { id: "b", state: "waiting" },
+      { id: "c", state: "waiting" },
+    ]);
+    expect(b.calls).toEqual(["a", "b"]);
   });
 });
 
