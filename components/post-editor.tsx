@@ -17,10 +17,14 @@ import {
   limits,
   listPosts,
   MAX_PARTS,
+  overLimit,
   publishing,
   publishPost,
   toLocalInput,
   updatePost,
+  utf8Bytes,
+  YOUTUBE_DESCRIPTION_BYTES,
+  youtubeText,
   type Platform,
   type Post,
   type PostGroupInput,
@@ -44,8 +48,11 @@ const names = (list: string[]) => new Intl.ListFormat("en", { type: "conjunction
 // What a check failure means for one platform, naming its own limit.
 function platformProblem(platform: Platform, failure: Failure): ReactNode {
   const name = platformName(platform);
+  if (failure === "too_long" && platform === "youtube")
+    return `YouTube takes a title (the first line) of at most ${limits.youtube.chars} characters and a description (the rest) of at most ${YOUTUBE_DESCRIPTION_BYTES.toLocaleString("en")} bytes.`;
   if (failure === "too_long") return `${name} takes at most ${limits[platform].chars.toLocaleString("en")} characters.`;
-  if (failure === "too_many_images") return `${name} takes at most ${limits[platform].media} images.`;
+  if (failure === "too_many_images") return platform === "youtube" ? "YouTube takes exactly one video." : `${name} takes at most ${limits[platform].media} images.`;
+  if (failure === "media_required") return platform === "youtube" ? "YouTube needs one MP4 or MOV video: add its link." : `${name} needs at least one image or video.`;
   if (failure === "thread_not_supported") return `${name} can't post threads.`;
   return postMessages[failure] ?? failure;
 }
@@ -286,8 +293,17 @@ export function PostEditor({ id }: { id?: string }) {
   // Shared images must fit every chosen platform.
   const cap = (list: Platform[]) => (list.length ? Math.min(...list.map((p) => limits[p].media)) : limits.bluesky.media);
   const mediaProblems = selected.flatMap((p) =>
-    p === "instagram" && images.length === 0 ? [platformProblem(p, "media_required")] : images.length > limits[p].media ? [platformProblem(p, "too_many_images")] : [],
+    (p === "instagram" || p === "youtube") && images.length === 0 ? [platformProblem(p, "media_required")] : images.length > limits[p].media ? [platformProblem(p, "too_many_images")] : [],
   );
+  // YouTube's title is the first line of its text, which brain refuses to leave out or to hold < or >.
+  const ytBody = selected.includes("youtube") ? (customFor("youtube") ?? body) : null;
+  const textProblems =
+    ytBody === null
+      ? []
+      : [
+          ...(youtubeText(ytBody).title ? [] : ["YouTube needs a title: write it as the first line of the post."]),
+          ...(/[<>]/.test(ytBody) ? [platformProblem("youtube", "invalid_text")] : []),
+        ];
   const shown = selected[0];
   const others = group.filter((g) => g.id !== postId);
 
@@ -572,10 +588,11 @@ export function PostEditor({ id }: { id?: string }) {
                 placeholder="What do you want to say?"
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
-                aria-invalid={mainPlatforms.some((p) => charCount(p, body) > limits[p].chars) || undefined}
+                aria-invalid={mainPlatforms.some((p) => overLimit(p, body)) || undefined}
                 aria-describedby="post-count"
               />
               <Counts id="post-count" text={body} platforms={mainPlatforms} alerts />
+              {selected.includes("youtube") && <YouTubeNote />}
             </div>
             {selected.length > 1 &&
               selected.map((p) =>
@@ -600,17 +617,18 @@ export function PostEditor({ id }: { id?: string }) {
                       className="field resize-y"
                       value={custom[p]}
                       onChange={(e) => setCustom((c) => ({ ...c, [p]: e.target.value }))}
-                      aria-invalid={charCount(p, custom[p]!) > limits[p].chars || undefined}
+                      aria-invalid={overLimit(p, custom[p]!) || undefined}
                       aria-describedby={`post-body-${p}-count`}
                     />
                     <Counts id={`post-body-${p}-count`} text={custom[p]!} platforms={[p]} alerts />
+                    {p === "youtube" && <YouTubeNote />}
                   </div>
                 ),
               )}
             <ImageLinks media={media} max={cap(selected)} onChange={setMedia} />
-            {mediaProblems.length > 0 && (
+            {mediaProblems.length + textProblems.length > 0 && (
               <ul className="grid gap-1">
-                {mediaProblems.map((m, i) => (
+                {[...textProblems, ...mediaProblems].map((m, i) => (
                   <li key={i} className="waitlist-error">
                     {m}
                   </li>
@@ -713,25 +731,43 @@ const links = (media: string[]) => media.map((m) => m.trim()).filter(Boolean);
 
 // "N of M characters" for each platform; `alerts` also says how far over a limit the text is.
 function Counts({ id, text, platforms, alerts }: { id: string; text: string; platforms: Platform[]; alerts?: boolean }) {
-  const counts = platforms.map((p) => ({ p, n: charCount(p, text), max: limits[p].chars }));
+  // YouTube counts its title (the first line) in characters and its description (the rest) in bytes.
+  const counts = platforms.flatMap((p) =>
+    p === "youtube"
+      ? [
+          { key: p, name: "YouTube title", n: charCount(p, text), max: limits[p].chars, unit: "characters" },
+          { key: `${p}-description`, name: "YouTube description", n: utf8Bytes(youtubeText(text).description), max: YOUTUBE_DESCRIPTION_BYTES, unit: "bytes" },
+        ]
+      : [{ key: p, name: platformName(p), n: charCount(p, text), max: limits[p].chars, unit: "characters" }],
+  );
   return (
     <>
       <ul id={id} className="flex flex-wrap justify-end gap-x-4 text-sm">
-        {counts.map(({ p, n, max }) => (
-          <li key={p} className={n > max ? "font-bold text-signal-deep" : n > max - 20 ? "text-signal-deep" : "text-ink-soft"}>
-            {platformName(p)}: {n.toLocaleString("en")} of {max.toLocaleString("en")} characters
+        {counts.map(({ key, name, n, max, unit }) => (
+          <li key={key} className={n > max ? "font-bold text-signal-deep" : n > max - 20 ? "text-signal-deep" : "text-ink-soft"}>
+            {name}: {n.toLocaleString("en")} of {max.toLocaleString("en")} {unit}
           </li>
         ))}
       </ul>
       {alerts &&
         counts
           .filter(({ n, max }) => n > max)
-          .map(({ p, n, max }) => (
-            <p key={p} role="alert" className="waitlist-error">
-              That is {(n - max).toLocaleString("en")} over {platformName(p)}&apos;s limit of {max.toLocaleString("en")} characters.
+          .map(({ key, name, n, max, unit }) => (
+            <p key={key} role="alert" className="waitlist-error">
+              That is {(n - max).toLocaleString("en")} over {name}&apos;s limit of {max.toLocaleString("en")} {unit}.
             </p>
           ))}
     </>
+  );
+}
+
+// What the first line and the rest of a YouTube post become, and what YouTube does with the video.
+function YouTubeNote() {
+  return (
+    <p className="hint">
+      On YouTube the first line is the video&apos;s title and the rest its description. The video goes up as public, but until Google has audited the
+      YouTube API project behind this server, YouTube keeps new uploads private.
+    </p>
   );
 }
 
@@ -759,7 +795,7 @@ function ImageLinks({ media, max, post, onChange }: { media: string[]; max: numb
       {!post && (
         <p className="hint">
           Up to {max}. Public https links to image or video files, or Google Drive share links. Bluesky takes JPEG, PNG, WebP or GIF of 1 MB
-          or less; Instagram takes JPEG, MP4 or MOV; LinkedIn takes JPEG, PNG or GIF images, or one MP4 video on its own.
+          or less; Instagram takes JPEG, MP4 or MOV; LinkedIn takes JPEG, PNG or GIF images, or one MP4 video on its own; YouTube takes exactly one MP4 or MOV video.
         </p>
       )}
       {media.length > 0 && (
@@ -825,7 +861,8 @@ function Preview({ posts, platform, account }: { posts: ThreadPart[]; platform: 
 }
 
 function PreviewPost({ body, media, platform, account }: { body: string; media: string[]; platform: Platform; account?: Connection }) {
-  const parts = body.split(rich);
+  const video = platform === "youtube" ? youtubeText(body) : null;
+  const parts = (video ? video.description : body).split(rich);
   return (
       <div className="card flex gap-3 p-4">
         {account ? (
@@ -838,7 +875,8 @@ function PreviewPost({ body, media, platform, account }: { body: string; media: 
             <strong>{account ? accountName(account) : `Your ${platformName(platform)} account`}</strong>{" "}
             <span className="text-ink-soft">{account?.handle ? `@${account.handle}` : ""} now</span>
           </p>
-          {body.trim() ? (
+          {video?.title && <p className="break-words text-[0.95rem] font-bold leading-snug">{video.title}</p>}
+          {(video ? video.description : body.trim()) ? (
             <p className="whitespace-pre-wrap break-words text-[0.95rem] leading-snug">
               {parts.map((part, i) =>
                 i % 2 ? (
@@ -851,7 +889,7 @@ function PreviewPost({ body, media, platform, account }: { body: string; media: 
               )}
             </p>
           ) : (
-            media.length === 0 && <p className="text-[0.95rem] text-ink-soft">Your post shows here as you write.</p>
+            media.length === 0 && !video?.title && <p className="text-[0.95rem] text-ink-soft">Your post shows here as you write.</p>
           )}
           {media.length > 0 && (
             <ul className={`mt-1 grid gap-1 overflow-hidden rounded-xl ${media.length > 1 ? "grid-cols-2" : ""}`}>

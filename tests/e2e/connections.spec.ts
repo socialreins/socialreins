@@ -166,6 +166,39 @@ test("a LinkedIn connect brain refused is explained", async ({ page }) => {
   await expect(page).toHaveURL("/app/connections");
 });
 
+test("Connect YouTube goes through brain and says how it went", async ({ page }) => {
+  await signedIn(page, "owner");
+  const on = providers.map((p) => (p.provider === "youtube" ? { ...p, configured: true } : p));
+  await page.route("**/v1/connections/providers", (route) => route.fulfill({ json: on }));
+  await page.goto("/app/connections");
+  const back = new URL("/app/connections?connected=youtube", page.url()).href;
+  await page.route("http://localhost:8080/connections/youtube/redirect", (route) =>
+    route.fulfill({ status: 303, headers: { location: back } }),
+  );
+  const link = page.getByRole("link", { name: "Connect YouTube" });
+  await expect(link).toHaveAttribute("href", "http://localhost:8080/connections/youtube/redirect");
+  await link.click();
+  await expect(page.getByRole("status").filter({ hasText: "Connected your YouTube account." })).toBeVisible();
+  await expect(page).toHaveURL("/app/connections");
+});
+
+test("a YouTube connect brain refused is explained", async ({ page }) => {
+  await signedIn(page, "owner");
+  await page.goto("/app/connections?connect_error=youtube_failed&provider=youtube");
+  await expect(page.getByRole("alert").filter({ hasText: "YouTube didn't let SocialReins connect the account." })).toBeVisible();
+  await expect(page).toHaveURL("/app/connections");
+  await page.goto("/app/connections?connect_error=no_channel&provider=youtube");
+  await expect(page.getByRole("alert").filter({ hasText: "That Google account has no YouTube channel." })).toBeVisible();
+});
+
+test("a connected YouTube channel shows its name and handle", async ({ page }) => {
+  const channel = { ...alice, id: "c9", provider: "youtube", external_id: "UCabc", handle: "annleemakes", display_name: "Ann Lee Makes", avatar_url: null };
+  await signedIn(page, "owner", [channel]);
+  await page.goto("/app/connections");
+  await expect(page.getByText("Ann Lee Makes", { exact: true })).toBeVisible();
+  await expect(page.getByText(/YouTube, @annleemakes\. Connected /)).toBeVisible();
+});
+
 test("a refused OAuth connect is explained", async ({ page }) => {
   await signedIn(page, "owner");
   await page.goto("/app/connections?connect_error=cancelled&provider=threads");
@@ -226,9 +259,11 @@ test("a connect that times out reloads the list, since brain may still finish", 
   expect(loads.list).toBe(2);
 });
 
-test("the CSP allows only Bluesky's image path and Meta's image CDNs for avatars", async ({ request }) => {
+test("the CSP allows only Bluesky's image path and Meta's and YouTube's image CDNs for avatars", async ({ request }) => {
   const csp = (await request.get("/app/connections")).headers()["content-security-policy"];
-  expect(csp).toContain("img-src 'self' data: https://cdn.bsky.app/img/ https://*.fbcdn.net https://*.cdninstagram.com;");
+  expect(csp).toContain(
+    "img-src 'self' data: https://cdn.bsky.app/img/ https://*.fbcdn.net https://*.cdninstagram.com https://yt3.ggpht.com https://yt3.googleusercontent.com;",
+  );
 });
 
 const metaChoices = {

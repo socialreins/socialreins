@@ -17,6 +17,7 @@ import {
   toLocalInput,
   updatePost,
   utf8Bytes,
+  youtubeText,
 } from "@/lib/posts";
 import { apiUrl } from "@/lib/waitlist";
 
@@ -148,6 +149,7 @@ describe("post checks", () => {
       linkedin: { chars: 3000, media: 20, thread: false },
       facebook: { chars: 63_206, media: 10, thread: false },
       instagram: { chars: 2200, media: 10, thread: false },
+      youtube: { chars: 100, media: 1, thread: false },
     });
     expect(checkPost("a".repeat(500), [], "threads")).toBeNull();
     expect(checkPost("a".repeat(501), [], "threads")).toBe("too_long");
@@ -166,6 +168,28 @@ describe("post checks", () => {
     expect(checkPost("a".repeat(2201), img(1), "instagram")).toBe("too_long");
     // A long Instagram caption without media: brain answers media_required first.
     expect(checkPost("a".repeat(2201), [], "instagram")).toBe("media_required");
+  });
+
+  it("takes one video on YouTube, titled by the first line", () => {
+    const video = (n: number) => Array(n).fill("https://example.com/a.mp4");
+    expect(youtubeText("  Title \n\n rest\nmore \n")).toEqual({ title: "Title", description: "rest\nmore" });
+    expect(youtubeText("Only a title")).toEqual({ title: "Only a title", description: "" });
+    expect(checkPost("Title\nAbout it", video(1), "youtube")).toBeNull();
+    // Brain's order: a body, a video, the text, the length, the count.
+    expect(checkPost("", video(1), "youtube")).toBe("empty_post");
+    expect(checkPost(" \n ", video(1), "youtube")).toBe("empty_post");
+    expect(checkPost("Title", [], "youtube")).toBe("media_required");
+    expect(checkPost("a <b> c", video(1), "youtube")).toBe("invalid_text");
+    expect(checkPost("T\n1 > 0", video(1), "youtube")).toBe("invalid_text");
+    expect(checkPost("é".repeat(100), video(1), "youtube")).toBeNull();
+    expect(checkPost("é".repeat(101), video(1), "youtube")).toBe("too_long");
+    expect(checkPost(`T\n${"a".repeat(5000)}`, video(1), "youtube")).toBeNull();
+    expect(checkPost(`T\n${"a".repeat(5001)}`, video(1), "youtube")).toBe("too_long");
+    // The description counts bytes, the title characters.
+    expect(checkPost(`T\n${"é".repeat(2501)}`, video(1), "youtube")).toBe("too_long");
+    expect(checkPost("Title", video(2), "youtube")).toBe("too_many_images");
+    expect(charCount("youtube", "Title\nThe description is long")).toBe(5);
+    expect(checkThread("Title", video(1), [{ body: "two", media: [] }], "youtube")).toEqual({ failure: "thread_not_supported" });
   });
 
   it("allows threads only on Bluesky and Threads", () => {
