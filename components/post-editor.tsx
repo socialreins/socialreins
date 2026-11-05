@@ -8,6 +8,7 @@ import type { Failure } from "@/lib/auth";
 import { listConnections, type Connection } from "@/lib/connections";
 import {
   charCount,
+  checkComment,
   checkThread,
   createPost,
   createPostGroup,
@@ -31,6 +32,7 @@ import {
   type PostGroupInput,
   type PostInput,
   type Takedown,
+  type Target,
   type ThreadPart,
 } from "@/lib/posts";
 import { fitsList, listLists, partLabel, type PostList } from "@/lib/lists";
@@ -59,6 +61,8 @@ function platformProblem(platform: Platform, failure: Failure): ReactNode {
   if (failure === "too_many_images") return platform === "youtube" ? "YouTube takes exactly one video." : `${name} takes at most ${limits[platform].media} images.`;
   if (failure === "media_required") return platform === "youtube" ? "YouTube needs one MP4 or MOV video: add its link." : platform === "tiktok" ? "TikTok needs one MP4 or MOV video, or JPEG or WebP photos: add their links." : `${name} needs at least one image or video.`;
   if (failure === "thread_not_supported") return `${name} can't post threads.`;
+  if (failure === "first_comment_not_supported") return `${name} can't post a first comment.`;
+  if (failure === "first_comment_too_long") return `${name} takes a first comment of at most ${(limits[platform].comment ?? 0).toLocaleString("en")} characters.`;
   return postMessages[failure] ?? failure;
 }
 
@@ -74,6 +78,9 @@ export function PostEditor({ id }: { id?: string }) {
   const [body, setBody] = useState("");
   const [media, setMedia] = useState<string[]>([]);
   const [thread, setThread] = useState<ThreadPart[]>([]);
+  // The first comment, and per-platform text that replaces it on that platform.
+  const [comment, setComment] = useState("");
+  const [commentCustom, setCommentCustom] = useState<Partial<Record<Platform, string>>>({});
   // The platforms ticked for a new post; null means every platform with an account in the set.
   const [chosen, setChosen] = useState<Platform[] | null>(null);
   // Per-platform text that replaces the main post on that platform.
@@ -110,6 +117,8 @@ export function PostEditor({ id }: { id?: string }) {
     setBody(p.body);
     setMedia(p.media);
     setThread(p.thread ?? []);
+    setComment(p.first_comment ?? "");
+    setCommentCustom({});
     setCustom({});
     setAt(toLocalInput(p.status === "scheduled" ? p.scheduled_at : null));
     setListId("");
@@ -194,6 +203,8 @@ export function PostEditor({ id }: { id?: string }) {
       const e = entry(p);
       const invalid = checkThread(e.body, e.media, e.thread, p);
       if (invalid) return setLocal(<>{invalid.part ? `Post ${invalid.part + 1} of the thread: ` : ""}{platformProblem(p, invalid.failure)}</>);
+      const bad = checkComment(commentText(p), p);
+      if (bad) return setLocal(platformProblem(p, bad));
     }
     if (mode === "schedule" && !at) return setLocal("Pick a date and time to schedule the post.");
     const shared = {
@@ -203,10 +214,15 @@ export function PostEditor({ id }: { id?: string }) {
     };
     const input: PostInput = { ...shared, platform: selected[0]!, ...entry(selected[0]!) };
     // Customized text, and an empty thread where the platform can't post one, so brain takes the rest.
-    const overrides: PostGroupInput["overrides"] = {};
+    // The same for the first comment: "" where the platform can't post one, its own text where customized.
+    const overrides: NonNullable<PostGroupInput["overrides"]> = {};
     for (const p of selected) {
-      const o = { body: customFor(p), thread: limits[p].thread || parts.length === 0 ? undefined : [] };
-      if (o.body !== undefined || o.thread) overrides[p] = o;
+      const o = {
+        body: customFor(p),
+        thread: limits[p].thread || parts.length === 0 ? undefined : [],
+        first_comment: limits[p].comment === null ? (comment.trim() ? "" : undefined) : commentCustomFor(p),
+      };
+      if (o.body !== undefined || o.thread || o.first_comment !== undefined) overrides[p] = o;
     }
     let made = 1;
     await run(mode, async () => {
@@ -221,7 +237,7 @@ export function PostEditor({ id }: { id?: string }) {
         const r = await publishAll([saved.id, ...unsent.filter((u) => u !== saved.id)]);
         return isFailure(r) ? r : r[0]!;
       }
-      const g = await createPostGroup({ ...shared, platforms: selected, body, media: images, thread: parts, overrides });
+      const g = await createPostGroup({ ...shared, platforms: selected, body, media: images, thread: parts, first_comment: comment.trim() ? comment : undefined, overrides });
       if (isFailure(g)) return g;
       const posts = g.posts;
       made = posts.length;
@@ -329,7 +345,18 @@ export function PostEditor({ id }: { id?: string }) {
   const images = links(media);
   const parts = thread.map((p) => ({ ...p, media: links(p.media) }));
   // One platform's post: its own text if customized, and the thread only where it can post one.
-  const entry = (p: Platform) => ({ body: customFor(p) ?? body, media: images, thread: limits[p].thread ? parts : [] });
+  const entry = (p: Platform) => ({
+    body: customFor(p) ?? body,
+    media: images,
+    thread: limits[p].thread ? parts : [],
+    first_comment: commentText(p).trim() ? commentText(p) : undefined,
+  });
+  // The first comment goes where the platform can post one; customized text counts only while its box shows.
+  const commentable = selected.filter((p) => limits[p].comment !== null);
+  const noComment = selected.filter((p) => limits[p].comment === null);
+  const commentCustomFor = (p: Platform) => (commentable.length > 1 && commentable.includes(p) ? commentCustom[p] : undefined);
+  const commentText = (p: Platform) => (limits[p].comment === null ? "" : (commentCustomFor(p) ?? comment));
+  const commentMain = commentable.filter((p) => commentCustomFor(p) === undefined);
   // Shared images must fit every chosen platform.
   const cap = (list: Platform[]) => (list.length ? Math.min(...list.map((p) => limits[p].media)) : limits.bluesky.media);
   const mediaProblems = selected.flatMap((p) =>
@@ -514,6 +541,14 @@ export function PostEditor({ id }: { id?: string }) {
             {post.error && <p className="waitlist-error">What went wrong: {post.error}</p>}
           </div>
           {messages}
+          {post.first_comment && (
+            <section aria-labelledby="comment-heading" className="card grid gap-2 p-5">
+              <h2 id="comment-heading" className="font-display text-lg font-extrabold tracking-tight">
+                First comment
+              </h2>
+              <p className="whitespace-pre-wrap break-words text-sm">{post.first_comment}</p>
+            </section>
+          )}
           {post.targets.length > 0 && (
             <section aria-labelledby="targets-heading" className="grid gap-3">
               <h2 id="targets-heading" className="font-display text-lg font-extrabold tracking-tight">
@@ -534,6 +569,11 @@ export function PostEditor({ id }: { id?: string }) {
                           View on {platformName(post.platform)}
                           <Icon name="external" className="size-4" />
                         </a>
+                      )}
+                      {post.first_comment && (
+                        <span className="basis-full text-ink-soft" data-comment-status={t.comment_status ?? "none"}>
+                          First comment: {commentStatus(t)}
+                        </span>
                       )}
                       {(post.thread ?? []).length > 0 && (
                         <span className="basis-full text-ink-soft">
@@ -580,6 +620,16 @@ export function PostEditor({ id }: { id?: string }) {
   function customize(p: Platform) {
     flushSync(() => setCustom((c) => ({ ...c, [p]: body })));
     document.getElementById(`post-body-${p}`)?.focus();
+  }
+
+  function customizeComment(p: Platform) {
+    flushSync(() => setCommentCustom((c) => ({ ...c, [p]: comment })));
+    document.getElementById(`post-comment-${p}`)?.focus();
+  }
+
+  function uncustomizeComment(p: Platform) {
+    flushSync(() => setCommentCustom((c) => Object.fromEntries(Object.entries(c).filter(([k]) => k !== p))));
+    document.getElementById(`comment-customize-${p}`)?.focus();
   }
 
   function uncustomize(p: Platform) {
@@ -732,6 +782,58 @@ export function PostEditor({ id }: { id?: string }) {
                 ))}
               </ul>
             )}
+            {commentable.length > 0 && (
+              <div className="grid gap-1.5">
+                <label htmlFor="post-comment" className="label">
+                  First comment
+                </label>
+                <textarea
+                  id="post-comment"
+                  rows={3}
+                  className="field resize-y"
+                  placeholder="Optional: sources, caveats, a link"
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  aria-invalid={commentMain.some((p) => commentOver(p, comment)) || undefined}
+                  aria-describedby="post-comment-note post-comment-count"
+                />
+                <CommentCounts id="post-comment-count" text={comment} platforms={commentMain} />
+                <p id="post-comment-note" className="hint">
+                  Posted by the same account right after the post goes live, on {names(commentable)}.
+                  {noComment.length > 0 && ` ${names(noComment)} can't post one, so ${noComment.length > 1 ? "they get" : "it gets"} none.`} It is tried once: if it fails, the post stays published and says why.
+                </p>
+              </div>
+            )}
+            {commentable.length > 1 &&
+              commentable.map((p) =>
+                commentCustom[p] === undefined ? (
+                  <button key={p} id={`comment-customize-${p}`} type="button" className="btn btn-quiet btn-sm justify-self-start" onClick={() => customizeComment(p)}>
+                    <Icon name="plus" className="size-4" />
+                    Customize the first comment for {platformName(p)}
+                  </button>
+                ) : (
+                  <div key={p} className="grid gap-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <label htmlFor={`post-comment-${p}`} className="label">
+                        {platformName(p)} first comment
+                      </label>
+                      <button type="button" className="icon-btn" aria-label={`Use the main first comment on ${platformName(p)}`} onClick={() => uncustomizeComment(p)}>
+                        <Icon name="close" className="size-4" />
+                      </button>
+                    </div>
+                    <textarea
+                      id={`post-comment-${p}`}
+                      rows={3}
+                      className="field resize-y"
+                      value={commentCustom[p]}
+                      onChange={(e) => setCommentCustom((c) => ({ ...c, [p]: e.target.value }))}
+                      aria-invalid={commentOver(p, commentCustom[p]!) || undefined}
+                      aria-describedby={`post-comment-${p}-count`}
+                    />
+                    <CommentCounts id={`post-comment-${p}-count`} text={commentCustom[p]!} platforms={[p]} />
+                  </div>
+                ),
+              )}
             {threadable.length > 0 && (
             <fieldset className="grid gap-2">
               <legend className="label">Thread</legend>
@@ -824,6 +926,14 @@ export function PostEditor({ id }: { id?: string }) {
   );
 }
 
+// Where a target's first comment stands. A failed one is never retried, so it says what to do instead.
+function commentStatus(t: Target): string {
+  if (t.comment_status === "posted") return "posted.";
+  if (t.comment_status === "posting") return "being posted.";
+  if (t.comment_status === "failed") return `not posted. ${t.comment_error ?? ""} It is not tried again: add the comment on the platform yourself.`.replace(/\s+/g, " ");
+  return t.status === "published" ? "not sent." : t.status === "failed" || t.status === "deleted" ? "not posted." : "waits for the post.";
+}
+
 const links = (media: string[]) => media.map((m) => m.trim()).filter(Boolean);
 
 // "N of M characters" for each platform; `alerts` also says how far over a limit the text is.
@@ -854,6 +964,31 @@ function Counts({ id, text, platforms, alerts }: { id: string; text: string; pla
               That is {(n - max).toLocaleString("en")} over {name}&apos;s limit of {max.toLocaleString("en")} {unit}.
             </p>
           ))}
+    </>
+  );
+}
+
+const commentOver = (p: Platform, text: string) => [...text].length > (limits[p].comment ?? Infinity);
+
+// "N of M characters" of the first comment for each platform that takes one; over a limit it also says by how much.
+function CommentCounts({ id, text, platforms }: { id: string; text: string; platforms: Platform[] }) {
+  const n = [...text].length;
+  return (
+    <>
+      <ul id={id} className="flex flex-wrap justify-end gap-x-4 text-sm">
+        {platforms.map((p) => (
+          <li key={p} className={commentOver(p, text) ? "font-bold text-signal-deep" : "text-ink-soft"}>
+            {platformName(p)}: {n.toLocaleString("en")} of {limits[p].comment!.toLocaleString("en")} characters
+          </li>
+        ))}
+      </ul>
+      {platforms
+        .filter((p) => commentOver(p, text))
+        .map((p) => (
+          <p key={p} role="alert" className="waitlist-error">
+            That is {(n - limits[p].comment!).toLocaleString("en")} over {platformName(p)}&apos;s first comment limit of {limits[p].comment!.toLocaleString("en")} characters.
+          </p>
+        ))}
     </>
   );
 }

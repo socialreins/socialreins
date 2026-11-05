@@ -12,6 +12,10 @@ export type Target = {
   published_at: string | null;
   // The thread posts published so far, in order.
   parts: { remote_id: string; remote_url: string | null; published_at: string | null }[];
+  // The first comment: null before it is tried, then posting, posted or failed (with comment_error).
+  comment_status?: "posting" | "posted" | "failed" | null;
+  comment_id?: string | null;
+  comment_error?: string | null;
 };
 // A follow-up post of a thread: a reply to the one before.
 export type ThreadPart = { body: string; media: string[] };
@@ -24,6 +28,8 @@ export type Post = {
   body: string;
   media: string[];
   thread: ThreadPart[];
+  // Text the account comments on the post right after it is published; null for none.
+  first_comment?: string | null;
   status: PostStatus;
   scheduled_at: string | null;
   published_at: string | null;
@@ -43,31 +49,35 @@ export type PostInput = {
   body: string;
   media: string[];
   thread?: ThreadPart[];
+  first_comment?: string;
   // ISO time to publish; null keeps the post a draft. A past time means now.
   scheduled_at: string | null;
   // A list to put the post in; one it is already in would move it to the end.
   list_id?: string;
 };
-// One post per platform, each with the shared body, media and thread unless overridden.
+// One post per platform, each with the shared body, media, thread and first comment unless overridden
+// (a first_comment of "" leaves it out on a platform that can't post one).
 export type PostGroupInput = Omit<PostInput, "platform"> & {
   platforms: Platform[];
-  overrides?: Partial<Record<Platform, { body?: string; media?: string[]; thread?: ThreadPart[] }>>;
+  overrides?: Partial<Record<Platform, { body?: string; media?: string[]; thread?: ThreadPart[]; first_comment?: string }>>;
 };
 export type PostFilter = { social_set_id?: string; status?: PostStatus; from?: string; to?: string; group_id?: string };
 
 // Each platform's limits, as brain's crates/core/src/post.rs checks them. `chars` counts graphemes
 // on Bluesky, X's weighted count on X (`xWeight`), UTF-16 code units on TikTok and Unicode code points elsewhere (on YouTube it is the
 // title's, the body's first line); `media` is images or videos per post (on X 4 images, or one GIF or video; on TikTok
-// one video or up to 35 photos).
-export const limits: Record<Platform, { chars: number; media: number; thread: boolean }> = {
-  bluesky: { chars: 300, media: 4, thread: true },
-  threads: { chars: 500, media: 20, thread: true },
-  linkedin: { chars: 3000, media: 20, thread: false },
-  facebook: { chars: 63_206, media: 10, thread: false },
-  instagram: { chars: 2200, media: 10, thread: false },
-  youtube: { chars: 100, media: 1, thread: false },
-  x: { chars: 280, media: 4, thread: true },
-  tiktok: { chars: 2200, media: 35, thread: false },
+// one video or up to 35 photos). `comment` is the first comment's limit in characters, null where the
+// platform can't post one (brain answers first_comment_not_supported). Meta, LinkedIn and Google document
+// no comment limit through their APIs, so these are the widely reported figures.
+export const limits: Record<Platform, { chars: number; media: number; thread: boolean; comment: number | null }> = {
+  bluesky: { chars: 300, media: 4, thread: true, comment: null },
+  threads: { chars: 500, media: 20, thread: true, comment: null },
+  linkedin: { chars: 3000, media: 20, thread: false, comment: 1250 },
+  facebook: { chars: 63_206, media: 10, thread: false, comment: 8000 },
+  instagram: { chars: 2200, media: 10, thread: false, comment: 2200 },
+  youtube: { chars: 100, media: 1, thread: false, comment: 10_000 },
+  x: { chars: 280, media: 4, thread: true, comment: null },
+  tiktok: { chars: 2200, media: 35, thread: false, comment: null },
 };
 // A YouTube video's description (the body after its first line) is limited in UTF-8 bytes.
 export const YOUTUBE_DESCRIPTION_BYTES = 5000;
@@ -192,6 +202,14 @@ export function checkPost(body: string, media: string[], platform: Platform = "b
   if (media.length > max.media) return "too_many_images";
   if (media.some((m) => !/^https:\/\/[^\s/]+\/?\S*$/.test(m))) return "invalid_media";
   return null;
+}
+
+// Mirrors brain's first comment checks: blank is none, only four platforms take one, each with its own limit.
+export function checkComment(text: string, platform: Platform): Failure | null {
+  if (!text.trim()) return null;
+  const max = limits[platform].comment;
+  if (max === null) return "first_comment_not_supported";
+  return [...text].length > max ? "first_comment_too_long" : null;
 }
 
 // checkPost for the first post and every part; `part` is the 1-based follow-up at fault, as brain answers.

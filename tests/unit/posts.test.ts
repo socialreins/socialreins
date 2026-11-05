@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   charCount,
+  checkComment,
   checkPost,
   checkThread,
   createPost,
@@ -91,6 +92,8 @@ describe("post requests", () => {
     [422, "unsupported_platform"],
     [422, "media_required"],
     [422, "thread_not_supported"],
+    [422, "first_comment_not_supported"],
+    [422, "first_comment_too_long"],
     [422, "invalid_override"],
     [422, "no_accounts"],
     [409, "too_many_posts"],
@@ -201,14 +204,14 @@ describe("post checks", () => {
   it("applies each platform's limits from brain", () => {
     const img = (n: number) => Array(n).fill("https://example.com/a.jpg");
     expect(limits).toEqual({
-      bluesky: { chars: 300, media: 4, thread: true },
-      threads: { chars: 500, media: 20, thread: true },
-      linkedin: { chars: 3000, media: 20, thread: false },
-      facebook: { chars: 63_206, media: 10, thread: false },
-      instagram: { chars: 2200, media: 10, thread: false },
-      youtube: { chars: 100, media: 1, thread: false },
-      x: { chars: 280, media: 4, thread: true },
-      tiktok: { chars: 2200, media: 35, thread: false },
+      bluesky: { chars: 300, media: 4, thread: true, comment: null },
+      threads: { chars: 500, media: 20, thread: true, comment: null },
+      linkedin: { chars: 3000, media: 20, thread: false, comment: 1250 },
+      facebook: { chars: 63_206, media: 10, thread: false, comment: 8000 },
+      instagram: { chars: 2200, media: 10, thread: false, comment: 2200 },
+      youtube: { chars: 100, media: 1, thread: false, comment: 10_000 },
+      x: { chars: 280, media: 4, thread: true, comment: null },
+      tiktok: { chars: 2200, media: 35, thread: false, comment: null },
     });
     expect(checkPost("a".repeat(500), [], "threads")).toBeNull();
     expect(checkPost("a".repeat(501), [], "threads")).toBe("too_long");
@@ -292,6 +295,21 @@ describe("post checks", () => {
     expect(checkPost("Title", video(2), "youtube")).toBe("too_many_images");
     expect(charCount("youtube", "Title\nThe description is long")).toBe(5);
     expect(checkThread("Title", video(1), [{ body: "two", media: [] }], "youtube")).toEqual({ failure: "thread_not_supported" });
+  });
+
+  it("checks a first comment as brain does: four platforms, each with its limit, blank is none", () => {
+    for (const p of ["bluesky", "threads", "x", "tiktok"] as const) {
+      expect(limits[p].comment).toBeNull();
+      expect(checkComment("sources", p)).toBe("first_comment_not_supported");
+      expect(checkComment("  \n", p)).toBeNull();
+    }
+    for (const [p, max] of [["facebook", 8000], ["instagram", 2200], ["linkedin", 1250], ["youtube", 10_000]] as const) {
+      expect(limits[p].comment).toBe(max);
+      expect(checkComment("é".repeat(max), p)).toBeNull();
+      expect(checkComment("é".repeat(max + 1), p)).toBe("first_comment_too_long");
+    }
+    // Code points, as brain counts characters: an emoji is one.
+    expect(checkComment("🙂".repeat(1250), "linkedin")).toBeNull();
   });
 
   it("allows threads only on Bluesky and Threads", () => {
