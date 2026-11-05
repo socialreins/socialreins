@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   charCount,
   checkComment,
+  checkCover,
   checkPost,
   checkThread,
   createPost,
@@ -94,6 +95,9 @@ describe("post requests", () => {
     [422, "thread_not_supported"],
     [422, "first_comment_not_supported"],
     [422, "first_comment_too_long"],
+    [422, "cover_not_supported"],
+    [422, "invalid_cover"],
+    [422, "cover_needs_one_video"],
     [422, "invalid_override"],
     [422, "no_accounts"],
     [409, "too_many_posts"],
@@ -204,14 +208,14 @@ describe("post checks", () => {
   it("applies each platform's limits from brain", () => {
     const img = (n: number) => Array(n).fill("https://example.com/a.jpg");
     expect(limits).toEqual({
-      bluesky: { chars: 300, media: 4, thread: true, comment: null },
-      threads: { chars: 500, media: 20, thread: true, comment: null },
-      linkedin: { chars: 3000, media: 20, thread: false, comment: 1250 },
-      facebook: { chars: 63_206, media: 10, thread: false, comment: 8000 },
-      instagram: { chars: 2200, media: 10, thread: false, comment: 2200 },
-      youtube: { chars: 100, media: 1, thread: false, comment: 10_000 },
-      x: { chars: 280, media: 4, thread: true, comment: null },
-      tiktok: { chars: 2200, media: 35, thread: false, comment: null },
+      bluesky: { chars: 300, media: 4, thread: true, comment: null, cover: false },
+      threads: { chars: 500, media: 20, thread: true, comment: null, cover: false },
+      linkedin: { chars: 3000, media: 20, thread: false, comment: 1250, cover: false },
+      facebook: { chars: 63_206, media: 10, thread: false, comment: 8000, cover: true },
+      instagram: { chars: 2200, media: 10, thread: false, comment: 2200, cover: true },
+      youtube: { chars: 100, media: 1, thread: false, comment: 10_000, cover: true },
+      x: { chars: 280, media: 4, thread: true, comment: null, cover: false },
+      tiktok: { chars: 2200, media: 35, thread: false, comment: null, cover: false },
     });
     expect(checkPost("a".repeat(500), [], "threads")).toBeNull();
     expect(checkPost("a".repeat(501), [], "threads")).toBe("too_long");
@@ -310,6 +314,23 @@ describe("post checks", () => {
     }
     // Code points, as brain counts characters: an emoji is one.
     expect(checkComment("🙂".repeat(1250), "linkedin")).toBeNull();
+  });
+
+  it("checks a cover as brain does: three platforms, a public https link, exactly one media item, blank is none", () => {
+    const link = "https://example.com/cover.jpg";
+    for (const p of ["bluesky", "threads", "linkedin", "x", "tiktok"] as const) {
+      expect(limits[p].cover).toBe(false);
+      expect(checkCover(link, p, 1)).toBe("cover_not_supported");
+      expect(checkCover("  ", p, 0)).toBeNull();
+    }
+    for (const p of ["facebook", "instagram", "youtube"] as const) {
+      expect(limits[p].cover).toBe(true);
+      expect(checkCover(` ${link} `, p, 1)).toBeNull();
+      expect(checkCover("http://example.com/cover.jpg", p, 1)).toBe("invalid_cover");
+      expect(checkCover("not a link", p, 1)).toBe("invalid_cover");
+      expect(checkCover(link, p, 0)).toBe("cover_needs_one_video");
+      expect(checkCover(link, p, 2)).toBe("cover_needs_one_video");
+    }
   });
 
   it("allows threads only on Bluesky and Threads", () => {
