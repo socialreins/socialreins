@@ -229,6 +229,9 @@ describe("post checks", () => {
     expect(checkPost("", img(1), "tiktok")).toBeNull();
     expect(checkPost("a".repeat(2201), img(1), "tiktok")).toBe("too_long");
     expect(checkPost("x", img(36), "tiktok")).toBe("too_many_images");
+    // TikTok counts UTF-16 code units: an emoji is two.
+    expect(checkPost("🙂".repeat(1100), img(1), "tiktok")).toBeNull();
+    expect(checkPost("🙂".repeat(1101), img(1), "tiktok")).toBe("too_long");
     expect(checkPost("a caption", [], "tiktok")).toBe("media_required");
     expect(checkPost(" ", [], "tiktok")).toBe("empty_post");
     // A long Instagram caption without media: brain answers media_required first.

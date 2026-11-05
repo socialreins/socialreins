@@ -56,7 +56,7 @@ export type PostGroupInput = Omit<PostInput, "platform"> & {
 export type PostFilter = { social_set_id?: string; status?: PostStatus; from?: string; to?: string; group_id?: string };
 
 // Each platform's limits, as brain's crates/core/src/post.rs checks them. `chars` counts graphemes
-// on Bluesky, X's weighted count on X (`xWeight`) and Unicode code points elsewhere (on YouTube it is the
+// on Bluesky, X's weighted count on X (`xWeight`), UTF-16 code units on TikTok and Unicode code points elsewhere (on YouTube it is the
 // title's, the body's first line); `media` is images or videos per post (on X 4 images, or one GIF or video; on TikTok
 // one video or up to 35 photos).
 export const limits: Record<Platform, { chars: number; media: number; thread: boolean }> = {
@@ -172,7 +172,9 @@ export const charCount = (platform: Platform, text: string) =>
     ? graphemes(text)
     : platform === "x"
       ? xWeight(text)
-      : [...(platform === "youtube" ? youtubeText(text).title : text)].length;
+      : platform === "tiktok"
+        ? text.length
+        : [...(platform === "youtube" ? youtubeText(text).title : text)].length;
 
 // Whether the text is over the platform's limit; YouTube also limits its description's bytes.
 export const overLimit = (platform: Platform, text: string) =>
