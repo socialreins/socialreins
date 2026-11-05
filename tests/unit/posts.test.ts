@@ -208,6 +208,7 @@ describe("post checks", () => {
       instagram: { chars: 2200, media: 10, thread: false },
       youtube: { chars: 100, media: 1, thread: false },
       x: { chars: 280, media: 4, thread: true },
+      tiktok: { chars: 2200, media: 35, thread: false },
     });
     expect(checkPost("a".repeat(500), [], "threads")).toBeNull();
     expect(checkPost("a".repeat(501), [], "threads")).toBe("too_long");
@@ -224,6 +225,12 @@ describe("post checks", () => {
     expect(checkPost(" ", [], "instagram")).toBe("empty_post");
     expect(checkPost("a".repeat(2200), img(10), "instagram")).toBeNull();
     expect(checkPost("a".repeat(2201), img(1), "instagram")).toBe("too_long");
+    expect(checkPost("a".repeat(2200), img(35), "tiktok")).toBeNull();
+    expect(checkPost("", img(1), "tiktok")).toBeNull();
+    expect(checkPost("a".repeat(2201), img(1), "tiktok")).toBe("too_long");
+    expect(checkPost("x", img(36), "tiktok")).toBe("too_many_images");
+    expect(checkPost("a caption", [], "tiktok")).toBe("media_required");
+    expect(checkPost(" ", [], "tiktok")).toBe("empty_post");
     // A long Instagram caption without media: brain answers media_required first.
     expect(checkPost("a".repeat(2201), [], "instagram")).toBe("media_required");
   });

@@ -14,8 +14,8 @@ const csp = (api: string) =>
     `script-src 'self' 'unsafe-inline' ${turnstile}${dev ? " 'unsafe-eval'" : ""}`,
     `frame-src ${turnstile}`,
     "style-src 'self' 'unsafe-inline'",
-    // Bluesky, Facebook, Instagram, YouTube and X avatars; safeAvatar in lib/connections.ts keeps to the same sources.
-    "img-src 'self' data: https://cdn.bsky.app/img/ https://*.fbcdn.net https://*.cdninstagram.com https://yt3.ggpht.com https://yt3.googleusercontent.com https://pbs.twimg.com",
+    // Bluesky, Facebook, Instagram, YouTube, X and TikTok avatars; safeAvatar in lib/connections.ts keeps to the same sources.
+    "img-src 'self' data: https://cdn.bsky.app/img/ https://*.fbcdn.net https://*.cdninstagram.com https://yt3.ggpht.com https://yt3.googleusercontent.com https://pbs.twimg.com https://*.tiktokcdn.com https://*.tiktokcdn-us.com",
     "font-src 'self'",
     `connect-src 'self' ${api}${dev ? " ws:" : ""}`,
     "object-src 'none'",

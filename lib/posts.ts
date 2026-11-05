@@ -16,7 +16,7 @@ export type Target = {
 // A follow-up post of a thread: a reply to the one before.
 export type ThreadPart = { body: string; media: string[] };
 // The platforms brain publishes to.
-export type Platform = "bluesky" | "threads" | "linkedin" | "facebook" | "instagram" | "youtube" | "x";
+export type Platform = "bluesky" | "threads" | "linkedin" | "facebook" | "instagram" | "youtube" | "x" | "tiktok";
 export type Post = {
   id: string;
   social_set_id: string;
@@ -57,7 +57,8 @@ export type PostFilter = { social_set_id?: string; status?: PostStatus; from?: s
 
 // Each platform's limits, as brain's crates/core/src/post.rs checks them. `chars` counts graphemes
 // on Bluesky, X's weighted count on X (`xWeight`) and Unicode code points elsewhere (on YouTube it is the
-// title's, the body's first line); `media` is images or videos per post (on X 4 images, or one GIF or video).
+// title's, the body's first line); `media` is images or videos per post (on X 4 images, or one GIF or video; on TikTok
+// one video or up to 35 photos).
 export const limits: Record<Platform, { chars: number; media: number; thread: boolean }> = {
   bluesky: { chars: 300, media: 4, thread: true },
   threads: { chars: 500, media: 20, thread: true },
@@ -66,6 +67,7 @@ export const limits: Record<Platform, { chars: number; media: number; thread: bo
   instagram: { chars: 2200, media: 10, thread: false },
   youtube: { chars: 100, media: 1, thread: false },
   x: { chars: 280, media: 4, thread: true },
+  tiktok: { chars: 2200, media: 35, thread: false },
 };
 // A YouTube video's description (the body after its first line) is limited in UTF-8 bytes.
 export const YOUTUBE_DESCRIPTION_BYTES = 5000;
@@ -182,7 +184,7 @@ export function checkPost(body: string, media: string[], platform: Platform = "b
   const max = limits[platform];
   // A YouTube video needs a title, so it needs a body even with its video.
   if (!body.trim() && (media.length === 0 || platform === "youtube")) return "empty_post";
-  if ((platform === "instagram" || platform === "youtube") && media.length === 0) return "media_required";
+  if ((platform === "instagram" || platform === "youtube" || platform === "tiktok") && media.length === 0) return "media_required";
   if (platform === "youtube" && /[<>]/.test(body)) return "invalid_text";
   if (overLimit(platform, body) || (platform === "bluesky" && utf8Bytes(body) > MAX_BYTES)) return "too_long";
   if (media.length > max.media) return "too_many_images";

@@ -53,10 +53,11 @@ function platformProblem(platform: Platform, failure: Failure): ReactNode {
   if (failure === "too_long" && platform === "youtube")
     return `YouTube takes a title (the first line) of at most ${limits.youtube.chars} characters and a description (the rest) of at most ${YOUTUBE_DESCRIPTION_BYTES.toLocaleString("en")} bytes.`;
   if (failure === "too_long" && platform === "x") return `X takes at most ${limits.x.chars} characters, where a link counts as 23 and an emoji or a Chinese, Japanese or Korean character as 2.`;
+  if (failure === "too_many_images" && platform === "tiktok") return "TikTok takes one video, or up to 35 photos.";
   if (failure === "too_long") return `${name} takes at most ${limits[platform].chars.toLocaleString("en")} characters.`;
   if (failure === "too_many_images" && platform === "x") return "X takes at most 4 images, or one GIF or video.";
   if (failure === "too_many_images") return platform === "youtube" ? "YouTube takes exactly one video." : `${name} takes at most ${limits[platform].media} images.`;
-  if (failure === "media_required") return platform === "youtube" ? "YouTube needs one MP4 or MOV video: add its link." : `${name} needs at least one image or video.`;
+  if (failure === "media_required") return platform === "youtube" ? "YouTube needs one MP4 or MOV video: add its link." : platform === "tiktok" ? "TikTok needs one MP4 or MOV video, or JPEG or WebP photos: add their links." : `${name} needs at least one image or video.`;
   if (failure === "thread_not_supported") return `${name} can't post threads.`;
   return postMessages[failure] ?? failure;
 }
@@ -891,7 +892,7 @@ function ImageLinks({ media, max, post, onChange }: { media: string[]; max: numb
       {!post && (
         <p className="hint">
           Up to {max}. Public https links to image or video files, or Google Drive share links. Bluesky takes JPEG, PNG, WebP or GIF of 1 MB
-          or less; Instagram takes JPEG, MP4 or MOV; LinkedIn takes JPEG, PNG or GIF images, or one MP4 video on its own; YouTube takes exactly one MP4 or MOV video. X takes up to 4 JPEG, PNG or WebP images, or one GIF or MP4 or MOV video.
+          or less; Instagram takes JPEG, MP4 or MOV; LinkedIn takes JPEG, PNG or GIF images, or one MP4 video on its own; YouTube takes exactly one MP4 or MOV video. X takes up to 4 JPEG, PNG or WebP images, or one GIF or MP4 or MOV video. TikTok takes one MP4 or MOV video, or up to 35 JPEG or WebP photos.
         </p>
       )}
       {media.length > 0 && (
