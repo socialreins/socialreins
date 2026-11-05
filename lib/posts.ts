@@ -22,6 +22,69 @@ export type Target = {
 // A follow-up post of a thread: a reply to the one before.
 export type ThreadPart = { body: string; media: string[] };
 // The platforms brain publishes to.
+// What the user chooses for a TikTok post, as brain's POST /v1/posts takes it (TikTok's Content Sharing
+// Guidelines): who can see it (no default), the interactions (all off), the commercial content disclosure
+// and the AI-generated flag. privacy_level is one of the account's privacy_level_options.
+export type TikTokSettings = {
+  privacy_level: string | null;
+  allow_comment: boolean;
+  allow_duet: boolean;
+  allow_stitch: boolean;
+  commercial_content: boolean;
+  your_brand: boolean;
+  branded_content: boolean;
+  ai_generated: boolean;
+};
+export const noTikTok: TikTokSettings = {
+  privacy_level: null,
+  allow_comment: false,
+  allow_duet: false,
+  allow_stitch: false,
+  commercial_content: false,
+  your_brand: false,
+  branded_content: false,
+  ai_generated: false,
+};
+// What GET /v1/connections/{id}/tiktok says an account may post now.
+export type TikTokCreator = {
+  nickname: string;
+  username: string | null;
+  privacy_level_options: string[];
+  comment_disabled: boolean;
+  duet_disabled: boolean;
+  stitch_disabled: boolean;
+  max_video_post_duration_sec: number | null;
+  can_post: boolean;
+  reason: string | null;
+};
+export const getTikTokCreator = (accountId: string) => api<TikTokCreator>(`/v1/connections/${encodeURIComponent(accountId)}/tiktok`);
+export const privacyName: Record<string, string> = {
+  PUBLIC_TO_EVERYONE: "Everyone",
+  MUTUAL_FOLLOW_FRIENDS: "Friends",
+  FOLLOWER_OF_CREATOR: "Followers",
+  SELF_ONLY: "Only me",
+};
+// Several accounts of one set get the same settings, so the editor offers what every one of them does:
+// the levels all are offered, an interaction off if any creator turned it off, the shortest video limit.
+export function mergeCreators(list: TikTokCreator[]): TikTokCreator {
+  const [first, ...rest] = list;
+  if (!first) return { nickname: "", username: null, privacy_level_options: [], comment_disabled: false, duet_disabled: false, stitch_disabled: false, max_video_post_duration_sec: null, can_post: false, reason: null };
+  return rest.reduce<TikTokCreator>(
+    (a, c) => ({
+      nickname: `${a.nickname}, ${c.nickname}`,
+      username: null,
+      privacy_level_options: a.privacy_level_options.filter((o) => c.privacy_level_options.includes(o)),
+      comment_disabled: a.comment_disabled || c.comment_disabled,
+      duet_disabled: a.duet_disabled || c.duet_disabled,
+      stitch_disabled: a.stitch_disabled || c.stitch_disabled,
+      max_video_post_duration_sec: [a.max_video_post_duration_sec, c.max_video_post_duration_sec].filter((n): n is number => n !== null).sort((x, y) => x - y)[0] ?? null,
+      can_post: a.can_post && c.can_post,
+      reason: a.reason ?? c.reason,
+    }),
+    first,
+  );
+}
+
 export type Platform = "bluesky" | "threads" | "linkedin" | "facebook" | "instagram" | "youtube" | "x" | "tiktok";
 export type Post = {
   id: string;
@@ -34,6 +97,8 @@ export type Post = {
   first_comment?: string | null;
   // Cover image link for the post's one video; null for none.
   cover?: string | null;
+  // A TikTok post's settings; null for none (a post made through the API).
+  tiktok?: TikTokSettings | null;
   status: PostStatus;
   scheduled_at: string | null;
   published_at: string | null;
@@ -56,6 +121,8 @@ export type PostInput = {
   first_comment?: string;
   // A cover image link for the post's one video (Instagram, Facebook, YouTube); "" or absent for none.
   cover?: string;
+  // TikTok settings: only a TikTok post takes them, and a group gives them to its TikTok post.
+  tiktok?: TikTokSettings;
   // ISO time to publish; null keeps the post a draft. A past time means now.
   scheduled_at: string | null;
   // A list to put the post in; one it is already in would move it to the end.
@@ -220,6 +287,17 @@ export function checkComment(text: string, platform: Platform): Failure | null {
   const max = limits[platform].comment;
   if (max === null) return "first_comment_not_supported";
   return [...text].length > max ? "first_comment_too_long" : null;
+}
+
+// Mirrors brain's TikTok settings checks: a level must be chosen, the disclosure needs one of its two boxes,
+// and branded content cannot be private. Whether the account is offered the level is checked against its
+// creator info in the editor.
+export function checkTikTok(t: TikTokSettings): Failure | null {
+  if (!t.privacy_level) return "tiktok_privacy_required";
+  if (!(t.privacy_level in privacyName)) return "invalid_tiktok_privacy";
+  if (!t.commercial_content && (t.your_brand || t.branded_content)) return "invalid_tiktok_disclosure";
+  if (t.commercial_content && !t.your_brand && !t.branded_content) return "tiktok_disclosure_incomplete";
+  return t.branded_content && t.privacy_level === "SELF_ONLY" ? "tiktok_branded_content_private" : null;
 }
 
 // Mirrors brain's cover checks: blank is none, three platforms take one, it is a public https link and the
