@@ -33,7 +33,7 @@ export const metaName = "Facebook and Instagram";
 
 // Platforms that connect by OAuth: a full-page navigation to brain, which sends the browser to the
 // platform and back to /app/connections.
-export const oauthProviders = new Set(["threads", "linkedin", "x", "youtube", "facebook", "instagram"]);
+export const oauthProviders = new Set(["threads", "linkedin", "x", "tiktok", "youtube", "facebook", "instagram"]);
 // Platforms with a connect flow in this web app. The rest wait for theirs.
 export const connectable = new Set(["bluesky", ...oauthProviders]);
 // The provider names brain's callback puts in the URL.
@@ -81,7 +81,9 @@ export function connectResultText({ provider, error }: ConnectResult, name: stri
     case "missing_scopes":
       return provider === "x"
         ? "Tick every permission when X asks, they are all needed to post, upload media and delete posts."
-        : "Tick every permission when YouTube asks, they are all needed to upload and delete videos.";
+        : provider === "tiktok"
+          ? "Tick every permission when TikTok asks, they are all needed to post videos and photos."
+          : "Tick every permission when YouTube asks, they are all needed to upload and delete videos.";
     case "not_configured":
       return `${platform} isn't set up on this server.`;
     case "unauthorized":
@@ -108,9 +110,9 @@ export function providerState(platform: string, providers: Provider[]): Provider
   return connectable.has(platform) ? "available" : "coming_soon";
 }
 
-// Only Bluesky's image CDN path, Meta's image CDNs, YouTube's channel pictures and X's profile pictures are allowed by the
+// Only Bluesky's image CDN path, Meta's image CDNs, YouTube's channel pictures, X's profile pictures and TikTok's avatars are allowed by the
 // CSP's img-src (proxy.ts), so anything else falls back to an initial.
-const metaImageHosts = [".fbcdn.net", ".cdninstagram.com"];
+const metaImageHosts = [".fbcdn.net", ".cdninstagram.com", ".tiktokcdn.com", ".tiktokcdn-us.com"];
 const exactImageHosts = ["yt3.ggpht.com", "yt3.googleusercontent.com", "pbs.twimg.com"];
 export function safeAvatar(url: string | null) {
   if (!url) return null;

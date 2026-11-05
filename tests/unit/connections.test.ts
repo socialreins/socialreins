@@ -93,7 +93,8 @@ describe("provider state", () => {
     expect(providerState("x", providers)).toBe("not_configured");
     expect(providerState("youtube", providers)).toBe("not_configured");
     expect(providerState("youtube", [{ provider: "youtube", configured: true }])).toBe("available");
-    expect(providerState("tiktok", [{ provider: "tiktok", configured: true }])).toBe("coming_soon");
+    expect(providerState("tiktok", [{ provider: "tiktok", configured: true }])).toBe("available");
+    expect(providerState("tiktok", [])).toBe("not_configured");
     expect(providerState("bluesky", [])).toBe("not_configured");
     expect(providerState("threads", [{ provider: "threads", configured: true }])).toBe("available");
   });
@@ -104,6 +105,16 @@ describe("provider state", () => {
     expect(connectUrl("linkedin")).toBe(`${apiUrl}/connections/linkedin/redirect`);
     expect(connectUrl("youtube")).toBe(`${apiUrl}/connections/youtube/redirect`);
     expect(connectUrl("x")).toBe(`${apiUrl}/connections/x/redirect`);
+    expect(connectUrl("tiktok")).toBe(`${apiUrl}/connections/tiktok/redirect`);
+  });
+
+  it("explains a TikTok connect and allows its avatars", () => {
+    const text = (search: string) => connectResultText(connectResult(search)!, "TikTok");
+    expect(text("?connected=tiktok")).toBe("Connected your TikTok account.");
+    expect(text("?connect_error=missing_scopes&provider=tiktok")).toBe("Tick every permission when TikTok asks, they are all needed to post videos and photos.");
+    expect(safeAvatar("https://p16-sign-va.tiktokcdn.com/a.jpeg")).toBe("https://p16-sign-va.tiktokcdn.com/a.jpeg");
+    expect(safeAvatar("https://p19-sign.tiktokcdn-us.com/a.jpeg")).toBe("https://p19-sign.tiktokcdn-us.com/a.jpeg");
+    expect(safeAvatar("https://tiktokcdn.com.evil.net/a.jpeg")).toBeNull();
   });
 
   it("explains how an X connect went", () => {

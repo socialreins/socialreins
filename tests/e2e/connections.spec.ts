@@ -235,6 +235,23 @@ test("a connected X account shows its name and handle, and asks for a reconnect 
   await expect(page.getByRole("link", { name: "Reconnect Bob" })).toHaveAttribute("href", "http://localhost:8080/connections/x/redirect");
 });
 
+test("Connect TikTok goes through brain and a connected account shows its handle", async ({ page }) => {
+  const tt = { ...alice, id: "c10", provider: "tiktok", external_id: "openid1", handle: "annlee", display_name: "Ann Lee", avatar_url: null };
+  await signedIn(page, "owner", [tt]);
+  const on = providers.map((p) => (p.provider === "tiktok" ? { ...p, configured: true } : p));
+  await page.route("**/v1/connections/providers", (route) => route.fulfill({ json: on }));
+  await page.goto("/app/connections");
+  await expect(page.getByText(/TikTok, @annlee\. Connected /)).toBeVisible();
+  const back = new URL("/app/connections?connected=tiktok", page.url()).href;
+  await page.route("http://localhost:8080/connections/tiktok/redirect", (route) =>
+    route.fulfill({ status: 303, headers: { location: back } }),
+  );
+  const link = page.getByRole("link", { name: "Connect TikTok" });
+  await expect(link).toHaveAttribute("href", "http://localhost:8080/connections/tiktok/redirect");
+  await link.click();
+  await expect(page.getByRole("status").filter({ hasText: "Connected your TikTok account." })).toBeVisible();
+});
+
 test("a refused OAuth connect is explained", async ({ page }) => {
   await signedIn(page, "owner");
   await page.goto("/app/connections?connect_error=cancelled&provider=threads");
@@ -295,10 +312,10 @@ test("a connect that times out reloads the list, since brain may still finish", 
   expect(loads.list).toBe(2);
 });
 
-test("the CSP allows only Bluesky's image path and Meta's, YouTube's and X's image CDNs for avatars", async ({ request }) => {
+test("the CSP allows only Bluesky's image path and Meta's, YouTube's, X's and TikTok's image CDNs for avatars", async ({ request }) => {
   const csp = (await request.get("/app/connections")).headers()["content-security-policy"];
   expect(csp).toContain(
-    "img-src 'self' data: https://cdn.bsky.app/img/ https://*.fbcdn.net https://*.cdninstagram.com https://yt3.ggpht.com https://yt3.googleusercontent.com https://pbs.twimg.com;",
+    "img-src 'self' data: https://cdn.bsky.app/img/ https://*.fbcdn.net https://*.cdninstagram.com https://yt3.ggpht.com https://yt3.googleusercontent.com https://pbs.twimg.com https://*.tiktokcdn.com https://*.tiktokcdn-us.com;",
   );
 });
 
