@@ -5,15 +5,19 @@ import {
   checkCover,
   checkPost,
   checkThread,
+  checkTikTok,
   createPost,
   createPostGroup,
   limits,
   deletePost,
   fromLocalInput,
   getPost,
+  getTikTokCreator,
   graphemes,
   listPosts,
+  mergeCreators,
   monthRange,
+  noTikTok,
   monthWeeks,
   publishPost,
   takeDownAll,
@@ -331,6 +335,49 @@ describe("post checks", () => {
       expect(checkCover(link, p, 0)).toBe("cover_needs_one_video");
       expect(checkCover(link, p, 2)).toBe("cover_needs_one_video");
     }
+  });
+
+  it("checks TikTok settings as brain does", () => {
+    const t = (patch: Partial<typeof noTikTok>) => checkTikTok({ ...noTikTok, ...patch });
+    expect(t({})).toBe("tiktok_privacy_required");
+    expect(t({ privacy_level: "EVERYONE" })).toBe("invalid_tiktok_privacy");
+    expect(t({ privacy_level: "SELF_ONLY" })).toBeNull();
+    expect(t({ privacy_level: "SELF_ONLY", your_brand: true })).toBe("invalid_tiktok_disclosure");
+    expect(t({ privacy_level: "SELF_ONLY", commercial_content: true })).toBe("tiktok_disclosure_incomplete");
+    expect(t({ privacy_level: "SELF_ONLY", commercial_content: true, your_brand: true })).toBeNull();
+    expect(t({ privacy_level: "SELF_ONLY", commercial_content: true, branded_content: true })).toBe("tiktok_branded_content_private");
+    expect(t({ privacy_level: "PUBLIC_TO_EVERYONE", commercial_content: true, your_brand: true, branded_content: true })).toBeNull();
+  });
+
+  it("reads an account's creator info and merges several accounts", async () => {
+    const creator = {
+      nickname: "Ann",
+      username: "ann",
+      privacy_level_options: ["PUBLIC_TO_EVERYONE", "SELF_ONLY"],
+      comment_disabled: false,
+      duet_disabled: false,
+      stitch_disabled: false,
+      max_video_post_duration_sec: 600,
+      can_post: true,
+      reason: null,
+    };
+    const fetch = reply(200, creator);
+    vi.stubGlobal("fetch", fetch);
+    expect(await getTikTokCreator("a/1")).toEqual(creator);
+    expect(call(fetch)[0]).toBe(`${apiUrl}/v1/connections/a%2F1/tiktok`);
+    vi.stubGlobal("fetch", reply(409, { error: "reconnect_required" }));
+    expect(await getTikTokCreator("a1")).toBe("reconnect_required");
+
+    const other = { ...creator, nickname: "Bob", privacy_level_options: ["SELF_ONLY"], duet_disabled: true, max_video_post_duration_sec: 180 };
+    expect(mergeCreators([creator, other])).toMatchObject({
+      nickname: "Ann, Bob",
+      privacy_level_options: ["SELF_ONLY"],
+      duet_disabled: true,
+      max_video_post_duration_sec: 180,
+      can_post: true,
+    });
+    expect(mergeCreators([creator, { ...other, can_post: false, reason: "Limit." }])).toMatchObject({ can_post: false, reason: "Limit." });
+    expect(mergeCreators([])).toMatchObject({ can_post: false, privacy_level_options: [] });
   });
 
   it("allows threads only on Bluesky and Threads", () => {

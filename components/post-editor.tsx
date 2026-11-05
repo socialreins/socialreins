@@ -12,15 +12,20 @@ import {
   checkCover,
   coverTypes,
   checkThread,
+  checkTikTok,
   createPost,
   createPostGroup,
   deletePost,
   fromLocalInput,
   getPost,
+  getTikTokCreator,
   limits,
   listPosts,
   MAX_PARTS,
+  mergeCreators,
+  noTikTok,
   overLimit,
+  privacyName,
   publishing,
   publishPost,
   takeDownAll,
@@ -36,6 +41,8 @@ import {
   type Takedown,
   type Target,
   type ThreadPart,
+  type TikTokCreator,
+  type TikTokSettings,
 } from "@/lib/posts";
 import { fitsList, listLists, partLabel, type PostList } from "@/lib/lists";
 import { listSets, type SocialSet } from "@/lib/sets";
@@ -44,6 +51,7 @@ import { platformName } from "@/components/platform-icons";
 import { AccountNote, PlatformMark, postMessages, StatusBadge, statusName } from "@/components/posts";
 import { isFailure, problemText, Status, useAction } from "@/components/team-ui";
 import { useCurrentSet } from "@/components/app-shell";
+import { TikTokConsent, TikTokPanel } from "@/components/tiktok-settings";
 import { Icon } from "@/components/ui";
 
 const POLL_MS = 2000;
@@ -65,6 +73,7 @@ function platformProblem(platform: Platform, failure: Failure): ReactNode {
   if (failure === "thread_not_supported") return `${name} can't post threads.`;
   if (failure === "first_comment_not_supported") return `${name} can't post a first comment.`;
   if (failure === "cover_not_supported") return `${name} can't take a cover image.`;
+  if (failure === "tiktok_privacy_required") return "Choose who can view the TikTok post.";
   if (failure === "first_comment_too_long") return `${name} takes a first comment of at most ${(limits[platform].comment ?? 0).toLocaleString("en")} characters.`;
   return postMessages[failure] ?? failure;
 }
@@ -86,6 +95,10 @@ export function PostEditor({ id }: { id?: string }) {
   const [commentCustom, setCommentCustom] = useState<Partial<Record<Platform, string>>>({});
   // The cover image link of the post's one video.
   const [cover, setCover] = useState("");
+  // The TikTok settings, and the creator info of the set's TikTok accounts (read live, keyed by what was asked).
+  const [tiktok, setTikTok] = useState<TikTokSettings>(noTikTok);
+  const [creatorRead, setCreatorRead] = useState<{ key: string; value: TikTokCreator | Failure } | null>(null);
+  const [creatorTry, setCreatorTry] = useState(0);
   // The platforms ticked for a new post; null means every platform with an account in the set.
   const [chosen, setChosen] = useState<Platform[] | null>(null);
   // Per-platform text that replaces the main post on that platform.
@@ -125,6 +138,7 @@ export function PostEditor({ id }: { id?: string }) {
     setComment(p.first_comment ?? "");
     setCommentCustom({});
     setCover(p.cover ?? "");
+    setTikTok(p.tiktok ?? noTikTok);
     setCustom({});
     setAt(toLocalInput(p.status === "scheduled" ? p.scheduled_at : null));
     setListId("");
@@ -151,6 +165,11 @@ export function PostEditor({ id }: { id?: string }) {
 
   const postId = post && !isFailure(post) ? post.id : undefined;
   const status = post && !isFailure(post) ? post.status : undefined;
+  // TikTok's guidelines have the editor show the account's live creator info while a TikTok post is edited.
+  const ttIds = accounts.filter((a) => a.provider === "tiktok" && a.set_ids.includes(setId)).map((a) => a.id).join(",");
+  const ttPlatform = post && !isFailure(post) ? post.platform === "tiktok" : chosen === null || chosen.includes("tiktok");
+  const ttEditable = !status || status === "draft" || status === "scheduled";
+  const ttKey = ttIds && ttPlatform && ttEditable ? `${ttIds}:${creatorTry}` : "";
   const groupId = post && !isFailure(post) ? post.group_id : null;
   const pending = status === "queued" || group.some((g) => g.status === "queued");
 
@@ -177,6 +196,17 @@ export function PostEditor({ id }: { id?: string }) {
     }, POLL_MS);
     return () => clearInterval(timer);
   }, [pending, postId, groupId]);
+
+  useEffect(() => {
+    if (!ttKey) return;
+    let live = true;
+    Promise.all(ttKey.split(":")[0]!.split(",").map(getTikTokCreator)).then((rs) => {
+      if (live) setCreatorRead({ key: ttKey, value: rs.find(isFailure) ?? mergeCreators(rs as TikTokCreator[]) });
+    });
+    return () => {
+      live = false;
+    };
+  }, [ttKey]);
 
   useEffect(() => {
     if (confirming) confirmRef.current?.focus();
@@ -212,6 +242,10 @@ export function PostEditor({ id }: { id?: string }) {
       const bad = checkComment(commentText(p), p) ?? checkCover(coverFor(p) ?? "", p, images.length);
       if (bad) return setLocal(platformProblem(p, bad));
     }
+    if (selected.includes("tiktok")) {
+      const problem = tiktokProblem();
+      if (problem) return setLocal(problem);
+    }
     if (mode === "schedule" && !at) return setLocal("Pick a date and time to schedule the post.");
     const shared = {
       social_set_id: setId,
@@ -245,7 +279,7 @@ export function PostEditor({ id }: { id?: string }) {
         const r = await publishAll([saved.id, ...unsent.filter((u) => u !== saved.id)]);
         return isFailure(r) ? r : r[0]!;
       }
-      const g = await createPostGroup({ ...shared, platforms: selected, body, media: images, thread: parts, first_comment: comment.trim() ? comment : undefined, overrides });
+      const g = await createPostGroup({ ...shared, platforms: selected, body, media: images, thread: parts, first_comment: comment.trim() ? comment : undefined, tiktok: selected.includes("tiktok") ? tiktokOut : undefined, overrides });
       if (isFailure(g)) return g;
       const posts = g.posts;
       made = posts.length;
@@ -359,7 +393,30 @@ export function PostEditor({ id }: { id?: string }) {
     thread: limits[p].thread ? parts : [],
     first_comment: commentText(p).trim() ? commentText(p) : undefined,
     cover: coverFor(p),
+    tiktok: p === "tiktok" ? tiktokOut : undefined,
   });
+  // TikTok: the account's creator info (null while it loads), and the settings as sent. A photo post has no duet or
+  // stitch, and an interaction the creator turned off in TikTok stays off.
+  const creator = creatorRead?.key === ttKey && ttKey ? creatorRead.value : null;
+  const tt = creator && !isFailure(creator) ? creator : null;
+  const photosOnly = images.length > 0 && images.every((m) => /\.(jpe?g|png|gif|webp)([?#]|$)/i.test(m));
+  const tiktokOut: TikTokSettings = {
+    ...tiktok,
+    privacy_level: tt?.privacy_level_options.includes(tiktok.privacy_level ?? "") ? tiktok.privacy_level : null,
+    allow_comment: tiktok.allow_comment && !tt?.comment_disabled,
+    allow_duet: tiktok.allow_duet && !photosOnly && !tt?.duet_disabled,
+    allow_stitch: tiktok.allow_stitch && !photosOnly && !tt?.stitch_disabled,
+    your_brand: tiktok.commercial_content && tiktok.your_brand,
+    branded_content: tiktok.commercial_content && tiktok.branded_content,
+  };
+  // What stops a TikTok post from being saved: the account is not read or cannot post now, or TikTok's rules.
+  function tiktokProblem(): ReactNode {
+    if (creator === null) return "The TikTok account is still loading. Try again in a moment.";
+    if (!tt) return `The TikTok account couldn't be read. ${problemText(creator as Failure, postMessages)}`;
+    if (!tt.can_post) return `${tt.reason ?? "TikTok does not let this account post right now."} Try again later.`;
+    const bad = checkTikTok(tiktokOut);
+    return bad ? platformProblem("tiktok", bad) : null;
+  }
   // The cover is offered while exactly one link is attached (a cover belongs to one video) that is not
   // plainly an image, and a ticked platform takes one. brain checks the file once it downloads it.
   const coverable = selected.filter((p) => limits[p].cover);
@@ -566,6 +623,18 @@ export function PostEditor({ id }: { id?: string }) {
                 First comment
               </h2>
               <p className="whitespace-pre-wrap break-words text-sm">{post.first_comment}</p>
+            </section>
+          )}
+          {post.tiktok && (
+            <section aria-labelledby="tiktok-summary-heading" className="card grid gap-2 p-5">
+              <h2 id="tiktok-summary-heading" className="font-display text-lg font-extrabold tracking-tight">
+                TikTok settings
+              </h2>
+              <p className="text-sm">
+                Visible to: {privacyName[post.tiktok.privacy_level ?? ""] ?? "not chosen"}. Allowed: {[post.tiktok.allow_comment && "comments", post.tiktok.allow_duet && "duets", post.tiktok.allow_stitch && "stitches"].filter(Boolean).join(", ") || "no interactions"}.
+                {post.tiktok.commercial_content ? ` Disclosed as ${post.tiktok.branded_content ? "a paid partnership" : "promotional content"}.` : ""}
+                {post.tiktok.ai_generated ? " Marked as AI-generated." : ""}
+              </p>
             </section>
           )}
           {post.cover && (
@@ -936,9 +1005,13 @@ export function PostEditor({ id }: { id?: string }) {
               )}
             </fieldset>
             )}
+            {selected.includes("tiktok") && (
+              <TikTokPanel creator={creator} settings={tiktokOut} onChange={setTikTok} photosOnly={photosOnly} onRetry={() => setCreatorTry((n) => n + 1)} />
+            )}
           </div>
           {messages}
           <div className="card grid gap-4 p-5">
+            {selected.includes("tiktok") && <TikTokConsent settings={tiktokOut} />}
             <div className="flex flex-wrap items-center justify-between gap-2">
               <button type="submit" name="mode" value="draft" className="btn btn-secondary" disabled={busy !== null}>
                 {busy === "draft" ? "Saving..." : "Save draft"}

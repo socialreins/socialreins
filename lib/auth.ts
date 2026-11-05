@@ -129,6 +129,14 @@ const codes = [
   "invalid_url",
   "invalid_pick",
   "nothing_picked",
+  "tiktok_not_supported",
+  "tiktok_privacy_required",
+  "invalid_tiktok_privacy",
+  "invalid_tiktok_disclosure",
+  "tiktok_disclosure_incomplete",
+  "tiktok_branded_content_private",
+  "reconnect_required",
+  "tiktok_failed",
 ] as const;
 export type Failure = (typeof codes)[number] | "rate_limited" | "signed_out" | "timeout" | "error";
 export type Passkey = { id: string; name: string; created_at: string; last_used_at: string | null };
