@@ -16,6 +16,8 @@ export type Target = {
   comment_status?: "posting" | "posted" | "failed" | null;
   comment_id?: string | null;
   comment_error?: string | null;
+  // Why the cover image could not be set on the published video; the post is up (a warning).
+  cover_error?: string | null;
 };
 // A follow-up post of a thread: a reply to the one before.
 export type ThreadPart = { body: string; media: string[] };
@@ -30,6 +32,8 @@ export type Post = {
   thread: ThreadPart[];
   // Text the account comments on the post right after it is published; null for none.
   first_comment?: string | null;
+  // Cover image link for the post's one video; null for none.
+  cover?: string | null;
   status: PostStatus;
   scheduled_at: string | null;
   published_at: string | null;
@@ -50,6 +54,8 @@ export type PostInput = {
   media: string[];
   thread?: ThreadPart[];
   first_comment?: string;
+  // A cover image link for the post's one video (Instagram, Facebook, YouTube); "" or absent for none.
+  cover?: string;
   // ISO time to publish; null keeps the post a draft. A past time means now.
   scheduled_at: string | null;
   // A list to put the post in; one it is already in would move it to the end.
@@ -59,7 +65,7 @@ export type PostInput = {
 // (a first_comment of "" leaves it out on a platform that can't post one).
 export type PostGroupInput = Omit<PostInput, "platform"> & {
   platforms: Platform[];
-  overrides?: Partial<Record<Platform, { body?: string; media?: string[]; thread?: ThreadPart[]; first_comment?: string }>>;
+  overrides?: Partial<Record<Platform, { body?: string; media?: string[]; thread?: ThreadPart[]; first_comment?: string; cover?: string }>>;
 };
 export type PostFilter = { social_set_id?: string; status?: PostStatus; from?: string; to?: string; group_id?: string };
 
@@ -68,17 +74,21 @@ export type PostFilter = { social_set_id?: string; status?: PostStatus; from?: s
 // title's, the body's first line); `media` is images or videos per post (on X 4 images, or one GIF or video; on TikTok
 // one video or up to 35 photos). `comment` is the first comment's limit in characters, null where the
 // platform can't post one (brain answers first_comment_not_supported). Meta, LinkedIn and Google document
-// no comment limit through their APIs, so these are the widely reported figures.
-export const limits: Record<Platform, { chars: number; media: number; thread: boolean; comment: number | null }> = {
-  bluesky: { chars: 300, media: 4, thread: true, comment: null },
-  threads: { chars: 500, media: 20, thread: true, comment: null },
-  linkedin: { chars: 3000, media: 20, thread: false, comment: 1250 },
-  facebook: { chars: 63_206, media: 10, thread: false, comment: 8000 },
-  instagram: { chars: 2200, media: 10, thread: false, comment: 2200 },
-  youtube: { chars: 100, media: 1, thread: false, comment: 10_000 },
-  x: { chars: 280, media: 4, thread: true, comment: null },
-  tiktok: { chars: 2200, media: 35, thread: false, comment: null },
+// no comment limit through their APIs, so these are the widely reported figures. `cover` is whether the
+// platform has an API for a video's cover image (brain answers cover_not_supported elsewhere; TikTok only
+// picks a frame).
+export const limits: Record<Platform, { chars: number; media: number; thread: boolean; comment: number | null; cover: boolean }> = {
+  bluesky: { chars: 300, media: 4, thread: true, comment: null, cover: false },
+  threads: { chars: 500, media: 20, thread: true, comment: null, cover: false },
+  linkedin: { chars: 3000, media: 20, thread: false, comment: 1250, cover: false },
+  facebook: { chars: 63_206, media: 10, thread: false, comment: 8000, cover: true },
+  instagram: { chars: 2200, media: 10, thread: false, comment: 2200, cover: true },
+  youtube: { chars: 100, media: 1, thread: false, comment: 10_000, cover: true },
+  x: { chars: 280, media: 4, thread: true, comment: null, cover: false },
+  tiktok: { chars: 2200, media: 35, thread: false, comment: null, cover: false },
 };
+// The image types each cover platform takes: Instagram's cover_url wants a JPEG; Facebook and YouTube take JPEG or PNG.
+export const coverTypes: Partial<Record<Platform, string>> = { instagram: "a JPEG", facebook: "a JPEG or PNG", youtube: "a JPEG or PNG" };
 // A YouTube video's description (the body after its first line) is limited in UTF-8 bytes.
 export const YOUTUBE_DESCRIPTION_BYTES = 5000;
 export const publishing = Object.keys(limits) as Platform[];
@@ -210,6 +220,16 @@ export function checkComment(text: string, platform: Platform): Failure | null {
   const max = limits[platform].comment;
   if (max === null) return "first_comment_not_supported";
   return [...text].length > max ? "first_comment_too_long" : null;
+}
+
+// Mirrors brain's cover checks: blank is none, three platforms take one, it is a public https link and the
+// post has exactly one media item (that it is a video is only known to brain once it downloads it).
+export function checkCover(url: string, platform: Platform, mediaCount: number): Failure | null {
+  const cover = url.trim();
+  if (!cover) return null;
+  if (!limits[platform].cover) return "cover_not_supported";
+  if (!/^https:\/\/[^\s/]+\/?\S*$/.test(cover)) return "invalid_cover";
+  return mediaCount === 1 ? null : "cover_needs_one_video";
 }
 
 // checkPost for the first post and every part; `part` is the 1-based follow-up at fault, as brain answers.

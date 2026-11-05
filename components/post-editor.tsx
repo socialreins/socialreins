@@ -9,6 +9,8 @@ import { listConnections, type Connection } from "@/lib/connections";
 import {
   charCount,
   checkComment,
+  checkCover,
+  coverTypes,
   checkThread,
   createPost,
   createPostGroup,
@@ -62,6 +64,7 @@ function platformProblem(platform: Platform, failure: Failure): ReactNode {
   if (failure === "media_required") return platform === "youtube" ? "YouTube needs one MP4 or MOV video: add its link." : platform === "tiktok" ? "TikTok needs one MP4 or MOV video, or JPEG or WebP photos: add their links." : `${name} needs at least one image or video.`;
   if (failure === "thread_not_supported") return `${name} can't post threads.`;
   if (failure === "first_comment_not_supported") return `${name} can't post a first comment.`;
+  if (failure === "cover_not_supported") return `${name} can't take a cover image.`;
   if (failure === "first_comment_too_long") return `${name} takes a first comment of at most ${(limits[platform].comment ?? 0).toLocaleString("en")} characters.`;
   return postMessages[failure] ?? failure;
 }
@@ -81,6 +84,8 @@ export function PostEditor({ id }: { id?: string }) {
   // The first comment, and per-platform text that replaces it on that platform.
   const [comment, setComment] = useState("");
   const [commentCustom, setCommentCustom] = useState<Partial<Record<Platform, string>>>({});
+  // The cover image link of the post's one video.
+  const [cover, setCover] = useState("");
   // The platforms ticked for a new post; null means every platform with an account in the set.
   const [chosen, setChosen] = useState<Platform[] | null>(null);
   // Per-platform text that replaces the main post on that platform.
@@ -119,6 +124,7 @@ export function PostEditor({ id }: { id?: string }) {
     setThread(p.thread ?? []);
     setComment(p.first_comment ?? "");
     setCommentCustom({});
+    setCover(p.cover ?? "");
     setCustom({});
     setAt(toLocalInput(p.status === "scheduled" ? p.scheduled_at : null));
     setListId("");
@@ -203,7 +209,7 @@ export function PostEditor({ id }: { id?: string }) {
       const e = entry(p);
       const invalid = checkThread(e.body, e.media, e.thread, p);
       if (invalid) return setLocal(<>{invalid.part ? `Post ${invalid.part + 1} of the thread: ` : ""}{platformProblem(p, invalid.failure)}</>);
-      const bad = checkComment(commentText(p), p);
+      const bad = checkComment(commentText(p), p) ?? checkCover(coverFor(p) ?? "", p, images.length);
       if (bad) return setLocal(platformProblem(p, bad));
     }
     if (mode === "schedule" && !at) return setLocal("Pick a date and time to schedule the post.");
@@ -221,8 +227,10 @@ export function PostEditor({ id }: { id?: string }) {
         body: customFor(p),
         thread: limits[p].thread || parts.length === 0 ? undefined : [],
         first_comment: limits[p].comment === null ? (comment.trim() ? "" : undefined) : commentCustomFor(p),
+        // The cover goes only to the platforms that take one, so none needs an empty override.
+        cover: coverFor(p),
       };
-      if (o.body !== undefined || o.thread || o.first_comment !== undefined) overrides[p] = o;
+      if (o.body !== undefined || o.thread || o.first_comment !== undefined || o.cover !== undefined) overrides[p] = o;
     }
     let made = 1;
     await run(mode, async () => {
@@ -350,7 +358,14 @@ export function PostEditor({ id }: { id?: string }) {
     media: images,
     thread: limits[p].thread ? parts : [],
     first_comment: commentText(p).trim() ? commentText(p) : undefined,
+    cover: coverFor(p),
   });
+  // The cover is offered while exactly one link is attached (a cover belongs to one video) that is not
+  // plainly an image, and a ticked platform takes one. brain checks the file once it downloads it.
+  const coverable = selected.filter((p) => limits[p].cover);
+  const noCover = selected.filter((p) => !limits[p].cover);
+  const coverShown = coverable.length > 0 && images.length === 1 && !/\.(jpe?g|png|gif|webp)([?#]|$)/i.test(images[0]!);
+  const coverFor = (p: Platform) => (coverShown && cover.trim() && limits[p].cover ? cover.trim() : undefined);
   // The first comment goes where the platform can post one; customized text counts only while its box shows.
   const commentable = selected.filter((p) => limits[p].comment !== null);
   const noComment = selected.filter((p) => limits[p].comment === null);
@@ -553,6 +568,14 @@ export function PostEditor({ id }: { id?: string }) {
               <p className="whitespace-pre-wrap break-words text-sm">{post.first_comment}</p>
             </section>
           )}
+          {post.cover && (
+            <section aria-labelledby="cover-heading" className="card grid gap-2 p-5">
+              <h2 id="cover-heading" className="font-display text-lg font-extrabold tracking-tight">
+                Cover image
+              </h2>
+              <p className="break-all text-sm">{post.cover}</p>
+            </section>
+          )}
           {post.targets.length > 0 && (
             <section aria-labelledby="targets-heading" className="grid gap-3">
               <h2 id="targets-heading" className="font-display text-lg font-extrabold tracking-tight">
@@ -573,6 +596,11 @@ export function PostEditor({ id }: { id?: string }) {
                           View on {platformName(post.platform)}
                           <Icon name="external" className="size-4" />
                         </a>
+                      )}
+                      {t.cover_error && (
+                        <span className="basis-full text-ink-soft" data-cover-error>
+                          Cover image: {t.cover_error} It is not tried again: set the cover on the platform yourself.
+                        </span>
                       )}
                       {post.first_comment && (
                         <span className="basis-full text-ink-soft" data-comment-status={t.comment_status ?? "none"}>
@@ -785,6 +813,28 @@ export function PostEditor({ id }: { id?: string }) {
                   </li>
                 ))}
               </ul>
+            )}
+            {coverShown && (
+              <fieldset className="grid gap-2">
+                <legend className="label">Cover image</legend>
+                <p id="post-cover-note" className="hint">
+                  Optional. A public https link to an image, or a Google Drive share link, for the video: {coverable.map((p) => `${platformName(p)} takes ${coverTypes[p]}`).join("; ")}.
+                  {coverable.some((p) => p !== "instagram") && " Facebook and YouTube set it after the video is live (YouTube needs a verified channel): if that fails, the post stays published and says why."}
+                  {noCover.length > 0 && ` ${names(noCover)} can't take one${noCover.includes("tiktok") ? " (TikTok can only pick a frame of the video)" : ""}, so ${noCover.length > 1 ? "they get" : "it gets"} none.`}
+                </p>
+                <label className="grid gap-1 text-sm font-bold">
+                  <span>Cover image link</span>
+                  <input
+                    type="url"
+                    inputMode="url"
+                    placeholder="https://"
+                    className="field font-normal"
+                    value={cover}
+                    onChange={(e) => setCover(e.target.value)}
+                    aria-describedby="post-cover-note"
+                  />
+                </label>
+              </fieldset>
             )}
             {commentable.length > 0 && (
               <div className="grid gap-1.5">

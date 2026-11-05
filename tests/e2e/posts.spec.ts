@@ -578,6 +578,86 @@ test("a published post shows its first comment and whether each account posted i
   await expect(page.getByText(/First comment: not posted\. Comment: LinkedIn refused it\. It is not tried again/)).toBeVisible();
 });
 
+const facebookAcc = account("c7", "facebook", "Alice on Facebook");
+const tiktokAcc = account("c8", "tiktok", "Alice on TikTok");
+
+test("a cover image is offered for exactly one video, checked and sent with the post", async ({ page }) => {
+  await brain(page, { accounts: [youtubeAcc] });
+  let sent: Record<string, unknown> | undefined;
+  await page.route("**/v1/posts", (route) => {
+    sent = route.request().postDataJSON();
+    return route.fulfill({ status: 201, json: post("p1", sent) });
+  });
+  await page.goto("/app/posts/new");
+  const cover = page.getByLabel("Cover image link");
+  await expect(cover).toHaveCount(0);
+  await page.getByLabel("Post", { exact: true }).fill("My title");
+  await page.getByRole("button", { name: "Add image" }).click();
+  // An image link has no cover, a video link does.
+  await page.getByLabel("Image 1 link").fill("https://example.com/pic.png");
+  await expect(cover).toHaveCount(0);
+  await page.getByLabel("Image 1 link").fill("https://example.com/clip.mp4");
+  await expect(cover).toBeVisible();
+  await expect(page.getByText("YouTube takes a JPEG or PNG")).toBeVisible();
+  await expect(page.getByText("YouTube needs a verified channel")).toBeVisible();
+
+  await cover.fill("http://example.com/cover.jpg");
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "The cover image needs a public https link." })).toBeVisible();
+  expect(sent).toBeUndefined();
+  await cover.fill("https://example.com/cover.jpg");
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page).toHaveURL("/app/posts/p1");
+  expect(sent).toMatchObject({ platform: "youtube", media: ["https://example.com/clip.mp4"], cover: "https://example.com/cover.jpg" });
+});
+
+test("a group sends the cover only to the platforms that take one and says so for the rest", async ({ page }) => {
+  await brain(page, { accounts: [facebookAcc, tiktokAcc] });
+  let sent: Record<string, unknown> | undefined;
+  await page.route("**/v1/post-groups", (route) => {
+    sent = route.request().postDataJSON();
+    return route.fulfill({ status: 201, json: { group_id: "g1", posts: [post("g-f", { platform: "facebook", group_id: "g1" }), post("g-t", { platform: "tiktok", group_id: "g1" })] } });
+  });
+  await page.goto("/app/posts/new");
+  await page.getByLabel("Post", { exact: true }).fill("Hello");
+  await page.getByRole("button", { name: "Add image" }).click();
+  await page.getByLabel("Image 1 link").fill("https://example.com/clip.mp4");
+  await page.getByLabel("Cover image link").fill("https://example.com/cover.png");
+  await expect(page.getByText("TikTok can't take one (TikTok can only pick a frame of the video), so it gets none.")).toBeVisible();
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page).toHaveURL("/app/posts/g-f");
+  expect(sent).toMatchObject({ platforms: ["facebook", "tiktok"], overrides: { facebook: { cover: "https://example.com/cover.png" } } });
+  expect(sent).not.toHaveProperty("cover");
+  expect(sent).not.toHaveProperty("overrides.tiktok");
+
+  // TikTok alone has no cover field.
+  await page.goto("/app/posts/new");
+  await page.getByRole("group", { name: "Post to" }).getByRole("checkbox", { name: /Facebook/ }).uncheck();
+  await page.getByRole("button", { name: "Add image" }).click();
+  await page.getByLabel("Image 1 link").fill("https://example.com/clip.mp4");
+  await expect(page.getByLabel("Cover image link")).toHaveCount(0);
+});
+
+test("a published post shows its cover and, per account, why it was not set", async ({ page }) => {
+  await brain(page, { accounts: [youtubeAcc] });
+  await page.route("**/v1/posts/p8", (route) =>
+    route.fulfill({
+      json: post("p8", {
+        platform: "youtube",
+        status: "published",
+        published_at: "2026-11-03T08:00:00Z",
+        media: ["https://example.com/clip.mp4"],
+        cover: "https://example.com/cover.jpg",
+        targets: [target({ social_account_id: "c5", cover_error: "The video is up, but its cover image was not set. Cover: YouTube refused the custom thumbnail." })],
+      }),
+    }),
+  );
+  await page.goto("/app/posts/p8");
+  await expect(page.getByRole("heading", { name: "Cover image" })).toBeVisible();
+  await expect(page.getByText("https://example.com/cover.jpg")).toBeVisible();
+  await expect(page.getByText(/Cover image: The video is up, but its cover image was not set\. Cover: YouTube refused the custom thumbnail\. It is not tried again/)).toBeVisible();
+});
+
 const xAcc = { ...account("c6", "x", "Ann on X"), handle: "ann_lee" };
 
 test("X counts its own way, takes four images and a thread", async ({ page }) => {
