@@ -977,6 +977,7 @@ test("TikTok settings: privacy is chosen, the disclosure and consent follow TikT
   // Nothing is chosen for the user: no level, no interaction, no disclosure.
   const privacy = page.getByLabel("Who can view this video");
   await expect(privacy).toHaveValue("");
+  await expect(page.locator("#tiktok-privacy-note")).toHaveText("Only the options TikTok offers this account are listed.");
   await expect(privacy.getByRole("option")).toHaveText(["Select who can view this video", "Followers", "Everyone", "Only me"]);
   for (const name of ["Comment", "Stitch"]) await expect(page.getByLabel(name)).not.toBeChecked();
   // Duets are off in the creator's TikTok settings, so the box is greyed out.
@@ -1003,6 +1004,7 @@ test("TikTok settings: privacy is chosen, the disclosure and consent follow TikT
   await page.getByLabel("Branded content").check();
   await expect(page.getByText("labeled as 'Paid partnership'")).toBeVisible();
   await expect(privacy.getByRole("option", { name: "Only me" })).toBeDisabled();
+  await expect(page.locator("#tiktok-privacy-note")).toHaveText("Branded content visibility cannot be set to private.");
   await expect(page.getByText("By posting, you agree to TikTok's Branded Content Policy and Music Usage Confirmation.")).toBeVisible();
   await expect(page.getByRole("link", { name: "Branded Content Policy" })).toHaveAttribute("href", "https://www.tiktok.com/legal/page/global/bc-policy/en");
 

@@ -102,7 +102,7 @@ export function TikTokPanel({
           ))}
         </select>
         <p id="tiktok-privacy-note" className="hint">
-          {branded ? "Branded content visibility cannot be set to private." : "Only the options TikTok offers this account are listed."}Until TikTok has reviewed SocialReins, it may only post privately.
+          {branded ? "Branded content visibility cannot be set to private." : "Only the options TikTok offers this account are listed."}
         </p>
       </div>
       <fieldset className="grid gap-2">
