@@ -15,7 +15,7 @@ import { Icon } from "@/components/ui";
 export const postMessages: Partial<Record<Failure, ReactNode>> = {
   too_long:
     "The post is too long: at most 300 characters (and 3000 bytes) on Bluesky, 500 on Threads, 3000 on LinkedIn, 2200 on Instagram, 280 on X (a link counts as 23, an emoji as 2), 2200 on TikTok. On YouTube the first line is the title, at most 100 characters, and the rest the description, at most 5000 bytes.",
-  too_many_images: "Too many images: at most 4 on Bluesky and X, 20 on Threads and LinkedIn, 10 on Facebook and Instagram, one video on YouTube, one video or 35 photos on TikTok.",
+  too_many_images: "Too many images: at most 4 on Bluesky and X, 20 on Threads and LinkedIn (or one PDF), 10 on Facebook and Instagram, one video on YouTube, one video or 35 photos on TikTok.",
   media_required: "Instagram needs at least one image or video, and YouTube and TikTok need a video (TikTok also takes photos).",
   invalid_text: "YouTube doesn't allow < or > in a title or description.",
   thread_not_supported: "LinkedIn, Facebook, Instagram, YouTube and TikTok can't post threads.",
@@ -24,7 +24,7 @@ export const postMessages: Partial<Record<Failure, ReactNode>> = {
   invalid_override: "A customized platform isn't one the post goes to.",
   no_accounts: "This set has no connected account to post to.",
   too_many_parts: "A thread can have at most 25 follow-up posts.",
-  invalid_media: "Images must be public https links to JPEG, PNG, WebP or GIF files of 1 MB or less, or Google Drive share links.",
+  invalid_media: "Images must be public https links to JPEG, PNG, WebP or GIF files of 1 MB or less, or Google Drive share links. LinkedIn also takes one PDF.",
   empty_post: "Write something or add an image first. YouTube also needs a title: the first line.",
   invalid_set: "That set no longer exists. Pick another one.",
   unsupported_platform: "That platform can't publish yet.",
