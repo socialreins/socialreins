@@ -439,7 +439,11 @@ export function PostEditor({ id }: { id?: string }) {
     </section>
   );
 
-  const confirm = confirming ? (
+  // TikTok gives apps no way to delete a post, so there is nothing to confirm: say where to do it.
+  const noTakedown = status === "published" && post?.platform === "tiktok";
+  const confirm = noTakedown ? (
+    <p className="hint">TikTok does not let other apps delete a post. Delete it in the TikTok app.</p>
+  ) : confirming ? (
     <div className="card grid gap-3 p-4">
       <p id="remove-q">
         {status === "published" ? `Take this post down from ${platformName(post!.platform)}? It stays here as taken down.` : "Delete this post? This can't be undone."}

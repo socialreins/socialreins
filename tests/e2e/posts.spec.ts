@@ -333,6 +333,15 @@ test("publish now explains the daily quota", async ({ page }) => {
   await expect(page).toHaveURL("/app/posts/p4");
 });
 
+test("a published TikTok post has no Take down, only where to delete it", async ({ page }) => {
+  await brain(page);
+  const published = post("p9", { platform: "tiktok", status: "published", scheduled_at: "2026-11-03T08:00:00Z", published_at: "2026-11-03T08:00:00Z", targets: [target()] });
+  await page.route("**/v1/posts/p9", (route) => route.fulfill({ json: published }));
+  await page.goto("/app/posts/p9");
+  await expect(page.getByText("TikTok does not let other apps delete a post. Delete it in the TikTok app.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Take down" })).toHaveCount(0);
+});
+
 test("take down shows brain's message when it can't finish, then succeeds", async ({ page }) => {
   await brain(page);
   const published = post("p3", { status: "published", scheduled_at: "2026-11-03T08:00:00Z", published_at: "2026-11-03T08:00:00Z", targets: [target()] });
