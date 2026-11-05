@@ -103,6 +103,8 @@ const codes = [
   "publish_quota",
   "media_required",
   "thread_not_supported",
+  "first_comment_not_supported",
+  "first_comment_too_long",
   "invalid_override",
   "no_accounts",
   "invalid_filters",

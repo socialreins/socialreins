@@ -19,6 +19,8 @@ export const postMessages: Partial<Record<Failure, ReactNode>> = {
   media_required: "Instagram needs at least one image or video, and YouTube and TikTok need a video (TikTok also takes photos).",
   invalid_text: "YouTube doesn't allow < or > in a title or description.",
   thread_not_supported: "LinkedIn, Facebook, Instagram, YouTube and TikTok can't post threads.",
+  first_comment_not_supported: "Only Facebook, Instagram, LinkedIn and YouTube can post a first comment.",
+  first_comment_too_long: "The first comment is too long: at most 8000 characters on Facebook, 2200 on Instagram, 1250 on LinkedIn, 10000 on YouTube.",
   invalid_override: "A customized platform isn't one the post goes to.",
   no_accounts: "This set has no connected account to post to.",
   too_many_parts: "A thread can have at most 25 follow-up posts.",

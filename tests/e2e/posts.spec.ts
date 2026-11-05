@@ -516,6 +516,68 @@ test("LinkedIn takes 3000 characters and no thread", async ({ page }) => {
   expect(sent).toMatchObject({ platform: "linkedin", body: "a".repeat(3000) });
 });
 
+test("a first comment is offered on LinkedIn, counted and sent with the post", async ({ page }) => {
+  await brain(page, { accounts: [linkedinAcc] });
+  let sent: Record<string, unknown> | undefined;
+  await page.route("**/v1/posts", (route) => {
+    sent = route.request().postDataJSON();
+    return route.fulfill({ status: 201, json: post("p1", sent) });
+  });
+  await page.goto("/app/posts/new");
+  await page.getByLabel("Post", { exact: true }).fill("A claim");
+  const comment = page.getByLabel("First comment", { exact: true });
+  await comment.fill("a".repeat(1251));
+  await expect(page.getByRole("alert").filter({ hasText: "1 over LinkedIn's first comment limit of 1,250" })).toBeVisible();
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "LinkedIn takes a first comment of at most 1,250 characters." })).toBeVisible();
+  expect(sent).toBeUndefined();
+  await comment.fill("Sources: example.org");
+  await expect(page.getByText("LinkedIn: 20 of 1,250 characters")).toBeVisible();
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page).toHaveURL("/app/posts/p1");
+  expect(sent).toMatchObject({ platform: "linkedin", body: "A claim", first_comment: "Sources: example.org" });
+});
+
+test("a platform without first comments hides the box and a group sends empty overrides there", async ({ page }) => {
+  await brain(page, { accounts: [alice, linkedinAcc] });
+  let sent: Record<string, unknown> | undefined;
+  await page.route("**/v1/post-groups", (route) => {
+    sent = route.request().postDataJSON();
+    return route.fulfill({ status: 201, json: { group_id: "g1", posts: [post("g-b", { group_id: "g1" }), post("g-l", { platform: "linkedin", group_id: "g1" })] } });
+  });
+  await page.goto("/app/posts/new");
+  const to = page.getByRole("group", { name: "Post to" });
+  // Bluesky alone has no first comment box.
+  await to.getByRole("checkbox", { name: /LinkedIn/ }).uncheck();
+  await expect(page.getByLabel("First comment", { exact: true })).toHaveCount(0);
+  await to.getByRole("checkbox", { name: /LinkedIn/ }).check();
+  await page.getByLabel("Post", { exact: true }).fill("Hello");
+  await page.getByLabel("First comment", { exact: true }).fill("Sources");
+  await expect(page.getByText("Bluesky can't post one, so it gets none.")).toBeVisible();
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page).toHaveURL("/app/posts/g-b");
+  expect(sent).toMatchObject({ platforms: ["bluesky", "linkedin"], first_comment: "Sources", overrides: { bluesky: { first_comment: "" } } });
+});
+
+test("a published post shows its first comment and whether each account posted it", async ({ page }) => {
+  await brain(page);
+  await page.route("**/v1/posts/p7", (route) =>
+    route.fulfill({
+      json: post("p7", {
+        platform: "linkedin",
+        status: "published",
+        published_at: "2026-11-03T08:00:00Z",
+        first_comment: "Sources: example.org",
+        targets: [target({ comment_status: "failed", comment_error: "Comment: LinkedIn refused it." })],
+      }),
+    }),
+  );
+  await page.goto("/app/posts/p7");
+  await expect(page.getByRole("heading", { name: "First comment" })).toBeVisible();
+  await expect(page.getByText("Sources: example.org")).toBeVisible();
+  await expect(page.getByText(/First comment: not posted\. Comment: LinkedIn refused it\. It is not tried again/)).toBeVisible();
+});
+
 const xAcc = { ...account("c6", "x", "Ann on X"), handle: "ann_lee" };
 
 test("X counts its own way, takes four images and a thread", async ({ page }) => {
