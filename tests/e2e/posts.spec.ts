@@ -580,6 +580,19 @@ test("a published post shows its first comment and whether each account posted i
 
 const facebookAcc = account("c7", "facebook", "Alice on Facebook");
 const tiktokAcc = account("c8", "tiktok", "Alice on TikTok");
+const creatorInfo = {
+  nickname: "Ann Lee",
+  username: "annlee",
+  privacy_level_options: ["FOLLOWER_OF_CREATOR", "PUBLIC_TO_EVERYONE", "SELF_ONLY"],
+  comment_disabled: false,
+  duet_disabled: true,
+  stitch_disabled: false,
+  max_video_post_duration_sec: 600,
+  can_post: true,
+  reason: null as string | null,
+};
+const tiktokCreator = (page: Page, info: object | number) =>
+  page.route("**/v1/connections/c8/tiktok", (route) => (typeof info === "number" ? route.fulfill({ status: info, json: { error: "tiktok_failed" } }) : route.fulfill({ json: info })));
 
 test("a cover image is offered for exactly one video, checked and sent with the post", async ({ page }) => {
   await brain(page, { accounts: [youtubeAcc] });
@@ -613,6 +626,7 @@ test("a cover image is offered for exactly one video, checked and sent with the 
 
 test("a group sends the cover only to the platforms that take one and says so for the rest", async ({ page }) => {
   await brain(page, { accounts: [facebookAcc, tiktokAcc] });
+  await tiktokCreator(page, creatorInfo);
   let sent: Record<string, unknown> | undefined;
   await page.route("**/v1/post-groups", (route) => {
     sent = route.request().postDataJSON();
@@ -624,6 +638,7 @@ test("a group sends the cover only to the platforms that take one and says so fo
   await page.getByLabel("Image 1 link").fill("https://example.com/clip.mp4");
   await page.getByLabel("Cover image link").fill("https://example.com/cover.png");
   await expect(page.getByText("TikTok can't take one (TikTok can only pick a frame of the video), so it gets none.")).toBeVisible();
+  await page.getByLabel("Who can view this video").selectOption("SELF_ONLY");
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page).toHaveURL("/app/posts/g-f");
   expect(sent).toMatchObject({ platforms: ["facebook", "tiktok"], overrides: { facebook: { cover: "https://example.com/cover.png" } } });
@@ -963,4 +978,125 @@ test("the editor warns when a ticked platform's account needs a reconnect", asyn
   await expect(notice.getByRole("listitem")).toHaveCount(1);
   await to.getByRole("checkbox", { name: /Threads/ }).uncheck();
   await expect(notice).toHaveCount(0);
+});
+
+test("TikTok settings: privacy is chosen, the disclosure and consent follow TikTok's rules, and it is all sent", async ({ page }) => {
+  await brain(page, { accounts: [tiktokAcc] });
+  await tiktokCreator(page, creatorInfo);
+  let sent: Record<string, unknown> | undefined;
+  await page.route("**/v1/posts", (route) => {
+    sent = route.request().postDataJSON();
+    return route.fulfill({ status: 201, json: post("p1", sent) });
+  });
+  await page.goto("/app/posts/new");
+  await page.getByLabel("Post", { exact: true }).fill("Clip");
+  await page.getByRole("button", { name: "Add image" }).click();
+  await page.getByLabel("Image 1 link").fill("https://example.com/clip.mp4");
+  await expect(page.getByText("Ann Lee", { exact: true })).toBeVisible();
+  await expect(page.getByText("up to 10 minutes")).toBeVisible();
+
+  // Nothing is chosen for the user: no level, no interaction, no disclosure.
+  const privacy = page.getByLabel("Who can view this video");
+  await expect(privacy).toHaveValue("");
+  await expect(page.locator("#tiktok-privacy-note")).toHaveText("Only the options TikTok offers this account are listed.");
+  await expect(privacy.getByRole("option")).toHaveText(["Select who can view this video", "Followers", "Everyone", "Only me"]);
+  for (const name of ["Comment", "Stitch"]) await expect(page.getByLabel(name)).not.toBeChecked();
+  // Duets are off in the creator's TikTok settings, so the box is greyed out.
+  await expect(page.getByLabel(/^Duet/)).toBeDisabled();
+  await expect(page.getByRole("switch", { name: "Disclose post content" })).not.toBeChecked();
+  await expect(page.getByText("By posting, you agree to TikTok's Music Usage Confirmation.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Music Usage Confirmation" })).toHaveAttribute("href", "https://www.tiktok.com/legal/page/global/music-usage-confirmation/en");
+
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Choose who can view the TikTok post." })).toBeVisible();
+  expect(sent).toBeUndefined();
+
+  // The disclosure needs one of its two boxes; Branded content adds the policy and cannot be private.
+  await privacy.selectOption("SELF_ONLY");
+  await page.getByRole("switch", { name: "Disclose post content" }).check();
+  await expect(page.getByRole("alert").filter({ hasText: "You need to indicate if your content promotes yourself, a third party, or both." })).toBeVisible();
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "You need to indicate" }).first()).toBeVisible();
+  expect(sent).toBeUndefined();
+  await expect(page.getByLabel("Branded content")).toBeDisabled();
+  await privacy.selectOption("PUBLIC_TO_EVERYONE");
+  await page.getByLabel("Your brand").check();
+  await expect(page.getByText("labeled as 'Promotional content'")).toBeVisible();
+  await page.getByLabel("Branded content").check();
+  await expect(page.getByText("labeled as 'Paid partnership'")).toBeVisible();
+  await expect(privacy.getByRole("option", { name: "Only me" })).toBeDisabled();
+  await expect(page.locator("#tiktok-privacy-note")).toHaveText("Branded content visibility cannot be set to private.");
+  await expect(page.getByText("By posting, you agree to TikTok's Branded Content Policy and Music Usage Confirmation.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Branded Content Policy" })).toHaveAttribute("href", "https://www.tiktok.com/legal/page/global/bc-policy/en");
+
+  await page.getByLabel("Comment").check();
+  await page.getByLabel("This video is AI-generated").check();
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page).toHaveURL("/app/posts/p1");
+  expect(sent).toMatchObject({
+    platform: "tiktok",
+    tiktok: {
+      privacy_level: "PUBLIC_TO_EVERYONE",
+      allow_comment: true,
+      allow_duet: false,
+      allow_stitch: false,
+      commercial_content: true,
+      your_brand: true,
+      branded_content: true,
+      ai_generated: true,
+    },
+  });
+});
+
+test("TikTok settings: photos have no duet or stitch, and an account that cannot post blocks saving", async ({ page }) => {
+  await brain(page, { accounts: [tiktokAcc] });
+  await tiktokCreator(page, { ...creatorInfo, can_post: false, reason: "This TikTok account reached its limit of posts for the day." });
+  let sent = false;
+  await page.route("**/v1/posts", (route) => {
+    sent = true;
+    return route.fulfill({ status: 201, json: post("p1") });
+  });
+  await page.goto("/app/posts/new");
+  await page.getByLabel("Post", { exact: true }).fill("Photos");
+  await page.getByRole("button", { name: "Add image" }).click();
+  await page.getByLabel("Image 1 link").fill("https://example.com/a.jpg");
+  await expect(page.getByLabel("Who can view this photo")).toBeVisible();
+  await expect(page.getByLabel("Comment")).toBeVisible();
+  await expect(page.getByLabel(/^Duet/)).toHaveCount(0);
+  await expect(page.getByLabel("Stitch")).toHaveCount(0);
+  await expect(page.getByRole("alert").filter({ hasText: "reached its limit of posts for the day. Try again later." })).toBeVisible();
+  await page.getByLabel("Who can view this photo").selectOption("SELF_ONLY");
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "reached its limit of posts for the day. Try again later." }).last()).toBeVisible();
+  expect(sent).toBe(false);
+});
+
+test("TikTok settings: an account that cannot be read says so and can be tried again", async ({ page }) => {
+  await brain(page, { accounts: [tiktokAcc] });
+  let calls = 0;
+  await page.route("**/v1/connections/c8/tiktok", (route) => {
+    calls += 1;
+    return calls === 1 ? route.fulfill({ status: 502, json: { error: "tiktok_failed" } }) : route.fulfill({ json: creatorInfo });
+  });
+  await page.goto("/app/posts/new");
+  await expect(page.getByText("The TikTok account couldn't be read.")).toBeVisible();
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect(page.getByLabel("Who can view this video")).toBeVisible();
+});
+
+test("a saved TikTok post shows its settings and a draft loads them", async ({ page }) => {
+  await brain(page, { accounts: [tiktokAcc] });
+  await tiktokCreator(page, creatorInfo);
+  const settings = { privacy_level: "FOLLOWER_OF_CREATOR", allow_comment: true, allow_duet: false, allow_stitch: false, commercial_content: true, your_brand: false, branded_content: true, ai_generated: true };
+  await page.route("**/v1/posts/p20", (route) =>
+    route.fulfill({ json: post("p20", { platform: "tiktok", status: "published", published_at: "2026-11-03T08:00:00Z", media: ["https://example.com/clip.mp4"], tiktok: settings, targets: [target({ social_account_id: "c8" })] }) }),
+  );
+  await page.route("**/v1/posts/p21", (route) => route.fulfill({ json: post("p21", { platform: "tiktok", media: ["https://example.com/clip.mp4"], tiktok: settings }) }));
+  await page.goto("/app/posts/p20");
+  await expect(page.getByRole("heading", { name: "TikTok settings" })).toBeVisible();
+  await expect(page.getByText("Visible to: Followers. Allowed: comments. Disclosed as a paid partnership. Marked as AI-generated.")).toBeVisible();
+  await page.goto("/app/posts/p21");
+  await expect(page.getByLabel("Who can view this video")).toHaveValue("FOLLOWER_OF_CREATOR");
+  await expect(page.getByLabel("Comment")).toBeChecked();
+  await expect(page.getByLabel("Branded content")).toBeChecked();
 });
