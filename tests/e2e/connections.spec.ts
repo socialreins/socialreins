@@ -253,12 +253,21 @@ test("an account that ends soon or needs a reconnect shows a badge and a Reconne
   await expect(card("Gone Gia").getByRole("link", { name: "Reconnect Gone Gia" })).toHaveAttribute("href", "http://localhost:8080/connections/linkedin/redirect");
 });
 
-test("a member sees the badge but no Reconnect button", async ({ page }) => {
+test("a member sees the badge but no Reconnect button, and is not told to reconnect themselves", async ({ page }) => {
   const li = { ...alice, provider: "linkedin", handle: null, avatar_url: null, external_id: "abc", display_name: "Gone Gia", status: "reconnect" };
-  await signedIn(page, "member", [li]);
+  await signedIn(page, "member", [li, { ...alice, id: "c5", display_name: "Old Bea", status: "reconnect" }]);
   await page.goto("/app/connections");
-  await expect(page.getByText("Reconnect needed", { exact: true })).toBeVisible();
+  await expect(page.getByText("Reconnect needed", { exact: true })).toHaveCount(2);
   await expect(page.getByRole("link", { name: /^Reconnect/ })).toHaveCount(0);
+  await expect(page.getByText("Ask a team owner or admin to reconnect it.")).toHaveCount(2);
+  await expect(page.getByText(/new app password below/)).toHaveCount(0);
+});
+
+test("owners and admins are told how to reconnect a Bluesky account", async ({ page }) => {
+  await signedIn(page, "admin", [{ ...alice, status: "reconnect" }]);
+  await page.goto("/app/connections");
+  await expect(page.getByText("Connect it again with a new app password below.")).toBeVisible();
+  await expect(page.getByText("Ask a team owner or admin to reconnect it.")).toHaveCount(0);
 });
 
 test("Connect TikTok goes through brain and a connected account shows its handle", async ({ page }) => {

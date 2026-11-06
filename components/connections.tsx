@@ -248,12 +248,16 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
                           ? `${platform?.name ?? c.provider} no longer accepts this account's sign-in, so posts to it fail until it is connected again.`
                           : `${platform?.name ?? c.provider} gives no way to extend this account's sign-in. It ends on ${endDate(c)}, and posts to it fail after that unless it is connected again.`}
                       </span>{" "}
-                      {canManage && oauthProviders.has(c.provider) ? (
-                        <a href={connectUrl(c.provider)} className="btn btn-primary btn-sm mt-2">
-                          Reconnect {name}
-                        </a>
+                      {canManage ? (
+                        oauthProviders.has(c.provider) ? (
+                          <a href={connectUrl(c.provider)} className="btn btn-primary btn-sm mt-2">
+                            Reconnect {name}
+                          </a>
+                        ) : (
+                          <span className="text-ink-soft">Connect it again with a new app password below.</span>
+                        )
                       ) : (
-                        !oauthProviders.has(c.provider) && <span className="text-ink-soft">Connect it again with a new app password below.</span>
+                        <span className="text-ink-soft">Ask a team owner or admin to reconnect it.</span>
                       )}
                     </p>
                   )}
