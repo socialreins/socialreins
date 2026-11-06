@@ -76,3 +76,38 @@ test("home explains what failed to load and keeps the rest", async ({ page }) =>
   await expect(page.getByRole("region", { name: "Up next" }).getByRole("alert")).toContainText("couldn't be loaded");
   await expect(page.getByRole("region", { name: "Automations" })).toContainText("No automation is on.");
 });
+
+test("home warns about accounts to reconnect, with a Reconnect link for owners", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("passkey-prompt-snoozed-at", String(Date.now())));
+  await page.route("http://localhost:8080/**", (r) => r.fulfill({ json: [] }));
+  await page.route("**/auth/me", (r) => r.fulfill({ json: me }));
+  const li = { id: "c2", provider: "linkedin", external_id: "abc", handle: null, avatar_url: null, set_ids: [], created_at: "2026-10-20T10:00:00Z" };
+  await page.route("**/v1/connections", (r) =>
+    r.fulfill({
+      json: [
+        { id: "c1", provider: "bluesky", external_id: "did:plc:a", handle: "acme.bsky.social", display_name: "Acme", avatar_url: null, token_expires_at: null, set_ids: [], created_at: "2026-10-20T10:00:00Z", status: "ok" },
+        { ...li, display_name: "Soon Sam", status: "expiring", token_expires_at: "2026-11-20T10:00:00Z" },
+        { ...li, id: "c3", display_name: "Gone Gia", status: "reconnect", token_expires_at: "2026-11-01T10:00:00Z" },
+      ],
+    }),
+  );
+  await page.goto("/app");
+  const warning = page.getByRole("region", { name: "Accounts need reconnecting" });
+  await expect(warning.getByRole("listitem")).toHaveCount(2);
+  await expect(warning.getByRole("listitem").nth(0)).toContainText("Soon Sam");
+  await expect(warning.getByRole("listitem").nth(0)).toContainText("stops working on");
+  await expect(warning.getByRole("listitem").nth(1)).toContainText("Gone Gia needs reconnecting");
+  await expect(warning.getByRole("link", { name: "Reconnect Gone Gia" })).toHaveAttribute("href", "http://localhost:8080/connections/linkedin/redirect");
+});
+
+test("home shows no warning when every account is fine", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("passkey-prompt-snoozed-at", String(Date.now())));
+  await page.route("http://localhost:8080/**", (r) => r.fulfill({ json: [] }));
+  await page.route("**/auth/me", (r) => r.fulfill({ json: me }));
+  await page.route("**/v1/connections", (r) =>
+    r.fulfill({ json: [{ id: "c1", provider: "bluesky", external_id: "did:plc:a", handle: "acme.bsky.social", display_name: "Acme", avatar_url: null, token_expires_at: null, set_ids: [], created_at: "2026-10-20T10:00:00Z", status: "ok" }] }),
+  );
+  await page.goto("/app");
+  await expect(page.getByRole("link", { name: /^Connected accounts/ })).toContainText("1");
+  await expect(page.getByRole("region", { name: "Accounts need reconnecting" })).toHaveCount(0);
+});

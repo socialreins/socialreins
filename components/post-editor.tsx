@@ -5,7 +5,7 @@ import { flushSync } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Failure } from "@/lib/auth";
-import { listConnections, type Connection } from "@/lib/connections";
+import { listConnections, needingReconnect, type Connection } from "@/lib/connections";
 import {
   charCount,
   checkComment,
@@ -43,7 +43,9 @@ import { accountName, Avatar } from "@/components/connections";
 import { platformName } from "@/components/platform-icons";
 import { AccountNote, PlatformMark, postMessages, StatusBadge, statusName } from "@/components/posts";
 import { isFailure, problemText, Status, useAction } from "@/components/team-ui";
-import { useCurrentSet } from "@/components/app-shell";
+import { useCurrentSet, useSession } from "@/components/app-shell";
+import { ReconnectNotice } from "@/components/connections";
+import { manages } from "@/lib/teams";
 import { Icon } from "@/components/ui";
 
 const POLL_MS = 2000;
@@ -70,6 +72,7 @@ function platformProblem(platform: Platform, failure: Failure): ReactNode {
 }
 
 export function PostEditor({ id }: { id?: string }) {
+  const { user } = useSession();
   const router = useRouter();
   const [post, setPost] = useState<Post | Failure | null>(null);
   const [sets, setSets] = useState<SocialSet[] | Failure | null>(null);
@@ -740,6 +743,12 @@ export function PostEditor({ id }: { id?: string }) {
                 )}
               </fieldset>
             )}
+            <ReconnectNotice
+              accounts={needingReconnect(selected.flatMap(inSet))}
+              canManage={manages(user.current_team.role)}
+              title="An account needs reconnecting"
+              lead="Posts to these accounts fail while their sign-in has ended, and may fail soon if it ends within a week."
+            />
             <div className="grid gap-1.5">
               <label htmlFor="post-list" className="label">
                 List

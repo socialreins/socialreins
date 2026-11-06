@@ -1,13 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  attention,
   connectBluesky,
   connectResult,
   connectResultText,
   connectUrl,
   disconnect,
+  endDate,
   listConnections,
   listProviders,
   metaPickPending,
+  needingReconnect,
   providerState,
   safeAvatar,
 } from "@/lib/connections";
@@ -199,5 +202,30 @@ describe("provider state", () => {
     expect(safeAvatar("http://cdn.bsky.app/img/x.jpg")).toBeNull();
     expect(safeAvatar("https://cdn.bsky.app/other/x.jpg")).toBeNull();
     expect(safeAvatar(null)).toBeNull();
+  });
+});
+
+describe("accounts that need attention", () => {
+  const base = { id: "c1", provider: "linkedin", external_id: "x", handle: null, display_name: "Ann", avatar_url: null, token_expires_at: "2026-11-20T10:00:00Z", set_ids: [], dm_access: false, created_at: "2026-10-01T00:00:00Z" };
+
+  it("reads brain's status, and an older brain's reconnect flag", () => {
+    expect(attention({ ...base, status: "ok" })).toBeNull();
+    expect(attention(base)).toBeNull();
+    expect(attention({ ...base, status: "expiring" })).toBe("expiring");
+    expect(attention({ ...base, status: "reconnect" })).toBe("reconnect");
+    expect(attention({ ...base, reconnect: true })).toBe("reconnect");
+    // A refused token wins over an end date that is still ahead.
+    expect(attention({ ...base, status: "expiring", reconnect: true })).toBe("reconnect");
+  });
+
+  it("keeps only the accounts to reconnect, in order", () => {
+    const list = [{ ...base, id: "a", status: "ok" as const }, { ...base, id: "b", status: "expiring" as const }, { ...base, id: "c", status: "reconnect" as const }];
+    expect(needingReconnect(list).map((c) => c.id)).toEqual(["b", "c"]);
+    expect(needingReconnect([])).toEqual([]);
+  });
+
+  it("formats the end date, or nothing without one", () => {
+    expect(endDate(base)).toMatch(/2026/);
+    expect(endDate({ ...base, token_expires_at: null })).toBe("");
   });
 });

@@ -4,10 +4,12 @@ import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import type { Failure } from "@/lib/auth";
 import { listAutomations, type Automation } from "@/lib/automations";
-import { listConnections, type Connection } from "@/lib/connections";
+import { listConnections, needingReconnect, type Connection } from "@/lib/connections";
+import { manages } from "@/lib/teams";
 import { authorName, kindName, listInboxes, listItems, relativeTime, type Item } from "@/lib/inbox";
 import { listPosts, type Post } from "@/lib/posts";
-import { useCurrentSet } from "@/components/app-shell";
+import { useCurrentSet, useSession } from "@/components/app-shell";
+import { ReconnectNotice } from "@/components/connections";
 import { AccountNote, PlatformMark, snippet, StatusBadge } from "@/components/posts";
 import { isFailure, problemText } from "@/components/team-ui";
 
@@ -21,6 +23,7 @@ const postTime = (p: Post) => p.published_at ?? p.scheduled_at ?? p.created_at;
 // The app's home: a summary of the current set's posts, the inbox, automations and accounts, each linking to its page.
 export function Dashboard() {
   const [setId] = useCurrentSet();
+  const { user } = useSession();
   // Fixed per visit, so the windows below don't shift while the page is open.
   const [now] = useState(() => Date.now());
   const [posts, setPosts] = useState<Load<Post[]>>(null);
@@ -65,6 +68,12 @@ export function Dashboard() {
   return (
     <div className="grid gap-6">
       <AccountNote />
+      <ReconnectNotice
+        accounts={Array.isArray(accounts) ? needingReconnect(accounts) : []}
+        canManage={manages(user.current_team.role)}
+        title="Accounts need reconnecting"
+        lead="A sign-in that has ended, or ends within a week, stops posts to that account. Reconnect it to keep posting."
+      />
       <section aria-labelledby="summary-heading">
         <h2 id="summary-heading" className="sr-only">
           Summary

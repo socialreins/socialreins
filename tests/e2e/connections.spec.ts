@@ -235,6 +235,32 @@ test("a connected X account shows its name and handle, and asks for a reconnect 
   await expect(page.getByRole("link", { name: "Reconnect Bob" })).toHaveAttribute("href", "http://localhost:8080/connections/x/redirect");
 });
 
+test("an account that ends soon or needs a reconnect shows a badge and a Reconnect button", async ({ page }) => {
+  const li = { ...alice, provider: "linkedin", handle: null, avatar_url: null, external_id: "abc" };
+  await signedIn(page, "owner", [
+    { ...li, id: "l1", display_name: "Ok Ann", status: "ok", token_expires_at: "2027-01-10T10:00:00Z" },
+    { ...li, id: "l2", display_name: "Soon Sam", status: "expiring", token_expires_at: "2026-11-20T10:00:00Z" },
+    { ...li, id: "l3", display_name: "Gone Gia", status: "reconnect", token_expires_at: "2026-11-01T10:00:00Z" },
+  ]);
+  await page.goto("/app/connections");
+  const card = (name: string) => page.getByRole("listitem").filter({ has: page.getByText(name, { exact: true }) });
+  await expect(card("Ok Ann").getByRole("link", { name: /^Reconnect/ })).toHaveCount(0);
+  await expect(card("Ok Ann").getByText(/Reconnect|Ends/)).toHaveCount(0);
+  await expect(card("Soon Sam").getByText(/^Ends /)).toBeVisible();
+  await expect(card("Soon Sam").getByText("Reconnect soon.")).toBeVisible();
+  await expect(card("Soon Sam").getByRole("link", { name: "Reconnect Soon Sam" })).toHaveAttribute("href", "http://localhost:8080/connections/linkedin/redirect");
+  await expect(card("Gone Gia").getByText("Reconnect needed", { exact: true })).toBeVisible();
+  await expect(card("Gone Gia").getByRole("link", { name: "Reconnect Gone Gia" })).toHaveAttribute("href", "http://localhost:8080/connections/linkedin/redirect");
+});
+
+test("a member sees the badge but no Reconnect button", async ({ page }) => {
+  const li = { ...alice, provider: "linkedin", handle: null, avatar_url: null, external_id: "abc", display_name: "Gone Gia", status: "reconnect" };
+  await signedIn(page, "member", [li]);
+  await page.goto("/app/connections");
+  await expect(page.getByText("Reconnect needed", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: /^Reconnect/ })).toHaveCount(0);
+});
+
 test("Connect TikTok goes through brain and a connected account shows its handle", async ({ page }) => {
   const tt = { ...alice, id: "c10", provider: "tiktok", external_id: "openid1", handle: "annlee", display_name: "Ann Lee", avatar_url: null };
   await signedIn(page, "owner", [tt]);

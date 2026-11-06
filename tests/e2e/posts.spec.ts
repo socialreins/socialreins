@@ -943,3 +943,24 @@ test("take down all is hidden when no post of the group is published", async ({ 
   await expect(page.getByRole("button", { name: "Take down all" })).toHaveCount(0);
   expect(deleted).toEqual([]);
 });
+
+test("the editor warns when a ticked platform's account needs a reconnect", async ({ page }) => {
+  const soon = { ...threadsAcc, status: "expiring", token_expires_at: "2026-11-20T10:00:00Z" };
+  const gone = { ...instaAcc, status: "reconnect" };
+  await brain(page, { accounts: [alice, soon, gone] });
+  await page.route(/\/v1\/posts(\?.*)?$/, (route) => route.fulfill({ json: [] }));
+  await page.goto("/app/posts/new");
+  const notice = page.getByRole("region", { name: "An account needs reconnecting" });
+  await expect(notice.getByRole("listitem")).toHaveCount(2);
+  await expect(notice).toContainText("Alice on Threads");
+  await expect(notice).toContainText("Alice on Instagram needs reconnecting");
+  // This test's user is a member: told who can fix it, no Reconnect link.
+  await expect(notice).toContainText("Ask a team owner or admin to reconnect it.");
+  await expect(notice.getByRole("link")).toHaveCount(0);
+  // Unticking a platform drops its account from the notice.
+  const to = page.getByRole("group", { name: "Post to" });
+  await to.getByRole("checkbox", { name: /Instagram/ }).uncheck();
+  await expect(notice.getByRole("listitem")).toHaveCount(1);
+  await to.getByRole("checkbox", { name: /Threads/ }).uncheck();
+  await expect(notice).toHaveCount(0);
+});
