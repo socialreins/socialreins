@@ -6,12 +6,14 @@ import Link from "next/link";
 import type { Failure } from "@/lib/auth";
 import { useSession } from "@/components/app-shell";
 import {
+  attention,
   cancelMetaPick,
   connectBluesky,
   connectResult,
   connectResultText,
   connectUrl,
   disconnect,
+  endDate,
   getMetaPick,
   listConnections,
   listProviders,
@@ -30,6 +32,7 @@ import {
 import { listSets, setAccountSets, setNames, type SocialSet } from "@/lib/sets";
 import { manages } from "@/lib/teams";
 import { PlatformIcon, platformOf, platforms } from "@/components/platform-icons";
+import { PlatformMark } from "@/components/posts";
 import { isFailure, problemText, Status, useAction } from "@/components/team-ui";
 
 const heading = "font-display text-xl font-extrabold tracking-tight";
@@ -48,6 +51,42 @@ const connectMessages: Partial<Record<Failure, string>> = {
 };
 
 export const accountName = (c: Connection) => c.display_name || (c.handle ? `@${c.handle}` : c.external_id);
+
+// Accounts that need reconnecting or soon will, each with what is wrong and a Reconnect link for owners and admins. Used on Home and in the post editor.
+export function ReconnectNotice({ accounts, title, lead, canManage }: { accounts: Connection[]; title: string; lead: string; canManage: boolean }) {
+  if (accounts.length === 0) return null;
+  return (
+    <section aria-label={title} className="card grid gap-2 border-signal/40 p-4">
+      <p>
+        <strong className="block">{title}</strong>
+        <span className="text-ink-soft">{lead}</span>
+      </p>
+      <ul className="grid gap-2">
+        {accounts.map((c) => (
+          <li key={c.id} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="min-w-0">
+              <PlatformMark platform={c.provider} className="size-4" />
+              <strong>{accountName(c)}</strong>{" "}
+              <span className="text-ink-soft">{attention(c) === "expiring" ? `stops working on ${endDate(c)}` : "needs reconnecting"}</span>
+            </span>
+            {canManage && (
+              oauthProviders.has(c.provider) ? (
+                <a href={connectUrl(c.provider)} className="btn btn-secondary btn-sm">
+                  Reconnect {accountName(c)}
+                </a>
+              ) : (
+                <Link href="/app/connections" className="btn btn-secondary btn-sm">
+                  Open Connections
+                </Link>
+              )
+            )}
+          </li>
+        ))}
+      </ul>
+      {!canManage && <p className="text-sm text-ink-soft">Ask a team owner or admin to reconnect it.</p>}
+    </section>
+  );
+}
 
 // The account's avatar from Bluesky's CDN, else its initial. Decorative: the name is always next to it.
 export function Avatar({ connection: c, size = "size-10" }: { connection: Connection; size?: string }) {
@@ -178,7 +217,14 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
                       )}
                     </span>
                     <div className="min-w-0">
-                      <p className="truncate font-bold">{name}</p>
+                      <p className="flex items-center gap-2">
+                        <span className="min-w-0 truncate font-bold">{name}</span>
+                        {attention(c) && (
+                          <span className="badge tone shrink-0" data-status={attention(c) === "reconnect" ? "failed" : "scheduled"}>
+                            {attention(c) === "reconnect" ? "Reconnect needed" : `Ends ${endDate(c)}`}
+                          </span>
+                        )}
+                      </p>
                       <p className="text-sm text-ink-soft">
                         {platform?.name ?? c.provider}
                         {c.handle && c.display_name ? `, @${c.handle}` : ""}. Connected {date(c.created_at)}.
@@ -194,16 +240,24 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
                       </span>
                     </p>
                   )}
-                  {c.reconnect && (
+                  {attention(c) && (
                     <p className="rounded-xl bg-canvas p-3 text-sm">
-                      <strong>Reconnect needed.</strong>{" "}
+                      <strong>{attention(c) === "reconnect" ? "Reconnect needed." : "Reconnect soon."}</strong>{" "}
                       <span className="text-ink-soft">
-                        {platform?.name ?? c.provider} no longer accepts this account&apos;s sign-in, so posts to it fail until it is connected again.
+                        {attention(c) === "reconnect"
+                          ? `${platform?.name ?? c.provider} no longer accepts this account's sign-in, so posts to it fail until it is connected again.`
+                          : `${platform?.name ?? c.provider} gives no way to extend this account's sign-in. It ends on ${endDate(c)}, and posts to it fail after that unless it is connected again.`}
                       </span>{" "}
-                      {canManage && oauthProviders.has(c.provider) && (
-                        <a href={connectUrl(c.provider)} className="font-bold underline">
-                          Reconnect {name}
-                        </a>
+                      {canManage ? (
+                        oauthProviders.has(c.provider) ? (
+                          <a href={connectUrl(c.provider)} className="btn btn-primary btn-sm mt-2">
+                            Reconnect {name}
+                          </a>
+                        ) : (
+                          <span className="text-ink-soft">Connect it again with a new app password below.</span>
+                        )
+                      ) : (
+                        <span className="text-ink-soft">Ask a team owner or admin to reconnect it.</span>
                       )}
                     </p>
                   )}

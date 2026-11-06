@@ -1,6 +1,8 @@
 import { api } from "@/lib/auth";
 import { apiUrl } from "@/lib/waitlist";
 
+export type ConnectionStatus = "ok" | "expiring" | "reconnect";
+
 export type Connection = {
   id: string;
   provider: string;
@@ -12,8 +14,10 @@ export type Connection = {
   set_ids: string[];
   // Bluesky: the app password may read and send DMs. brain re-checks it on every poll.
   dm_access: boolean;
-  // X: the platform refused to renew the token, so the account must be connected again. Absent otherwise.
+  // The platform refused the account's token (a publish, a renewal or the inbox found out), so it must be connected again. Absent otherwise.
   reconnect?: boolean;
+  // ok; expiring: the token ends within 7 days (token_expires_at) and nothing renews it; reconnect: it expired or was refused.
+  status?: ConnectionStatus;
   created_at: string;
 };
 export type Provider = { provider: string; configured: boolean };
@@ -25,6 +29,11 @@ export const listProviders = () => api<Provider[]>("/v1/connections/providers");
 export const CONNECT_TIMEOUT_MS = 30_000;
 export const connectBluesky = (handle: string, appPassword: string) =>
   api<Connection>("/v1/connections/bluesky", "POST", { handle, app_password: appPassword }, CONNECT_TIMEOUT_MS);
+// What the account needs from the user now. An older brain sends only the `reconnect` flag.
+export const attention = (c: Connection): "expiring" | "reconnect" | null =>
+  c.status === "reconnect" || c.reconnect ? "reconnect" : c.status === "expiring" ? "expiring" : null;
+export const needingReconnect = (list: Connection[]) => list.filter((c) => attention(c) !== null);
+export const endDate = (c: Connection) => (c.token_expires_at ? new Date(c.token_expires_at).toLocaleDateString(undefined, { dateStyle: "medium" }) : "");
 export const disconnect = (id: string) => api(`/v1/connections/${encodeURIComponent(id)}`, "DELETE");
 
 // brain names Facebook and Instagram together as "meta".
