@@ -49,12 +49,12 @@ test("app shows the team switcher, switches and creates a team", async ({ page }
     switched = route.request().postDataJSON();
     return route.fulfill({ json: { id: "t2", name: "Beta", role: "member" } });
   });
-  await page.goto("/app");
+  await page.goto("/home");
   const crumbs = page.getByRole("navigation", { name: "Breadcrumb" });
   await crumbs.getByRole("button", { name: "Acme", exact: true }).click();
   const team = page.locator("#team-menu");
   await expect(team.getByRole("button", { name: /Acme/ })).toHaveAttribute("aria-current", "true");
-  await expect(team.getByRole("link", { name: "Manage team" })).toHaveAttribute("href", "/app/team");
+  await expect(team.getByRole("link", { name: "Manage team" })).toHaveAttribute("href", "/team");
   await team.getByRole("button", { name: /Beta/ }).click();
   await expect(page.getByText("Switched to Beta.")).toBeFocused();
   expect(switched).toEqual({ team_id: "t2" });
@@ -78,7 +78,7 @@ test("long team names stay inside the top bar and emails inside the sidebar", as
   await page.route("**/v1/teams", (route) =>
     route.fulfill({ json: [{ id: "t1", name: long, role: "owner" }, { id: "t2", name: `${long} Second Office`, role: "member" }] }),
   );
-  await page.goto("/app");
+  await page.goto("/home");
   const button = page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: long });
   await expect(button).toBeVisible();
   const [box, bar] = await Promise.all([button.boundingBox(), page.locator("header").boundingBox()]);
@@ -92,13 +92,13 @@ test("long team names stay inside the top bar and emails inside the sidebar", as
 
 test("app explains when sign-in can't be checked", async ({ page }) => {
   await page.route("**/auth/me", (route) => route.fulfill({ status: 500 }));
-  await page.goto("/app");
+  await page.goto("/home");
   await expect(page.getByRole("alert").filter({ hasText: "Sign-in couldn't be checked." })).toBeVisible();
 });
 
 test("team page sends a signed-out visitor to login", async ({ page }) => {
   await page.route("**/auth/me", (route) => route.fulfill({ status: 401, json: { error: "unauthorized" } }));
-  await page.goto("/app/team");
+  await page.goto("/team");
   await expect(page).toHaveURL("/login");
 });
 
@@ -120,7 +120,7 @@ test("an admin manages members and invitations but can't touch owners or delete 
       : route.fulfill({ status: 201, json: { ...invitation, id: "i2", email: body.email, role: body.role } });
   });
   await page.route("**/v1/team/invitations/i1", (route) => route.fulfill({ status: 204 }));
-  await page.goto("/app/team");
+  await page.goto("/team");
 
   await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Acme");
   await expect(page.getByRole("heading", { name: "Delete team" })).toHaveCount(0);
@@ -164,7 +164,7 @@ test("a member sees no management controls and can leave", async ({ page }) => {
     return route.fulfill({ status: 204 });
   });
   await page.route("**/v1/teams", (route) => route.fulfill({ json: [acme("member")] }));
-  await page.goto("/app/team");
+  await page.goto("/team");
   await expect(page.getByText("You are a member of Acme.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Team name" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Invitations" })).toHaveCount(0);
@@ -172,14 +172,14 @@ test("a member sees no management controls and can leave", async ({ page }) => {
   await expect(page.getByRole("combobox")).toHaveCount(0);
   await page.getByRole("button", { name: "Leave team" }).click();
   await page.getByRole("button", { name: "Yes, leave" }).click();
-  await expect(page).toHaveURL("/app");
+  await expect(page).toHaveURL("/home");
   expect(left).toBe("DELETE /v1/team/members/u-me");
 });
 
 test("the last owner leaving is explained", async ({ page }) => {
   await signedIn(page, "owner");
   await page.route("**/v1/team/members/*", (route) => route.fulfill({ status: 409, json: { error: "last_owner" } }));
-  await page.goto("/app/team");
+  await page.goto("/team");
   await page.getByRole("button", { name: "Leave team" }).click();
   await page.getByRole("button", { name: "Yes, leave" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "at least one owner" })).toBeVisible();
@@ -199,7 +199,7 @@ test("an owner deletes the team after typing its name, signing in again when nee
         : route.fulfill({ status: 204 });
   });
   await page.route("**/v1/teams", (route) => route.fulfill({ json: [acme("owner")] }));
-  await page.goto("/app/team");
+  await page.goto("/team");
   const del = page.getByRole("button", { name: "Delete team" });
   await expect(del).toBeDisabled();
   await page.getByLabel("Type Acme to confirm").fill("Acm");
@@ -208,12 +208,12 @@ test("an owner deletes the team after typing its name, signing in again when nee
   await del.click();
   const reauth = page.getByRole("alert").filter({ hasText: "needs a fresh sign-in" });
   await expect(reauth).toBeVisible();
-  await expect(reauth.getByRole("link", { name: "Sign in again" })).toHaveAttribute("href", "/login?next=%2Fapp%2Fteam");
+  await expect(reauth.getByRole("link", { name: "Sign in again" })).toHaveAttribute("href", "/login?next=%2Fteam");
   await expect(page.locator('input[type="password"]')).toHaveCount(0);
   await del.click();
   await expect(page.getByRole("alert").filter({ hasText: "your only team" })).toBeVisible();
   await del.click();
-  await expect(page).toHaveURL("/app");
+  await expect(page).toHaveURL("/home");
   expect(bodies).toEqual([{}, {}, {}]);
 });
 
@@ -243,7 +243,7 @@ test("invitation accept joins the team", async ({ page }) => {
   await page.goto("/invitations/tok");
   await page.getByRole("button", { name: "Join Acme" }).click();
   await expect(page.getByText("You are in Acme as admin. It is now your current team.")).toBeFocused();
-  await expect(page.getByRole("link", { name: "Open the app" })).toHaveAttribute("href", "/app");
+  await expect(page.getByRole("link", { name: "Open the app" })).toHaveAttribute("href", "/home");
 });
 
 test("invitation explains a wrong account, an expired link and a used one", async ({ page }) => {
@@ -275,14 +275,14 @@ test("role change, removal and an admin invite ask to sign in again when brain n
   await page.route("**/v1/team/invitations", (route) =>
     route.request().method() === "POST" ? route.fulfill({ status: 403, json: { error: "reauth_required" } }) : route.fallback(),
   );
-  await page.goto("/app/team");
+  await page.goto("/team");
   const again = (region: string) =>
     page.getByRole("region", { name: region }).getByRole("alert").filter({ hasText: "needs a fresh sign-in" });
 
   await page.getByLabel("Role for Max").selectOption("admin");
   await page.getByRole("button", { name: "Change Max's role" }).click();
   await expect(again("Members")).toBeVisible();
-  await expect(again("Members").getByRole("link", { name: "Sign in again" })).toHaveAttribute("href", "/login?next=%2Fapp%2Fteam");
+  await expect(again("Members").getByRole("link", { name: "Sign in again" })).toHaveAttribute("href", "/login?next=%2Fteam");
 
   await page.getByRole("button", { name: "Remove Max" }).click();
   await page.getByRole("button", { name: "Yes, remove" }).click();

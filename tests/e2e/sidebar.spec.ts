@@ -20,7 +20,7 @@ const dialog = (page: Page) => page.getByRole("dialog", { name: "Add a passkey" 
 
 test("sidebar groups open and close and remember it", async ({ page }) => {
   await brain(page);
-  await page.goto("/app/posts");
+  await page.goto("/posts");
   for (const name of ["Publish", "Engage", "Workspace", "Profile settings"]) await expect(group(page, name)).toBeVisible();
   const engage = group(page, "Engage");
   await expect(engage).toHaveAttribute("aria-expanded", "true");
@@ -36,10 +36,10 @@ test("sidebar groups open and close and remember it", async ({ page }) => {
 
 test("the group holding the current page stays open", async ({ page }) => {
   await brain(page);
-  await page.goto("/app/posts");
+  await page.goto("/posts");
   await group(page, "Workspace").click();
   await expect(group(page, "Workspace")).toHaveAttribute("aria-expanded", "false");
-  await page.goto("/app/team");
+  await page.goto("/team");
   await expect(group(page, "Workspace")).toHaveAttribute("aria-expanded", "true");
   const team = nav(page).getByRole("link", { name: "Team", exact: true });
   await expect(team).toHaveAttribute("aria-current", "page");
@@ -50,7 +50,7 @@ test("the group holding the current page stays open", async ({ page }) => {
 
 test("the sidebar collapses to an icon rail and back, across reloads", async ({ page }) => {
   await brain(page);
-  await page.goto("/app/posts");
+  await page.goto("/posts");
   await page.getByRole("button", { name: "Collapse sidebar" }).click();
   const expand = page.getByRole("button", { name: "Expand sidebar" });
   await expect(expand).toHaveAttribute("aria-expanded", "false");
@@ -74,37 +74,37 @@ test("the sidebar collapses to an icon rail and back, across reloads", async ({ 
 test("the mobile menu shows the groups", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await brain(page);
-  await page.goto("/app/posts");
+  await page.goto("/posts");
   await expect(page.getByRole("button", { name: "Collapse sidebar" })).toBeHidden();
   await page.getByRole("button", { name: "Menu" }).click();
   await expect(group(page, "Profile settings")).toBeVisible();
   await nav(page).getByRole("link", { name: "Profile", exact: true }).click();
-  await expect(page).toHaveURL("/app/profile");
+  await expect(page).toHaveURL("/profile");
   await expect(group(page, "Profile settings")).toBeHidden();
 });
 
 test("the profile page shows the user, with links to security", async ({ page }) => {
   await brain(page);
-  await page.goto("/app/profile");
+  await page.goto("/profile");
   const main = page.getByRole("main");
   await expect(main.getByRole("heading", { name: "Profile", level: 1 })).toBeVisible();
   await expect(main.getByText("Mira", { exact: true })).toBeVisible();
   await expect(main.getByText("me@example.com")).toBeVisible();
   await expect(main.getByLabel("Name", { exact: true })).toHaveValue("Mira");
-  await expect(main.getByRole("link", { name: /Passkeys/ })).toHaveAttribute("href", "/app/security#passkeys");
+  await expect(main.getByRole("link", { name: /Passkeys/ })).toHaveAttribute("href", "/security#passkeys");
   await expect(nav(page).getByRole("link", { name: "Profile", exact: true })).toHaveAttribute("aria-current", "page");
 });
 
 test("no passkey dialog for a user who has one, or when the list fails", async ({ page }) => {
   await brain(page);
-  await page.goto("/app/posts");
+  await page.goto("/posts");
   await expect(nav(page).getByRole("link", { name: "Posts", exact: true })).toBeVisible();
   await page.waitForTimeout(500);
   await expect(dialog(page)).toHaveCount(0);
 
   await page.unrouteAll();
   await brain(page, null);
-  await page.goto("/app/posts");
+  await page.goto("/posts");
   await expect(nav(page).getByRole("link", { name: "Posts", exact: true })).toBeVisible();
   await page.waitForTimeout(500);
   await expect(dialog(page)).toHaveCount(0);
@@ -112,19 +112,19 @@ test("no passkey dialog for a user who has one, or when the list fails", async (
 
 test("the passkey dialog sends a user with none to add one", async ({ page }) => {
   await brain(page, []);
-  await page.goto("/app/posts");
+  await page.goto("/posts");
   await expect(dialog(page)).toBeVisible();
   await expect(dialog(page)).toContainText("fingerprint, face or screen lock");
   await expect(dialog(page).getByRole("button", { name: "Add a passkey" })).toBeFocused();
   await dialog(page).getByRole("button", { name: "Add a passkey" }).click();
-  await expect(page).toHaveURL("/app/security#passkeys");
+  await expect(page).toHaveURL("/security#passkeys");
   await expect(dialog(page)).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Passkeys" })).toBeInViewport();
 });
 
 test("Not now hides the passkey dialog after a reload", async ({ page }) => {
   await brain(page, []);
-  await page.goto("/app/posts");
+  await page.goto("/posts");
   await dialog(page).getByRole("button", { name: "Not now" }).click();
   await expect(dialog(page)).toHaveCount(0);
   await expect(page.locator("#main")).toBeFocused();
@@ -136,7 +136,7 @@ test("Not now hides the passkey dialog after a reload", async ({ page }) => {
 
 test("Escape closes the passkey dialog and hides it too", async ({ page }) => {
   await brain(page, []);
-  await page.goto("/app/posts");
+  await page.goto("/posts");
   await expect(dialog(page)).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(dialog(page)).toHaveCount(0);
@@ -149,14 +149,14 @@ test("Escape closes the passkey dialog and hides it too", async ({ page }) => {
 
 test("no passkey dialog on the security page, or after skipping it on /welcome", async ({ page }) => {
   await brain(page, []);
-  await page.goto("/app/security");
+  await page.goto("/security");
   await expect(page.getByText("You have no passkeys yet.")).toBeVisible();
   await page.waitForTimeout(500);
   await expect(dialog(page)).toHaveCount(0);
 
   await page.goto("/welcome");
   await page.getByRole("link", { name: "Skip for now" }).click();
-  await expect(page).toHaveURL("/app");
+  await expect(page).toHaveURL("/home");
   await page.waitForTimeout(500);
   await expect(dialog(page)).toHaveCount(0);
 });
@@ -171,7 +171,7 @@ test("the profile name is saved and shows in the sidebar", async ({ page }) => {
     if (body.name === "Bad") return route.fulfill({ status: 422, json: { error: "invalid_name" } });
     return route.fulfill({ json: { ...user, name: body.name } });
   });
-  await page.goto("/app/profile");
+  await page.goto("/profile");
   const main = page.getByRole("main");
   const account = page.locator("p", { hasText: "Signed in as" });
   await expect(account).toContainText("Mira");

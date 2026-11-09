@@ -123,7 +123,7 @@ export function Automations() {
             </span>
           </p>
           {canManage && (
-            <Link href="/app/automations/new" className="btn btn-primary justify-self-start">
+            <Link href="/automations/new" className="btn btn-primary justify-self-start">
               <Icon name="plus" className="size-4" />
               New automation
             </Link>
@@ -137,7 +137,7 @@ export function Automations() {
                 <Icon name="automations" />
               </span>
               <div className="grid min-w-0 flex-1 basis-64 gap-1">
-                <Link href={`/app/automations/${a.id}`} className="font-bold hover:underline">
+                <Link href={`/automations/${a.id}`} className="font-bold hover:underline">
                   {a.name}
                 </Link>
                 <p className="text-[0.95rem]">{triggerSummary(a.conditions)}</p>
@@ -188,7 +188,7 @@ export function AutomationDetail({ id }: { id: string }) {
 
   async function onDelete(x: Automation) {
     const ok = await del.run("delete", () => deleteAutomation(x.id), () => {
-      router.push("/app/automations");
+      router.push("/automations");
     });
     if (!ok) confirmRef.current?.focus();
   }
@@ -317,7 +317,7 @@ export function AutomationDetail({ id }: { id: string }) {
                       {when(r.created_at)}
                     </time>
                     {r.reason && <span className="text-sm font-bold">{reason(r.reason)}</span>}
-                    <Link href={`/app/inbox?item=${encodeURIComponent(r.inbox_item_id)}`} className="ml-auto text-sm font-bold underline decoration-signal decoration-2 underline-offset-4">
+                    <Link href={`/inbox?item=${encodeURIComponent(r.inbox_item_id)}`} className="ml-auto text-sm font-bold underline decoration-signal decoration-2 underline-offset-4">
                       Open the comment<span className="sr-only"> from {when(r.created_at)}</span>
                     </Link>
                   </div>
@@ -361,7 +361,7 @@ export function NewAutomation() {
   const router = useRouter();
   const { accounts, ready, sets } = useScopeData();
   if (!manages(user.current_team.role)) return <p className="text-ink-soft">Only team owners and admins can create automations.</p>;
-  return <AutomationForm accounts={accounts} ready={ready} sets={sets} onSaved={(a) => router.push(`/app/automations/${a.id}`)} />;
+  return <AutomationForm accounts={accounts} ready={ready} sets={sets} onSaved={(a) => router.push(`/automations/${a.id}`)} />;
 }
 
 // The page header's action, for owners and admins only.
@@ -369,7 +369,7 @@ export function NewAutomationLink() {
   const { user } = useSession();
   if (!manages(user.current_team.role)) return null;
   return (
-    <Link href="/app/automations/new" className="btn btn-primary">
+    <Link href="/automations/new" className="btn btn-primary">
       <Icon name="plus" className="size-4" />
       New automation
     </Link>

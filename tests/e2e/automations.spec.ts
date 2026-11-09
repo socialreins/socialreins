@@ -94,7 +94,7 @@ async function brain(page: Page, role: Role) {
 
 test("lists automations with summary, runs and a switch", async ({ page }) => {
   const state = await brain(page, "owner");
-  await page.goto("/app/automations");
+  await page.goto("/automations");
   const card = page.getByRole("listitem").filter({ hasText: "Price to DM" });
   await expect(card).toContainText("Comment contains: price, link");
   await expect(card).toContainText("All accounts. Sends a DM, or replies publicly if it can't.");
@@ -109,7 +109,7 @@ test("lists automations with summary, runs and a switch", async ({ page }) => {
 
 test("members see automations but can't change them", async ({ page }) => {
   await brain(page, "member");
-  await page.goto("/app/automations");
+  await page.goto("/automations");
   await expect(page.getByText("Price to DM")).toBeVisible();
   await expect(page.getByRole("link", { name: "New automation" })).toHaveCount(0);
   await expect(page.getByRole("switch")).toHaveCount(0);
@@ -121,9 +121,9 @@ test("members see automations but can't change them", async ({ page }) => {
 
 test("creates a comment-to-DM automation with post links", async ({ page }) => {
   const state = await brain(page, "admin");
-  await page.goto("/app/automations");
+  await page.goto("/automations");
   await page.getByRole("link", { name: "New automation" }).click();
-  await expect(page).toHaveURL("/app/automations/new");
+  await expect(page).toHaveURL("/automations/new");
   await page.getByLabel("Name").fill("Guide");
   await page.getByLabel("Comment contains").fill("guide");
   await page.getByLabel("Comment contains").press("Enter");
@@ -141,7 +141,7 @@ test("creates a comment-to-DM automation with post links", async ({ page }) => {
   expect(state.bodies).toHaveLength(0);
   await page.getByLabel("Post links").fill("https://bsky.app/profile/alice.bsky.social/post/3abc\nat://did:plc:bob/app.bsky.feed.post/3xyz");
   await page.getByRole("button", { name: "Create automation" }).click();
-  await expect(page).toHaveURL("/app/automations/a2");
+  await expect(page).toHaveURL("/automations/a2");
   expect(state.bodies[0]).toEqual({
     name: "Guide",
     trigger: "comment_received",
@@ -160,12 +160,12 @@ test("creates a comment-to-DM automation with post links", async ({ page }) => {
 
 test("detail shows runs with readable reasons, edits and deletes", async ({ page }) => {
   const state = await brain(page, "owner");
-  await page.goto("/app/automations/a1");
+  await page.goto("/automations/a1");
   const history = page.getByRole("region", { name: "Run history" });
   await expect(history.getByRole("listitem").filter({ hasText: "Sent" }).first()).toContainText("They only accept DMs from people they follow");
   await expect(history).toContainText("Reconnect with an app password that allows DMs");
   await expect(history).toContainText("The team reached 500 automation runs today");
-  await expect(history.getByRole("link", { name: "Open the comment" }).first()).toHaveAttribute("href", "/app/inbox?item=p1");
+  await expect(history.getByRole("link", { name: "Open the comment" }).first()).toHaveAttribute("href", "/inbox?item=p1");
 
   await page.getByRole("button", { name: "Edit" }).click();
   await expect(page.getByLabel("If the DM can't be delivered, reply publicly instead")).toBeChecked();
@@ -184,6 +184,6 @@ test("detail shows runs with readable reasons, edits and deletes", async ({ page
 
   await page.getByRole("button", { name: "Delete" }).click();
   await page.getByRole("button", { name: "Yes, delete" }).click();
-  await expect(page).toHaveURL("/app/automations");
+  await expect(page).toHaveURL("/automations");
   await expect(page.getByText("No automations yet")).toBeVisible();
 });

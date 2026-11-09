@@ -33,14 +33,14 @@ async function brain(page: Page, isAdmin = true) {
 
 test("only site admins get the Admin console link, and it opens a separate console", async ({ page }) => {
   await brain(page, false);
-  await page.goto("/app/posts");
+  await page.goto("/posts");
   await expect(page.getByRole("link", { name: "Posts", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Admin console" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Waitlist", exact: true })).toHaveCount(0);
 
   await page.unrouteAll();
   await brain(page, true);
-  await page.goto("/app/posts");
+  await page.goto("/posts");
   await expect(page.getByRole("link", { name: "Waitlist", exact: true })).toHaveCount(0);
   await page.getByRole("link", { name: "Admin console" }).click();
   await expect(page).toHaveURL("/admin/waitlist");
@@ -49,16 +49,16 @@ test("only site admins get the Admin console link, and it opens a separate conso
   await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Admin console");
   await expect(page.getByRole("link", { name: "Posts", exact: true })).toHaveCount(0);
   await page.getByRole("link", { name: "Back to the app" }).click();
-  await expect(page).toHaveURL("/app");
+  await expect(page).toHaveURL("/home");
 });
 
 test("the admin console sends a non-admin to the app, and the old address redirects", async ({ page }) => {
   await brain(page, false);
   await page.goto("/admin/waitlist");
-  await expect(page).toHaveURL("/app");
+  await expect(page).toHaveURL("/home");
   await page.unrouteAll();
   await brain(page, true);
-  await page.goto("/app/admin");
+  await page.goto("/admin");
   await expect(page).toHaveURL("/admin/waitlist");
 });
 

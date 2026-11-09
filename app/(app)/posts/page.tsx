@@ -9,7 +9,7 @@ export default function PostsPage() {
   return (
     <>
       <PageHeader title="Posts">
-        <Link href="/app/posts/new" className="btn btn-primary">
+        <Link href="/posts/new" className="btn btn-primary">
           <Icon name="plus" className="size-4" />
           New post
         </Link>

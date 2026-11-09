@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react";
 import { flushSync } from "react-dom";
 import Link from "next/link";
 import type { Failure } from "@/lib/auth";
@@ -21,7 +21,6 @@ import {
   metaPickPending,
   oauthProviders,
   pickMeta,
-  providerKey,
   providerState,
   safeAvatar,
   type Connection,
@@ -34,6 +33,7 @@ import { manages } from "@/lib/teams";
 import { PlatformIcon, platformOf, platforms } from "@/components/platform-icons";
 import { PlatformMark } from "@/components/posts";
 import { isFailure, problemText, Status, useAction } from "@/components/team-ui";
+import { Icon } from "@/components/ui";
 
 const heading = "font-display text-xl font-extrabold tracking-tight";
 const date = (iso: string) => new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
@@ -75,7 +75,7 @@ export function ReconnectNotice({ accounts, title, lead, canManage }: { accounts
                   Reconnect {accountName(c)}
                 </a>
               ) : (
-                <Link href="/app/connections" className="btn btn-secondary btn-sm">
+                <Link href="/connections" className="btn btn-secondary btn-sm">
                   Open Connections
                 </Link>
               )
@@ -123,10 +123,9 @@ export function Connections() {
 function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string }) {
   const [list, setList] = useState<Connection[] | Failure | null>(null);
   const [sets, setSets] = useState<SocialSet[] | Failure | null>(null);
-  const [confirming, setConfirming] = useState<string | null>(null);
-  const { busy, problem, done, run } = useAction();
-  const disconnectRefs = useRef(new Map<string, HTMLButtonElement>());
-  const confirmRef = useRef<HTMLButtonElement>(null);
+  const [adding, setAdding] = useState(false);
+  const [settingsId, setSettingsId] = useState<string | null>(null);
+  const { problem, done, run } = useAction();
   const headingRef = useRef<HTMLHeadingElement>(null);
   // How an OAuth connect went, from brain's redirect back here. The shell renders this page in the browser only.
   const [returned] = useState(() => connectResult(window.location.search));
@@ -142,219 +141,196 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
     if (connectResult(search) || metaPickPending(search)) window.history.replaceState(null, "", window.location.pathname);
   }, []);
 
-  useEffect(() => {
-    if (confirming) confirmRef.current?.focus();
-  }, [confirming]);
-
-  function cancel(id: string) {
-    flushSync(() => setConfirming(null));
-    disconnectRefs.current.get(id)?.focus();
-  }
-
-  async function onDisconnect(c: Connection, name: string) {
-    let gone = false;
-    const call = async () => {
-      const r = await disconnect(c.id);
-      gone = r === "not_found";
-      return r;
-    };
-    const ok = await run("disconnect", call, () => `${name} was disconnected.`);
-    flushSync(() => setConfirming(null));
-    if (ok || gone) setList((l) => (Array.isArray(l) ? l.filter((x) => x.id !== c.id) : l));
-    // Its button is gone with it, so focus moves to the section heading; the alert says why.
-    if (gone) headingRef.current?.focus();
-    else if (!ok) disconnectRefs.current.get(c.id)?.focus();
-  }
+  // What a closed dialog did, shown (and focused) on the page behind it.
+  const announce = (text: string) => run("notice", async () => "ok" as const, () => text);
+  const opened = Array.isArray(list) ? list.find((c) => c.id === settingsId) : undefined;
 
   return (
-    <>
-      <section aria-labelledby="accounts-heading" className="grid gap-4">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 id="accounts-heading" ref={headingRef} tabIndex={-1} className={heading}>
-              Connected accounts
-            </h2>
-            <p className="text-ink-soft">Accounts connected to {team}.</p>
-          </div>
-          <Link href="/app/sets" className="btn btn-secondary btn-sm">
-            Manage sets
-          </Link>
+    <section aria-labelledby="accounts-heading" className="grid gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 id="accounts-heading" ref={headingRef} tabIndex={-1} className={heading}>
+            Connected accounts
+          </h2>
+          <p className="text-ink-soft">Accounts connected to {team}.</p>
         </div>
-        {returned && (
-          <p role={returned.error ? "alert" : "status"} className={returned.error ? "waitlist-error" : "waitlist-done"}>
-            {connectResultText(
-              returned,
-              returned.provider === "meta" ? metaName : (platformOf(returned.provider)?.name ?? returned.provider),
-            )}
-          </p>
+        {canManage && (
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => setAdding(true)}>
+            Add account
+          </button>
         )}
-        {picking && <MetaPicker team={team} onConnected={reload} />}
-        <Status problem={problem} done={done} overrides={connectMessages} />
-        {list === null ? (
-          <div role="status" className="h-28 rounded-2xl bg-ink/5 motion-safe:animate-pulse">
-            <span className="sr-only">Loading accounts...</span>
-          </div>
-        ) : isFailure(list) ? (
-          <p role="alert" className="waitlist-error">
-            Accounts couldn&apos;t be loaded. {problemText(list)}
-          </p>
-        ) : list.length === 0 ? (
-          <p className="card p-5 text-ink-soft">No accounts connected yet. Connect one below to start posting.</p>
-        ) : (
-          <ul className="grid gap-3 sm:grid-cols-2">
-            {list.map((c) => {
-              const platform = platformOf(c.provider);
-              const name = accountName(c);
-              return (
-                <li key={c.id} className="card grid content-start gap-3 p-4">
-                  <div className="flex items-center gap-3">
-                    <span className="relative shrink-0">
-                      <Avatar connection={c} size="size-12" />
-                      {platform && (
-                        <span className="absolute -right-1 -bottom-1 grid size-5 place-items-center rounded-full bg-paper ring-2 ring-paper" style={{ color: platform.color }}>
-                          <PlatformIcon platform={platform} className="size-3.5" />
+      </div>
+      {returned && (
+        <p role={returned.error ? "alert" : "status"} className={returned.error ? "waitlist-error" : "waitlist-done"}>
+          {connectResultText(
+            returned,
+            returned.provider === "meta" ? metaName : (platformOf(returned.provider)?.name ?? returned.provider),
+          )}
+        </p>
+      )}
+      {picking && <MetaPicker team={team} onConnected={reload} />}
+      <Status problem={problem} done={done} overrides={connectMessages} />
+      {list === null ? (
+        <div role="status" className="h-28 rounded-2xl bg-ink/5 motion-safe:animate-pulse">
+          <span className="sr-only">Loading accounts...</span>
+        </div>
+      ) : isFailure(list) ? (
+        <p role="alert" className="waitlist-error">
+          Accounts couldn&apos;t be loaded. {problemText(list)}
+        </p>
+      ) : list.length === 0 ? (
+        <p className="card p-5 text-ink-soft">No accounts connected yet.{canManage ? " Use Add account to connect one." : ""}</p>
+      ) : (
+        <ul className="grid gap-3 sm:grid-cols-2">
+          {list.map((c) => {
+            const platform = platformOf(c.provider);
+            const name = accountName(c);
+            return (
+              <li key={c.id} className="card grid content-start gap-3 p-4">
+                <div className="flex items-center gap-3">
+                  <span className="relative shrink-0">
+                    <Avatar connection={c} size="size-12" />
+                    {platform && (
+                      <span className="absolute -right-1 -bottom-1 grid size-5 place-items-center rounded-full bg-paper ring-2 ring-paper" style={{ color: platform.color }}>
+                        <PlatformIcon platform={platform} className="size-3.5" />
+                      </span>
+                    )}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="flex items-center gap-2">
+                      <span className="min-w-0 truncate font-bold">{name}</span>
+                      {attention(c) && (
+                        <span className="badge tone shrink-0" data-status={attention(c) === "reconnect" ? "failed" : "scheduled"}>
+                          {attention(c) === "reconnect" ? "Reconnect needed" : `Ends ${endDate(c)}`}
                         </span>
                       )}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="flex items-center gap-2">
-                        <span className="min-w-0 truncate font-bold">{name}</span>
-                        {attention(c) && (
-                          <span className="badge tone shrink-0" data-status={attention(c) === "reconnect" ? "failed" : "scheduled"}>
-                            {attention(c) === "reconnect" ? "Reconnect needed" : `Ends ${endDate(c)}`}
-                          </span>
-                        )}
-                      </p>
-                      <p className="text-sm text-ink-soft">
-                        {platform?.name ?? c.provider}
-                        {c.handle && c.display_name ? `, @${c.handle}` : ""}. Connected {date(c.created_at)}.
-                      </p>
-                    </div>
+                    </p>
+                    <p className="text-sm text-ink-soft">
+                      {platform?.name ?? c.provider}
+                      {c.handle && c.display_name ? `, @${c.handle}` : ""}. Connected {date(c.created_at)}.
+                    </p>
                   </div>
-                  {c.provider === "bluesky" && c.dm_access === false && (
-                    <p className="rounded-xl bg-canvas p-3 text-sm">
-                      <strong>DMs off.</strong>{" "}
-                      <span className="text-ink-soft">
-                        Comments and mentions still reach the inbox, but DMs can&apos;t be read or sent. Make a new app password with
-                        &quot;Allow access to your direct messages&quot; ticked, then connect @{c.handle ?? name} again with it below.
-                      </span>
-                    </p>
-                  )}
-                  {attention(c) && (
-                    <p className="rounded-xl bg-canvas p-3 text-sm">
-                      <strong>{attention(c) === "reconnect" ? "Reconnect needed." : "Reconnect soon."}</strong>{" "}
-                      <span className="text-ink-soft">
-                        {attention(c) === "reconnect"
-                          ? `${platform?.name ?? c.provider} no longer accepts this account's sign-in, so posts to it fail until it is connected again.`
-                          : `${platform?.name ?? c.provider} gives no way to extend this account's sign-in. It ends on ${endDate(c)}, and posts to it fail after that unless it is connected again.`}
-                      </span>{" "}
-                      {canManage ? (
-                        oauthProviders.has(c.provider) ? (
-                          <a href={connectUrl(c.provider)} className="btn btn-primary btn-sm mt-2">
-                            Reconnect {name}
-                          </a>
-                        ) : (
-                          <span className="text-ink-soft">Connect it again with a new app password below.</span>
-                        )
-                      ) : (
-                        <span className="text-ink-soft">Ask a team owner or admin to reconnect it.</span>
-                      )}
-                    </p>
-                  )}
-                  {Array.isArray(sets) && (
-                    <ul aria-label={`Sets for ${name}`} className="flex flex-wrap gap-1.5">
-                      {setNames(c.set_ids, sets).map((n) => (
-                        <li key={n} className="badge tone">
-                          {n}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {canManage && Array.isArray(sets) && sets.length > 1 && (
-                    <SetsEditor
-                      connection={c}
-                      sets={sets}
-                      onStale={() => listSets().then(setSets)}
-                      onSaved={(updated) => setList((l) => (Array.isArray(l) ? l.map((x) => (x.id === updated.id ? updated : x)) : l))}
-                    />
-                  )}
-                  {canManage &&
-                    (confirming === c.id ? (
-                      <div className="grid gap-2 rounded-xl bg-canvas p-3">
-                        <p id={`confirm-${c.id}`} className="text-sm">
-                          Disconnect {name}? SocialReins will forget its stored {c.provider === "bluesky" ? "password" : "sign-in"}.
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            ref={confirmRef}
-                            type="button"
-                            className="btn btn-primary btn-sm"
-                            aria-describedby={`confirm-${c.id}`}
-                            disabled={busy !== null}
-                            onClick={() => onDisconnect(c, name)}
-                          >
-                            {busy === "disconnect" ? "Disconnecting..." : "Yes, disconnect"}
-                          </button>
-                          <button type="button" className="btn btn-quiet btn-sm" disabled={busy !== null} onClick={() => cancel(c.id)}>
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <button
-                        ref={(el) => {
-                          if (el) disconnectRefs.current.set(c.id, el);
-                          else disconnectRefs.current.delete(c.id);
-                        }}
-                        type="button"
-                        className="btn btn-quiet btn-danger btn-sm justify-self-start"
-                        disabled={busy !== null}
-                        aria-label={`Disconnect ${name}`}
-                        onClick={() => setConfirming(c.id)}
-                      >
-                        Disconnect
-                      </button>
+                  <button type="button" className="icon-btn shrink-0" aria-label={`Settings for ${name}`} onClick={() => setSettingsId(c.id)}>
+                    <Icon name="settings" />
+                  </button>
+                </div>
+                {Array.isArray(sets) && (
+                  <ul aria-label={`Sets for ${name}`} className="flex flex-wrap gap-1.5">
+                    {setNames(c.set_ids, sets).map((n) => (
+                      <li key={n} className="badge tone">
+                        {n}
+                      </li>
                     ))}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
-      {canManage ? (
-        <AddAccount connected={Array.isArray(list) ? list : []} onConnected={reload} />
-      ) : (
-        <p className="text-ink-soft">Only team owners and admins can connect or disconnect accounts.</p>
+                  </ul>
+                )}
+              </li>
+            );
+          })}
+        </ul>
       )}
-    </>
+      {!canManage && <p className="text-ink-soft">Only team owners and admins can connect or disconnect accounts.</p>}
+      {opened && (
+        <AccountSettings
+          key={opened.id}
+          connection={opened}
+          sets={Array.isArray(sets) ? sets : []}
+          canManage={canManage}
+          onClose={() => setSettingsId(null)}
+          onStale={() => listSets().then(setSets)}
+          onSaved={(updated) => {
+            setList((l) => (Array.isArray(l) ? l.map((x) => (x.id === updated.id ? updated : x)) : l));
+            announce(`Sets saved for ${accountName(updated)}.`);
+          }}
+          onGone={(c, already) => {
+            setList((l) => (Array.isArray(l) ? l.filter((x) => x.id !== c.id) : l));
+            if (already) {
+              run("notice", async () => "not_found" as const, () => {});
+              headingRef.current?.focus();
+            } else announce(`${accountName(c)} was disconnected.`);
+          }}
+        />
+      )}
+      {adding && (
+        <AddAccount
+          connected={Array.isArray(list) ? list : []}
+          onClose={() => setAdding(false)}
+          onConnected={reload}
+          announce={announce}
+        />
+      )}
+    </section>
   );
 }
 
-// Checkboxes of the team's live sets for one account. Default stays checked: brain keeps every account in it.
-function SetsEditor({
+// A modal with a title and a close button. `dialogRef` lets the caller close it after an action.
+function Modal({
+  title,
+  dialogRef,
+  onClose,
+  children,
+}: {
+  title: string;
+  dialogRef: RefObject<HTMLDialogElement | null>;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const titleId = useId();
+  useEffect(() => {
+    dialogRef.current?.showModal();
+  }, [dialogRef]);
+  return (
+    <dialog
+      ref={dialogRef}
+      aria-labelledby={titleId}
+      onClose={onClose}
+      className="m-auto w-[min(32rem,calc(100vw-2rem))] rounded-2xl bg-paper p-0 text-ink shadow-2xl backdrop:bg-ink/40"
+    >
+      <div className="grid gap-5 p-6">
+        <div className="flex items-center justify-between gap-3">
+          <h2 id={titleId} className="min-w-0 truncate font-display text-xl font-extrabold tracking-tight">
+            {title}
+          </h2>
+          <button type="button" className="icon-btn shrink-0" aria-label="Close" onClick={() => dialogRef.current?.close()}>
+            <Icon name="close" />
+          </button>
+        </div>
+        {children}
+      </div>
+    </dialog>
+  );
+}
+
+// Everything about one account: its sets, renewing its sign-in, and disconnecting it.
+function AccountSettings({
   connection: c,
   sets,
-  onSaved,
+  canManage,
+  onClose,
   onStale,
+  onSaved,
+  onGone,
 }: {
   connection: Connection;
   sets: SocialSet[];
-  onSaved: (c: Connection) => void;
+  canManage: boolean;
+  onClose: () => void;
   onStale: () => void;
+  onSaved: (c: Connection) => void;
+  onGone: (c: Connection, already: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDialogElement>(null);
   const [checked, setChecked] = useState<string[]>(c.set_ids);
+  const [confirming, setConfirming] = useState(false);
+  const disconnectRef = useRef<HTMLButtonElement>(null);
   const { busy, problem, done, run } = useAction();
-  const toggleRef = useRef<HTMLButtonElement>(null);
-  const firstRef = useRef<HTMLInputElement>(null);
   const name = accountName(c);
+  const platform = platformOf(c.provider)?.name ?? c.provider;
+  const state = attention(c);
+  const oauth = oauthProviders.has(c.provider);
 
-  function show(next: boolean) {
-    flushSync(() => {
-      setOpen(next);
-      setChecked(c.set_ids);
-    });
-    (next ? firstRef : toggleRef).current?.focus();
+  function closeConfirm() {
+    flushSync(() => setConfirming(false));
+    disconnectRef.current?.focus();
   }
 
   async function onSave(e: FormEvent<HTMLFormElement>) {
@@ -368,56 +344,118 @@ function SetsEditor({
     };
     await run("sets", call, (updated) => {
       onSaved(updated);
-      setOpen(false);
-      return `Sets saved for ${name}.`;
+      ref.current?.close();
     });
   }
 
-  const firstEditable = sets.find((s) => !s.is_default)?.id;
+  async function onDisconnect() {
+    let gone = false;
+    const call = async () => {
+      const r = await disconnect(c.id);
+      gone = r === "not_found";
+      return r;
+    };
+    const ok = await run("disconnect", call, () => {
+      ref.current?.close();
+      onGone(c, false);
+    });
+    if (gone) {
+      ref.current?.close();
+      onGone(c, true);
+    } else if (!ok) closeConfirm();
+  }
+
   return (
-    <div className="grid gap-2">
-      {open ? (
-        <form onSubmit={onSave} className="grid gap-2 rounded-xl bg-canvas p-3">
-          <fieldset className="grid gap-1">
-            <legend className="font-bold">Sets for {name}</legend>
-            {sets.map((s) => (
-              <label key={s.id} className="flex items-center gap-2">
-                <input
-                  ref={s.id === firstEditable ? firstRef : undefined}
-                  type="checkbox"
-                  checked={s.is_default || checked.includes(s.id)}
-                  disabled={s.is_default}
-                  onChange={(e) =>
-                    setChecked((ids) => (e.target.checked ? [...ids, s.id] : ids.filter((id) => id !== s.id)))
-                  }
-                />
-                {s.name}
-                {s.is_default && <span className="text-sm text-ink-soft">(every account stays here)</span>}
-              </label>
-            ))}
-          </fieldset>
-          <div className="flex flex-wrap gap-x-4 gap-y-2">
-            <button type="submit" className="btn btn-primary btn-sm" disabled={busy !== null}>
-              {busy ? "Saving..." : "Save sets"}
-            </button>
-            <button type="button" className="btn btn-quiet btn-sm" disabled={busy !== null} onClick={() => show(false)}>
-              Cancel
-            </button>
-          </div>
-        </form>
-      ) : (
-        <button
-          ref={toggleRef}
-          type="button"
-          className="btn btn-secondary btn-sm justify-self-start"
-          aria-label={`Edit sets for ${name}`}
-          onClick={() => show(true)}
-        >
-          Edit sets
-        </button>
+    <Modal title={`Settings for ${name}`} dialogRef={ref} onClose={onClose}>
+      <p className="text-ink-soft">
+        {platform}
+        {c.handle && c.display_name ? `, @${c.handle}` : ""}. Connected {date(c.created_at)}.
+      </p>
+      {c.provider === "bluesky" && c.dm_access === false && (
+        <p className="rounded-xl bg-canvas p-3 text-sm">
+          <strong>DMs off.</strong>{" "}
+          <span className="text-ink-soft">
+            Comments and mentions still reach the inbox, but DMs can&apos;t be read or sent. Make a new app password with &quot;Allow
+            access to your direct messages&quot; ticked, then connect @{c.handle ?? name} again with Add account.
+          </span>
+        </p>
       )}
-      <Status problem={problem} done={done} />
-    </div>
+      <form onSubmit={onSave} className="grid gap-3">
+        <fieldset className="grid gap-1.5">
+          <legend className="mb-1 font-bold">Sets</legend>
+          {sets.map((s) => (
+            <label key={s.id} className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={s.is_default || checked.includes(s.id)}
+                disabled={s.is_default || !canManage}
+                onChange={(e) => setChecked((ids) => (e.target.checked ? [...ids, s.id] : ids.filter((id) => id !== s.id)))}
+              />
+              {s.name}
+              {s.is_default && <span className="text-sm text-ink-soft">(every account stays here)</span>}
+            </label>
+          ))}
+          <Link href="/sets" className="justify-self-start text-sm underline decoration-2 underline-offset-4">
+            Manage sets
+          </Link>
+        </fieldset>
+        {canManage && sets.length > 1 && (
+          <button type="submit" className="btn btn-primary btn-sm justify-self-start" disabled={busy !== null}>
+            {busy === "sets" ? "Saving..." : "Save sets"}
+          </button>
+        )}
+      </form>
+      <div className="grid gap-2">
+        <p className="font-bold">Connection</p>
+        {state && (
+          <p className="rounded-xl bg-canvas p-3 text-sm">
+            <strong>{state === "reconnect" ? "Reconnect needed." : "Reconnect soon."}</strong>{" "}
+            <span className="text-ink-soft">
+              {state === "reconnect"
+                ? `${platform} no longer accepts this account's sign-in, so posts to it fail until it is connected again.`
+                : `${platform} gives no way to extend this account's sign-in. It ends on ${endDate(c)}, and posts to it fail after that unless it is connected again.`}
+            </span>
+          </p>
+        )}
+        {!canManage ? (
+          state && <p className="text-sm text-ink-soft">Ask a team owner or admin to reconnect it.</p>
+        ) : oauth ? (
+          <a href={connectUrl(c.provider)} className={`btn btn-sm justify-self-start ${state ? "btn-primary" : "btn-secondary"}`}>
+            Reconnect {name}
+          </a>
+        ) : (
+          <p className="text-sm text-ink-soft">To renew it, connect it again with a new app password through Add account.</p>
+        )}
+      </div>
+      {canManage &&
+        (confirming ? (
+          <div className="grid gap-2 rounded-xl bg-canvas p-3">
+            <p id="confirm-disconnect" className="text-sm">
+              Disconnect {name}? SocialReins will forget its stored {c.provider === "bluesky" ? "password" : "sign-in"}.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                autoFocus
+                type="button"
+                className="btn btn-primary btn-sm"
+                aria-describedby="confirm-disconnect"
+                disabled={busy !== null}
+                onClick={onDisconnect}
+              >
+                {busy === "disconnect" ? "Disconnecting..." : "Yes, disconnect"}
+              </button>
+              <button type="button" className="btn btn-quiet btn-sm" disabled={busy !== null} onClick={closeConfirm}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button ref={disconnectRef} type="button" className="btn btn-quiet btn-danger btn-sm justify-self-start" disabled={busy !== null} onClick={() => setConfirming(true)}>
+            Disconnect
+          </button>
+        ))}
+      <Status problem={problem} done={done} overrides={connectMessages} />
+    </Modal>
   );
 }
 
@@ -539,10 +577,24 @@ function MetaPicker({ team, onConnected }: { team: string; onConnected: () => vo
   );
 }
 
-const stateText = { coming_soon: "Coming soon", not_configured: "Not set up on this server" };
+const stateText = { coming_soon: "Coming soon", not_configured: "Not set up" };
+const tile = "flex items-center gap-3 rounded-xl border border-ink/15 px-3 py-3 font-bold";
 
-function AddAccount({ connected, onConnected }: { connected: Connection[]; onConnected: () => void }) {
+// Pick a network, then follow what it needs: a sign-in on the network, or Bluesky's app password.
+function AddAccount({
+  connected,
+  onClose,
+  onConnected,
+  announce,
+}: {
+  connected: Connection[];
+  onClose: () => void;
+  onConnected: () => void;
+  announce: (text: string) => void;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
   const [providers, setProviders] = useState<Provider[] | Failure | null>(null);
+  const [step, setStep] = useState<"choose" | "bluesky">("choose");
   const [handle, setHandle] = useState("");
   const [appPassword, setAppPassword] = useState("");
   const { busy, problem, done, run } = useAction();
@@ -564,30 +616,15 @@ function AddAccount({ connected, onConnected }: { connected: Connection[]; onCon
     };
     await run("connect", call, (c) => {
       onConnected();
-      setHandle("");
       const known = connected.some((x) => x.id === c.id);
-      return known ? `Updated the app password for @${c.handle}.` : `Connected @${c.handle}.`;
+      announce(known ? `Updated the app password for @${c.handle}.` : `Connected @${c.handle}.`);
+      ref.current?.close();
     });
   }
 
   const known = Array.isArray(providers) ? providers : [];
-  const bluesky = platforms.find((p) => p.id === "bluesky")!;
-  const blueskyReady = providerState("bluesky", known) === "available";
-  const oauth = platforms.filter((p) => oauthProviders.has(p.id) && providerState(p.id, known) === "available");
-  // One card per brain provider: Facebook and Instagram connect together through Meta.
-  const cards = [...new Set(oauth.map((p) => providerKey(p.id)))].map((key) => {
-    const list = oauth.filter((p) => providerKey(p.id) === key);
-    return { key, list, name: key === "meta" ? metaName : list[0]!.name };
-  });
-  const groups = (["coming_soon", "not_configured"] as const).map((state) => ({
-    state,
-    list: platforms.filter((p) => providerState(p.id, known) === state && !(p.id === "bluesky" && blueskyReady)),
-  }));
   return (
-    <section aria-labelledby="add-heading" className="grid gap-4">
-      <h2 id="add-heading" className={heading}>
-        Add an account
-      </h2>
+    <Modal title={step === "bluesky" ? "Connect Bluesky" : "Add account"} dialogRef={ref} onClose={onClose}>
       {providers === null ? (
         <div role="status" className="h-40 rounded-2xl bg-ink/5 motion-safe:animate-pulse">
           <span className="sr-only">Loading platforms...</span>
@@ -596,121 +633,93 @@ function AddAccount({ connected, onConnected }: { connected: Connection[]; onCon
         <p role="alert" className="waitlist-error">
           Platforms couldn&apos;t be loaded. {problemText(providers)}
         </p>
-      ) : (
+      ) : step === "choose" ? (
         <>
-          {blueskyReady && (
-            <form onSubmit={onConnect} className="card grid gap-4 p-5" aria-labelledby="bluesky-heading">
-              <div className="flex items-center gap-3">
-                <span className="grid size-10 place-items-center rounded-xl bg-[#e7f1ff]" style={{ color: bluesky.color }}>
-                  <PlatformIcon platform={bluesky} className="size-6" />
-                </span>
-                <h3 id="bluesky-heading" className="font-display text-lg font-extrabold tracking-tight">
-                  Connect Bluesky
-                </h3>
-                <span className="badge tone ml-auto" data-status="published">
-                  Available
-                </span>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="grid content-start gap-1.5">
-                  <label htmlFor="bluesky-handle" className="label">
-                    Bluesky handle
-                  </label>
-                  <input
-                    id="bluesky-handle"
-                    required
-                    autoComplete="off"
-                    spellCheck={false}
-                    placeholder="alice.bsky.social"
-                    className="field"
-                    value={handle}
-                    onChange={(e) => setHandle(e.target.value)}
-                    aria-invalid={problem === "invalid_handle" || undefined}
-                  />
-                </div>
-                <div className="grid content-start gap-1.5">
-                  <label htmlFor="bluesky-app-password" className="label">
-                    App password
-                  </label>
-                  <input
-                    id="bluesky-app-password"
-                    type="password"
-                    required
-                    autoComplete="off"
-                    className="field"
-                    value={appPassword}
-                    onChange={(e) => setAppPassword(e.target.value)}
-                    aria-invalid={problem === "invalid_credentials" || undefined}
-                    aria-describedby="bluesky-app-password-note"
-                  />
-                </div>
-              </div>
-              <p id="bluesky-app-password-note" className="hint">
-                Use an app password, not your main password: make one in Bluesky under Settings, Privacy and security, App
-                passwords (
-                <a
-                  href="https://bsky.app/settings/app-passwords"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline decoration-2 underline-offset-4"
-                >
-                  open App passwords
-                </a>
-                ). Tick &quot;Allow access to your direct messages&quot; so the inbox can read and send DMs; reconnecting an account
-                with a new app password keeps its posts and sets.
-              </p>
-              <button type="submit" className="btn btn-primary justify-self-start" disabled={busy !== null}>
-                {busy ? "Connecting..." : "Connect Bluesky"}
-              </button>
-              <Status problem={problem} done={done} overrides={connectMessages} />
-            </form>
-          )}
-          {cards.map(({ key, list, name }) => (
-            <div key={key} className="card grid gap-4 p-5">
-              <div className="flex items-center gap-3">
-                {list.map((p) => (
-                  <span key={p.id} className="grid size-10 place-items-center rounded-xl bg-canvas" style={{ color: p.color }}>
-                    <PlatformIcon platform={p} className="size-6" />
-                  </span>
-                ))}
-                <h3 className="font-display text-lg font-extrabold tracking-tight">
-                  Connect {name}
-                </h3>
-                <span className="badge tone ml-auto" data-status="published">
-                  Available
-                </span>
-              </div>
-              <p id={`${key}-note`} className="hint">
-                {key === "meta"
-                  ? "You sign in with Facebook, then pick which Pages and linked Instagram professional accounts to connect. Connecting again renews their sign-in and keeps their posts and sets."
-                  : `You sign in on ${name} and come back here. Connecting an account again renews its sign-in and keeps its posts and sets.`}
-              </p>
-              <a href={connectUrl(list[0]!.id)} className="btn btn-primary justify-self-start" aria-describedby={`${key}-note`}>
-                Connect {name}
-              </a>
-            </div>
-          ))}
-          {groups.map(
-            ({ state, list }) =>
-              list.length > 0 && (
-                <div key={state} className="grid gap-2">
-                  <h3 className="font-bold text-ink-soft">{stateText[state]}</h3>
-                  <ul className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    {list.map((p) => (
-                      <li key={p.id} className="flex items-center gap-2 rounded-xl border border-dashed border-ink/15 px-3 py-2.5 text-ink-soft">
-                        <PlatformIcon platform={p} className="size-5 opacity-60" />
-                        <span className="font-bold">{p.name}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ),
-          )}
-          {groups[1]!.list.length > 0 && (
-            <p className="hint">Platforms not set up need their app keys added to this server.</p>
-          )}
+          <ul className="grid gap-2 sm:grid-cols-2">
+            {platforms.map((p) => {
+              const state = providerState(p.id, known);
+              const icon = <PlatformIcon platform={p} className="size-6" />;
+              return (
+                <li key={p.id}>
+                  {state !== "available" ? (
+                    <span className={`${tile} border-dashed text-ink-soft`}>
+                      <span className="opacity-60">{icon}</span>
+                      {p.name}
+                      <span className="ml-auto text-xs font-normal">{stateText[state]}</span>
+                    </span>
+                  ) : p.id === "bluesky" ? (
+                    <button type="button" className={`${tile} w-full hover:border-ink`} onClick={() => setStep("bluesky")}>
+                      <span style={{ color: p.color }}>{icon}</span>
+                      {p.name}
+                    </button>
+                  ) : (
+                    <a href={connectUrl(p.id)} className={`${tile} hover:border-ink`}>
+                      <span style={{ color: p.color }}>{icon}</span>
+                      {p.name}
+                    </a>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+          <p className="hint">
+            Facebook and Instagram connect together: you sign in with Facebook, then pick your Pages and linked Instagram professional
+            accounts. Connecting an account again renews its sign-in and keeps its posts and sets.
+          </p>
         </>
+      ) : (
+        <form onSubmit={onConnect} className="grid gap-4">
+          <div className="grid gap-1.5">
+            <label htmlFor="bluesky-handle" className="label">
+              Bluesky handle
+            </label>
+            <input
+              id="bluesky-handle"
+              required
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="alice.bsky.social"
+              className="field"
+              value={handle}
+              onChange={(e) => setHandle(e.target.value)}
+              aria-invalid={problem === "invalid_handle" || undefined}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <label htmlFor="bluesky-app-password" className="label">
+              App password
+            </label>
+            <input
+              id="bluesky-app-password"
+              type="password"
+              required
+              autoComplete="off"
+              className="field"
+              value={appPassword}
+              onChange={(e) => setAppPassword(e.target.value)}
+              aria-invalid={problem === "invalid_credentials" || undefined}
+              aria-describedby="bluesky-app-password-note"
+            />
+          </div>
+          <p id="bluesky-app-password-note" className="hint">
+            Use an app password, not your main password: make one in Bluesky under Settings, Privacy and security, App passwords (
+            <a href="https://bsky.app/settings/app-passwords" target="_blank" rel="noopener noreferrer" className="underline decoration-2 underline-offset-4">
+              open App passwords
+            </a>
+            ). Tick &quot;Allow access to your direct messages&quot; so the inbox can read and send DMs; reconnecting an account with a new
+            app password keeps its posts and sets.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button type="submit" className="btn btn-primary btn-sm" disabled={busy !== null}>
+              {busy ? "Connecting..." : "Connect Bluesky"}
+            </button>
+            <button type="button" className="btn btn-quiet btn-sm" disabled={busy !== null} onClick={() => setStep("choose")}>
+              Back
+            </button>
+          </div>
+          <Status problem={problem} done={done} overrides={connectMessages} />
+        </form>
       )}
-    </section>
+    </Modal>
   );
 }

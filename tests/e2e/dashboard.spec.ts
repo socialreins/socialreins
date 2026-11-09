@@ -41,7 +41,7 @@ test("home sums up posts, inbox, automations and accounts for the current set", 
   );
   await page.route("**/v1/automations", (r) => r.fulfill({ json: [{ id: "a1", name: "Guide", active: true, runs: { count: 3, last_at: null } }, { id: "a2", name: "Off", active: false, runs: { count: 9, last_at: null } }] }));
 
-  await page.goto("/app");
+  await page.goto("/home");
   await expect(page.getByRole("heading", { name: "Home", level: 1 })).toBeVisible();
   await expect(page.getByRole("link", { name: "Home", exact: true })).toHaveAttribute("aria-current", "page");
   const tile = (label: string) => page.getByRole("link", { name: new RegExp(`^${label}`) });
@@ -53,12 +53,12 @@ test("home sums up posts, inbox, automations and accounts for the current set", 
   await expect(tile("Connected accounts")).toContainText("1");
 
   const upNext = page.getByRole("region", { name: "Up next" });
-  await expect(upNext.getByRole("link", { name: /Launch day/ })).toHaveAttribute("href", "/app/posts/p-soon");
+  await expect(upNext.getByRole("link", { name: /Launch day/ })).toHaveAttribute("href", "/posts/p-soon");
   await expect(upNext.getByRole("listitem")).toHaveCount(2);
   await expect(upNext.getByRole("listitem").nth(1)).toContainText("Month end");
   await expect(page.getByRole("region", { name: "Needs attention" })).toContainText("Bluesky refused the image");
   await expect(page.getByRole("region", { name: "Recently published" }).getByRole("link", { name: /Hello/ })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Inbox" }).getByRole("link", { name: /Bob/ })).toHaveAttribute("href", "/app/inbox/all?item=i1");
+  await expect(page.getByRole("region", { name: "Inbox" }).getByRole("link", { name: /Bob/ })).toHaveAttribute("href", "/inbox/all?item=i1");
   await expect(page.getByRole("region", { name: "Automations" })).toContainText("1 on, with 3 runs so far.");
   await expect(page.getByRole("region", { name: "Accounts" })).toContainText("@acme.bsky.social");
 
@@ -72,7 +72,7 @@ test("home explains what failed to load and keeps the rest", async ({ page }) =>
   await page.route("http://localhost:8080/**", (r) => r.fulfill({ json: [] }));
   await page.route("**/auth/me", (r) => r.fulfill({ json: me }));
   await page.route(/\/v1\/posts(\?.*)?$/, (r) => r.fulfill({ status: 500 }));
-  await page.goto("/app");
+  await page.goto("/home");
   await expect(page.getByRole("region", { name: "Up next" }).getByRole("alert")).toContainText("couldn't be loaded");
   await expect(page.getByRole("region", { name: "Automations" })).toContainText("No automation is on.");
 });
@@ -91,7 +91,7 @@ test("home warns about accounts to reconnect, with a Reconnect link for owners",
       ],
     }),
   );
-  await page.goto("/app");
+  await page.goto("/home");
   const warning = page.getByRole("region", { name: "Accounts need reconnecting" });
   await expect(warning.getByRole("listitem")).toHaveCount(2);
   await expect(warning.getByRole("listitem").nth(0)).toContainText("Soon Sam");
@@ -107,7 +107,7 @@ test("home shows no warning when every account is fine", async ({ page }) => {
   await page.route("**/v1/connections", (r) =>
     r.fulfill({ json: [{ id: "c1", provider: "bluesky", external_id: "did:plc:a", handle: "acme.bsky.social", display_name: "Acme", avatar_url: null, token_expires_at: null, set_ids: [], created_at: "2026-10-20T10:00:00Z", status: "ok" }] }),
   );
-  await page.goto("/app");
+  await page.goto("/home");
   await expect(page.getByRole("link", { name: /^Connected accounts/ })).toContainText("1");
   await expect(page.getByRole("region", { name: "Accounts need reconnecting" })).toHaveCount(0);
 });

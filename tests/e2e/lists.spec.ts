@@ -48,9 +48,9 @@ test("app links to lists", async ({ page }) => {
   await brain(page);
   await page.route(/\/v1\/lists$/, (route) => route.fulfill({ json: [] }));
   await page.route(/\/v1\/posts(\?.*)?$/, (route) => route.fulfill({ json: [] }));
-  await page.goto("/app/posts");
+  await page.goto("/posts");
   await page.getByRole("link", { name: "Lists", exact: true }).click();
-  await expect(page).toHaveURL("/app/lists");
+  await expect(page).toHaveURL("/lists");
 });
 
 test("creates, renames and deletes a list", async ({ page }) => {
@@ -69,14 +69,14 @@ test("creates, renames and deletes a list", async ({ page }) => {
       ? route.fulfill({ status: 204 })
       : route.fulfill({ json: { ...list({ social_set_id: "s1", name: "Tips" }), items: [] } }),
   );
-  await page.goto("/app/lists");
+  await page.goto("/lists");
   await expect(page.getByRole("link", { name: "Alpha" })).toBeVisible();
   await page.getByLabel("New list name").fill("Series");
   await page.getByLabel("Set").selectOption("s1");
   await page.getByRole("button", { name: "Create list" }).click();
   await expect(page.getByText("Created Series.")).toBeVisible();
   expect(sent).toEqual({ name: "Series", social_set_id: "s1" });
-  await expect(page.getByRole("link", { name: "Series" })).toHaveAttribute("href", "/app/lists/l1");
+  await expect(page.getByRole("link", { name: "Series" })).toHaveAttribute("href", "/lists/l1");
   await expect(page.getByText("Clients", { exact: true }).last()).toBeVisible();
 
   await page.getByRole("button", { name: "Rename Series" }).click();
@@ -122,7 +122,7 @@ test("adds, reorders and removes posts in a list", async ({ page }) => {
     return route.fulfill({ status: 204 });
   });
 
-  await page.goto("/app/lists/l1");
+  await page.goto("/lists/l1");
   await expect(page.getByRole("heading", { name: "Series" })).toBeVisible();
   await expect(page.locator("#main").getByText("All sets")).toBeVisible();
   const items = page.getByRole("list", { name: "Posts in Series" }).getByRole("listitem");
@@ -169,7 +169,7 @@ test("the calendar and phone list show Part N of a list", async ({ page }) => {
           : [post("p1", { body: "Launch day", lists: [{ id: "l1", name: "Series", position: 2 }] })],
     }),
   );
-  await page.goto("/app/posts");
+  await page.goto("/posts");
   const table = page.getByRole("table", { name: "Posts in November 2026" });
   await expect(table.getByRole("link", { name: /^Part 2 · Series.*Launch day$/ })).toBeVisible();
 
@@ -185,7 +185,7 @@ test("the post editor puts a new post in a list", async ({ page }) => {
     sent = route.request().postDataJSON();
     return route.fulfill({ status: 201, json: post("p9", { status: "draft", scheduled_at: null, lists: [{ id: "l1", name: "Series", position: 1 }] }) });
   });
-  await page.goto("/app/posts/new");
+  await page.goto("/posts/new");
   const select = page.getByLabel("List", { exact: true });
   // Only lists the Default set's posts can join.
   await expect(select.getByRole("option")).toHaveText(["No list", "Series"]);
@@ -210,7 +210,7 @@ test("a move refused as stale reloads the list", async ({ page }) => {
     return route.fulfill({ json: { ...list(), items: order.map((p, i) => ({ post_id: p.id, position: i + 1, post: p })) } });
   });
   await page.route(/\/v1\/lists\/l1\/order$/, (route) => route.fulfill({ status: 422, json: { error: "invalid_order" } }));
-  await page.goto("/app/lists/l1");
+  await page.goto("/lists/l1");
   await page.getByRole("button", { name: "Move Part 2 up" }).click();
   await expect(page.getByText("The list changed elsewhere, so it was reloaded.", { exact: false })).toBeVisible();
   const items = page.getByRole("list", { name: "Posts in Series" }).getByRole("listitem");

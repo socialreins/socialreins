@@ -61,7 +61,7 @@ function AdminLink() {
   const inAdmin = usePathname().startsWith("/admin");
   if (!user.is_admin) return null;
   return (
-    <Link href={inAdmin ? "/app" : "/admin"} className="btn btn-quiet btn-sm justify-self-start">
+    <Link href={inAdmin ? "/home" : "/admin"} className="btn btn-quiet btn-sm justify-self-start">
       <Icon name={inAdmin ? "left" : "admin"} className="size-4" />
       {inAdmin ? "Back to the app" : "Admin console"}
     </Link>

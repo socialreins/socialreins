@@ -10,10 +10,10 @@ const signedIn = (page: Page, passkeys: unknown[] = []) =>
 
 test("app links to the security page", async ({ page }) => {
   await signedIn(page, [key]);
-  await page.goto("/app");
+  await page.goto("/home");
   const nav = page.getByRole("navigation", { name: "App" });
   await nav.getByRole("link", { name: "Sign-in and security", exact: true }).click();
-  await expect(page).toHaveURL("/app/security");
+  await expect(page).toHaveURL("/security");
   await expect(page.getByRole("heading", { name: "Sign-in and security", level: 1 })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Sign-in and security", exact: true })).toHaveAttribute("aria-current", "page");
   await expect(nav.getByRole("link", { name: "Passkeys", exact: true })).not.toHaveAttribute("aria-current");
@@ -22,7 +22,7 @@ test("app links to the security page", async ({ page }) => {
 
 test("security sends a signed-out visitor to login", async ({ page }) => {
   await page.route("**/auth/me", (route) => route.fulfill({ status: 401, json: { error: "unauthorized" } }));
-  await page.goto("/app/security");
+  await page.goto("/security");
   await expect(page).toHaveURL("/login");
 });
 
@@ -33,7 +33,7 @@ test("remove a passkey after confirming", async ({ page }) => {
     deleted = route.request().method() === "DELETE";
     return route.fulfill({ status: 204 });
   });
-  await page.goto("/app/security");
+  await page.goto("/security");
   await expect(page.getByText("Old phone")).toBeVisible();
   await expect(page.getByText(/^Added /)).toBeVisible();
   await page.getByRole("button", { name: "Remove Old phone" }).click();
@@ -84,7 +84,7 @@ test("add a passkey with a virtual authenticator", async ({ page, context }) => 
     finish = route.request().postDataJSON();
     return route.fulfill({ status: 201, json: { ...key, id: "k2", name: "Work laptop" } });
   });
-  await page.goto("/app/security");
+  await page.goto("/security");
   await page.getByLabel(/Name for the new passkey/).fill("Work laptop");
   await page.getByRole("button", { name: "Add a passkey" }).click();
   await expect(page.getByText('Passkey "Work laptop" added.')).toBeFocused();
@@ -134,12 +134,12 @@ test("adding a passkey without a recent sign-in asks to sign in again, then relo
   await page.route("**/auth/passkeys/register/finish", (route) =>
     route.fulfill({ status: 201, json: { ...key, id: "k2", name: "Work laptop" } }),
   );
-  await page.goto("/app/security");
+  await page.goto("/security");
   await expect(page.getByText("Your passkeys couldn't be loaded.", { exact: false })).toBeVisible();
   await page.getByRole("button", { name: "Add a passkey" }).click();
   const alert = page.getByRole("alert").filter({ hasText: "needs a fresh sign-in" });
   await expect(alert).toBeVisible();
-  await expect(alert.getByRole("link", { name: "Sign in again" })).toHaveAttribute("href", "/login?next=%2Fapp%2Fsecurity");
+  await expect(alert.getByRole("link", { name: "Sign in again" })).toHaveAttribute("href", "/login?next=%2Fsecurity");
   await expect(page.locator('input[type="password"]')).toHaveCount(0);
   await page.getByRole("button", { name: "Add a passkey" }).click();
   await expect(page.getByText('Passkey "Work laptop" added.')).toBeFocused();

@@ -218,7 +218,7 @@ function TeamMenu() {
           New team
         </button>
       )}
-      <Link href="/app/team" className={item} onClick={() => hide("team-menu")}>
+      <Link href="/team" className={item} onClick={() => hide("team-menu")}>
         <Icon name="team" className="size-4 text-ink-soft" />
         Manage team
       </Link>
@@ -280,7 +280,7 @@ function SetMenu({ path }: { path: string }) {
         {Array.isArray(sets) && sets.map((s) => option(s.id, s.name))}
       </ul>
       <div className="my-1.5 border-t border-[var(--line)]" />
-      <Link href="/app/sets" className={item} onClick={() => hide("set-menu")}>
+      <Link href="/sets" className={item} onClick={() => hide("set-menu")}>
         <Icon name="edit" className="size-4 text-ink-soft" />
         Manage sets
       </Link>

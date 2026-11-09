@@ -10,7 +10,7 @@ type Params = { params: Promise<{ id: string }> };
 export default function AutomationPage({ params }: Params) {
   return (
     <div className="max-w-5xl">
-      <PageHeader title="Automation" back={{ href: "/app/automations", label: "Automations" }} />
+      <PageHeader title="Automation" back={{ href: "/automations", label: "Automations" }} />
       <Suspense fallback={<p className="text-ink-soft">Loading the automation...</p>}>
         <Detail params={params} />
       </Suspense>

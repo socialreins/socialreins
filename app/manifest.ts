@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "SocialReins",
     short_name: "SocialReins",
-    start_url: "/app",
+    start_url: "/home",
     display: "standalone",
     background_color: "#faf8f6",
     theme_color: "#121212",

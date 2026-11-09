@@ -11,7 +11,7 @@ export function SessionLink({ className }: { className: string }) {
     getMe().then((r) => setSignedIn(typeof r === "object"));
   }, []);
   return signedIn ? (
-    <Link href="/app" className={className}>
+    <Link href="/home" className={className}>
       Open the app
     </Link>
   ) : (

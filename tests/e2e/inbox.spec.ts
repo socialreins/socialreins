@@ -101,7 +101,7 @@ async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items
 
 test("sidebar lists Home, Posts and Lists, then Inbox and Automations", async ({ page }) => {
   await brain(page, "owner");
-  await page.goto("/app/posts");
+  await page.goto("/posts");
   const links = page.getByRole("navigation", { name: "App" }).getByRole("link");
   await expect(links.nth(0)).toHaveText("Home");
   await expect(links.nth(1)).toHaveText("Posts");
@@ -112,7 +112,7 @@ test("sidebar lists Home, Posts and Lists, then Inbox and Automations", async ({
 
 test("inbox lists items, filters by kind, and opens one by URL", async ({ page }) => {
   await brain(page, "owner");
-  await page.goto("/app/inbox");
+  await page.goto("/inbox");
   const nav = page.getByRole("navigation", { name: "Inboxes" });
   await expect(nav.getByRole("link").first()).toHaveText("All");
   await expect(nav.getByRole("link", { name: "All" })).toHaveAttribute("aria-current", "page");
@@ -125,13 +125,13 @@ test("inbox lists items, filters by kind, and opens one by URL", async ({ page }
   await expect(page.getByRole("button", { name: "DMs" })).toHaveAttribute("aria-pressed", "true");
   await expect(rows).toHaveCount(1);
   await list.getByRole("link", { name: /Hi, can we talk/ }).click();
-  await expect(page).toHaveURL("/app/inbox?item=p3");
+  await expect(page).toHaveURL("/inbox?item=p3");
   const detail = page.getByRole("region", { name: "Item" });
   await expect(detail.getByRole("heading", { name: "Bob" })).toBeFocused();
   await expect(detail.getByLabel("Send DM")).toBeVisible();
   await expect(detail.getByRole("link", { name: "View on Bluesky" })).toHaveCount(0);
   // A shared link opens the same item.
-  await page.goto("/app/inbox/i2?item=p1");
+  await page.goto("/inbox/i2?item=p1");
   await expect(page.getByRole("region", { name: "Item" }).getByLabel("Reply publicly")).toBeVisible();
   await expect(page.getByRole("region", { name: "Item" }).getByRole("link", { name: "View on Bluesky" })).toHaveAttribute(
     "href",
@@ -150,7 +150,7 @@ test("reply publicly, then mark done and reopen", async ({ page }) => {
     p1.replies = [{ id: "r1", kind: "public", text: sent && (sent as { text: string }).text, remote_id: null, remote_url: null, sent_by: "u-me", automation_id: null, created_at: p1.replied_at }];
     return route.fulfill({ status: 201, json: p1 });
   });
-  await page.goto("/app/inbox?item=p1");
+  await page.goto("/inbox?item=p1");
   // Members read and answer but don't manage inboxes.
   await expect(page.getByRole("button", { name: "New inbox" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Edit Questions" })).toHaveCount(0);
@@ -166,7 +166,7 @@ test("reply publicly, then mark done and reopen", async ({ page }) => {
   await expect(detail.getByText("Marked done.")).toBeFocused();
   await expect(page.getByRole("region", { name: "All" }).getByRole("link", { name: /What is the price/ })).toHaveCount(0);
   await page.getByRole("link", { name: "Done", exact: true }).click();
-  await expect(page).toHaveURL("/app/inbox?state=done&item=p1");
+  await expect(page).toHaveURL("/inbox?state=done&item=p1");
   await expect(page.getByRole("region", { name: "All" }).getByRole("link", { name: /What is the price/ })).toBeVisible();
   await detail.getByRole("button", { name: "Reopen" }).click();
   await expect(detail.getByText("Reopened.")).toBeFocused();
@@ -177,28 +177,28 @@ test("a DM that can't be sent says why", async ({ page }) => {
   await page.route("**/v1/inbox-items/p3/reply", (route) =>
     route.fulfill({ status: 422, json: { error: "no_dm_access", message: "The app password has no DM access." } }),
   );
-  await page.goto("/app/inbox?item=p3");
+  await page.goto("/inbox?item=p3");
   const detail = page.getByRole("region", { name: "Item" });
   await detail.getByLabel("Send DM").fill("Sure");
   await detail.getByRole("button", { name: "Send DM" }).click();
   await expect(detail.getByRole("alert")).toContainText("Reconnect with an app password that allows DMs");
-  await expect(detail.getByRole("alert").getByRole("link", { name: "Open Accounts" })).toHaveAttribute("href", "/app/connections");
+  await expect(detail.getByRole("alert").getByRole("link", { name: "Open Accounts" })).toHaveAttribute("href", "/connections");
 });
 
 test("empty states: no accounts, then no items", async ({ page }) => {
   await brain(page, "owner", { accounts: [] });
-  await page.goto("/app/inbox");
+  await page.goto("/inbox");
   await expect(page.getByText("No accounts connected")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Connect an account" })).toHaveAttribute("href", "/app/connections");
+  await expect(page.getByRole("link", { name: "Connect an account" })).toHaveAttribute("href", "/connections");
   await page.unrouteAll({ behavior: "ignoreErrors" });
   await brain(page, "owner", { items: [] });
-  await page.goto("/app/inbox");
+  await page.goto("/inbox");
   await expect(page.getByText("New comments, mentions and DMs show up here within a minute")).toBeVisible();
 });
 
 test("owners create, edit and delete an inbox; All is not editable", async ({ page }) => {
   const state = await brain(page, "owner");
-  await page.goto("/app/inbox");
+  await page.goto("/inbox");
   await expect(page.getByRole("button", { name: "Edit All" })).toHaveCount(0);
   await page.getByRole("button", { name: "New inbox" }).click();
   const dialog = page.getByRole("dialog", { name: "New inbox" });
@@ -233,7 +233,7 @@ test.describe("on a phone", () => {
   test.use({ viewport: { width: 390, height: 844 } });
   test("panes stack with back links", async ({ page }) => {
     await brain(page, "owner");
-    await page.goto("/app/inbox");
+    await page.goto("/inbox");
     await expect(page.getByRole("navigation", { name: "Inboxes" })).toBeVisible();
     await expect(page.getByRole("region", { name: "All" })).toBeHidden();
     await page.getByRole("navigation", { name: "Inboxes" }).getByRole("link", { name: "Questions" }).click();
@@ -242,9 +242,9 @@ test.describe("on a phone", () => {
     await expect(page.getByRole("region", { name: "Item" }).getByRole("heading", { name: "Bob" })).toBeVisible();
     await expect(page.getByRole("region", { name: "Questions" })).toBeHidden();
     await page.getByRole("link", { name: "Back to Questions" }).click();
-    await expect(page).toHaveURL("/app/inbox/i2");
+    await expect(page).toHaveURL("/inbox/i2");
     await page.getByRole("link", { name: "Inboxes", exact: true }).click();
-    await expect(page).toHaveURL("/app/inbox");
+    await expect(page).toHaveURL("/inbox");
   });
 });
 
@@ -261,7 +261,7 @@ test("a kind filter asks brain for that kind, and load more keeps it", async ({ 
         : { items: [item("p8", "dm", "Newer DM")], next_cursor: "p8" },
     });
   });
-  await page.goto("/app/inbox");
+  await page.goto("/inbox");
   await page.getByRole("button", { name: "DMs" }).click();
   await expect(page.getByRole("link", { name: /Newer DM/ })).toBeVisible();
   await expect(page.getByRole("link", { name: /First page/ })).toHaveCount(0);
@@ -274,7 +274,7 @@ test("a kind filter asks brain for that kind, and load more keeps it", async ({ 
 test("the open list picks up new items without a reload", async ({ page }) => {
   await page.clock.install();
   const state = await brain(page, "owner", { items: [item("p1", "comment", "Older comment")] });
-  await page.goto("/app/inbox");
+  await page.goto("/inbox");
   await expect(page.getByRole("link", { name: /Older comment/ })).toBeVisible();
   state.items.unshift(item("p7", "comment", "Brand new comment"));
   await page.clock.runFor(31_000);

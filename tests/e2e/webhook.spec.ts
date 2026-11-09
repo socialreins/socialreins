@@ -49,7 +49,7 @@ test("create asks for a fresh sign-in, then shows the secret once", async ({ pag
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   const state = await brain(page, "owner");
   state.reauth = true;
-  await page.goto("/app/api-tokens");
+  await page.goto("/api-tokens");
   const s = section(page);
   await expect(s.getByText("No webhook yet.")).toBeVisible();
   await expect(s.getByText("post.target.published")).toBeVisible();
@@ -84,7 +84,7 @@ test("create asks for a fresh sign-in, then shows the secret once", async ({ pag
 
 test("update keeps the secret and explains a bad URL", async ({ page }) => {
   const state = await brain(page, "admin", "https://example.com/old");
-  await page.goto("/app/api-tokens");
+  await page.goto("/api-tokens");
   const s = section(page);
   const input = page.getByLabel("Webhook URL");
   await expect(input).toHaveValue("https://example.com/old");
@@ -103,7 +103,7 @@ test("update keeps the secret and explains a bad URL", async ({ page }) => {
 
 test("send test shows what the receiver said", async ({ page }) => {
   const state = await brain(page, "owner", "https://example.com/hook");
-  await page.goto("/app/api-tokens");
+  await page.goto("/api-tokens");
   const s = section(page);
   await s.getByRole("button", { name: "Send test" }).click();
   await expect(s.getByText("The receiver answered 200. Test delivered.")).toBeFocused();
@@ -114,7 +114,7 @@ test("send test shows what the receiver said", async ({ page }) => {
 
 test("remove asks first", async ({ page }) => {
   const state = await brain(page, "owner", "https://example.com/hook");
-  await page.goto("/app/api-tokens");
+  await page.goto("/api-tokens");
   const s = section(page);
   await s.getByRole("button", { name: "Remove" }).click();
   const yes = s.getByRole("button", { name: "Yes, remove" });
@@ -138,7 +138,7 @@ test("a member sees no webhook form", async ({ page }) => {
     read = true;
     return route.fallback();
   });
-  await page.goto("/app/api-tokens");
+  await page.goto("/api-tokens");
   await expect(page.getByText("Only team owners and admins can manage API tokens and the webhook.")).toBeVisible();
   await expect(page.getByLabel("Webhook URL")).toHaveCount(0);
   expect(read).toBe(false);
