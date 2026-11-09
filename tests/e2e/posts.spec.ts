@@ -385,35 +385,6 @@ test("a failed post is read-only with its error and target statuses", async ({ p
   await expect(page.getByRole("button", { name: /Delete|Take down|Save draft/ })).toHaveCount(0);
 });
 
-test("a failed post with nothing live can be deleted", async ({ page }) => {
-  await brain(page);
-  const calls: string[] = [];
-  await page.route("**/v1/posts/p5", (route) => {
-    calls.push(route.request().method());
-    if (route.request().method() === "DELETE") return route.fulfill({ status: 204 });
-    return route.fulfill({
-      json: post("p5", { status: "failed", error: "Alice: too big.", targets: [target({ status: "failed", remote_id: null, remote_url: null, error: "too big" })] }),
-    });
-  });
-  await page.goto("/posts/p5");
-  await page.getByRole("button", { name: "Delete" }).click();
-  await page.getByRole("button", { name: /^Yes/ }).click();
-  await expect(page).toHaveURL("/posts");
-  expect(calls).toContain("DELETE");
-});
-
-test("a failed post that may have gone out cannot be deleted", async ({ page }) => {
-  await brain(page);
-  await page.route("**/v1/posts/p5", (route) =>
-    route.fulfill({
-      json: post("p5", { status: "failed", error: "Alice: unknown.", targets: [target({ status: "failed", remote_id: null, remote_url: null, error: "Timed out; it may have posted, check the account." })] }),
-    }),
-  );
-  await page.goto("/posts/p5");
-  await expect(page.getByRole("status").filter({ hasText: "Failed." })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Delete" })).toHaveCount(0);
-});
-
 test("a draft can be edited and deleted", async ({ page }) => {
   await brain(page);
   const calls: string[] = [];

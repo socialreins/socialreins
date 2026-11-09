@@ -16,7 +16,6 @@ import {
   createPost,
   createPostGroup,
   deletePost,
-  failedWithNothingLive,
   fromLocalInput,
   getPost,
   getTikTokCreator,
@@ -699,7 +698,7 @@ export function PostEditor({ id }: { id?: string }) {
             </section>
           )}
           {siblings}
-          {(post.status === "published" || failedWithNothingLive(post)) && confirm}
+          {post.status === "published" && confirm}
         </div>
         {preview}
       </div>
