@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { LogoMark } from "@/components/logo";
 import { Welcome } from "@/components/welcome";
 
-export const metadata: Metadata = { title: "Welcome to SocialReins" };
+export const metadata: Metadata = { title: "Welcome to SocialReins", robots: { index: false } };
 
 export default function WelcomePage() {
   return (

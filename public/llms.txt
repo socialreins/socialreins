@@ -1,0 +1,10 @@
+# SocialReins
+
+> Open-source social media manager for Facebook, Instagram, Threads, LinkedIn, Bluesky, X, TikTok and YouTube. Self-host now; publishing and hosting are coming.
+
+- [Home](https://socialreins.com/): what SocialReins does and the waitlist
+- [Contact](https://socialreins.com/contact): send the team a message
+- [Privacy Policy](https://socialreins.com/privacy)
+- [Terms of Service](https://socialreins.com/terms)
+- [Data Deletion](https://socialreins.com/data-deletion)
+- [Source code](https://github.com/socialreins/web)

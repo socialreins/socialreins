@@ -5,7 +5,8 @@ import { LogoMark } from "@/components/logo";
 
 export const metadata: Metadata = {
   title: "Contact: SocialReins",
-  description: "Send the SocialReins team a message. We reply by email.",
+  description: "Send the SocialReins team a message with a question or feedback about the open-source social media manager. We reply by email.",
+  alternates: { canonical: "/contact" },
 };
 
 export default function Contact() {

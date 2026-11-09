@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { GitHubRepos } from "@/components/github-repos";
 import { LogoMark } from "@/components/logo";
@@ -5,6 +6,7 @@ import { PlatformIcon, platforms } from "@/components/platform-icons";
 import { Reins } from "@/components/reins";
 import { SessionLink } from "@/components/session-link";
 import { WaitlistForm } from "@/components/waitlist-form";
+import { org } from "@/lib/github";
 
 const repo = "https://github.com/socialreins/web";
 
@@ -47,6 +49,17 @@ cd web && cp .env.example .env
 # edit .env: POSTGRES_PASSWORD, BRAIN_URL, WEB_URL
 docker compose up -d`;
 
+export const metadata: Metadata = { alternates: { canonical: "/" }, openGraph: { url: "/" } };
+
+const organization = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: "SocialReins",
+  url: "https://socialreins.com",
+  logo: "https://socialreins.com/icon-512.png",
+  sameAs: [org],
+});
+
 export default function Home() {
   return (
     <div className="mx-auto max-w-6xl px-5 sm:px-8">
@@ -65,6 +78,7 @@ export default function Home() {
         </nav>
       </header>
 
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: organization }} />
       <main>
         <section id="waitlist" className="grid items-center gap-12 pt-8 pb-14 md:grid-cols-[1.05fr_1fr] md:pt-16 md:pb-20">
           <div className="grid gap-6">
