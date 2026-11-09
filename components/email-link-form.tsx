@@ -97,6 +97,7 @@ export function EmailLinkForm({ mode }: { mode: "login" | "signup" }) {
               required
               maxLength={MAX_NAME}
               autoComplete="name"
+              placeholder="Harun R. Rayhan"
               value={name}
               onChange={(e) => setName(e.target.value)}
               aria-invalid={status === "invalid_name" || undefined}
@@ -112,7 +113,7 @@ export function EmailLinkForm({ mode }: { mode: "login" | "signup" }) {
           type="email"
           required
           autoComplete="email"
-          placeholder="you@example.com"
+          placeholder={signup ? "me@harun.dev" : "you@example.com"}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           aria-invalid={status === "invalid" || undefined}
