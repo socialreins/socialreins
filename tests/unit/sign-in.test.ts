@@ -66,25 +66,25 @@ describe("getProviders", () => {
 
 describe("googleStartUrl and safeNext", () => {
   it("points the browser at brain with an encoded, safe next path", () => {
-    expect(googleStartUrl()).toBe(`${apiUrl}/auth/google/start?next=%2Fapp`);
+    expect(googleStartUrl()).toBe(`${apiUrl}/auth/google/start?next=%2Fhome`);
     expect(googleStartUrl("/invitations/abc?x=1")).toBe(`${apiUrl}/auth/google/start?next=%2Finvitations%2Fabc%3Fx%3D1`);
-    expect(googleStartUrl("https://evil.com")).toBe(`${apiUrl}/auth/google/start?next=%2Fapp`);
-    expect(googleStartUrl(null, true)).toBe(`${apiUrl}/auth/google/start?next=%2Fapp&mode=login`);
+    expect(googleStartUrl("https://evil.com")).toBe(`${apiUrl}/auth/google/start?next=%2Fhome`);
+    expect(googleStartUrl(null, true)).toBe(`${apiUrl}/auth/google/start?next=%2Fhome&mode=login`);
   });
 
   it.each([
     ["/invitations/abc", "/invitations/abc"],
-    ["/app/team", "/app/team"],
-    [null, "/app"],
-    ["", "/app"],
-    ["app", "/app"],
-    ["//evil.com", "/app"],
-    ["/a//evil.com", "/app"],
-    ["/\\evil.com", "/app"],
-    ["https://evil.com", "/app"],
-    ["/a b", "/app"],
-    ["/a\nb", "/app"],
-    ["/" + "a".repeat(600), "/app"],
+    ["/team", "/team"],
+    [null, "/home"],
+    ["", "/home"],
+    ["app", "/home"],
+    ["//evil.com", "/home"],
+    ["/a//evil.com", "/home"],
+    ["/\\evil.com", "/home"],
+    ["https://evil.com", "/home"],
+    ["/a b", "/home"],
+    ["/a\nb", "/home"],
+    ["/" + "a".repeat(600), "/home"],
   ])("safeNext(%j) is %j", (raw, want) => {
     expect(safeNext(raw)).toBe(want);
   });

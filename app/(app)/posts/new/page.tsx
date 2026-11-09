@@ -7,7 +7,7 @@ export const metadata: Metadata = { title: "New post on SocialReins" };
 export default function NewPostPage() {
   return (
     <>
-      <PageHeader title="New post" back={{ href: "/app/posts", label: "Posts" }} />
+      <PageHeader title="New post" back={{ href: "/posts", label: "Posts" }} />
       <PostEditor />
     </>
   );

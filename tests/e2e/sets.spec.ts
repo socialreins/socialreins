@@ -55,22 +55,23 @@ async function brain(page: Page, role: Role) {
 
 test("app and connections link to sets", async ({ page }) => {
   await brain(page, "owner");
-  await page.goto("/app");
-  await expect(page.getByRole("link", { name: "Sets", exact: true })).toHaveAttribute("href", "/app/sets");
-  await page.goto("/app/connections");
+  await page.goto("/home");
+  await expect(page.getByRole("link", { name: "Sets", exact: true })).toHaveAttribute("href", "/sets");
+  await page.goto("/connections");
+  await page.getByRole("button", { name: "Settings for Alice" }).click();
   await page.getByRole("link", { name: "Manage sets" }).click();
-  await expect(page).toHaveURL("/app/sets");
+  await expect(page).toHaveURL("/sets");
 });
 
 test("sets sends a signed-out visitor to login", async ({ page }) => {
   await page.route("**/auth/me", (route) => route.fulfill({ status: 401, json: { error: "unauthorized" } }));
-  await page.goto("/app/sets");
+  await page.goto("/sets");
   await expect(page).toHaveURL("/login");
 });
 
 test("lists sets with Default pinned and never deletable", async ({ page }) => {
   await brain(page, "owner");
-  await page.goto("/app/sets");
+  await page.goto("/sets");
   const items = page.getByRole("region", { name: "Sets" }).getByRole("listitem").filter({ has: page.locator("p.font-bold") });
   await expect(items.first()).toContainText("DefaultDefault, pinned");
   await expect(items.first()).toContainText("2 accounts");
@@ -89,7 +90,7 @@ test("create explains a taken name, then creates", async ({ page }) => {
     first = false;
     return route.fulfill({ status: 409, json: { error: "name_taken" } });
   });
-  await page.goto("/app/sets");
+  await page.goto("/sets");
   await page.getByLabel("New set name").fill("Clients");
   await page.getByRole("button", { name: "Create set" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "already has that name" })).toBeVisible();
@@ -108,7 +109,7 @@ test("rename the Default set", async ({ page }) => {
       ? route.fulfill({ status: 409, json: { error: "name_taken" } })
       : route.fulfill({ json: set("d", "Everything", ["c1", "c2"]) });
   });
-  await page.goto("/app/sets");
+  await page.goto("/sets");
   await page.getByRole("button", { name: "Rename Default" }).click();
   const input = page.getByLabel("New name for Default");
   await expect(input).toBeFocused();
@@ -134,7 +135,7 @@ test("delete asks first, asks to sign in again when needed, then moves the set t
     state.deleted.unshift({ ...gone!, deleted_at: new Date().toISOString() });
     return route.fulfill({ status: 204 });
   });
-  await page.goto("/app/sets");
+  await page.goto("/sets");
   await page.getByRole("button", { name: "Delete Clients" }).click();
   const yes = page.getByRole("button", { name: "Yes, delete" });
   await expect(yes).toBeFocused();
@@ -146,7 +147,7 @@ test("delete asks first, asks to sign in again when needed, then moves the set t
   await yes.click();
   const reauth = page.getByRole("alert").filter({ hasText: "needs a fresh sign-in" });
   await expect(reauth).toBeVisible();
-  await expect(reauth.getByRole("link", { name: "Sign in again" })).toHaveAttribute("href", "/login?next=%2Fapp%2Fsets");
+  await expect(reauth.getByRole("link", { name: "Sign in again" })).toHaveAttribute("href", "/login?next=%2Fsets");
   await expect(yes).toBeFocused();
   await yes.press("Enter");
   await expect(page.getByText("Deleted Clients. You can restore it for 30 days.")).toBeFocused();
@@ -161,7 +162,7 @@ test("deleting a set that is already gone closes the confirm and reloads", async
     state.deleted.unshift({ ...gone!, deleted_at: new Date().toISOString() });
     return route.fulfill({ status: 404, json: { error: "not_found" } });
   });
-  await page.goto("/app/sets");
+  await page.goto("/sets");
   await page.getByRole("button", { name: "Delete Clients" }).click();
   await page.getByRole("button", { name: "Yes, delete" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "no longer there" })).toBeVisible();
@@ -181,7 +182,7 @@ test("restore explains a taken name and the cap, then restores", async ({ page }
     state.live.push({ ...back!, deleted_at: null });
     return route.fulfill({ json: { ...back, deleted_at: null } });
   });
-  await page.goto("/app/sets");
+  await page.goto("/sets");
   const restore = page.getByRole("button", { name: "Restore Old" });
   await restore.click();
   await expect(page.getByRole("alert").filter({ hasText: "already has that name" })).toBeVisible();
@@ -195,13 +196,14 @@ test("restore explains a taken name and the cap, then restores", async ({ page }
 
 test("a member sees sets read-only", async ({ page }) => {
   await brain(page, "member");
-  await page.goto("/app/sets");
+  await page.goto("/sets");
   await expect(page.getByText("Only team owners and admins can change sets.")).toBeVisible();
   await expect(page.getByLabel("New set name")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^(Rename|Delete|Restore)/ })).toHaveCount(0);
-  await page.goto("/app/connections");
+  await page.goto("/connections");
   await expect(page.getByRole("list", { name: "Sets for Alice" }).getByRole("listitem")).toHaveText(["Default", "Clients"]);
-  await expect(page.getByRole("button", { name: /Edit sets/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Settings for Alice" }).click();
+  await expect(page.getByRole("button", { name: "Save sets" })).toHaveCount(0);
 });
 
 test("connections edits an account's sets with Default locked", async ({ page }) => {
@@ -217,14 +219,13 @@ test("connections edits an account's sets with Default locked", async ({ page })
     if (bodies.length === 1) return route.fulfill({ status: 422, json: { error: "invalid_sets" } });
     return route.fulfill({ json: { ...state.accounts[1], set_ids: ["d", "s1"] } });
   });
-  await page.goto("/app/connections");
+  await page.goto("/connections");
   await expect(page.getByRole("list", { name: "Sets for Alice" }).getByRole("listitem")).toHaveText(["Default", "Clients"]);
   await expect(page.getByRole("list", { name: "Sets for Bob" }).getByRole("listitem")).toHaveText(["Default"]);
-  await page.getByRole("button", { name: "Edit sets for Bob" }).click();
-  const group = page.getByRole("group", { name: "Sets for Bob" });
+  await page.getByRole("button", { name: "Settings for Bob" }).click();
+  const group = page.getByRole("group", { name: "Sets" });
   await expect(group.getByRole("checkbox", { name: /Default/ })).toBeChecked();
   await expect(group.getByRole("checkbox", { name: /Default/ })).toBeDisabled();
-  await expect(group.getByRole("checkbox", { name: "Clients" })).toBeFocused();
   await group.getByRole("checkbox", { name: "Clients" }).check();
   await page.getByRole("button", { name: "Save sets" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "no longer exists" })).toBeVisible();

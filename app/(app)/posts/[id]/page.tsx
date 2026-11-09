@@ -10,7 +10,7 @@ type Params = { params: Promise<{ id: string }> };
 export default function PostPage({ params }: Params) {
   return (
     <>
-      <PageHeader title="Post" back={{ href: "/app/posts", label: "Posts" }} />
+      <PageHeader title="Post" back={{ href: "/posts", label: "Posts" }} />
       <Suspense fallback={<p className="text-ink-soft">Loading the post...</p>}>
         <Editor params={params} />
       </Suspense>

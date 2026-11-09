@@ -14,7 +14,7 @@ import { Icon, type IconName } from "@/components/ui";
 type Session = { user: User; setUser: (u: User) => void; setTeam: (t: Team) => void; refresh: () => Promise<void> };
 const SessionContext = createContext<Session | null>(null);
 
-// The signed-in user, checked once by the shell. Only for components rendered under /app.
+// The signed-in user, checked once by the shell. Only for components rendered inside the shell.
 export function useSession() {
   const s = useContext(SessionContext);
   if (!s) throw new Error("useSession needs AppShell");
@@ -24,36 +24,36 @@ export function useSession() {
 export type NavItem = { href: string; label: string; icon: IconName };
 type NavGroup = { label: string; items: NavItem[] };
 const nav: NavGroup[] = [
-  { label: "", items: [{ href: "/app", label: "Home", icon: "home" }] },
+  { label: "", items: [{ href: "/home", label: "Home", icon: "home" }] },
   {
     label: "Publish",
     items: [
-      { href: "/app/posts", label: "Posts", icon: "posts" },
-      { href: "/app/lists", label: "Lists", icon: "lists" },
+      { href: "/posts", label: "Posts", icon: "posts" },
+      { href: "/lists", label: "Lists", icon: "lists" },
     ],
   },
   {
     label: "Engage",
     items: [
-      { href: "/app/inbox", label: "Inbox", icon: "inbox" },
-      { href: "/app/automations", label: "Automations", icon: "automations" },
+      { href: "/inbox", label: "Inbox", icon: "inbox" },
+      { href: "/automations", label: "Automations", icon: "automations" },
     ],
   },
   {
     label: "Workspace",
     items: [
-      { href: "/app/connections", label: "Accounts", icon: "accounts" },
-      { href: "/app/sets", label: "Sets", icon: "sets" },
-      { href: "/app/team", label: "Team", icon: "team" },
-      { href: "/app/api-tokens", label: "API tokens", icon: "key" },
+      { href: "/connections", label: "Accounts", icon: "accounts" },
+      { href: "/sets", label: "Sets", icon: "sets" },
+      { href: "/team", label: "Team", icon: "team" },
+      { href: "/api-tokens", label: "API tokens", icon: "key" },
     ],
   },
   {
     label: "Profile settings",
     items: [
-      { href: "/app/profile", label: "Profile", icon: "user" },
-      { href: "/app/security", label: "Sign-in and security", icon: "security" },
-      { href: "/app/security#passkeys", label: "Passkeys", icon: "fingerprint" },
+      { href: "/profile", label: "Profile", icon: "user" },
+      { href: "/security", label: "Sign-in and security", icon: "security" },
+      { href: "/security#passkeys", label: "Passkeys", icon: "fingerprint" },
     ],
   },
 ];
@@ -107,7 +107,7 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
     getMe().then((r) => {
       if (r === "signed_out") router.replace("/login");
       // brain refuses admin calls from anyone else; this only spares them a page of errors.
-      else if (admin && typeof r === "object" && !r.user.is_admin) router.replace("/app");
+      else if (admin && typeof r === "object" && !r.user.is_admin) router.replace("/home");
       else setMe(r);
     });
   }, [router, admin]);
@@ -165,7 +165,7 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
             <div
               className={`flex items-center justify-between gap-3 px-4 py-3 md:h-12 md:border-b md:border-[var(--line)] md:py-0 ${collapsed ? "md:justify-center md:px-0" : "md:px-4"}`}
             >
-              <Link href={admin ? "/admin" : "/app"} className="flex items-center gap-2 font-display text-base font-bold tracking-tight">
+              <Link href={admin ? "/admin" : "/home"} className="flex items-center gap-2 font-display text-base font-bold tracking-tight">
                 <LogoMark className="size-7" />
                 <span className={collapsed ? "md:sr-only" : ""}>SocialReins</span>
                 {admin && <span className={`badge bg-signal-deep text-paper ${collapsed ? "md:sr-only" : ""}`}>Admin</span>}
@@ -237,9 +237,9 @@ function NavGroups({ path, groups, collapsed }: { path: string; groups: NavGroup
 }
 
 // Hash links (Passkeys) point into a page another link already marks as current.
-// Home (/app) matches only itself, or it would hold every page.
+// Home (/home) matches only itself, or it would hold every page.
 export const isActive = (path: string, href: string) =>
-  !href.includes("#") && (path === href || (href !== "/app" && path.startsWith(`${href}/`)));
+  !href.includes("#") && (path === href || (href !== "/home" && path.startsWith(`${href}/`)));
 
 function NavSection({ path, group, collapsed, first }: { path: string; group: NavGroup; collapsed: boolean; first: boolean }) {
   const key = `sidebar-group:${group.label}`;

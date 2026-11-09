@@ -62,7 +62,7 @@ test("login form is in the server-rendered HTML", async ({ request }) => {
 test("app shows the signed-in user and signs out", async ({ page }) => {
   await page.route("**/auth/me", (route) => route.fulfill({ json: user }));
   await page.route("**/auth/logout", (route) => route.fulfill({ status: 204 }));
-  await page.goto("/app");
+  await page.goto("/home");
   await expect(page.getByText("Signed in as someone@example.com")).toBeVisible();
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL("/");
@@ -70,7 +70,7 @@ test("app shows the signed-in user and signs out", async ({ page }) => {
 
 test("app sends a signed-out visitor to login", async ({ page }) => {
   await page.route("**/auth/me", (route) => route.fulfill({ status: 401, json: { error: "unauthorized" } }));
-  await page.goto("/app");
+  await page.goto("/home");
   await expect(page).toHaveURL("/login");
 });
 
@@ -81,5 +81,11 @@ test("header links to sign in, or to the app when signed in", async ({ page }) =
   await page.unrouteAll();
   await page.route("**/auth/me", (route) => route.fulfill({ json: user }));
   await page.reload();
-  await expect(page.getByRole("link", { name: "Open the app" })).toHaveAttribute("href", "/app");
+  await expect(page.getByRole("link", { name: "Open the app" })).toHaveAttribute("href", "/home");
+});
+
+test("old /app links redirect and keep their query", async ({ request }) => {
+  const to = async (path: string) => (await request.get(path, { maxRedirects: 0 })).headers().location;
+  expect(await to("/app")).toBe("/home");
+  expect(await to("/app/connections?connected=x")).toBe("/connections?connected=x");
 });

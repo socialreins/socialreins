@@ -6,7 +6,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { Failure, Role } from "@/lib/auth";
 
-// Back to this page after signing in (with Google or a passkey; an emailed link always lands on /app).
+// Back to this page after signing in (with Google or a passkey; an emailed link always lands on /home).
 function SignInAgain({ text }: { text: string }) {
   const path = usePathname();
   return (

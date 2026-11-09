@@ -265,7 +265,7 @@ export async function getProviders(retryMs = 2000): Promise<Providers> {
   return { google: body?.google === true, turnstileSiteKey: typeof key === "string" && key ? key : null };
 }
 
-// A path on this site to return to after sign-in, else /app. Mirrors brain's oauth::safe_next, and
+// A path on this site to return to after sign-in, else /home. Mirrors brain's oauth::safe_next, and
 // also refuses "//" anywhere, so "/a//evil.com" can't turn into another host.
 export function safeNext(raw: string | null | undefined): string {
   const ok =
@@ -275,7 +275,7 @@ export function safeNext(raw: string | null | undefined): string {
     !raw.includes("\\") &&
     raw.length <= 512 &&
     !/[\s\p{Cc}]/u.test(raw);
-  return ok ? raw : "/app";
+  return ok ? raw : "/home";
 }
 
 // A full-page navigation, not a fetch: brain sends the browser to Google and back to `next`.

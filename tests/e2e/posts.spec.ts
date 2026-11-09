@@ -67,14 +67,14 @@ async function brain(page: Page, { accounts = [alice] }: { accounts?: unknown[] 
 test("app links to posts", async ({ page }) => {
   await brain(page);
   await page.route(/\/v1\/posts(\?.*)?$/, (route) => route.fulfill({ json: [] }));
-  await page.goto("/app");
+  await page.goto("/home");
   await page.getByRole("link", { name: "Posts", exact: true }).click();
-  await expect(page).toHaveURL("/app/posts");
+  await expect(page).toHaveURL("/posts");
 });
 
 test("posts sends a signed-out visitor to login", async ({ page }) => {
   await page.route("**/auth/me", (route) => route.fulfill({ status: 401, json: { error: "unauthorized" } }));
-  await page.goto("/app/posts");
+  await page.goto("/posts");
   await expect(page).toHaveURL("/login");
 });
 
@@ -96,13 +96,13 @@ test("calendar shows the month's posts, drafts below, with filter and month step
     }
     return route.fulfill({ json: [] });
   });
-  await page.goto("/app/posts");
+  await page.goto("/posts");
   await expect(page.getByRole("heading", { name: "November 2026" })).toBeVisible();
   const table = page.getByRole("table", { name: "Posts in November 2026" });
-  await expect(table.getByRole("link", { name: /10:30.*Launch day$/ })).toHaveAttribute("href", "/app/posts/p-sched");
-  await expect(table.getByRole("link", { name: /0?9:00.*Hello Bluesky$/ })).toHaveAttribute("href", "/app/posts/p-pub");
+  await expect(table.getByRole("link", { name: /10:30.*Launch day$/ })).toHaveAttribute("href", "/posts/p-sched");
+  await expect(table.getByRole("link", { name: /0?9:00.*Hello Bluesky$/ })).toHaveAttribute("href", "/posts/p-pub");
   await expect(table.getByRole("link", { name: "View on Bluesky" })).toHaveAttribute("href", "https://bsky.app/profile/alice.bsky.social/post/1");
-  await expect(page.getByRole("region", { name: "Drafts" }).getByRole("link", { name: "An unfinished thought" })).toHaveAttribute("href", "/app/posts/p-draft");
+  await expect(page.getByRole("region", { name: "Drafts" }).getByRole("link", { name: "An unfinished thought" })).toHaveAttribute("href", "/posts/p-draft");
   expect(queries[0]?.get("to")).toBe("2026-11-30T23:00:00.000Z");
 
   await page.getByRole("button", { name: "Next month" }).click();
@@ -117,7 +117,7 @@ test("calendar shows the month's posts, drafts below, with filter and month step
   // The picked set is the default for a new post, and survives a reload.
   await page.reload();
   await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "Clients" })).toBeVisible();
-  await page.goto("/app/posts/new");
+  await page.goto("/posts/new");
   await expect(page.getByLabel("Set")).toHaveValue("s1");
 });
 
@@ -130,19 +130,19 @@ test("on a phone the month is a list of days, not a wide grid", async ({ page })
       json: new URL(route.request().url()).searchParams.get("status") === "draft" ? [] : [post("p-sched", { status: "scheduled", scheduled_at: "2026-11-12T09:30:00Z", body: "Launch day" })],
     }),
   );
-  await page.goto("/app/posts");
+  await page.goto("/posts");
   await expect(page.getByRole("table")).toBeHidden();
   const days = page.getByRole("list", { name: "Posts in November 2026" });
-  await expect(days.getByRole("link", { name: /Launch day/ })).toHaveAttribute("href", "/app/posts/p-sched");
+  await expect(days.getByRole("link", { name: /Launch day/ })).toHaveAttribute("href", "/posts/p-sched");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
 test("a team without Bluesky sees a note linking to connections", async ({ page }) => {
   await brain(page, { accounts: [] });
-  await page.goto("/app/posts/new");
+  await page.goto("/posts/new");
   const note = page.getByText("No Bluesky, Threads, LinkedIn, X, TikTok, YouTube, Facebook or Instagram account is connected to this team yet");
   await expect(note).toBeVisible();
-  await expect(page.getByRole("link", { name: "Connect an account" })).toHaveAttribute("href", "/app/connections");
+  await expect(page.getByRole("link", { name: "Connect an account" })).toHaveAttribute("href", "/connections");
 });
 
 test("compose checks length, images and schedule before asking brain", async ({ page }) => {
@@ -152,7 +152,7 @@ test("compose checks length, images and schedule before asking brain", async ({ 
     creates++;
     return route.fulfill({ status: 422, json: { error: "invalid_media" } });
   });
-  await page.goto("/app/posts/new");
+  await page.goto("/posts/new");
   const body = page.getByLabel("Post", { exact: true });
   await body.fill("👨‍👩‍👧");
   await expect(page.getByText("1 of 300 characters")).toBeVisible();
@@ -192,7 +192,7 @@ test("schedule sends the local time as UTC and moves to the post's address", asy
     sent = route.request().postDataJSON();
     return route.fulfill({ status: 201, json: post("p1", { ...sent, status: "scheduled" }) });
   });
-  await page.goto("/app/posts/new");
+  await page.goto("/posts/new");
   await page.getByLabel("Set").selectOption("s1");
   await page.getByLabel("Post", { exact: true }).fill("Launch day");
   await page.getByRole("button", { name: "Add image" }).click();
@@ -201,7 +201,7 @@ test("schedule sends the local time as UTC and moves to the post's address", asy
   await expect(page.getByText("In your time zone, Europe/Berlin.", { exact: false })).toBeVisible();
   await page.getByRole("button", { name: "Schedule" }).click();
   await expect(page.getByText(/^Scheduled for .*20, 2026/).last()).toBeFocused();
-  await expect(page).toHaveURL("/app/posts/p1");
+  await expect(page).toHaveURL("/posts/p1");
   expect(sent).toEqual({
     social_set_id: "s1",
     platform: "bluesky",
@@ -219,7 +219,7 @@ test("a thread is written, checked, previewed and sent in order", async ({ page 
     sent = route.request().postDataJSON();
     return route.fulfill({ status: 201, json: post("p1", sent) });
   });
-  await page.goto("/app/posts/new");
+  await page.goto("/posts/new");
   await page.getByLabel("Post", { exact: true }).fill("One");
   await page.getByRole("button", { name: "Add to thread" }).click();
   await expect(page.getByRole("textbox", { name: "Post 2" })).toBeFocused();
@@ -232,7 +232,7 @@ test("a thread is written, checked, previewed and sent in order", async ({ page 
   await expect(page.getByRole("button", { name: "Add to thread" })).toBeFocused();
   await expect(page.getByRole("region", { name: "Preview" }).getByText("Two")).toBeVisible();
   await page.getByRole("button", { name: "Save draft" }).click();
-  await expect(page).toHaveURL("/app/posts/p1");
+  await expect(page).toHaveURL("/posts/p1");
   expect(sent?.thread).toEqual([{ body: "Two", media: [] }]);
   await expect(page.getByRole("textbox", { name: "Post 2" })).toHaveValue("Two");
 });
@@ -244,7 +244,7 @@ test("each thread post takes its own images", async ({ page }) => {
     sent = route.request().postDataJSON();
     return route.fulfill({ status: 201, json: post("p1", sent) });
   });
-  await page.goto("/app/posts/new");
+  await page.goto("/posts/new");
   await page.getByLabel("Post", { exact: true }).fill("One");
   await page.getByRole("button", { name: "Add to thread" }).click();
   await page.getByRole("textbox", { name: "Post 2", exact: true }).fill("Two");
@@ -269,7 +269,7 @@ test("each thread post takes its own images", async ({ page }) => {
   await expect(preview.getByRole("listitem")).toHaveText("view");
 
   await page.getByRole("button", { name: "Save draft" }).click();
-  await expect(page).toHaveURL("/app/posts/p1");
+  await expect(page).toHaveURL("/posts/p1");
   expect(sent?.media).toEqual([]);
   expect(sent?.thread).toEqual([{ body: "Two", media: ["https://drive.google.com/file/d/abc/view"] }]);
   await expect(page.getByLabel("Image 1 link of post 2")).toHaveValue("https://drive.google.com/file/d/abc/view");
@@ -288,7 +288,7 @@ test("a published thread links each follow-up post", async ({ page }) => {
       }),
     }),
   );
-  await page.goto("/app/posts/p6");
+  await page.goto("/posts/p6");
   await expect(page.getByText("Thread: 1 of 1 follow-up posts out.")).toBeVisible();
   await expect(page.getByRole("link", { name: /^Post 2 on / })).toHaveAttribute("href", part.remote_url);
 });
@@ -310,7 +310,7 @@ test("publish now polls until the post is published", async ({ page }) => {
     if (polls >= 2) state = { ...state, status: "published", published_at: new Date().toISOString(), targets: [target()] };
     return route.fulfill({ json: state });
   });
-  await page.goto("/app/posts/new");
+  await page.goto("/posts/new");
   await page.getByLabel("Post", { exact: true }).fill("Right now");
   await page.getByRole("button", { name: "Publish now" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Publishing. This page updates by itself." })).toBeFocused();
@@ -326,18 +326,18 @@ test("publish now explains the daily quota", async ({ page }) => {
   await brain(page);
   await page.route("**/v1/posts", (route) => route.fulfill({ status: 201, json: post("p4") }));
   await page.route("**/v1/posts/p4/publish", (route) => route.fulfill({ status: 429, json: { error: "publish_quota" } }));
-  await page.goto("/app/posts/new");
+  await page.goto("/posts/new");
   await page.getByLabel("Post", { exact: true }).fill("One too many");
   await page.getByRole("button", { name: "Publish now" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "limit of 100 published posts today" })).toBeVisible();
-  await expect(page).toHaveURL("/app/posts/p4");
+  await expect(page).toHaveURL("/posts/p4");
 });
 
 test("a published TikTok post has no Take down, only where to delete it", async ({ page }) => {
   await brain(page);
   const published = post("p9", { platform: "tiktok", status: "published", scheduled_at: "2026-11-03T08:00:00Z", published_at: "2026-11-03T08:00:00Z", targets: [target()] });
   await page.route("**/v1/posts/p9", (route) => route.fulfill({ json: published }));
-  await page.goto("/app/posts/p9");
+  await page.goto("/posts/p9");
   await expect(page.getByText("TikTok does not let other apps delete a post. Delete it in the TikTok app.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Take down" })).toHaveCount(0);
 });
@@ -353,7 +353,7 @@ test("take down shows brain's message when it can't finish, then succeeds", asyn
       ? route.fulfill({ status: 422, json: { error: "takedown_failed", message: "Alice's app password was revoked. Delete the post on Bluesky by hand." } })
       : route.fulfill({ json: { ...published, status: "deleted", targets: [target({ status: "deleted" })] } });
   });
-  await page.goto("/app/posts/p3");
+  await page.goto("/posts/p3");
   await expect(page.getByLabel("Post", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Take down" }).click();
   await expect(page.getByRole("button", { name: "Yes, take it down" })).toBeFocused();
@@ -378,7 +378,7 @@ test("a failed post is read-only with its error and target statuses", async ({ p
       }),
     }),
   );
-  await page.goto("/app/posts/p5");
+  await page.goto("/posts/p5");
   await expect(page.getByRole("status").filter({ hasText: "Failed." })).toBeVisible();
   await expect(page.getByText("What went wrong: Alice: the image is over 1 MB.")).toBeVisible();
   await expect(page.getByText("Alice: failed. image too large")).toBeVisible();
@@ -396,14 +396,14 @@ test("a draft can be edited and deleted", async ({ page }) => {
     return route.fulfill({ status: 204 });
   });
   await page.route(/\/v1\/posts(\?.*)?$/, (route) => route.fulfill({ json: [] }));
-  await page.goto("/app/posts/p6");
+  await page.goto("/posts/p6");
   await expect(page.getByLabel("Post", { exact: true })).toHaveValue("Old words");
   await page.getByLabel("Post", { exact: true }).fill("New words");
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page.getByText("Draft saved.")).toBeFocused();
   await page.getByRole("button", { name: "Delete" }).click();
   await page.getByRole("button", { name: "Yes, delete" }).click();
-  await expect(page).toHaveURL("/app/posts");
+  await expect(page).toHaveURL("/posts");
   expect(calls).toEqual(["GET", "PUT", "DELETE"]);
 });
 
@@ -438,7 +438,7 @@ test("a post for several platforms is one group, published on each", async ({ pa
     }));
     return route.fulfill({ json: state });
   });
-  await page.goto("/app/posts/new");
+  await page.goto("/posts/new");
   const to = page.getByRole("group", { name: "Post to" });
   // Every platform with an account in the set is ticked to start with.
   for (const name of [/Bluesky/, /Threads/, /Instagram/]) await expect(to.getByRole("checkbox", { name })).toBeChecked();
@@ -453,7 +453,7 @@ test("a post for several platforms is one group, published on each", async ({ pa
   await expect(page.getByText("Instagram can't post threads, so it gets only the first post.")).toBeVisible();
   await page.getByRole("button", { name: "Publish now" }).click();
 
-  await expect(page).toHaveURL("/app/posts/g-b");
+  await expect(page).toHaveURL("/posts/g-b");
   await expect(page.getByRole("status").filter({ hasText: /^Published on / })).toBeVisible({ timeout: 10_000 });
   expect(sent).toEqual({
     social_set_id: "d",
@@ -467,7 +467,7 @@ test("a post for several platforms is one group, published on each", async ({ pa
   expect(published).toEqual(["g-b", "g-t", "g-i"]);
   await expect(page.getByRole("link", { name: "View on Bluesky" })).toHaveAttribute("href", "https://example.com/bluesky/1");
   const others = page.getByRole("region", { name: "Same post on other platforms" });
-  await expect(others.getByRole("link", { name: "Threads post" })).toHaveAttribute("href", "/app/posts/g-t");
+  await expect(others.getByRole("link", { name: "Threads post" })).toHaveAttribute("href", "/posts/g-t");
   await expect(others.getByRole("link", { name: "View on Threads" })).toHaveAttribute("href", "https://example.com/threads/1");
   await expect(others.getByRole("link", { name: "View on Instagram" })).toHaveAttribute("href", "https://example.com/instagram/1");
 });
@@ -479,7 +479,7 @@ test("Instagram without an image is flagged before brain is asked", async ({ pag
     sent = route.request().postDataJSON();
     return route.fulfill({ status: 201, json: post("p1", sent) });
   });
-  await page.goto("/app/posts/new");
+  await page.goto("/posts/new");
   await page.getByLabel("Post", { exact: true }).fill("Words only");
   const warning = page.getByRole("listitem").filter({ hasText: "Instagram needs at least one image or video." });
   await expect(warning).toBeVisible();
@@ -491,7 +491,7 @@ test("Instagram without an image is flagged before brain is asked", async ({ pag
   await page.getByRole("group", { name: "Post to" }).getByRole("checkbox", { name: /Instagram/ }).uncheck();
   await expect(warning).toHaveCount(0);
   await page.getByRole("button", { name: "Save draft" }).click();
-  await expect(page).toHaveURL("/app/posts/p1");
+  await expect(page).toHaveURL("/posts/p1");
   expect(sent).toMatchObject({ platform: "bluesky", body: "Words only" });
 });
 
@@ -504,7 +504,7 @@ test("LinkedIn takes 3000 characters and no thread", async ({ page }) => {
     sent = route.request().postDataJSON();
     return route.fulfill({ status: 201, json: post("p1", sent) });
   });
-  await page.goto("/app/posts/new");
+  await page.goto("/posts/new");
   const body = page.getByLabel("Post", { exact: true });
   await body.fill("a".repeat(3001));
   await expect(page.getByRole("alert").filter({ hasText: "1 over LinkedIn's limit of 3,000" })).toBeVisible();
@@ -512,7 +512,7 @@ test("LinkedIn takes 3000 characters and no thread", async ({ page }) => {
   await body.fill("a".repeat(3000));
   await expect(page.getByText("LinkedIn: 3,000 of 3,000 characters")).toBeVisible();
   await page.getByRole("button", { name: "Save draft" }).click();
-  await expect(page).toHaveURL("/app/posts/p1");
+  await expect(page).toHaveURL("/posts/p1");
   expect(sent).toMatchObject({ platform: "linkedin", body: "a".repeat(3000) });
 });
 
@@ -523,7 +523,7 @@ test("a first comment is offered on LinkedIn, counted and sent with the post", a
     sent = route.request().postDataJSON();
     return route.fulfill({ status: 201, json: post("p1", sent) });
   });
-  await page.goto("/app/posts/new");
+  await page.goto("/posts/new");
   await page.getByLabel("Post", { exact: true }).fill("A claim");
   const comment = page.getByLabel("First comment", { exact: true });
   await comment.fill("a".repeat(1251));
@@ -534,7 +534,7 @@ test("a first comment is offered on LinkedIn, counted and sent with the post", a
   await comment.fill("Sources: example.org");
   await expect(page.getByText("LinkedIn: 20 of 1,250 characters")).toBeVisible();
   await page.getByRole("button", { name: "Save draft" }).click();
-  await expect(page).toHaveURL("/app/posts/p1");
+  await expect(page).toHaveURL("/posts/p1");
   expect(sent).toMatchObject({ platform: "linkedin", body: "A claim", first_comment: "Sources: example.org" });
 });
 
@@ -545,7 +545,7 @@ test("a platform without first comments hides the box and a group sends empty ov
     sent = route.request().postDataJSON();
     return route.fulfill({ status: 201, json: { group_id: "g1", posts: [post("g-b", { group_id: "g1" }), post("g-l", { platform: "linkedin", group_id: "g1" })] } });
   });
-  await page.goto("/app/posts/new");
+  await page.goto("/posts/new");
   const to = page.getByRole("group", { name: "Post to" });
   // Bluesky alone has no first comment box.
   await to.getByRole("checkbox", { name: /LinkedIn/ }).uncheck();
@@ -555,7 +555,7 @@ test("a platform without first comments hides the box and a group sends empty ov
   await page.getByLabel("First comment", { exact: true }).fill("Sources");
   await expect(page.getByText("Bluesky can't post one, so it gets none.")).toBeVisible();
   await page.getByRole("button", { name: "Save draft" }).click();
-  await expect(page).toHaveURL("/app/posts/g-b");
+  await expect(page).toHaveURL("/posts/g-b");
   expect(sent).toMatchObject({ platforms: ["bluesky", "linkedin"], first_comment: "Sources", overrides: { bluesky: { first_comment: "" } } });
 });
 
@@ -572,7 +572,7 @@ test("a published post shows its first comment and whether each account posted i
       }),
     }),
   );
-  await page.goto("/app/posts/p7");
+  await page.goto("/posts/p7");
   await expect(page.getByRole("heading", { name: "First comment" })).toBeVisible();
   await expect(page.getByText("Sources: example.org")).toBeVisible();
   await expect(page.getByText(/First comment: not posted\. Comment: LinkedIn refused it\. It is not tried again/)).toBeVisible();
@@ -601,7 +601,7 @@ test("a cover image is offered for exactly one video, checked and sent with the 
     sent = route.request().postDataJSON();
     return route.fulfill({ status: 201, json: post("p1", sent) });
   });
-  await page.goto("/app/posts/new");
+  await page.goto("/posts/new");
   const cover = page.getByLabel("Cover image link");
   await expect(cover).toHaveCount(0);
   await page.getByLabel("Post", { exact: true }).fill("My title");
@@ -620,7 +620,7 @@ test("a cover image is offered for exactly one video, checked and sent with the 
   expect(sent).toBeUndefined();
   await cover.fill("https://example.com/cover.jpg");
   await page.getByRole("button", { name: "Save draft" }).click();
-  await expect(page).toHaveURL("/app/posts/p1");
+  await expect(page).toHaveURL("/posts/p1");
   expect(sent).toMatchObject({ platform: "youtube", media: ["https://example.com/clip.mp4"], cover: "https://example.com/cover.jpg" });
 });
 
@@ -632,7 +632,7 @@ test("a group sends the cover only to the platforms that take one and says so fo
     sent = route.request().postDataJSON();
     return route.fulfill({ status: 201, json: { group_id: "g1", posts: [post("g-f", { platform: "facebook", group_id: "g1" }), post("g-t", { platform: "tiktok", group_id: "g1" })] } });
   });
-  await page.goto("/app/posts/new");
+  await page.goto("/posts/new");
   await page.getByLabel("Post", { exact: true }).fill("Hello");
   await page.getByRole("button", { name: "Add image" }).click();
   await page.getByLabel("Image 1 link").fill("https://example.com/clip.mp4");
@@ -640,13 +640,13 @@ test("a group sends the cover only to the platforms that take one and says so fo
   await expect(page.getByText("TikTok can't take one (TikTok can only pick a frame of the video), so it gets none.")).toBeVisible();
   await page.getByLabel("Who can view this video").selectOption("SELF_ONLY");
   await page.getByRole("button", { name: "Save draft" }).click();
-  await expect(page).toHaveURL("/app/posts/g-f");
+  await expect(page).toHaveURL("/posts/g-f");
   expect(sent).toMatchObject({ platforms: ["facebook", "tiktok"], overrides: { facebook: { cover: "https://example.com/cover.png" } } });
   expect(sent).not.toHaveProperty("cover");
   expect(sent).not.toHaveProperty("overrides.tiktok");
 
   // TikTok alone has no cover field.
-  await page.goto("/app/posts/new");
+  await page.goto("/posts/new");
   await page.getByRole("group", { name: "Post to" }).getByRole("checkbox", { name: /Facebook/ }).uncheck();
   await page.getByRole("button", { name: "Add image" }).click();
   await page.getByLabel("Image 1 link").fill("https://example.com/clip.mp4");
@@ -667,7 +667,7 @@ test("a published post shows its cover and, per account, why it was not set", as
       }),
     }),
   );
-  await page.goto("/app/posts/p8");
+  await page.goto("/posts/p8");
   await expect(page.getByRole("heading", { name: "Cover image" })).toBeVisible();
   await expect(page.getByText("https://example.com/cover.jpg")).toBeVisible();
   await expect(page.getByText(/Cover image: The video is up, but its cover image was not set\. Cover: YouTube refused the custom thumbnail\. It is not tried again/)).toBeVisible();
@@ -682,7 +682,7 @@ test("X counts its own way, takes four images and a thread", async ({ page }) =>
     sent = route.request().postDataJSON();
     return route.fulfill({ status: 201, json: post("p1", sent) });
   });
-  await page.goto("/app/posts/new");
+  await page.goto("/posts/new");
   const body = page.getByLabel("Post", { exact: true });
   const over = (text: string) => page.getByRole("alert").filter({ hasText: text });
 
@@ -709,7 +709,7 @@ test("X counts its own way, takes four images and a thread", async ({ page }) =>
   await page.getByRole("button", { name: "Add to thread" }).click();
   await page.getByRole("textbox", { name: "Post 2" }).fill("Two");
   await page.getByRole("button", { name: "Save draft" }).click();
-  await expect(page).toHaveURL("/app/posts/p1");
+  await expect(page).toHaveURL("/posts/p1");
   expect(sent).toMatchObject({
     platform: "x",
     body: "Hello X",
@@ -727,7 +727,7 @@ test("YouTube needs one video and takes its title from the first line", async ({
     sent = route.request().postDataJSON();
     return route.fulfill({ status: 201, json: post("p1", sent) });
   });
-  await page.goto("/app/posts/new");
+  await page.goto("/posts/new");
   const body = page.getByLabel("Post", { exact: true });
   const warning = (text: string) => page.getByRole("listitem").filter({ hasText: text });
   const over = (text: string) => page.getByRole("alert").filter({ hasText: text });
@@ -765,7 +765,7 @@ test("YouTube needs one video and takes its title from the first line", async ({
   await expect(page.getByRole("button", { name: "Add image" })).toHaveCount(0);
   await expect(warning("YouTube needs one MP4 or MOV video")).toHaveCount(0);
   await page.getByRole("button", { name: "Save draft" }).click();
-  await expect(page).toHaveURL("/app/posts/p1");
+  await expect(page).toHaveURL("/posts/p1");
   expect(sent).toMatchObject({ platform: "youtube", body: "My title\nSecond line", media: ["https://example.com/clip.mp4"], thread: [] });
 });
 
@@ -779,7 +779,7 @@ test("each platform can have its own text, counted against its own limit", async
       json: { group_id: "g1", posts: [post("g-b", { platform: "bluesky", group_id: "g1", body: "Short" }), post("g-t", { platform: "threads", group_id: "g1" })] },
     });
   });
-  await page.goto("/app/posts/new");
+  await page.goto("/posts/new");
   const body = page.getByLabel("Post", { exact: true });
   await body.fill("a".repeat(301));
   await expect(page.getByRole("alert").filter({ hasText: "1 over Bluesky's limit of 300" })).toBeVisible();
@@ -803,7 +803,7 @@ test("each platform can have its own text, counted against its own limit", async
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page.getByText("Saved 2 drafts, one per platform.")).toBeVisible();
   expect(sent).toMatchObject({ platforms: ["bluesky", "threads"], body: "a".repeat(301), overrides: { bluesky: { body: "Short" } } });
-  await expect(page).toHaveURL("/app/posts/g-b");
+  await expect(page).toHaveURL("/posts/g-b");
   await expect(page.getByLabel("Post", { exact: true })).toHaveValue("Short");
   await expect(page.getByRole("region", { name: "Same post on other platforms" }).getByRole("link", { name: "Threads post" })).toBeVisible();
 });
@@ -815,7 +815,7 @@ test("custom text no longer counts once its platform is the only one left", asyn
     sent = route.request().postDataJSON();
     return route.fulfill({ status: 201, json: post("p1", sent) });
   });
-  await page.goto("/app/posts/new");
+  await page.goto("/posts/new");
   await page.getByLabel("Post", { exact: true }).fill("Main words");
   await page.getByRole("button", { name: "Customize for Bluesky" }).click();
   await page.getByRole("textbox", { name: "Bluesky text" }).fill("Own words");
@@ -823,7 +823,7 @@ test("custom text no longer counts once its platform is the only one left", asyn
   await expect(page.getByRole("textbox", { name: "Bluesky text" })).toHaveCount(0);
   await expect(page.getByText("Bluesky: 10 of 300 characters")).toBeVisible();
   await page.getByRole("button", { name: "Save draft" }).click();
-  await expect(page).toHaveURL("/app/posts/p1");
+  await expect(page).toHaveURL("/posts/p1");
   expect(sent).toMatchObject({ platform: "bluesky", body: "Main words" });
 });
 
@@ -849,7 +849,7 @@ test("a group publish that stops partway names what is left and carries on", asy
   });
   // Brain keeps them queued, so the page does not settle while the test looks.
   await page.route(/\/v1\/posts\?group_id=g1$/, (route) => route.fulfill({ json: state }));
-  await page.goto("/app/posts/new");
+  await page.goto("/posts/new");
   await page.getByLabel("Post", { exact: true }).fill("Hello all");
   await page.getByRole("button", { name: "Add image" }).click();
   await page.getByLabel("Image 1 link").fill("https://example.com/a.jpg");
@@ -875,10 +875,10 @@ test("calendar marks each post with its platform", async ({ page }) => {
           : ["bluesky", "instagram"].map((p) => post(`p-${p}`, { platform: p, group_id: "g1", status: "scheduled", scheduled_at: "2026-11-12T09:30:00Z", body: "Launch day" })),
     }),
   );
-  await page.goto("/app/posts");
+  await page.goto("/posts");
   const table = page.getByRole("table", { name: "Posts in November 2026" });
-  await expect(table.getByRole("link", { name: /^Bluesky: 10:30.*Launch day$/ })).toHaveAttribute("href", "/app/posts/p-bluesky");
-  await expect(table.getByRole("link", { name: /^Instagram: 10:30.*Launch day$/ })).toHaveAttribute("href", "/app/posts/p-instagram");
+  await expect(table.getByRole("link", { name: /^Bluesky: 10:30.*Launch day$/ })).toHaveAttribute("href", "/posts/p-bluesky");
+  await expect(table.getByRole("link", { name: /^Instagram: 10:30.*Launch day$/ })).toHaveAttribute("href", "/posts/p-instagram");
 });
 
 // A group of posts, one per platform, with the given statuses. DELETE takes a published post down, except
@@ -903,7 +903,7 @@ async function groupPage(page: Page, statuses: Record<string, string>, refuse: R
     return route.fulfill({ json: state.find((p) => p.id === id) });
   });
   await page.route(/\/v1\/posts\?group_id=g1$/, (route) => route.fulfill({ json: state }));
-  await page.goto("/app/posts/g-b");
+  await page.goto("/posts/g-b");
   return deleted;
 }
 
@@ -964,7 +964,7 @@ test("the editor warns when a ticked platform's account needs a reconnect", asyn
   const gone = { ...instaAcc, status: "reconnect" };
   await brain(page, { accounts: [alice, soon, gone] });
   await page.route(/\/v1\/posts(\?.*)?$/, (route) => route.fulfill({ json: [] }));
-  await page.goto("/app/posts/new");
+  await page.goto("/posts/new");
   const notice = page.getByRole("region", { name: "An account needs reconnecting" });
   await expect(notice.getByRole("listitem")).toHaveCount(2);
   await expect(notice).toContainText("Alice on Threads");
@@ -988,7 +988,7 @@ test("TikTok settings: privacy is chosen, the disclosure and consent follow TikT
     sent = route.request().postDataJSON();
     return route.fulfill({ status: 201, json: post("p1", sent) });
   });
-  await page.goto("/app/posts/new");
+  await page.goto("/posts/new");
   await page.getByLabel("Post", { exact: true }).fill("Clip");
   await page.getByRole("button", { name: "Add image" }).click();
   await page.getByLabel("Image 1 link").fill("https://example.com/clip.mp4");
@@ -1032,7 +1032,7 @@ test("TikTok settings: privacy is chosen, the disclosure and consent follow TikT
   await page.getByLabel("Comment").check();
   await page.getByLabel("This video is AI-generated").check();
   await page.getByRole("button", { name: "Save draft" }).click();
-  await expect(page).toHaveURL("/app/posts/p1");
+  await expect(page).toHaveURL("/posts/p1");
   expect(sent).toMatchObject({
     platform: "tiktok",
     tiktok: {
@@ -1056,7 +1056,7 @@ test("TikTok settings: photos have no duet or stitch, and an account that cannot
     sent = true;
     return route.fulfill({ status: 201, json: post("p1") });
   });
-  await page.goto("/app/posts/new");
+  await page.goto("/posts/new");
   await page.getByLabel("Post", { exact: true }).fill("Photos");
   await page.getByRole("button", { name: "Add image" }).click();
   await page.getByLabel("Image 1 link").fill("https://example.com/a.jpg");
@@ -1078,7 +1078,7 @@ test("TikTok settings: an account that cannot be read says so and can be tried a
     calls += 1;
     return calls === 1 ? route.fulfill({ status: 502, json: { error: "tiktok_failed" } }) : route.fulfill({ json: creatorInfo });
   });
-  await page.goto("/app/posts/new");
+  await page.goto("/posts/new");
   await expect(page.getByText("The TikTok account couldn't be read.")).toBeVisible();
   await page.getByRole("button", { name: "Try again" }).click();
   await expect(page.getByLabel("Who can view this video")).toBeVisible();
@@ -1092,10 +1092,10 @@ test("a saved TikTok post shows its settings and a draft loads them", async ({ p
     route.fulfill({ json: post("p20", { platform: "tiktok", status: "published", published_at: "2026-11-03T08:00:00Z", media: ["https://example.com/clip.mp4"], tiktok: settings, targets: [target({ social_account_id: "c8" })] }) }),
   );
   await page.route("**/v1/posts/p21", (route) => route.fulfill({ json: post("p21", { platform: "tiktok", media: ["https://example.com/clip.mp4"], tiktok: settings }) }));
-  await page.goto("/app/posts/p20");
+  await page.goto("/posts/p20");
   await expect(page.getByRole("heading", { name: "TikTok settings" })).toBeVisible();
   await expect(page.getByText("Visible to: Followers. Allowed: comments. Disclosed as a paid partnership. Marked as AI-generated.")).toBeVisible();
-  await page.goto("/app/posts/p21");
+  await page.goto("/posts/p21");
   await expect(page.getByLabel("Who can view this video")).toHaveValue("FOLLOWER_OF_CREATOR");
   await expect(page.getByLabel("Comment")).toBeChecked();
   await expect(page.getByLabel("Branded content")).toBeChecked();

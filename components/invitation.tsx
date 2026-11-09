@@ -84,7 +84,7 @@ export function InvitationView({ token }: { token: string }) {
       )}
       <Status problem={problem} done={done} overrides={{ not_found: gone, email_mismatch: wrongAccount }} />
       {joined && (
-        <Link href="/app" className={`justify-self-start ${linkButton}`}>
+        <Link href="/home" className={`justify-self-start ${linkButton}`}>
           Open the app
         </Link>
       )}

@@ -121,7 +121,7 @@ function Members({ me, mine, onChanged }: { me: User; mine: Role; onChanged: () 
     // Leaving changes the current team, so the shell loads the new one.
     if (ok && leaving) {
       await refresh();
-      return router.push("/app");
+      return router.push("/home");
     }
     flushSync(() => setConfirming(null));
     if (!ok) removeRefs.current.get(m.id)?.focus();
@@ -331,7 +331,7 @@ function DeleteTeam({ team }: { team: Team }) {
     e.preventDefault();
     if (!(await run("delete", deleteTeam, () => undefined))) return;
     await refresh();
-    router.push("/app");
+    router.push("/home");
   }
 
   return (

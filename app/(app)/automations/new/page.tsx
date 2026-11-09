@@ -7,7 +7,7 @@ export const metadata: Metadata = { title: "New automation on SocialReins" };
 export default function NewAutomationPage() {
   return (
     <>
-      <PageHeader title="New comment-to-DM" back={{ href: "/app/automations", label: "Automations" }} />
+      <PageHeader title="New comment-to-DM" back={{ href: "/automations", label: "Automations" }} />
       <NewAutomation />
     </>
   );

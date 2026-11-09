@@ -190,7 +190,7 @@ export function Lists() {
                       if (el) links.current.set(l.id, el);
                       else links.current.delete(l.id);
                     }}
-                    href={`/app/lists/${l.id}`}
+                    href={`/lists/${l.id}`}
                     className="font-bold hover:underline">
                     {l.name}
                   </Link>
@@ -340,7 +340,7 @@ export function ListView({ id }: { id: string }) {
                 <li key={item.post_id} className="flex flex-wrap items-center gap-3 p-4">
                   <strong className="w-16 shrink-0">{name}</strong>
                   <div className="grid min-w-0 flex-1 basis-48 gap-1">
-                    <Link href={`/app/posts/${p.id}`} className="truncate hover:underline">
+                    <Link href={`/posts/${p.id}`} className="truncate hover:underline">
                       {snippet(p)}
                     </Link>
                     <p className="flex flex-wrap items-center gap-2 text-sm text-ink-soft">

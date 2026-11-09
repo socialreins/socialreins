@@ -6,6 +6,11 @@ const nextConfig: NextConfig = {
   agentRules: false,
   cacheComponents: true,
   partialPrefetching: true,
+  // The app moved off /app; brain and old bookmarks still link there.
+  redirects: async () => [
+    { source: "/app", destination: "/home", permanent: true },
+    { source: "/app/:path*", destination: "/:path*", permanent: true },
+  ],
   headers: async () => [
     {
       source: "/:path*",

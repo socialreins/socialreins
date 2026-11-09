@@ -79,26 +79,26 @@ export function Dashboard() {
           Summary
         </h2>
         <ul className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-          <Tile href="/app/posts" label="Scheduled, next 7 days" value={count(posts, nextWeek)} />
-          <Tile href="/app/posts" label="Published, last 7 days" value={count(posts, lastWeek)} />
+          <Tile href="/posts" label="Scheduled, next 7 days" value={count(posts, nextWeek)} />
+          <Tile href="/posts" label="Published, last 7 days" value={count(posts, lastWeek)} />
           <Tile href="#needs-attention" label="Failed, last 30 days" value={count(posts, failed.length)} alert={failed.length > 0} />
-          <Tile href="/app/posts" label="Drafts" value={count(drafts)} />
+          <Tile href="/posts" label="Drafts" value={count(drafts)} />
           <Tile
-            href="/app/inbox"
+            href="/inbox"
             label="Open in inbox"
             value={inbox === null ? null : isFailure(inbox) ? "-" : `${inbox.items.length}${inbox.more ? "+" : ""}`}
           />
-          <Tile href="/app/connections" label="Connected accounts" value={count(accounts)} />
+          <Tile href="/connections" label="Connected accounts" value={count(accounts)} />
         </ul>
       </section>
 
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <div className="grid gap-6">
-          <Panel id="up-next" title="Up next" link={{ href: "/app/posts", label: "Open calendar" }} load={posts}>
+          <Panel id="up-next" title="Up next" link={{ href: "/posts", label: "Open calendar" }} load={posts}>
             {upcoming.length === 0 ? (
               <Empty>
                 Nothing is scheduled.{" "}
-                <Link href="/app/posts/new" className="font-bold underline">
+                <Link href="/posts/new" className="font-bold underline">
                   Write a post
                 </Link>
               </Empty>
@@ -118,7 +118,7 @@ export function Dashboard() {
           </Panel>
         </div>
         <div className="grid gap-6">
-          <Panel id="inbox" title="Inbox" link={{ href: "/app/inbox", label: "Open inbox" }} load={inbox}>
+          <Panel id="inbox" title="Inbox" link={{ href: "/inbox", label: "Open inbox" }} load={inbox}>
             {inbox && !isFailure(inbox) && inbox.items.length === 0 ? (
               <Empty>No open comments, mentions or DMs.</Empty>
             ) : (
@@ -128,7 +128,7 @@ export function Dashboard() {
                   {inbox.items.slice(0, 6).map((i) => (
                     <li key={i.id}>
                       <Link
-                        href={`/app/inbox/${encodeURIComponent(inbox.inboxId)}?item=${encodeURIComponent(i.id)}`}
+                        href={`/inbox/${encodeURIComponent(inbox.inboxId)}?item=${encodeURIComponent(i.id)}`}
                         className="grid gap-0.5 px-4 py-2.5 hover:bg-ink/[0.025]"
                       >
                         <span className="flex items-center gap-2">
@@ -146,7 +146,7 @@ export function Dashboard() {
               )
             )}
           </Panel>
-          <Panel id="automations" title="Automations" link={{ href: "/app/automations", label: "Manage" }} load={automations}>
+          <Panel id="automations" title="Automations" link={{ href: "/automations", label: "Manage" }} load={automations}>
             <p className="px-4 py-3">
               {active.length === 0 ? (
                 <span className="text-ink-soft">No automation is on. Reply to comments automatically, or send a DM when someone comments a keyword.</span>
@@ -157,7 +157,7 @@ export function Dashboard() {
               )}
             </p>
           </Panel>
-          <Panel id="accounts" title="Accounts" link={{ href: "/app/connections", label: "Manage" }} load={accounts}>
+          <Panel id="accounts" title="Accounts" link={{ href: "/connections", label: "Manage" }} load={accounts}>
             {Array.isArray(accounts) && accounts.length === 0 ? (
               <Empty>No account is connected yet.</Empty>
             ) : (
@@ -233,7 +233,7 @@ function PostRows({ posts, at, detail }: { posts: Post[]; at: (p: Post) => strin
     <ul className="divide-y divide-[var(--line-soft)]">
       {posts.map((p) => (
         <li key={p.id}>
-          <Link href={`/app/posts/${p.id}`} className="grid grid-cols-[8.5rem_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5 hover:bg-ink/[0.025]">
+          <Link href={`/posts/${p.id}`} className="grid grid-cols-[8.5rem_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5 hover:bg-ink/[0.025]">
             <span className="text-sm text-ink-soft tabular-nums">{when(at(p))}</span>
             <span className="min-w-0">
               <span className="block truncate"><PlatformMark platform={p.platform} /> {snippet(p)}</span>

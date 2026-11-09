@@ -85,7 +85,7 @@ export function AccountNote() {
         <strong className="block">Connect an account first</strong>
         <span className="text-ink-soft">No Bluesky, Threads, LinkedIn, X, TikTok, YouTube, Facebook or Instagram account is connected to this team yet, so posts have nowhere to go.</span>
       </p>
-      <Link href="/app/connections" className="btn btn-primary">
+      <Link href="/connections" className="btn btn-primary">
         Connect an account
       </Link>
     </div>
@@ -110,7 +110,7 @@ function PostChip({ post: p }: { post: Post }) {
   return (
     <li className="flex min-w-0 items-center rounded text-xs hover:bg-ink/[0.045]">
       <span aria-hidden="true" className="dot ml-1.5 shrink-0" data-status={p.status} />
-      <Link href={`/app/posts/${p.id}`} className="min-w-0 flex-1 truncate px-1.5 py-1 hover:underline">
+      <Link href={`/posts/${p.id}`} className="min-w-0 flex-1 truncate px-1.5 py-1 hover:underline">
         {p.lists.length > 0 && <span className="block truncate font-bold">{p.lists.map(partLabel).join(", ")}</span>}
         <PlatformMark platform={p.platform} /> <span className="text-ink-soft tabular-nums">{time(postDay(p)!)}</span> {snippet(p)}
       </Link>
@@ -302,7 +302,7 @@ export function Posts() {
           <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {drafts.map((p) => (
               <li key={p.id} className="tone relative grid content-start gap-2 rounded-2xl bg-paper p-4 hover:bg-ink/[0.02]" data-status="draft">
-                <Link href={`/app/posts/${p.id}`} className="font-bold text-ink after:absolute after:inset-0 after:rounded-2xl">
+                <Link href={`/posts/${p.id}`} className="font-bold text-ink after:absolute after:inset-0 after:rounded-2xl">
                   <PlatformMark platform={p.platform} className="size-4" /> {snippet(p)}
                 </Link>
                 {p.lists.length > 0 && <p className="text-sm font-bold">{p.lists.map(partLabel).join(", ")}</p>}

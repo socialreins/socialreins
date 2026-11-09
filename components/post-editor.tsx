@@ -275,7 +275,7 @@ export function PostEditor({ id }: { id?: string }) {
         const saved = postId ? await updatePost(postId, input) : await createPost(input);
         if (isFailure(saved)) return saved;
         // Keep this editor mounted on the new post's own address.
-        if (!postId) window.history.replaceState(null, "", `/app/posts/${saved.id}`);
+        if (!postId) window.history.replaceState(null, "", `/posts/${saved.id}`);
         load(saved);
         if (mode !== "publish") return saved;
         // Group posts a failed Publish now left behind go out with this one.
@@ -287,7 +287,7 @@ export function PostEditor({ id }: { id?: string }) {
       const posts = g.posts;
       made = posts.length;
       // The editor carries on as the first post; the others are listed below it.
-      window.history.replaceState(null, "", `/app/posts/${posts[0]!.id}`);
+      window.history.replaceState(null, "", `/posts/${posts[0]!.id}`);
       load(posts[0]!);
       setGroup(posts);
       if (mode !== "publish") return posts[0]!;
@@ -346,7 +346,7 @@ export function PostEditor({ id }: { id?: string }) {
       // brain's message says what to do, e.g. which account still has the post.
       flushSync(() => setLocal(takedown || postMessages.not_deletable));
       askRef.current?.focus();
-    } else if (ok && status !== "published") router.push("/app/posts");
+    } else if (ok && status !== "published") router.push("/posts");
     else if (!ok) askRef.current?.focus();
   }
 
@@ -471,7 +471,7 @@ export function PostEditor({ id }: { id?: string }) {
         {others.map((g) => (
           <li key={g.id} className="flex flex-wrap items-center gap-3 p-4 text-sm">
             <PlatformMark platform={g.platform} className="size-5" />
-            <Link href={`/app/posts/${g.id}`} className="min-w-0 flex-1 font-bold hover:underline">
+            <Link href={`/posts/${g.id}`} className="min-w-0 flex-1 font-bold hover:underline">
               {platformName(g.platform)} post
             </Link>
             <StatusBadge status={g.status} />
@@ -788,7 +788,7 @@ export function PostEditor({ id }: { id?: string }) {
                 ) : available.length === 0 ? (
                   <p className="hint">
                     No connected account is in this set. Add one on{" "}
-                    <Link href="/app/connections" className="font-bold underline">
+                    <Link href="/connections" className="font-bold underline">
                       Connections
                     </Link>
                     .

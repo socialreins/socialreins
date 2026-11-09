@@ -65,14 +65,14 @@ async function brain(page: Page, role: Role) {
 
 test("the sidebar links to API tokens", async ({ page }) => {
   await brain(page, "owner");
-  await page.goto("/app");
+  await page.goto("/home");
   await page.getByRole("link", { name: "API tokens", exact: true }).click();
-  await expect(page).toHaveURL("/app/api-tokens");
+  await expect(page).toHaveURL("/api-tokens");
 });
 
 test("lists tokens with scope, prefix and dates", async ({ page }) => {
   await brain(page, "admin");
-  await page.goto("/app/api-tokens");
+  await page.goto("/api-tokens");
   const list = items(page);
   await expect(list).toHaveCount(2);
   await expect(list.first()).toContainText("Content Machine");
@@ -86,14 +86,14 @@ test("create asks for a fresh sign-in, then shows the secret once", async ({ pag
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   const state = await brain(page, "owner");
   state.reauth = true;
-  await page.goto("/app/api-tokens");
+  await page.goto("/api-tokens");
   await page.getByLabel("Token name").fill("Clients CM");
   await page.getByLabel("Scope").selectOption({ label: "Clients" });
   await page.getByLabel("Expires").selectOption({ label: "90 days" });
   await page.getByRole("button", { name: "Create token" }).click();
   const reauth = page.getByRole("alert").filter({ hasText: "needs a fresh sign-in" });
   await expect(reauth).toBeVisible();
-  await expect(reauth.getByRole("link", { name: "Sign in again" })).toHaveAttribute("href", "/login?next=%2Fapp%2Fapi-tokens");
+  await expect(reauth.getByRole("link", { name: "Sign in again" })).toHaveAttribute("href", "/login?next=%2Fapi-tokens");
   await expect(page.getByLabel(/Secret for/)).toHaveCount(0);
 
   state.reauth = false;
@@ -129,7 +129,7 @@ test("explains the token limit", async ({ page }) => {
   await page.route("**/v1/api-tokens", (route) =>
     route.request().method() === "POST" ? route.fulfill({ status: 409, json: { error: "too_many_tokens" } }) : route.fallback(),
   );
-  await page.goto("/app/api-tokens");
+  await page.goto("/api-tokens");
   await page.getByLabel("Token name").fill("One more");
   await page.getByRole("button", { name: "Create token" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "20 tokens" })).toBeVisible();
@@ -137,7 +137,7 @@ test("explains the token limit", async ({ page }) => {
 
 test("revoke asks first", async ({ page }) => {
   const state = await brain(page, "owner");
-  await page.goto("/app/api-tokens");
+  await page.goto("/api-tokens");
   await page.getByRole("button", { name: "Revoke Content Machine" }).click();
   const yes = page.getByRole("button", { name: "Yes, revoke" });
   await expect(yes).toBeFocused();
@@ -159,7 +159,7 @@ test("a member sees who manages tokens", async ({ page }) => {
     listed = true;
     return route.fallback();
   });
-  await page.goto("/app/api-tokens");
+  await page.goto("/api-tokens");
   await expect(page.getByText("Only team owners and admins can manage API tokens and the webhook.")).toBeVisible();
   await expect(page.getByLabel("Token name")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Revoke/ })).toHaveCount(0);

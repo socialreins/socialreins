@@ -9,8 +9,8 @@ import { cleanName, MAX_NAME, updateName } from "@/lib/auth";
 import { Icon, type IconName } from "@/components/ui";
 
 const links: { href: string; label: string; text: string; icon: IconName }[] = [
-  { href: "/app/security", label: "Sign-in and security", text: "How you sign in to SocialReins.", icon: "security" },
-  { href: "/app/security#passkeys", label: "Passkeys", text: "Add or remove the devices you sign in with.", icon: "fingerprint" },
+  { href: "/security", label: "Sign-in and security", text: "How you sign in to SocialReins.", icon: "security" },
+  { href: "/security#passkeys", label: "Passkeys", text: "Add or remove the devices you sign in with.", icon: "fingerprint" },
 ];
 
 const nameMessages = { invalid_name: `Use 1 to ${MAX_NAME} characters.` };

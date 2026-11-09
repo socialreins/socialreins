@@ -46,7 +46,7 @@ const replyMessages: Partial<Record<Failure, ReactNode>> = {
 };
 
 const accountsLink = (
-  <Link href="/app/connections" className="underline decoration-2 underline-offset-4">
+  <Link href="/connections" className="underline decoration-2 underline-offset-4">
     Open Accounts
   </Link>
 );
@@ -112,7 +112,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   const list = Array.isArray(inboxes) ? inboxes : [];
   const current = inboxId ? list.find((i) => i.id === inboxId) : list[0];
   const currentId = current?.id ?? inboxId;
-  const base = inboxId ? `/app/inbox/${encodeURIComponent(inboxId)}` : "/app/inbox";
+  const base = inboxId ? `/inbox/${encodeURIComponent(inboxId)}` : "/inbox";
   const href = (q: { item?: string | null; state?: ItemState }) => {
     const s = new URLSearchParams();
     if ((q.state ?? state) === "done") s.set("state", "done");
@@ -234,7 +234,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
               return (
                 <li key={i.id} className="group flex items-center gap-1">
                   <Link
-                    href={`/app/inbox/${encodeURIComponent(i.id)}`}
+                    href={`/inbox/${encodeURIComponent(i.id)}`}
                     aria-current={active ? "page" : undefined}
                     className={`flex min-w-0 flex-1 items-center gap-2 rounded-xl px-3 py-2 font-bold ${
                       active ? "bg-ink text-paper" : "text-ink-soft hover:bg-ink/5 hover:text-ink"
@@ -267,7 +267,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
       </nav>
 
       <section aria-labelledby="items-heading" className={`${show("items")} grid content-start gap-3 xl:block`}>
-        <Link href="/app/inbox" className="flex items-center gap-1 text-sm font-bold text-ink-soft hover:text-ink xl:hidden">
+        <Link href="/inbox" className="flex items-center gap-1 text-sm font-bold text-ink-soft hover:text-ink xl:hidden">
           <Icon name="left" className="size-4" />
           Inboxes
         </Link>
@@ -310,7 +310,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
               <strong className="block">No accounts connected</strong>
               <span className="text-ink-soft">Connect a Bluesky account and its comments, mentions and DMs land here.</span>
             </p>
-            <Link href="/app/connections" className="btn btn-primary justify-self-start">
+            <Link href="/connections" className="btn btn-primary justify-self-start">
               Connect an account
             </Link>
           </div>
@@ -413,7 +413,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
           }}
           onDeleted={(id) => {
             setInboxes((l) => (Array.isArray(l) ? l.filter((x) => x.id !== id) : l));
-            if (id === inboxId) router.replace("/app/inbox");
+            if (id === inboxId) router.replace("/inbox");
           }}
         />
       )}

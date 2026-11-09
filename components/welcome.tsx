@@ -24,7 +24,7 @@ const failures: Partial<Record<Exclude<AddResult, Passkey>, ReactNode>> = {
 // Shown once after sign-up. brain sends a brand-new user here; anyone else just passes through.
 export function Welcome() {
   const router = useRouter();
-  // Where to go next, e.g. back to an invitation; only a path on this site, else /app.
+  // Where to go next, e.g. back to an invitation; only a path on this site, else /home.
   const next = safeNext(useSearchParams().get("next"));
   const [me, setMe] = useState<MeResult | null>(null);
   const [state, setState] = useState<"idle" | "adding" | Exclude<AddResult, Passkey>>("idle");

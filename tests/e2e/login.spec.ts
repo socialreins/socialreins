@@ -37,7 +37,7 @@ test("passkey sign-in with a virtual authenticator goes to the app", async ({ pa
   await page.route("**/auth/me", (route) => route.fulfill({ json: user }));
   await page.goto("/login");
   await page.getByRole("button", { name: "Login with a passkey" }).click();
-  await expect(page).toHaveURL("/app");
+  await expect(page).toHaveURL("/home");
   expect(finish?.challenge_id).toBe("c1");
   expect(finish?.credential.rawId).toBe(Buffer.from("cred-1").toString("base64url"));
   expect(finish?.credential.response.userHandle).toBe(Buffer.from("user-1").toString("base64url"));
@@ -81,7 +81,7 @@ test("Continue with Google shows only when brain offers it, and starts at brain"
   await page.route("**/auth/providers", (route) => route.fulfill({ json: { google: true } }));
   await page.goto("/login");
   const google = page.getByRole("link", { name: "Continue with Google" });
-  await expect(google).toHaveAttribute("href", /\/auth\/google\/start\?next=%2Fapp&mode=login$/);
+  await expect(google).toHaveAttribute("href", /\/auth\/google\/start\?next=%2Fhome&mode=login$/);
   // Passkey first, then Google, then the email link.
   const passkeyTop = (await page.getByRole("button", { name: "Login with a passkey" }).boundingBox())!.y;
   expect(passkeyTop).toBeLessThan((await google.boundingBox())!.y);
@@ -104,7 +104,7 @@ test("sign up explains a Google account with no account yet, and starts Google w
   await page.route("**/auth/providers", (route) => route.fulfill({ json: { google: true } }));
   await page.goto("/signup?error=no_account");
   await expect(page.getByText(/no account for that Google sign-in/)).toHaveAttribute("role", "alert");
-  await expect(page.getByRole("link", { name: "Continue with Google" })).toHaveAttribute("href", /\/auth\/google\/start\?next=%2Fapp$/);
+  await expect(page.getByRole("link", { name: "Continue with Google" })).toHaveAttribute("href", /\/auth\/google\/start\?next=%2Fhome$/);
 });
 
 test("login explains Google and closed sign-up errors", async ({ page }) => {
@@ -135,7 +135,7 @@ test("login passes a safe next path to Google and drops an unsafe one", async ({
   await expect(page.getByRole("link", { name: "Continue with Google" })).toHaveAttribute("href", /\/auth\/google\/start\?next=%2Finvitations%2Fabc&mode=login$/);
   for (const bad of ["%2F%2Fevil.com", "https%3A%2F%2Fevil.com", "%2F%5Cevil.com"]) {
     await page.goto(`/login?next=${bad}`);
-    await expect(page.getByRole("link", { name: "Continue with Google" })).toHaveAttribute("href", /\/auth\/google\/start\?next=%2Fapp&mode=login$/);
+    await expect(page.getByRole("link", { name: "Continue with Google" })).toHaveAttribute("href", /\/auth\/google\/start\?next=%2Fhome&mode=login$/);
   }
 });
 
