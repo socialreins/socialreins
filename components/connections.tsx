@@ -115,6 +115,13 @@ function Picture({ url, name, size, bg = "bg-canvas" }: { url: string | null; na
   );
 }
 
+// Accounts under their network, in the order the networks are listed everywhere else.
+function byNetwork(list: Connection[]) {
+  const known = platforms.map((p) => ({ id: p.id, name: p.name, items: list.filter((c) => c.provider === p.id) }));
+  const other = list.filter((c) => !platformOf(c.provider));
+  return [...known, ...(other.length ? [{ id: "other", name: "Other", items: other }] : [])].filter((g) => g.items.length > 0);
+}
+
 export function Connections() {
   const { user } = useSession();
   return <ConnectionsPage canManage={manages(user.current_team.role)} team={user.current_team.name} />;
@@ -181,52 +188,62 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
       ) : list.length === 0 ? (
         <p className="card p-5 text-ink-soft">No accounts connected yet.{canManage ? " Use Add account to connect one." : ""}</p>
       ) : (
-        <ul className="grid gap-3 sm:grid-cols-2">
-          {list.map((c) => {
-            const platform = platformOf(c.provider);
-            const name = accountName(c);
-            return (
-              <li key={c.id} className="card grid content-start gap-3 p-4">
-                <div className="flex items-center gap-3">
-                  <span className="relative shrink-0">
-                    <Avatar connection={c} size="size-12" />
-                    {platform && (
-                      <span className="absolute -right-1 -bottom-1 grid size-5 place-items-center rounded-full bg-paper ring-2 ring-paper" style={{ color: platform.color }}>
-                        <PlatformIcon platform={platform} className="size-3.5" />
+        <div className="grid gap-6">
+          {byNetwork(list).map((group) => (
+            <section key={group.id} aria-label={group.name} className="grid gap-3">
+              <h3 className="flex items-center gap-2 font-bold">
+                {group.name}
+                <span className="text-sm font-normal text-ink-soft">{group.items.length}</span>
+              </h3>
+            <ul className="grid gap-3 sm:grid-cols-2">
+              {group.items.map((c) => {
+                const platform = platformOf(c.provider);
+                const name = accountName(c);
+                return (
+                  <li key={c.id} className="card grid content-start gap-3 p-4">
+                    <div className="flex items-center gap-3">
+                      <span className="relative shrink-0">
+                        <Avatar connection={c} size="size-12" />
+                        {platform && (
+                          <span className="absolute -right-1 -bottom-1 grid size-5 place-items-center rounded-full bg-paper ring-2 ring-paper" style={{ color: platform.color }}>
+                            <PlatformIcon platform={platform} className="size-3.5" />
+                          </span>
+                        )}
                       </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="flex items-center gap-2">
+                          <span className="min-w-0 truncate font-bold">{name}</span>
+                          {attention(c) && (
+                            <span className="badge tone shrink-0" data-status={attention(c) === "reconnect" ? "failed" : "scheduled"}>
+                              {attention(c) === "reconnect" ? "Reconnect needed" : `Ends ${endDate(c)}`}
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-sm text-ink-soft">
+                          {platform?.name ?? c.provider}
+                          {c.handle && c.display_name ? `, @${c.handle}` : ""}. Connected {date(c.created_at)}.
+                        </p>
+                      </div>
+                      <button type="button" className="icon-btn shrink-0" aria-label={`Settings for ${name}`} onClick={() => setSettingsId(c.id)}>
+                        <Icon name="settings" />
+                      </button>
+                    </div>
+                    {Array.isArray(sets) && (
+                      <ul aria-label={`Sets for ${name}`} className="flex flex-wrap gap-1.5">
+                        {setNames(c.set_ids, sets).map((n) => (
+                          <li key={n} className="badge tone">
+                            {n}
+                          </li>
+                        ))}
+                      </ul>
                     )}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="flex items-center gap-2">
-                      <span className="min-w-0 truncate font-bold">{name}</span>
-                      {attention(c) && (
-                        <span className="badge tone shrink-0" data-status={attention(c) === "reconnect" ? "failed" : "scheduled"}>
-                          {attention(c) === "reconnect" ? "Reconnect needed" : `Ends ${endDate(c)}`}
-                        </span>
-                      )}
-                    </p>
-                    <p className="text-sm text-ink-soft">
-                      {platform?.name ?? c.provider}
-                      {c.handle && c.display_name ? `, @${c.handle}` : ""}. Connected {date(c.created_at)}.
-                    </p>
-                  </div>
-                  <button type="button" className="icon-btn shrink-0" aria-label={`Settings for ${name}`} onClick={() => setSettingsId(c.id)}>
-                    <Icon name="settings" />
-                  </button>
-                </div>
-                {Array.isArray(sets) && (
-                  <ul aria-label={`Sets for ${name}`} className="flex flex-wrap gap-1.5">
-                    {setNames(c.set_ids, sets).map((n) => (
-                      <li key={n} className="badge tone">
-                        {n}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+                  </li>
+                );
+              })}
+            </ul>
+            </section>
+          ))}
+        </div>
       )}
       {!canManage && <p className="text-ink-soft">Only team owners and admins can connect or disconnect accounts.</p>}
       {opened && (

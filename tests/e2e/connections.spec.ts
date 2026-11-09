@@ -50,6 +50,15 @@ const openBluesky = async (page: Page) => {
 };
 const openSettings = (page: Page, name: string) => page.getByRole("button", { name: `Settings for ${name}` }).click();
 
+test("accounts are grouped by network", async ({ page }) => {
+  const fb = { ...alice, id: "f1", provider: "facebook", handle: null, display_name: "Page One", avatar_url: null };
+  await signedIn(page, "owner", [alice, fb]);
+  await page.goto("/connections");
+  await expect(page.getByRole("heading", { level: 3 })).toHaveText([/^Facebook/, /^Bluesky/]);
+  await expect(page.getByRole("region", { name: "Facebook" })).toContainText("Page One");
+  await expect(page.getByRole("region", { name: "Bluesky" })).toContainText("Alice");
+});
+
 test("app links to connected accounts", async ({ page }) => {
   await signedIn(page, "owner");
   await page.goto("/home");
