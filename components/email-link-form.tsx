@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { flushSync } from "react-dom";
 import Link from "next/link";
 import { captchaMessages, useTurnstile } from "@/components/turnstile";
@@ -17,6 +17,8 @@ const failures: Record<Exclude<LinkResult, "sent">, string> = {
 const linkButton =
   "justify-self-start font-bold underline decoration-signal decoration-2 underline-offset-4 hover:text-signal-deep disabled:cursor-progress disabled:opacity-70";
 
+const noSubscribe = () => () => {};
+
 type Status = LinkResult | "idle" | "sending" | "invalid_name";
 
 // The email step of logging in or signing up, on its own page. Sign-up also asks for a name.
@@ -29,6 +31,8 @@ export function EmailLinkForm({ mode }: { mode: "login" | "signup" }) {
   const [email, setEmail] = useState("");
   const doneRef = useRef<HTMLHeadingElement>(null);
   const firstRef = useRef<HTMLInputElement>(null);
+  // Keeps ?next= on the way back, for Google or passkey. Empty in the prerendered HTML.
+  const query = useSyncExternalStore(noSubscribe, () => window.location.search, () => "");
 
   useEffect(() => {
     getProviders().then((p) => setSiteKey(p.turnstileSiteKey));
@@ -122,7 +126,7 @@ export function EmailLinkForm({ mode }: { mode: "login" | "signup" }) {
           {message}
         </p>
       </form>
-      <Link href={signup ? "/signup" : "/login"} className={linkButton}>
+      <Link href={`${signup ? "/signup" : "/login"}${query}`} className={linkButton}>
         Other ways to {signup ? "sign up" : "log in"}
       </Link>
     </div>

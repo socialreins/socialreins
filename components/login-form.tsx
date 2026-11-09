@@ -100,7 +100,7 @@ export function LoginForm({ mode, linkError, next = null }: { mode: Mode; linkEr
             Continue with Google
           </a>
         )}
-        <Link href={login ? "/login/email" : "/signup/email"} className="btn btn-secondary flex h-11 w-full items-center justify-center">
+        <Link href={`${login ? "/login/email" : "/signup/email"}${query}`} className="btn btn-secondary flex h-11 w-full items-center justify-center">
           {login ? "Login with Email" : "Sign up with Email"}
         </Link>
       </div>

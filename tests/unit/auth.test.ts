@@ -101,6 +101,7 @@ describe("cleanName", () => {
   it("trims and takes 1 to 80 characters", () => {
     expect(cleanName("  Mira ")).toBe("Mira");
     expect(cleanName("   ")).toBeNull();
+    expect(cleanName("Mira\tLee")).toBeNull();
     expect(cleanName("a".repeat(80))).toBe("a".repeat(80));
     expect(cleanName("a".repeat(81))).toBeNull();
     // Counted as characters, not UTF-16 units.

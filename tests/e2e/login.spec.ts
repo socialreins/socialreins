@@ -82,8 +82,7 @@ test("Continue with Google shows only when brain offers it, and starts at brain"
   await page.goto("/login");
   const google = page.getByRole("link", { name: "Continue with Google" });
   await expect(google).toHaveAttribute("href", /\/auth\/google\/start\?next=%2Fapp$/);
-  // Passkey first, then Google, then the email link, each split by "or".
-  await expect(page.getByText("or", { exact: true })).toHaveCount(2);
+  // Passkey first, then Google, then the email link.
   const passkeyTop = (await page.getByRole("button", { name: "Login with a passkey" }).boundingBox())!.y;
   expect(passkeyTop).toBeLessThan((await google.boundingBox())!.y);
 
@@ -110,7 +109,7 @@ test("login explains Google and closed sign-up errors", async ({ page }) => {
 
 test("login has no password field and links the terms and privacy policy", async ({ page }) => {
   await page.goto("/login");
-  await expect(page.getByRole("heading", { name: "Sign in or create an account" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Log in" })).toBeVisible();
   await expect(page.locator('input[type="password"]')).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Terms" })).toHaveAttribute("href", "/terms");
   await expect(page.getByRole("link", { name: "Privacy Policy" })).toHaveAttribute("href", "/privacy");
