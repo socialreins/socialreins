@@ -8,9 +8,9 @@ test("login sends a link and shows the check-your-email state", async ({ page })
     body = route.request().postDataJSON();
     return route.fulfill({ status: 202, json: { status: "sent" } });
   });
-  await page.goto("/login");
+  await page.goto("/login/email");
   await page.getByLabel("Email").fill("someone@example.com");
-  await page.getByRole("button", { name: "Email me a link" }).click();
+  await page.getByRole("button", { name: "Login with a link" }).click();
   const done = page.getByRole("heading", { name: "Check your email" });
   await expect(done).toBeFocused();
   expect(body).toEqual({ email: "someone@example.com" });
@@ -18,10 +18,29 @@ test("login sends a link and shows the check-your-email state", async ({ page })
   await expect(page.getByLabel("Email")).toBeFocused();
 });
 
+test("sign up asks for a name and sends it with the email", async ({ page }) => {
+  let body: unknown;
+  await page.route("**/auth/link", (route) => {
+    body = route.request().postDataJSON();
+    return route.fulfill({ status: 202, json: { status: "sent" } });
+  });
+  await page.goto("/login");
+  await page.getByRole("link", { name: "Sign up", exact: true }).click();
+  await page.getByRole("link", { name: "Sign up with Email" }).click();
+  await expect(page).toHaveURL("/signup/email");
+  await page.getByLabel("Name").fill("  Ann Lee ");
+  await page.getByLabel("Email").fill("ann@example.com");
+  await page.getByRole("button", { name: "Sign up with a link" }).click();
+  await expect(page.getByRole("heading", { name: "Check your email" })).toBeFocused();
+  expect(body).toEqual({ email: "ann@example.com", name: "Ann Lee" });
+});
+
 test("login explains rate limits and bad links", async ({ page }) => {
   await page.route("**/auth/link", (route) => route.fulfill({ status: 429, json: { error: "rate_limited" } }));
   await page.goto("/login?error=invalid_link");
   await expect(page.getByText(/expired or was already used/)).toHaveAttribute("role", "alert");
+  await page.getByRole("link", { name: "Login with Email" }).click();
+  await expect(page).toHaveURL("/login/email");
   await page.getByLabel("Email").fill("someone@example.com");
   await page.keyboard.press("Enter");
   await expect(page.getByRole("status")).toHaveText(/Too many attempts/);
@@ -31,13 +50,13 @@ test("login shows a generic message for an unknown or prototype-named error", as
   for (const error of ["__proto__", "constructor", "something_new"]) {
     await page.goto(`/login?error=${error}`);
     await expect(page.getByText("That sign-in didn't work. Try again, or ask for an email link below.")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Email me a link" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Login with Email" })).toBeVisible();
   }
 });
 
 test("login form is in the server-rendered HTML", async ({ request }) => {
   const html = await (await request.get("/login")).text();
-  expect(html).toContain("Email me a link");
+  expect(html).toContain("Login with Email");
 });
 
 test("app shows the signed-in user and signs out", async ({ page }) => {

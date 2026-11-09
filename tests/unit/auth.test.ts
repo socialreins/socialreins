@@ -26,6 +26,13 @@ describe("requestLink", () => {
     expect(JSON.parse(fetch.mock.calls[0]![1].body)).toEqual({ email: "a@b.co", turnstile_token: "tok" });
   });
 
+  it("sends the sign-up name when there is one", async () => {
+    const fetch = respond(202);
+    vi.stubGlobal("fetch", fetch);
+    await requestLink("a@b.co", null, "Ann");
+    expect(JSON.parse(fetch.mock.calls[0]![1].body)).toEqual({ email: "a@b.co", name: "Ann" });
+  });
+
   it.each([
     [422, "invalid"],
     [429, "rate_limited"],
@@ -94,6 +101,7 @@ describe("cleanName", () => {
   it("trims and takes 1 to 80 characters", () => {
     expect(cleanName("  Mira ")).toBe("Mira");
     expect(cleanName("   ")).toBeNull();
+    expect(cleanName("Mira\tLee")).toBeNull();
     expect(cleanName("a".repeat(80))).toBe("a".repeat(80));
     expect(cleanName("a".repeat(81))).toBeNull();
     // Counted as characters, not UTF-16 units.

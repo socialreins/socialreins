@@ -1,18 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { flushSync } from "react-dom";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { captchaMessages, useTurnstile } from "@/components/turnstile";
-import { getProviders, googleStartUrl, requestLink, safeNext, signInWithPasskey, type Failure, type LinkResult } from "@/lib/auth";
+import { getProviders, googleStartUrl, safeNext, signInWithPasskey, type Failure } from "@/lib/auth";
 
-const failures: Record<Exclude<LinkResult, "sent">, string> = {
-  ...captchaMessages,
-  invalid: "That email address doesn't look right. Check it and try again.",
-  rate_limited: "Too many attempts from this connection. Wait a minute, then try again.",
-  timeout: "Sign-in took too long to answer. Try again in a moment.",
-  error: "Sign-in couldn't be reached. Try again in a moment.",
-};
+const rateLimited = "Too many attempts from this connection. Wait a minute, then try again.";
+const unreachable = "Sign-in couldn't be reached. Try again in a moment.";
 
 // Values brain puts in /login?error= when an emailed link or Google sign-in cannot be used.
 const linkErrors: Record<string, string> = {
@@ -26,15 +21,14 @@ const passkeyFailures: Partial<Record<Failure | "cancelled", string>> = {
   invalid_passkey: "That passkey didn't work. Try another, or sign in with an email link.",
   invalid_challenge: "That took too long. Try again.",
   cancelled: "Passkey sign-in was cancelled or no passkey was found on this device.",
-  rate_limited: failures.rate_limited,
-  timeout: failures.timeout,
+  rate_limited: rateLimited,
+  timeout: "Sign-in took too long to answer. Try again in a moment.",
 };
 
 const noSubscribe = () => () => {};
 const hasWebAuthn = () => typeof window.PublicKeyCredential === "function";
 
-const linkButton =
-  "justify-self-start font-bold underline decoration-signal decoration-2 underline-offset-4 hover:text-signal-deep disabled:cursor-progress disabled:opacity-70";
+type Mode = "login" | "signup";
 
 // Google's own mark, in its four colors, as its sign-in button guidelines require.
 function GoogleMark() {
@@ -49,115 +43,55 @@ function GoogleMark() {
 }
 
 // Reads ?error= on the client; the page shows <LoginForm linkError={null} /> as its server-rendered fallback.
-export function LoginFormWithError() {
+export function LoginFormWithError({ mode }: { mode: Mode }) {
   const params = useSearchParams();
-  return <LoginForm linkError={params.get("error")} next={params.get("next")} />;
+  return <LoginForm mode={mode} linkError={params.get("error")} next={params.get("next")} />;
 }
 
-// `next`: where to go after Google or passkey sign-in, if it is a path on this site.
-export function LoginForm({ linkError, next = null }: { linkError: string | null; next?: string | null }) {
+// The ways to log in or sign up. `next`: where to go after Google or passkey sign-in, if it is a path on this site.
+export function LoginForm({ mode, linkError, next = null }: { mode: Mode; linkError: string | null; next?: string | null }) {
   const router = useRouter();
+  const login = mode === "login";
   const [google, setGoogle] = useState(false);
-  const [siteKey, setSiteKey] = useState<string | null>();
-  const turnstile = useTurnstile(siteKey, "login");
   const [passkey, setPasskey] = useState<"idle" | "pending" | Failure | "cancelled">("idle");
   // Only known after hydration, so the server HTML never shows a button the browser can't use.
   const passkeys = useSyncExternalStore(noSubscribe, hasWebAuthn, () => false);
-  const [status, setStatus] = useState<LinkResult | "idle" | "sending">("idle");
-  const [email, setEmail] = useState("");
-  const [submitted, setSubmitted] = useState(false);
-  const doneRef = useRef<HTMLHeadingElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [tried, setTried] = useState(false);
 
   useEffect(() => {
-    getProviders().then((p) => {
-      setGoogle(p.google);
-      setSiteKey(p.turnstileSiteKey);
-    });
+    getProviders().then((p) => setGoogle(p.google));
   }, []);
 
-  useEffect(() => {
-    if (status === "sent") doneRef.current?.focus();
-  }, [status]);
-
-  async function onSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const value = email.trim();
-    setSubmitted(true);
-    // Commit the empty message first so a repeated identical error is announced again.
-    flushSync(() => {
-      setStatus("sending");
-      setPasskey("idle");
-    });
-    const result = await requestLink(value, turnstile.token);
-    turnstile.reset();
-    setStatus(result);
-  }
-
   async function onPasskey() {
-    setSubmitted(true);
-    flushSync(() => {
-      setPasskey("pending");
-      setStatus("idle");
-    });
+    setTried(true);
+    flushSync(() => setPasskey("pending"));
     const r = await signInWithPasskey();
     if (r === "ok") return router.push(safeNext(next));
     setPasskey(r);
   }
 
-  if (status === "sent") {
-    return (
-      <div className="grid gap-3">
-        <h2 id="login-done" ref={doneRef} tabIndex={-1} className="font-display text-2xl font-extrabold tracking-tight">
-          Check your email
-        </h2>
-        <p className="waitlist-done">
-          If {email.trim()} can sign in, a link is on its way. It works once and expires in 15 minutes.
-        </p>
-        <button
-          type="button"
-          className={linkButton}
-          onClick={() => {
-            flushSync(() => setStatus("idle"));
-            inputRef.current?.focus();
-          }}
-        >
-          Use a different email
-        </button>
-      </div>
-    );
-  }
-
-  const failed = status !== "idle" && status !== "sending";
   const passkeyFailed = passkey !== "idle" && passkey !== "pending";
-  const busy = status === "sending" || passkey === "pending";
+  const query = next ? `?next=${encodeURIComponent(next)}` : "";
   return (
     <div className="grid gap-6">
-      {linkError !== null && !submitted && (
+      {linkError !== null && !tried && (
         <p role="alert" className="waitlist-error">
           {Object.hasOwn(linkErrors, linkError) ? linkErrors[linkError] : unknownLinkError}
         </p>
       )}
-      {passkeys && (
-        <div className="grid gap-2">
-          <button type="button" className="btn btn-primary h-11 w-full" disabled={busy} onClick={onPasskey}>
-            {passkey === "pending" ? "Waiting for your passkey..." : "Sign in with a passkey"}
+      <div className="grid gap-3">
+        {login && passkeys && (
+          <button type="button" className="btn btn-primary h-11 w-full" disabled={passkey === "pending"} onClick={onPasskey}>
+            {passkey === "pending" ? "Waiting for your passkey..." : "Login with a passkey"}
           </button>
-          {passkeyFailed && (
-            // Cancelling is the person's own choice, so it is a quiet status, not an alert.
-            <p role={passkey === "cancelled" ? "status" : "alert"} className="waitlist-error">
-              {passkeyFailures[passkey] ?? failures.error}
-            </p>
-          )}
-          <p className="flex items-center gap-3 text-sm text-ink-soft">
-            <span aria-hidden="true" className="h-px flex-1 bg-ink/15" />
-            or
-            <span aria-hidden="true" className="h-px flex-1 bg-ink/15" />
+        )}
+        {passkeyFailed && (
+          // Cancelling is the person's own choice, so it is a quiet status, not an alert.
+          <p role={passkey === "cancelled" ? "status" : "alert"} className="waitlist-error">
+            {passkeyFailures[passkey] ?? unreachable}
           </p>
-        </div>
-      )}
-      {google && (
-        <>
+        )}
+        {google && (
           <a
             href={googleStartUrl(next)}
             className="flex h-11 w-full items-center justify-center gap-2.5 rounded-full border border-[#747775] bg-white px-3 text-[0.95rem] font-medium text-[#1f1f1f] [font-family:Roboto,Arial,sans-serif] hover:bg-[#f8f9fa]"
@@ -165,39 +99,17 @@ export function LoginForm({ linkError, next = null }: { linkError: string | null
             <GoogleMark />
             Continue with Google
           </a>
-          <p className="flex items-center gap-3 text-sm text-ink-soft">
-            <span aria-hidden="true" className="h-px flex-1 bg-ink/15" />
-            or
-            <span aria-hidden="true" className="h-px flex-1 bg-ink/15" />
-          </p>
-        </>
-      )}
-      <form onSubmit={onSubmit} className="waitlist max-w-none">
-        <label htmlFor="login-email">Email</label>
-        <input
-          ref={inputRef}
-          id="login-email"
-          name="email"
-          type="email"
-          required
-          autoComplete="email"
-          placeholder="you@example.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          aria-invalid={status === "invalid" || undefined}
-          aria-describedby="login-note login-message"
-        />
-        {turnstile.widget}
-        <button type="submit" disabled={busy || turnstile.missing}>
-          {status === "sending" ? "Sending..." : "Email me a link"}
-        </button>
-        <p id="login-note" className="waitlist-note">
-          New here? The link creates your account.
-        </p>
-        <p id="login-message" role="status" aria-live="polite" className={failed ? "waitlist-error" : "waitlist-empty"}>
-          {failed ? failures[status] : ""}
-        </p>
-      </form>
+        )}
+        <Link href={`${login ? "/login/email" : "/signup/email"}${query}`} className="btn btn-secondary flex h-11 w-full items-center justify-center">
+          {login ? "Login with Email" : "Sign up with Email"}
+        </Link>
+      </div>
+      <p className="text-ink-soft">
+        {login ? "New here? " : "Already have an account? "}
+        <Link href={`${login ? "/signup" : "/login"}${query}`} className="font-bold underline decoration-signal decoration-2 underline-offset-4 hover:text-signal-deep">
+          {login ? "Sign up" : "Log in"}
+        </Link>
+      </p>
     </div>
   );
 }

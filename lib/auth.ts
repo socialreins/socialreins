@@ -24,12 +24,12 @@ const opts = (init: RequestInit = {}): RequestInit => ({
 });
 
 // The API answers 202 for any valid email, so the reply never says whether an account exists.
-// `token` is the Turnstile token, sent only when brain has Turnstile on.
-export async function requestLink(email: string, token: string | null = null): Promise<LinkResult> {
+// `token` is the Turnstile token, sent only when brain has Turnstile on. `name` is the sign-up form's.
+export async function requestLink(email: string, token: string | null = null, name: string | null = null): Promise<LinkResult> {
   try {
     const res = await fetch(
       `${apiUrl}/auth/link`,
-      opts({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, ...(token && { turnstile_token: token }) }) }),
+      opts({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, ...(name && { name }), ...(token && { turnstile_token: token }) }) }),
     );
     if (res.ok) return "sent";
     if (res.status === 422 || res.status === 503) {
@@ -282,10 +282,10 @@ export function safeNext(raw: string | null | undefined): string {
 export const googleStartUrl = (next?: string | null) =>
   `${apiUrl}/auth/google/start?next=${encodeURIComponent(safeNext(next))}`;
 
-// brain trims the name and takes 1 to 80 characters (code points), else 422 invalid_name.
+// brain trims the name and takes 1 to 80 characters (code points), no control characters, else 422 invalid_name.
 export const MAX_NAME = 80;
 export const cleanName = (name: string) => {
   const n = name.trim();
-  return n && [...n].length <= MAX_NAME ? n : null;
+  return n && [...n].length <= MAX_NAME && !/\p{Cc}/u.test(n) ? n : null;
 };
 export const updateName = (name: string) => api<User>("/auth/me", "PATCH", { name });

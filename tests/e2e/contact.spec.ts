@@ -105,11 +105,11 @@ test("with Turnstile on, the login link request sends the token and maps captcha
     sent = body(route.request());
     return route.fulfill({ status: 503, json: { error: "captcha_unavailable" } });
   });
-  await page.goto("/login");
+  await page.goto("/login/email");
   await page.getByLabel("Email", { exact: true }).fill("someone@example.com");
-  await expect(page.getByRole("button", { name: "Email me a link" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Login with a link" })).toBeDisabled();
   await solve(page, "tok-l");
-  await page.getByRole("button", { name: "Email me a link" }).click();
+  await page.getByRole("button", { name: "Login with a link" }).click();
   await expect(page.locator("#login-message")).toHaveText("We couldn't check that right now. Try again in a minute.");
   expect(sent).toEqual({ email: "someone@example.com", turnstile_token: "tok-l" });
 });
@@ -122,16 +122,16 @@ test("with Turnstile on, Use a different email renders the widget again and send
     sent.push(body(route.request()));
     return route.fulfill({ status: 202, json: {} });
   });
-  await page.goto("/login");
+  await page.goto("/login/email");
   await page.getByLabel("Email", { exact: true }).fill("one@example.com");
   await solve(page, "tok-1");
-  await page.getByRole("button", { name: "Email me a link" }).click();
+  await page.getByRole("button", { name: "Login with a link" }).click();
   await page.getByRole("button", { name: "Use a different email" }).click();
   await expect.poll(() => page.evaluate(() => window.__renders)).toBe(2);
   await page.getByLabel("Email", { exact: true }).fill("two@example.com");
-  await expect(page.getByRole("button", { name: "Email me a link" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Login with a link" })).toBeDisabled();
   await solve(page, "tok-2");
-  await page.getByRole("button", { name: "Email me a link" }).click();
+  await page.getByRole("button", { name: "Login with a link" }).click();
   await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
   expect(sent).toEqual([
     { email: "one@example.com", turnstile_token: "tok-1" },
@@ -155,9 +155,9 @@ test("with Turnstile off, the waitlist and login link submit without a token", a
   await page.getByLabel("Email for the hosted version waitlist").fill("someone@example.com");
   await page.getByRole("button", { name: "Join the waitlist" }).click();
   await expect(page.getByRole("status")).toHaveText(/on the waitlist/);
-  await page.goto("/login");
+  await page.goto("/login/email");
   await page.getByLabel("Email", { exact: true }).fill("someone@example.com");
-  await page.getByRole("button", { name: "Email me a link" }).click();
+  await page.getByRole("button", { name: "Login with a link" }).click();
   await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
   expect(sent).toEqual([{ email: "someone@example.com", source: "landing" }, { email: "someone@example.com" }]);
 });

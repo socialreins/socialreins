@@ -36,7 +36,7 @@ test("passkey sign-in with a virtual authenticator goes to the app", async ({ pa
   });
   await page.route("**/auth/me", (route) => route.fulfill({ json: user }));
   await page.goto("/login");
-  await page.getByRole("button", { name: "Sign in with a passkey" }).click();
+  await page.getByRole("button", { name: "Login with a passkey" }).click();
   await expect(page).toHaveURL("/app");
   expect(finish?.challenge_id).toBe("c1");
   expect(finish?.credential.rawId).toBe(Buffer.from("cred-1").toString("base64url"));
@@ -50,7 +50,7 @@ test("passkey sign-in explains a rate limit", async ({ page }) => {
     route.fulfill({ status: 429, json: { error: "rate_limited" } }),
   );
   await page.goto("/login");
-  await page.getByRole("button", { name: "Sign in with a passkey" }).click();
+  await page.getByRole("button", { name: "Login with a passkey" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "Too many attempts" })).toBeVisible();
 });
 
@@ -60,8 +60,8 @@ test("passkey button is hidden without WebAuthn", async ({ page }) => {
     delete window.PublicKeyCredential;
   });
   await page.goto("/login");
-  await expect(page.getByRole("button", { name: "Email me a link" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Sign in with a passkey" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Login with Email" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Login with a passkey" })).toHaveCount(0);
 });
 
 test("a cancelled passkey prompt is a quiet status, not an alert", async ({ page }) => {
@@ -72,7 +72,7 @@ test("a cancelled passkey prompt is a quiet status, not an alert", async ({ page
     route.fulfill({ json: { challenge_id: "c1", options: { publicKey: { challenge: "3q2-7w", allowCredentials: [] } } } }),
   );
   await page.goto("/login");
-  await page.getByRole("button", { name: "Sign in with a passkey" }).click();
+  await page.getByRole("button", { name: "Login with a passkey" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Passkey sign-in was cancelled" })).toBeVisible();
   await expect(page.getByRole("alert").filter({ hasText: "Passkey sign-in was cancelled" })).toHaveCount(0);
 });
@@ -82,22 +82,21 @@ test("Continue with Google shows only when brain offers it, and starts at brain"
   await page.goto("/login");
   const google = page.getByRole("link", { name: "Continue with Google" });
   await expect(google).toHaveAttribute("href", /\/auth\/google\/start\?next=%2Fapp$/);
-  // Passkey first, then Google, then the email link, each split by "or".
-  await expect(page.getByText("or", { exact: true })).toHaveCount(2);
-  const passkeyTop = (await page.getByRole("button", { name: "Sign in with a passkey" }).boundingBox())!.y;
+  // Passkey first, then Google, then the email link.
+  const passkeyTop = (await page.getByRole("button", { name: "Login with a passkey" }).boundingBox())!.y;
   expect(passkeyTop).toBeLessThan((await google.boundingBox())!.y);
 
   await page.unrouteAll();
   await page.route("**/auth/providers", (route) => route.fulfill({ json: { google: false } }));
   await page.reload();
-  await expect(page.getByRole("button", { name: "Email me a link" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Login with Email" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Continue with Google" })).toHaveCount(0);
 });
 
 test("Continue with Google stays hidden when brain can't say", async ({ page }) => {
   await page.route("**/auth/providers", (route) => route.fulfill({ status: 500 }));
   await page.goto("/login");
-  await expect(page.getByRole("button", { name: "Email me a link" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Login with Email" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Continue with Google" })).toHaveCount(0);
 });
 
@@ -110,7 +109,7 @@ test("login explains Google and closed sign-up errors", async ({ page }) => {
 
 test("login has no password field and links the terms and privacy policy", async ({ page }) => {
   await page.goto("/login");
-  await expect(page.getByRole("heading", { name: "Sign in or create an account" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Log in" })).toBeVisible();
   await expect(page.locator('input[type="password"]')).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Terms" })).toHaveAttribute("href", "/terms");
   await expect(page.getByRole("link", { name: "Privacy Policy" })).toHaveAttribute("href", "/privacy");
