@@ -103,7 +103,7 @@ test("Continue with Google stays hidden when brain can't say", async ({ page }) 
 test("sign up explains a Google account with no account yet, and starts Google without login mode", async ({ page }) => {
   await page.route("**/auth/providers", (route) => route.fulfill({ json: { google: true } }));
   await page.goto("/signup?error=no_account");
-  await expect(page.getByRole("alert")).toHaveText(/no account for that Google sign-in/);
+  await expect(page.getByText(/no account for that Google sign-in/)).toHaveAttribute("role", "alert");
   await expect(page.getByRole("link", { name: "Continue with Google" })).toHaveAttribute("href", /\/auth\/google\/start\?next=%2Fapp$/);
 });
 
