@@ -26,6 +26,13 @@ describe("requestLink", () => {
     expect(JSON.parse(fetch.mock.calls[0]![1].body)).toEqual({ email: "a@b.co", turnstile_token: "tok" });
   });
 
+  it("sends the sign-up name when there is one", async () => {
+    const fetch = respond(202);
+    vi.stubGlobal("fetch", fetch);
+    await requestLink("a@b.co", null, "Ann");
+    expect(JSON.parse(fetch.mock.calls[0]![1].body)).toEqual({ email: "a@b.co", name: "Ann" });
+  });
+
   it.each([
     [422, "invalid"],
     [429, "rate_limited"],

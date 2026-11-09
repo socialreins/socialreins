@@ -24,12 +24,12 @@ const opts = (init: RequestInit = {}): RequestInit => ({
 });
 
 // The API answers 202 for any valid email, so the reply never says whether an account exists.
-// `token` is the Turnstile token, sent only when brain has Turnstile on.
-export async function requestLink(email: string, token: string | null = null): Promise<LinkResult> {
+// `token` is the Turnstile token, sent only when brain has Turnstile on. `name` is the sign-up form's.
+export async function requestLink(email: string, token: string | null = null, name: string | null = null): Promise<LinkResult> {
   try {
     const res = await fetch(
       `${apiUrl}/auth/link`,
-      opts({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, ...(token && { turnstile_token: token }) }) }),
+      opts({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, ...(name && { name }), ...(token && { turnstile_token: token }) }) }),
     );
     if (res.ok) return "sent";
     if (res.status === 422 || res.status === 503) {
