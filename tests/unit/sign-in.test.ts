@@ -69,6 +69,7 @@ describe("googleStartUrl and safeNext", () => {
     expect(googleStartUrl()).toBe(`${apiUrl}/auth/google/start?next=%2Fapp`);
     expect(googleStartUrl("/invitations/abc?x=1")).toBe(`${apiUrl}/auth/google/start?next=%2Finvitations%2Fabc%3Fx%3D1`);
     expect(googleStartUrl("https://evil.com")).toBe(`${apiUrl}/auth/google/start?next=%2Fapp`);
+    expect(googleStartUrl(null, true)).toBe(`${apiUrl}/auth/google/start?next=%2Fapp&mode=login`);
   });
 
   it.each([

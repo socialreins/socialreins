@@ -14,6 +14,7 @@ const linkErrors: Record<string, string> = {
   invalid_link: "That sign-in link has expired or was already used. Ask for a new one below.",
   registration_disabled: "New accounts are closed on this server, so you can't create one here.",
   google_failed: "Google sign-in didn't finish. Try again, or use an email link instead.",
+  no_account: "There's no account for that Google sign-in yet. Sign up below to create one.",
 };
 const unknownLinkError = "That sign-in didn't work. Try again, or ask for an email link below.";
 
@@ -93,7 +94,7 @@ export function LoginForm({ mode, linkError, next = null }: { mode: Mode; linkEr
         )}
         {google && (
           <a
-            href={googleStartUrl(next)}
+            href={googleStartUrl(next, login)}
             className="flex h-11 w-full items-center justify-center gap-2.5 rounded-full border border-[#747775] bg-white px-3 text-[0.95rem] font-medium text-[#1f1f1f] [font-family:Roboto,Arial,sans-serif] hover:bg-[#f8f9fa]"
           >
             <GoogleMark />

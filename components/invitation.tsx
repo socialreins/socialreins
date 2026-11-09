@@ -50,6 +50,10 @@ export function InvitationView({ token }: { token: string }) {
           Sign in as {preview.email} first, then open this invitation link again to accept it.{" "}
           <Link href="/login" className={linkButton}>
             Sign in
+          </Link>{" "}
+          or{" "}
+          <Link href="/signup" className={linkButton}>
+            sign up
           </Link>
         </p>
       ) : me === "error" ? (

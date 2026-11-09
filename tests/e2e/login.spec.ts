@@ -81,7 +81,7 @@ test("Continue with Google shows only when brain offers it, and starts at brain"
   await page.route("**/auth/providers", (route) => route.fulfill({ json: { google: true } }));
   await page.goto("/login");
   const google = page.getByRole("link", { name: "Continue with Google" });
-  await expect(google).toHaveAttribute("href", /\/auth\/google\/start\?next=%2Fapp$/);
+  await expect(google).toHaveAttribute("href", /\/auth\/google\/start\?next=%2Fapp&mode=login$/);
   // Passkey first, then Google, then the email link.
   const passkeyTop = (await page.getByRole("button", { name: "Login with a passkey" }).boundingBox())!.y;
   expect(passkeyTop).toBeLessThan((await google.boundingBox())!.y);
@@ -100,6 +100,13 @@ test("Continue with Google stays hidden when brain can't say", async ({ page }) 
   await expect(page.getByRole("link", { name: "Continue with Google" })).toHaveCount(0);
 });
 
+test("sign up explains a Google account with no account yet, and starts Google without login mode", async ({ page }) => {
+  await page.route("**/auth/providers", (route) => route.fulfill({ json: { google: true } }));
+  await page.goto("/signup?error=no_account");
+  await expect(page.getByRole("alert")).toHaveText(/no account for that Google sign-in/);
+  await expect(page.getByRole("link", { name: "Continue with Google" })).toHaveAttribute("href", /\/auth\/google\/start\?next=%2Fapp$/);
+});
+
 test("login explains Google and closed sign-up errors", async ({ page }) => {
   await page.goto("/login?error=google_failed");
   await expect(page.getByRole("alert").filter({ hasText: "Google sign-in didn't finish" })).toBeVisible();
@@ -107,9 +114,16 @@ test("login explains Google and closed sign-up errors", async ({ page }) => {
   await expect(page.getByRole("alert").filter({ hasText: "New accounts are closed on this server" })).toBeVisible();
 });
 
-test("login has no password field and links the terms and privacy policy", async ({ page }) => {
+test("only sign up shows the terms, and neither page has a password field", async ({ page }) => {
   await page.goto("/login");
   await expect(page.getByRole("heading", { name: "Log in" })).toBeVisible();
+  await expect(page.locator('input[type="password"]')).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Terms" })).toHaveCount(0);
+  await page.goto("/login/email");
+  await expect(page.getByRole("link", { name: "Terms" })).toHaveCount(0);
+  await page.goto("/signup/email");
+  await expect(page.getByRole("link", { name: "Terms" })).toHaveAttribute("href", "/terms");
+  await page.goto("/signup");
   await expect(page.locator('input[type="password"]')).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Terms" })).toHaveAttribute("href", "/terms");
   await expect(page.getByRole("link", { name: "Privacy Policy" })).toHaveAttribute("href", "/privacy");
@@ -118,10 +132,10 @@ test("login has no password field and links the terms and privacy policy", async
 test("login passes a safe next path to Google and drops an unsafe one", async ({ page }) => {
   await page.route("**/auth/providers", (route) => route.fulfill({ json: { google: true } }));
   await page.goto("/login?next=%2Finvitations%2Fabc");
-  await expect(page.getByRole("link", { name: "Continue with Google" })).toHaveAttribute("href", /\/auth\/google\/start\?next=%2Finvitations%2Fabc$/);
+  await expect(page.getByRole("link", { name: "Continue with Google" })).toHaveAttribute("href", /\/auth\/google\/start\?next=%2Finvitations%2Fabc&mode=login$/);
   for (const bad of ["%2F%2Fevil.com", "https%3A%2F%2Fevil.com", "%2F%5Cevil.com"]) {
     await page.goto(`/login?next=${bad}`);
-    await expect(page.getByRole("link", { name: "Continue with Google" })).toHaveAttribute("href", /\/auth\/google\/start\?next=%2Fapp$/);
+    await expect(page.getByRole("link", { name: "Continue with Google" })).toHaveAttribute("href", /\/auth\/google\/start\?next=%2Fapp&mode=login$/);
   }
 });
 

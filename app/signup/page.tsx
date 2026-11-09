@@ -7,7 +7,7 @@ export const metadata: Metadata = { title: "Sign up for SocialReins" };
 
 export default function Signup() {
   return (
-    <AuthPage title="Create your account">
+    <AuthPage title="Create your account" terms>
       <Suspense fallback={<LoginForm mode="signup" linkError={null} />}>
         <LoginFormWithError mode="signup" />
       </Suspense>
