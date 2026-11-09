@@ -44,7 +44,7 @@ const connectMessages: Partial<Record<Failure, string>> = {
     "Bluesky didn't accept that password. Use an app password made in Bluesky settings, not your main Bluesky password.",
   unsupported_pds: "That account is hosted on a server SocialReins can't connect to.",
   bluesky_unreachable: "Bluesky couldn't be reached. Try again in a moment.",
-  timeout: "Bluesky is taking a long time to answer. The account may still connect, so check the list above before trying again.",
+  timeout: "Bluesky is taking a long time to answer. The account may still connect, so close this and check your accounts before trying again.",
   rate_limited: "Too many connection attempts. Wait a while, then try again.",
   forbidden: "Only team owners and admins can connect or disconnect accounts.",
   not_found: "That account was already disconnected.",
@@ -266,11 +266,14 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
 function Modal({
   title,
   dialogRef,
+  busy,
   onClose,
   children,
 }: {
   title: string;
   dialogRef: RefObject<HTMLDialogElement | null>;
+  // While a request runs the modal stays open, so its failure has somewhere to show.
+  busy: boolean;
   onClose: () => void;
   children: ReactNode;
 }) {
@@ -282,6 +285,7 @@ function Modal({
     <dialog
       ref={dialogRef}
       aria-labelledby={titleId}
+      onCancel={(e) => busy && e.preventDefault()}
       onClose={onClose}
       className="m-auto w-[min(32rem,calc(100vw-2rem))] rounded-2xl bg-paper p-0 text-ink shadow-2xl backdrop:bg-ink/40"
     >
@@ -290,7 +294,7 @@ function Modal({
           <h2 id={titleId} className="min-w-0 truncate font-display text-xl font-extrabold tracking-tight">
             {title}
           </h2>
-          <button type="button" className="icon-btn shrink-0" aria-label="Close" onClick={() => dialogRef.current?.close()}>
+          <button type="button" className="icon-btn shrink-0" aria-label="Close" disabled={busy} onClick={() => dialogRef.current?.close()}>
             <Icon name="close" />
           </button>
         </div>
@@ -366,7 +370,7 @@ function AccountSettings({
   }
 
   return (
-    <Modal title={`Settings for ${name}`} dialogRef={ref} onClose={onClose}>
+    <Modal title={`Settings for ${name}`} dialogRef={ref} busy={busy !== null} onClose={onClose}>
       <p className="text-ink-soft">
         {platform}
         {c.handle && c.display_name ? `, @${c.handle}` : ""}. Connected {date(c.created_at)}.
@@ -598,10 +602,18 @@ function AddAccount({
   const [handle, setHandle] = useState("");
   const [appPassword, setAppPassword] = useState("");
   const { busy, problem, done, run } = useAction();
+  const blueskyRef = useRef<HTMLButtonElement>(null);
+  const handleRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     listProviders().then(setProviders);
   }, []);
+
+  // The button pressed goes away with its step, so focus moves with it.
+  function go(next: "choose" | "bluesky") {
+    flushSync(() => setStep(next));
+    (next === "bluesky" ? handleRef : blueskyRef).current?.focus();
+  }
 
   async function onConnect(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -624,7 +636,7 @@ function AddAccount({
 
   const known = Array.isArray(providers) ? providers : [];
   return (
-    <Modal title={step === "bluesky" ? "Connect Bluesky" : "Add account"} dialogRef={ref} onClose={onClose}>
+    <Modal title={step === "bluesky" ? "Connect Bluesky" : "Add account"} dialogRef={ref} busy={busy !== null} onClose={onClose}>
       {providers === null ? (
         <div role="status" className="h-40 rounded-2xl bg-ink/5 motion-safe:animate-pulse">
           <span className="sr-only">Loading platforms...</span>
@@ -648,7 +660,7 @@ function AddAccount({
                       <span className="ml-auto text-xs font-normal">{stateText[state]}</span>
                     </span>
                   ) : p.id === "bluesky" ? (
-                    <button type="button" className={`${tile} w-full hover:border-ink`} onClick={() => setStep("bluesky")}>
+                    <button ref={blueskyRef} type="button" className={`${tile} w-full hover:border-ink`} onClick={() => go("bluesky")}>
                       <span style={{ color: p.color }}>{icon}</span>
                       {p.name}
                     </button>
@@ -674,6 +686,7 @@ function AddAccount({
               Bluesky handle
             </label>
             <input
+              ref={handleRef}
               id="bluesky-handle"
               required
               autoComplete="off"
@@ -713,7 +726,7 @@ function AddAccount({
             <button type="submit" className="btn btn-primary btn-sm" disabled={busy !== null}>
               {busy ? "Connecting..." : "Connect Bluesky"}
             </button>
-            <button type="button" className="btn btn-quiet btn-sm" disabled={busy !== null} onClick={() => setStep("choose")}>
+            <button type="button" className="btn btn-quiet btn-sm" disabled={busy !== null} onClick={() => go("choose")}>
               Back
             </button>
           </div>
