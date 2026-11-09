@@ -16,7 +16,7 @@ export function SessionLink({ className }: { className: string }) {
     </Link>
   ) : (
     <Link href="/login" className={className}>
-      Sign in
+      Log in
     </Link>
   );
 }
