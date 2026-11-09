@@ -1163,7 +1163,7 @@ function ImageLinks({ media, max, post, onChange }: { media: string[]; max: numb
       {!post && (
         <p className="hint">
           Up to {max}. Public https links to image, video or PDF files, or Google Drive share links. Bluesky takes JPEG, PNG, WebP or GIF of 1 MB
-          or less; Instagram takes JPEG, MP4 or MOV; LinkedIn takes JPEG, PNG or GIF images, or one MP4 video or one PDF (posted as a document, the swipeable carousel) on its own; YouTube takes exactly one MP4 or MOV video. X takes up to 4 JPEG, PNG or WebP images, or one GIF or MP4 or MOV video. TikTok takes one MP4 or MOV video, or up to 35 JPEG or WebP photos.
+          or less, or one MP4 or MOV video; Instagram takes JPEG, MP4 or MOV; LinkedIn takes JPEG, PNG or GIF images, or one MP4 video or one PDF (posted as a document, the swipeable carousel) on its own; YouTube takes exactly one MP4 or MOV video. X takes up to 4 JPEG, PNG or WebP images, or one GIF or MP4 or MOV video. TikTok takes one MP4 or MOV video, or up to 35 JPEG or WebP photos.
         </p>
       )}
       {media.length > 0 && (
