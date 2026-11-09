@@ -231,7 +231,7 @@ test("invitation preview asks a signed-out visitor to sign in and come back", as
   await page.goto("/invitations/tok");
   await expect(page.getByText("Olive invited me@example.com to join Acme as admin.")).toBeVisible();
   await expect(page.getByText(/open this invitation link again/)).toBeVisible();
-  await expect(page.getByRole("link", { name: "Sign in", exact: true })).toHaveAttribute("href", "/login");
+  await expect(page.getByRole("link", { name: "Log in", exact: true })).toHaveAttribute("href", "/login");
   await expect(page.getByRole("button", { name: /Join/ })).toHaveCount(0);
 });
 

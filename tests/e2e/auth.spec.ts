@@ -77,7 +77,7 @@ test("app sends a signed-out visitor to login", async ({ page }) => {
 test("header links to sign in, or to the app when signed in", async ({ page }) => {
   await page.route("**/auth/me", (route) => route.fulfill({ status: 401, json: { error: "unauthorized" } }));
   await page.goto("/");
-  await expect(page.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/login");
+  await expect(page.getByRole("link", { name: "Log in" })).toHaveAttribute("href", "/login");
   await page.unrouteAll();
   await page.route("**/auth/me", (route) => route.fulfill({ json: user }));
   await page.reload();

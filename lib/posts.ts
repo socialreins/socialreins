@@ -1,6 +1,11 @@
 import { api, failure, request, type Failure } from "@/lib/auth";
 import { CONNECT_TIMEOUT_MS } from "@/lib/connections";
 
+// brain deletes a failed post only when nothing of it reached a platform or might have.
+export const failedWithNothingLive = (p: { status: string; targets: { status: string; remote_id: string | null; error: string | null }[] }) =>
+  p.status === "failed" &&
+  p.targets.every((t) => t.status === "failed" && !t.remote_id && !/may have posted|may still post|may be live/.test(t.error ?? ""));
+
 export type PostStatus = "draft" | "scheduled" | "queued" | "published" | "failed" | "deleted";
 export type Target = {
   id: string;

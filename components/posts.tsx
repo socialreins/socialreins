@@ -41,7 +41,7 @@ export const postMessages: Partial<Record<Failure, ReactNode>> = {
   unsupported_platform: "That platform can't publish yet.",
   too_many_posts: "This team has 2000 posts, the most allowed. Delete some first.",
   not_editable: "This post is publishing or already went out, so it can't change. Reload to see it.",
-  not_deletable: "A post that is publishing or failed can't be deleted.",
+  not_deletable: "A post that is publishing, or failed after it may have gone out, can't be deleted.",
   publish_quota: "The team reached its limit of 100 published posts today. Schedule this one for tomorrow.",
   rate_limited: "Too many publish or take down actions. Wait a minute, then try again.",
   not_found: "This post no longer exists.",

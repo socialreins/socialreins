@@ -47,9 +47,9 @@ export function InvitationView({ token }: { token: string }) {
       </p>
       {joined ? null : me === "signed_out" ? (
         <p>
-          Sign in as {preview.email} first, then open this invitation link again to accept it.{" "}
+          Log in as {preview.email} first, then open this invitation link again to accept it.{" "}
           <Link href="/login" className={linkButton}>
-            Sign in
+            Log in
           </Link>{" "}
           or{" "}
           <Link href="/signup" className={linkButton}>
