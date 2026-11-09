@@ -13,7 +13,7 @@ test("login sends a link and shows the check-your-email state", async ({ page })
   await page.getByRole("button", { name: "Login with a link" }).click();
   const done = page.getByRole("heading", { name: "Check your email" });
   await expect(done).toBeFocused();
-  expect(body).toEqual({ email: "someone@example.com" });
+  expect(body).toEqual({ email: "someone@example.com", login_only: true });
   await page.getByRole("button", { name: "Use a different email" }).click();
   await expect(page.getByLabel("Email")).toBeFocused();
 });

@@ -16,14 +16,14 @@ describe("requestLink", () => {
     const [url, init] = fetch.mock.calls[0]!;
     expect(url).toBe(`${apiUrl}/auth/link`);
     expect(init).toMatchObject({ method: "POST", credentials: "include" });
-    expect(JSON.parse(init.body)).toEqual({ email: "a@b.co" });
+    expect(JSON.parse(init.body)).toEqual({ email: "a@b.co", login_only: true });
   });
 
   it("sends the Turnstile token when there is one", async () => {
     const fetch = respond(202);
     vi.stubGlobal("fetch", fetch);
     await requestLink("a@b.co", "tok");
-    expect(JSON.parse(fetch.mock.calls[0]![1].body)).toEqual({ email: "a@b.co", turnstile_token: "tok" });
+    expect(JSON.parse(fetch.mock.calls[0]![1].body)).toEqual({ email: "a@b.co", login_only: true, turnstile_token: "tok" });
   });
 
   it("sends the sign-up name when there is one", async () => {

@@ -24,12 +24,12 @@ const opts = (init: RequestInit = {}): RequestInit => ({
 });
 
 // The API answers 202 for any valid email, so the reply never says whether an account exists.
-// `token` is the Turnstile token, sent only when brain has Turnstile on. `name` is the sign-up form's.
+// `token` is the Turnstile token, sent only when brain has Turnstile on. `name` comes from the sign-up form; without one the link only logs in to an existing account.
 export async function requestLink(email: string, token: string | null = null, name: string | null = null): Promise<LinkResult> {
   try {
     const res = await fetch(
       `${apiUrl}/auth/link`,
-      opts({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, ...(name && { name }), ...(token && { turnstile_token: token }) }) }),
+      opts({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, ...(name ? { name } : { login_only: true }), ...(token && { turnstile_token: token }) }) }),
     );
     if (res.ok) return "sent";
     if (res.status === 422 || res.status === 503) {
@@ -279,8 +279,9 @@ export function safeNext(raw: string | null | undefined): string {
 }
 
 // A full-page navigation, not a fetch: brain sends the browser to Google and back to `next`.
-export const googleStartUrl = (next?: string | null) =>
-  `${apiUrl}/auth/google/start?next=${encodeURIComponent(safeNext(next))}`;
+// `loginOnly` never creates an account: brain sends a new Google account to /signup instead.
+export const googleStartUrl = (next?: string | null, loginOnly = false) =>
+  `${apiUrl}/auth/google/start?next=${encodeURIComponent(safeNext(next))}${loginOnly ? "&mode=login" : ""}`;
 
 // brain trims the name and takes 1 to 80 characters (code points), no control characters, else 422 invalid_name.
 export const MAX_NAME = 80;

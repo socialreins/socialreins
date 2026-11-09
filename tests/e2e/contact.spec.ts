@@ -111,7 +111,7 @@ test("with Turnstile on, the login link request sends the token and maps captcha
   await solve(page, "tok-l");
   await page.getByRole("button", { name: "Login with a link" }).click();
   await expect(page.locator("#login-message")).toHaveText("We couldn't check that right now. Try again in a minute.");
-  expect(sent).toEqual({ email: "someone@example.com", turnstile_token: "tok-l" });
+  expect(sent).toEqual({ email: "someone@example.com", login_only: true, turnstile_token: "tok-l" });
 });
 
 test("with Turnstile on, Use a different email renders the widget again and sends a fresh token", async ({ page }) => {
@@ -134,8 +134,8 @@ test("with Turnstile on, Use a different email renders the widget again and send
   await page.getByRole("button", { name: "Login with a link" }).click();
   await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
   expect(sent).toEqual([
-    { email: "one@example.com", turnstile_token: "tok-1" },
-    { email: "two@example.com", turnstile_token: "tok-2" },
+    { email: "one@example.com", login_only: true, turnstile_token: "tok-1" },
+    { email: "two@example.com", login_only: true, turnstile_token: "tok-2" },
   ]);
 });
 
@@ -159,7 +159,7 @@ test("with Turnstile off, the waitlist and login link submit without a token", a
   await page.getByLabel("Email", { exact: true }).fill("someone@example.com");
   await page.getByRole("button", { name: "Login with a link" }).click();
   await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
-  expect(sent).toEqual([{ email: "someone@example.com", source: "landing" }, { email: "someone@example.com" }]);
+  expect(sent).toEqual([{ email: "someone@example.com", source: "landing" }, { email: "someone@example.com", login_only: true }]);
 });
 
 test("the CSP lets Turnstile load", async ({ request }) => {
