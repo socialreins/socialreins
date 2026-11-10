@@ -7,7 +7,7 @@ const post = (id: string, extra: Record<string, unknown>) => ({
   created_at: "2026-11-01T10:00:00Z", updated_at: "2026-11-01T10:00:00Z", targets: [], lists: [], ...extra,
 });
 
-test("home sums up posts, inbox, automations and accounts for the current set", async ({ page }) => {
+test("home shows what failed, what is up next, recent posts, the inbox and a few counts for the current set", async ({ page }) => {
   await page.clock.setFixedTime(new Date("2026-11-10T12:00:00Z"));
   await page.addInitScript(() => localStorage.setItem("passkey-prompt-snoozed-at", String(Date.now())));
   await page.route("http://localhost:8080/**", (r) => r.fulfill({ json: [] }));
@@ -44,23 +44,24 @@ test("home sums up posts, inbox, automations and accounts for the current set", 
   await page.goto("/home");
   await expect(page.getByRole("heading", { name: "Home", level: 1 })).toBeVisible();
   await expect(page.getByRole("link", { name: "Home", exact: true })).toHaveAttribute("aria-current", "page");
-  const tile = (label: string) => page.getByRole("link", { name: new RegExp(`^${label}`) });
-  await expect(tile("Scheduled, next 7 days")).toContainText("1");
-  await expect(tile("Published, last 7 days")).toContainText("1");
-  await expect(tile("Failed, last 30 days")).toContainText("1");
-  await expect(tile("Drafts")).toContainText("1");
-  await expect(tile("Open in inbox")).toContainText("1+");
-  await expect(tile("Connected accounts")).toContainText("1");
+  const stat = (label: string) => page.getByRole("region", { name: "Overview" }).getByRole("link", { name: new RegExp(`^${label}`) });
+  await expect(stat("Scheduled, next 7 days")).toContainText("1");
+  await expect(stat("Scheduled, next 7 days")).toHaveAttribute("href", "/calendar");
+  await expect(stat("Drafts")).toContainText("1");
+  await expect(stat("Connected accounts")).toContainText("1");
 
   const upNext = page.getByRole("region", { name: "Up next" });
   await expect(upNext.getByRole("link", { name: /Launch day/ })).toHaveAttribute("href", "/posts/p-soon");
   await expect(upNext.getByRole("listitem")).toHaveCount(2);
   await expect(upNext.getByRole("listitem").nth(1)).toContainText("Month end");
+  await expect(upNext.getByRole("link", { name: "Open calendar" })).toHaveAttribute("href", "/calendar");
   await expect(page.getByRole("region", { name: "Needs attention" })).toContainText("Bluesky refused the image");
   await expect(page.getByRole("region", { name: "Recently published" }).getByRole("link", { name: /Hello/ })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Inbox" }).getByRole("link", { name: /Bob/ })).toHaveAttribute("href", "/inbox/all?item=i1");
-  await expect(page.getByRole("region", { name: "Automations" })).toContainText("1 on, with 3 runs so far.");
-  await expect(page.getByRole("region", { name: "Accounts" })).toContainText("@acme.bsky.social");
+  const inbox = page.getByRole("region", { name: "Inbox" });
+  await expect(inbox.getByRole("link", { name: /Bob/ })).toHaveAttribute("href", "/inbox/all?item=i1");
+  await expect(inbox).toContainText("1+ open");
+  // The calmer home leaves automations and the account list to their own pages.
+  await expect(page.getByRole("region", { name: "Automations" })).toHaveCount(0);
 
   await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "Default" }).click();
   await page.locator("#set-menu").getByRole("button", { name: "Default" }).click();
@@ -74,7 +75,8 @@ test("home explains what failed to load and keeps the rest", async ({ page }) =>
   await page.route(/\/v1\/posts(\?.*)?$/, (r) => r.fulfill({ status: 500 }));
   await page.goto("/home");
   await expect(page.getByRole("region", { name: "Up next" }).getByRole("alert")).toContainText("couldn't be loaded");
-  await expect(page.getByRole("region", { name: "Automations" })).toContainText("No automation is on.");
+  await expect(page.getByRole("region", { name: "Needs attention" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Inbox" })).toContainText("No open comments, mentions or DMs.");
 });
 
 test("home warns about accounts to reconnect, with a Reconnect link for owners", async ({ page }) => {
@@ -110,4 +112,5 @@ test("home shows no warning when every account is fine", async ({ page }) => {
   await page.goto("/home");
   await expect(page.getByRole("link", { name: /^Connected accounts/ })).toContainText("1");
   await expect(page.getByRole("region", { name: "Accounts need reconnecting" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Needs attention" })).toHaveCount(0);
 });

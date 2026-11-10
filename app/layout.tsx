@@ -14,11 +14,18 @@ export const metadata: Metadata = {
     "Open-source social media manager for Facebook, Instagram, Threads, LinkedIn, Bluesky, X, TikTok and YouTube. Self-host now; publishing and hosting are coming.",
 };
 
+const themeScript = `try{var t=localStorage.getItem("theme");document.documentElement.dataset.theme=t==="dark"||(t!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light"}catch(e){}`;
+
 export const viewport: Viewport = { themeColor: "#121212" };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={`${display.variable} ${body.variable}`}>
+    // The theme script sets data-theme before React hydrates, so React must not flag the attribute.
+    <html lang="en" className={`${display.variable} ${body.variable}`} suppressHydrationWarning>
+      <head>
+        {/* Before paint, so the app never flashes the wrong theme (components/theme.tsx keeps it in step after). */}
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body>
         <Script src="/config.js" strategy="beforeInteractive" />
         {children}

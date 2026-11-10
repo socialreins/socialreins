@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import Link from "next/link";
 import type { Failure } from "@/lib/auth";
 import { listConnections } from "@/lib/connections";
@@ -78,7 +78,7 @@ export function AccountNote() {
   if (!missing) return null;
   return (
     <div className="card flex flex-wrap items-center gap-4 border-signal/40 p-5">
-      <span className="grid size-11 place-items-center rounded-xl bg-[#e7f1ff]" style={{ color: bluesky.color }}>
+      <span className="grid size-11 place-items-center rounded-xl bg-[#1185FE]/10" style={{ color: bluesky.color }}>
         <PlatformIcon platform={bluesky} className="size-6" />
       </span>
       <p className="min-w-0 flex-1 basis-60">
@@ -157,7 +157,8 @@ function MonthList({ posts, y, m, title }: { posts: Post[]; y: number; m: number
   );
 }
 
-export function Posts() {
+// /posts lists the month's posts by day with the drafts below; /calendar shows the month as a grid (a list of days on narrow screens).
+export function Posts({ view }: { view: "list" | "calendar" }) {
   const now = new Date();
   const [month, setMonth] = useState({ y: now.getFullYear(), m: now.getMonth() });
   // The set picked in the top bar filters the calendar and drafts.
@@ -165,6 +166,8 @@ export function Posts() {
   const [sets, setSets] = useState<SocialSet[] | Failure | null>(null);
   const [posts, setPosts] = useState<Post[] | Failure | null>(null);
   const [drafts, setDrafts] = useState<Post[] | Failure | null>(null);
+  // Unique ids: Next can keep /posts and /calendar both mounted, one hidden.
+  const ids = useId();
 
   useEffect(() => {
     listSets().then(setSets);
@@ -179,12 +182,13 @@ export function Posts() {
   }, [month, setId]);
 
   useEffect(() => {
+    if (view !== "list") return;
     let live = true;
     listPosts({ social_set_id: setId, status: "draft" }).then((r) => live && setDrafts(r));
     return () => {
       live = false;
     };
-  }, [setId]);
+  }, [setId, view]);
 
   const step = (by: number) => setMonth(({ y, m }) => ({ y: m + by < 0 ? y - 1 : m + by > 11 ? y + 1 : y, m: (m + by + 12) % 12 }));
   const title = new Date(month.y, month.m, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
@@ -196,7 +200,7 @@ export function Posts() {
   return (
     <div className="grid gap-10">
       <AccountNote />
-      <section aria-labelledby="month-heading" className="grid gap-4">
+      <section aria-labelledby={`${ids}-month`} className="grid gap-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <button type="button" className="icon-btn" aria-label="Previous month" onClick={() => step(-1)}>
@@ -205,7 +209,7 @@ export function Posts() {
             <button type="button" className="icon-btn" aria-label="Next month" onClick={() => step(1)}>
               <Icon name="right" />
             </button>
-            <h2 id="month-heading" className="ml-2 font-display text-xl font-extrabold tracking-tight" aria-live="polite">
+            <h2 id={`${ids}-month`} className="ml-2 font-display text-xl font-extrabold tracking-tight" aria-live="polite">
               {title}
             </h2>
           </div>
@@ -221,9 +225,10 @@ export function Posts() {
         ) : (
           <>
             {/* Narrow screens get the month as a list of days; the grid needs about 46rem. */}
-            <div className="lg:hidden">
+            <div className={view === "calendar" ? "lg:hidden" : ""}>
               <MonthList posts={calendarPosts} y={month.y} m={month.m} title={title} />
             </div>
+            {view === "calendar" && (
             <div className="card hidden overflow-x-auto lg:block">
             <table className="w-full min-w-[46rem] table-fixed border-collapse text-sm">
               <caption className="sr-only">Posts in {title}</caption>
@@ -276,6 +281,7 @@ export function Posts() {
               </tbody>
             </table>
             </div>
+            )}
           </>
         )}
         <ul aria-label="Colors" className="flex flex-wrap gap-2">
@@ -286,8 +292,9 @@ export function Posts() {
           ))}
         </ul>
       </section>
-      <section aria-labelledby="drafts-heading" className="grid gap-4">
-        <h2 id="drafts-heading" className="font-display text-xl font-extrabold tracking-tight">
+      {view === "list" && (
+      <section aria-labelledby={`${ids}-drafts`} className="grid gap-4">
+        <h2 id={`${ids}-drafts`} className="font-display text-xl font-extrabold tracking-tight">
           Drafts
         </h2>
         {drafts === null ? (
@@ -315,6 +322,7 @@ export function Posts() {
           </ul>
         )}
       </section>
+      )}
     </div>
   );
 }

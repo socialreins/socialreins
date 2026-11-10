@@ -8,7 +8,8 @@ import { getMe, type MeResult, type Team, type User } from "@/lib/auth";
 import { Account } from "@/components/account";
 import { LogoMark } from "@/components/logo";
 import { PasskeyPrompt } from "@/components/passkey-prompt";
-import { TopBar } from "@/components/top-bar";
+import { ThemeSwitch } from "@/components/theme";
+import { TeamMenu, TopBar } from "@/components/top-bar";
 import { Icon, type IconName } from "@/components/ui";
 
 type Session = { user: User; setUser: (u: User) => void; setTeam: (t: Team) => void; refresh: () => Promise<void> };
@@ -28,7 +29,8 @@ const nav: NavGroup[] = [
   {
     label: "Publish",
     items: [
-      { href: "/posts", label: "Posts", icon: "posts" },
+      { href: "/posts", label: "Posts", icon: "compose" },
+      { href: "/calendar", label: "Calendar", icon: "posts" },
       { href: "/lists", label: "Lists", icon: "lists" },
     ],
   },
@@ -49,10 +51,11 @@ const nav: NavGroup[] = [
     ],
   },
 ];
-// Personal pages live in the account menu at the foot of the sidebar; listed here for the breadcrumb.
+// Pages linked from the account menu and the team block instead of the nav; listed here for the breadcrumb.
 const profilePages: NavItem[] = [
   { href: "/profile", label: "Profile", icon: "user" },
   { href: "/security", label: "Sign-in and security", icon: "security" },
+  { href: "/billing", label: "Plans", icon: "settings" },
 ];
 // The admin console at /admin, for site admins only; it has its own nav and colours.
 const adminNav: NavGroup[] = [{ label: "", items: [{ href: "/admin/waitlist", label: "Waitlist", icon: "admin" }] }];
@@ -67,17 +70,17 @@ function subscribe(f: () => void) {
     window.removeEventListener("storage", f);
   };
 }
-function read(key: string) {
+export function read(key: string) {
   try {
     return localStorage.getItem(key);
   } catch {
     return null;
   }
 }
-function useStored(key: string) {
+export function useStored(key: string) {
   return useSyncExternalStore(subscribe, () => read(key), () => null);
 }
-function store(key: string, value: string) {
+export function store(key: string, value: string) {
   try {
     localStorage.setItem(key, value);
   } catch {}
@@ -91,6 +94,19 @@ export function useCurrentSet(): [string, (id: string) => void] {
   return [useStored(key) ?? "", (id) => store(key, id)];
 }
 
+// Marks <html> while an app shell is showing, so the dark page background stays off the landing and sign-in pages.
+// Counted, since Next can keep the app and admin shells both mounted; hiding one runs its cleanup.
+let shells = 0;
+function useAppMark() {
+  useEffect(() => {
+    shells++;
+    document.documentElement.dataset.app = "";
+    return () => {
+      if (--shells === 0) delete document.documentElement.dataset.app;
+    };
+  }, []);
+}
+
 // The session cookie is on the API host, invisible to Next server code, so the check runs here, once for every app page.
 export function AppShell({ children, admin = false }: { children: ReactNode; admin?: boolean }) {
   const router = useRouter();
@@ -99,6 +115,7 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
   const menuRef = useRef<HTMLButtonElement>(null);
   // The icon rail applies from md up; small screens keep the menu button.
   const collapsed = useStored("sidebar-collapsed") === "1";
+  useAppMark();
 
   useEffect(() => {
     getMe().then((r) => {
@@ -153,20 +170,36 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
           Skip to content
         </a>
         <aside
-          className="sticky top-0 z-10 border-b border-[var(--line)] bg-[var(--side)] md:h-dvh md:border-r md:border-b-0"
+          className="sticky top-0 z-10 max-h-dvh border-b border-[var(--line)] bg-[var(--side)] md:h-dvh md:border-r md:border-b-0"
           onKeyDown={(e) => {
             if (e.key === "Escape" && open) closeMenu();
           }}
         >
-          <div className="flex h-full flex-col">
+          <div className="flex h-full max-h-dvh flex-col">
             <div
-              className={`flex items-center justify-between gap-3 px-4 py-3 md:h-12 md:border-b md:border-[var(--line)] md:py-0 ${collapsed ? "md:justify-center md:px-0" : "md:px-4"}`}
+              className={`flex items-center justify-between gap-3 px-2.5 py-2 md:min-h-12 md:pt-3 md:pb-1 ${collapsed ? "md:justify-center md:px-0" : ""}`}
             >
-              <Link href={admin ? "/admin" : "/home"} className="flex items-center gap-2 font-display text-base font-bold tracking-tight">
-                <LogoMark className="size-7" />
-                <span className={collapsed ? "md:sr-only" : ""}>SocialReins</span>
-                {admin && <span className={`badge bg-signal-deep text-paper ${collapsed ? "md:sr-only" : ""}`}>Admin</span>}
-              </Link>
+              {admin ? (
+                <Link href="/admin" className="flex items-center gap-2 px-1.5 font-display text-base font-bold tracking-tight">
+                  <LogoMark className="size-7" />
+                  <span className={collapsed ? "md:sr-only" : ""}>SocialReins</span>
+                  <span className={`badge bg-signal-deep text-paper ${collapsed ? "md:sr-only" : ""}`}>Admin</span>
+                </Link>
+              ) : session ? (
+                // The team you work in, with its plan: every team is on Free until billing exists.
+                <div className="grid min-w-0 gap-0.5">
+                  <TeamMenu collapsed={collapsed} />
+                  <p className={`flex items-center gap-1.5 pl-[2.375rem] text-xs text-[var(--faint)] ${collapsed ? "md:hidden" : ""}`}>
+                    Free plan
+                    <span aria-hidden="true">·</span>
+                    <Link href="/billing" className="font-semibold text-signal-deep hover:underline">
+                      Upgrade
+                    </Link>
+                  </p>
+                </div>
+              ) : (
+                <div className="h-10 w-40 rounded-md bg-ink/5 motion-safe:animate-pulse" />
+              )}
               <button
                 ref={menuRef}
                 type="button"
@@ -183,7 +216,7 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
               id="app-menu"
               // Following a link (the nav or the account menu) closes the menu on small screens.
               onClick={(e) => (e.target as Element).closest("a") && setOpen(false)}
-              className={`${open ? "flex" : "hidden"} max-h-[calc(100dvh-4rem)] min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-2.5 pb-4 md:pt-3 md:flex md:max-h-none`}
+              className={`${open ? "flex" : "hidden"} min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-2.5 pb-3 md:pt-3 md:flex`}
             >
               <nav aria-label="App">
                 <Suspense fallback={<NavGroups path="" groups={groups} collapsed={collapsed} />}>
@@ -191,7 +224,8 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
                 </Suspense>
               </nav>
               {/* minmax(0,1fr): a long team name or email truncates instead of widening the sidebar. */}
-              <div className="mt-auto grid grid-cols-[minmax(0,1fr)]">
+              <div className="mt-auto grid grid-cols-[minmax(0,1fr)] gap-2">
+                <ThemeSwitch collapsed={collapsed} />
                 {session ? <Account collapsed={collapsed} /> : <div className="h-10 rounded-md bg-ink/5 motion-safe:animate-pulse" />}
               </div>
             </div>
@@ -226,7 +260,7 @@ function CurrentNavGroups(props: { groups: NavGroup[]; collapsed: boolean }) {
 
 function NavGroups({ path, groups, collapsed }: { path: string; groups: NavGroup[]; collapsed: boolean }) {
   return (
-    <div className={`grid gap-3 ${collapsed ? "md:gap-2" : ""}`}>
+    <div className={`grid gap-4 ${collapsed ? "md:gap-2" : ""}`}>
       {groups.map((group, i) => (
         <NavSection key={group.label || "home"} path={path} group={group} collapsed={collapsed} first={i === 0} />
       ))}
@@ -256,7 +290,7 @@ function NavSection({ path, group, collapsed, first }: { path: string; group: Na
         aria-expanded={open}
         aria-controls={id}
         aria-disabled={holdsPage || undefined}
-        className={`flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-1 text-xs text-[var(--faint)] ${
+        className={`flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-1 text-xs font-semibold tracking-wide text-[var(--faint)] ${
           holdsPage ? "cursor-default" : "hover:text-ink"
         } ${collapsed ? "md:hidden" : ""}`}
         onClick={() => !holdsPage && store(key, closed ? "open" : "closed")}
@@ -266,7 +300,7 @@ function NavSection({ path, group, collapsed, first }: { path: string; group: Na
       </button>
       )}
       {/* The rail shows every group, since its headings are hidden. */}
-      <ul id={id} className={`mt-0.5 gap-px ${open ? "grid" : "hidden"} ${collapsed ? "md:mt-0 md:grid" : ""}`}>
+      <ul id={id} className={`mt-1 gap-0.5 ${open ? "grid" : "hidden"} ${collapsed ? "md:mt-0 md:grid" : ""}`}>
         {group.items.map((item) => {
           const active = isActive(path, item.href);
           return (
@@ -275,11 +309,11 @@ function NavSection({ path, group, collapsed, first }: { path: string; group: Na
                 href={item.href}
                 aria-current={active ? "page" : undefined}
                 title={collapsed ? item.label : undefined}
-                className={`app-nav-link flex items-center gap-2.5 rounded-md px-2.5 py-1.5 ${collapsed ? "md:justify-center" : ""} ${
-                  active ? "" : "text-[#3f3b37] hover:bg-ink/[0.045] hover:text-ink"
+                className={`app-nav-link flex h-8 items-center gap-2.5 rounded-md px-2.5 font-medium ${collapsed ? "md:justify-center" : ""} ${
+                  active ? "" : "text-[var(--nav)] hover:bg-ink/[0.05] hover:text-ink"
                 }`}
               >
-                <Icon name={item.icon} className={`size-4 ${active ? "" : "text-[var(--faint)]"}`} />
+                <Icon name={item.icon} className={`size-[1.125rem] ${active ? "" : "text-[var(--faint)]"}`} />
                 <span className={collapsed ? "md:sr-only" : ""}>{item.label}</span>
               </Link>
             </li>

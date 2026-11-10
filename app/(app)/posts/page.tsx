@@ -14,7 +14,7 @@ export default function PostsPage() {
           New post
         </Link>
       </PageHeader>
-      <Posts />
+      <Posts view="list" />
     </>
   );
 }

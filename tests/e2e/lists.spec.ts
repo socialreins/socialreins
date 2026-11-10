@@ -169,7 +169,7 @@ test("the calendar and phone list show Part N of a list", async ({ page }) => {
           : [post("p1", { body: "Launch day", lists: [{ id: "l1", name: "Series", position: 2 }] })],
     }),
   );
-  await page.goto("/posts");
+  await page.goto("/calendar");
   const table = page.getByRole("table", { name: "Posts in November 2026" });
   await expect(table.getByRole("link", { name: /^Part 2 · Series.*Launch day$/ })).toBeVisible();
 
