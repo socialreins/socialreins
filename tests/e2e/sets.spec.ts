@@ -227,9 +227,11 @@ test("connections edits an account's sets with Default locked", async ({ page })
   await expect(group.getByRole("checkbox", { name: /Default/ })).toBeChecked();
   await expect(group.getByRole("checkbox", { name: /Default/ })).toBeDisabled();
   await group.getByRole("checkbox", { name: "Clients" }).check();
+  // The top bar loads sets too; the page reloads them once after the error.
+  const before = setLoads;
   await page.getByRole("button", { name: "Save sets" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "no longer exists" })).toBeVisible();
-  await expect.poll(() => setLoads).toBe(2);
+  await expect.poll(() => setLoads).toBe(before + 1);
   await page.getByRole("button", { name: "Save sets" }).click();
   await expect(page.getByText("Sets saved for Bob.")).toBeFocused();
   await expect(page.getByRole("list", { name: "Sets for Bob" }).getByRole("listitem")).toHaveText(["Default", "Clients"]);

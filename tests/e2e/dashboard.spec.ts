@@ -62,7 +62,7 @@ test("home sums up posts, inbox, automations and accounts for the current set", 
   await expect(page.getByRole("region", { name: "Automations" })).toContainText("1 on, with 3 runs so far.");
   await expect(page.getByRole("region", { name: "Accounts" })).toContainText("@acme.bsky.social");
 
-  await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "All sets" }).click();
+  await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "Default" }).click();
   await page.locator("#set-menu").getByRole("button", { name: "Default" }).click();
   await expect.poll(() => queries.some((q) => q.get("social_set_id") === "d" && q.get("status") === "draft")).toBe(true);
 });
