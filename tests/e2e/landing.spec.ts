@@ -16,8 +16,8 @@ test("landing page renders and the waitlist form joins", async ({ page }) => {
   await expect(page.getByText("1 person on the waitlist")).toBeVisible();
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   await expect(page.getByRole("link", { name: "SocialReins", exact: true })).toHaveAttribute("href", "/");
-  const menu = page.locator("details").filter({ hasText: "Follow on GitHub" });
-  await menu.getByText("Follow on GitHub").click();
+  const menu = page.locator("details").filter({ hasText: "Star on GitHub" });
+  await menu.getByText("Star on GitHub").click();
   await expect(menu.getByRole("link", { name: /socialreins\/socialreins/ })).toHaveAttribute(
     "href",
     "https://github.com/socialreins/socialreins",
@@ -91,6 +91,15 @@ test("the header GitHub menu shows the GitHub mark", async ({ page }) => {
   const summary = page.getByRole("banner").locator("summary");
   await expect(summary).toContainText("GitHub");
   await expect(summary.locator("svg")).toHaveCount(1);
+});
+
+test("both GitHub buttons show the same org-wide star total", async ({ page }) => {
+  await page.route("**/auth/me", (route) => route.fulfill({ status: 401, json: { error: "unauthorized" } }));
+  await page.goto("/");
+  // The count comes from GitHub at build time, so it may be absent (rate limit), but never differs.
+  const header = await page.getByRole("banner").locator("summary .sr-only").allTextContents();
+  const hero = page.getByRole("main").locator("summary").filter({ hasText: "Star on GitHub" });
+  expect(await hero.locator(".sr-only").allTextContents()).toEqual(header);
 });
 
 test("the web app manifest lists the home-screen icons", async ({ request }) => {

@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // The brain submodule (Rust API) has its own repo and checks.
+    "brain/**",
   ]),
 ]);
 

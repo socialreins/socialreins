@@ -12,12 +12,16 @@ self-hosting work today, and these come next:
 
 Self-host it, or join the waitlist for the hosted version at [socialreins.com](https://socialreins.com).
 
-This repo is the starting point: the website and the app, built with Next.js. The API server is [socialreins/brain](https://github.com/socialreins/brain), written in Rust.
+This repo is the starting point: the website and the app, built with Next.js. One clone gets everything:
 
-| Repo | What it is |
-|---|---|
-| [socialreins](https://github.com/socialreins/socialreins) | This repo: the website, the app and the docs |
-| [brain](https://github.com/socialreins/brain) | The API server, written in Rust |
+```sh
+git clone --recurse-submodules https://github.com/socialreins/socialreins
+cd socialreins
+```
+
+`brain/` is the API server, written in Rust, included as a git submodule of
+[socialreins/brain](https://github.com/socialreins/brain). Update it with
+`git submodule update --remote brain`. Already cloned without it? Run `git submodule update --init`.
 
 ## Self-host
 
@@ -27,12 +31,11 @@ and `linux/arm64`.
 
 ### Quick start
 
-1. Get the compose file and the settings template:
+1. Get the repo and the settings template:
 
    ```sh
-   mkdir socialreins && cd socialreins
-   curl -fsSLO https://raw.githubusercontent.com/socialreins/socialreins/main/docker-compose.yml
-   curl -fsSL https://raw.githubusercontent.com/socialreins/socialreins/main/.env.example -o .env
+   git clone --recurse-submodules https://github.com/socialreins/socialreins
+   cd socialreins && cp .env.example .env
    ```
 
 2. Edit `.env`: set `POSTGRES_PASSWORD` (`openssl rand -hex 24`), `ENCRYPTION_KEY`
@@ -68,6 +71,9 @@ safe to rerun. `SOCIALREINS_VERSION` picks the image tag: `main` (the default, f
 branch), `latest` (the newest release) or a release such as `v0.1.0`.
 
 Remove everything, data included: `docker compose down -v`.
+
+To build brain from the `brain/` submodule instead of pulling its image:
+`docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`.
 
 ### Domains and the reverse proxy
 

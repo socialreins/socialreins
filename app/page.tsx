@@ -44,7 +44,7 @@ const features = [
   },
 ];
 
-const compose = `git clone https://github.com/socialreins/socialreins
+const compose = `git clone --recurse-submodules https://github.com/socialreins/socialreins
 cd socialreins && cp .env.example .env
 # edit .env: POSTGRES_PASSWORD, BRAIN_URL, WEB_URL
 docker compose up -d`;
@@ -71,7 +71,7 @@ export default function Home() {
         <nav aria-label="Site" className="flex items-center gap-4 sm:gap-6">
           <GitHubRepos
             label="GitHub"
-            showTotal
+            mark
             summaryClassName="rounded-full border-2 border-ink px-3.5 py-1.5 font-bold hover:bg-ink hover:text-paper"
           />
           <SessionLink className={headerLink} />
@@ -152,7 +152,7 @@ export default function Home() {
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <GitHubRepos
-                label="Follow on GitHub"
+                label="Star on GitHub"
                 align="left"
                 summaryClassName="rounded-full bg-signal px-6 py-3 font-bold text-ink hover:bg-paper"
               />
