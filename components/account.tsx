@@ -47,6 +47,7 @@ export function Account({ collapsed }: { collapsed: boolean }) {
     { href: "/profile", label: "Profile", icon: "user" },
     { href: "/security", label: "Sign-in and security", icon: "security" },
     { href: "/security#passkeys", label: "Passkeys", icon: "fingerprint" },
+    { href: "/billing", label: "Plans", icon: "settings" },
   ];
   if (user.is_admin) links.push(inAdmin ? { href: "/home", label: "Back to the app", icon: "left" } : { href: "/admin", label: "Admin console", icon: "admin" });
 

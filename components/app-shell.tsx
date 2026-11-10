@@ -94,6 +94,19 @@ export function useCurrentSet(): [string, (id: string) => void] {
   return [useStored(key) ?? "", (id) => store(key, id)];
 }
 
+// Marks <html> while an app shell is showing, so the dark page background stays off the landing and sign-in pages.
+// Counted, since Next can keep the app and admin shells both mounted; hiding one runs its cleanup.
+let shells = 0;
+function useAppMark() {
+  useEffect(() => {
+    shells++;
+    document.documentElement.dataset.app = "";
+    return () => {
+      if (--shells === 0) delete document.documentElement.dataset.app;
+    };
+  }, []);
+}
+
 // The session cookie is on the API host, invisible to Next server code, so the check runs here, once for every app page.
 export function AppShell({ children, admin = false }: { children: ReactNode; admin?: boolean }) {
   const router = useRouter();
@@ -102,6 +115,7 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
   const menuRef = useRef<HTMLButtonElement>(null);
   // The icon rail applies from md up; small screens keep the menu button.
   const collapsed = useStored("sidebar-collapsed") === "1";
+  useAppMark();
 
   useEffect(() => {
     getMe().then((r) => {
@@ -156,12 +170,12 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
           Skip to content
         </a>
         <aside
-          className="sticky top-0 z-10 border-b border-[var(--line)] bg-[var(--side)] md:h-dvh md:border-r md:border-b-0"
+          className="sticky top-0 z-10 max-h-dvh border-b border-[var(--line)] bg-[var(--side)] md:h-dvh md:border-r md:border-b-0"
           onKeyDown={(e) => {
             if (e.key === "Escape" && open) closeMenu();
           }}
         >
-          <div className="flex h-full flex-col">
+          <div className="flex h-full max-h-dvh flex-col">
             <div
               className={`flex items-center justify-between gap-3 px-2.5 py-2 md:min-h-12 md:pt-3 md:pb-1 ${collapsed ? "md:justify-center md:px-0" : ""}`}
             >
@@ -202,7 +216,7 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
               id="app-menu"
               // Following a link (the nav or the account menu) closes the menu on small screens.
               onClick={(e) => (e.target as Element).closest("a") && setOpen(false)}
-              className={`${open ? "flex" : "hidden"} max-h-[calc(100dvh-4rem)] min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-2.5 pb-3 md:pt-3 md:flex md:max-h-none`}
+              className={`${open ? "flex" : "hidden"} min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-2.5 pb-3 md:pt-3 md:flex`}
             >
               <nav aria-label="App">
                 <Suspense fallback={<NavGroups path="" groups={groups} collapsed={collapsed} />}>

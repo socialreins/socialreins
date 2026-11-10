@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import Link from "next/link";
 import type { Failure } from "@/lib/auth";
 import { listConnections } from "@/lib/connections";
@@ -166,6 +166,8 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
   const [sets, setSets] = useState<SocialSet[] | Failure | null>(null);
   const [posts, setPosts] = useState<Post[] | Failure | null>(null);
   const [drafts, setDrafts] = useState<Post[] | Failure | null>(null);
+  // Unique ids: Next can keep /posts and /calendar both mounted, one hidden.
+  const ids = useId();
 
   useEffect(() => {
     listSets().then(setSets);
@@ -198,7 +200,7 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
   return (
     <div className="grid gap-10">
       <AccountNote />
-      <section aria-labelledby="month-heading" className="grid gap-4">
+      <section aria-labelledby={`${ids}-month`} className="grid gap-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <button type="button" className="icon-btn" aria-label="Previous month" onClick={() => step(-1)}>
@@ -207,7 +209,7 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
             <button type="button" className="icon-btn" aria-label="Next month" onClick={() => step(1)}>
               <Icon name="right" />
             </button>
-            <h2 id="month-heading" className="ml-2 font-display text-xl font-extrabold tracking-tight" aria-live="polite">
+            <h2 id={`${ids}-month`} className="ml-2 font-display text-xl font-extrabold tracking-tight" aria-live="polite">
               {title}
             </h2>
           </div>
@@ -291,8 +293,8 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
         </ul>
       </section>
       {view === "list" && (
-      <section aria-labelledby="drafts-heading" className="grid gap-4">
-        <h2 id="drafts-heading" className="font-display text-xl font-extrabold tracking-tight">
+      <section aria-labelledby={`${ids}-drafts`} className="grid gap-4">
+        <h2 id={`${ids}-drafts`} className="font-display text-xl font-extrabold tracking-tight">
           Drafts
         </h2>
         {drafts === null ? (

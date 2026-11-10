@@ -306,3 +306,39 @@ test("the sidebar holds the team switcher with the plan, and Upgrade opens /bill
   await side.getByRole("button", { name: "Acme", exact: true }).click();
   await expect(page.locator("#team-menu").getByRole("link", { name: "Manage team" })).toBeVisible();
 });
+
+test("dark theme stays in the app: after signing out the landing page is light", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await brain(page);
+  await page.route("**/auth/logout", (route) => route.fulfill({ json: {} }));
+  await page.goto("/posts");
+  const html = page.locator("html");
+  await expect(html).toHaveAttribute("data-theme", "dark");
+  await expect(html).toHaveAttribute("data-app", "");
+  await accountButton(page).click();
+  await accountMenu(page).getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL("/");
+  await expect(html).not.toHaveAttribute("data-app");
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor)).toBe("rgb(250, 248, 246)");
+  expect(await page.evaluate(() => getComputedStyle(document.body).color)).toBe("rgb(18, 18, 18)");
+});
+
+test("the account menu links to Plans, also on the icon rail", async ({ page }) => {
+  await brain(page);
+  await page.goto("/posts");
+  await page.getByRole("button", { name: "Collapse sidebar" }).click();
+  await page.getByRole("button", { name: "Account: Mira" }).click();
+  await accountMenu(page).getByRole("link", { name: "Plans" }).click();
+  await expect(page).toHaveURL("/billing");
+});
+
+test("the open mobile menu fits the screen with the account row visible", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await brain(page);
+  await page.goto("/posts");
+  await page.getByRole("button", { name: "Menu" }).click();
+  await expect(accountButton(page)).toBeInViewport({ ratio: 1 });
+  const aside = (await page.locator("aside").boundingBox())!;
+  expect(aside.y + aside.height).toBeLessThanOrEqual(844);
+  await page.screenshot({ path: test.info().outputPath("mobile-menu.png") });
+});

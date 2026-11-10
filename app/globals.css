@@ -144,7 +144,8 @@ body { margin: 0; font-family: var(--font-body); font-size: 1.0625rem; line-heig
   --line: #2c2a27; --line-soft: #22201e; --side: #121110; --faint: #8f8883; --nav: #d3cec9; --edge: #3d3a36;
   color-scheme: dark;
 }
-:root[data-theme="dark"]:has(.app-root) { background: #0d0c0b; color-scheme: dark; }
+/* data-app is set by AppShell while it shows (an effect with cleanup), so the page background never stays dark on the landing page. */
+:root[data-theme="dark"][data-app] { background: #0d0c0b; color-scheme: dark; }
 /* The app reads in one UI face; the display face stays on the landing page and the logo. Unlayered so it beats the font-display utility. */
 .app-root :is(h2, h3, legend, dd).font-display { font-family: var(--font-body); font-weight: 600; letter-spacing: -0.005em; }
 .app-root h1.font-display { font-family: var(--font-body); font-weight: 600; letter-spacing: -0.025em; }
