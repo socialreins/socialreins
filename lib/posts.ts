@@ -85,6 +85,9 @@ export function mergeCreators(list: TikTokCreator[]): TikTokCreator {
   );
 }
 
+// A YouTube video's visibility (brain's `youtube.privacy`); brain uploads as private without one.
+export type YouTubePrivacy = "private" | "unlisted" | "public";
+export const youtubePrivacyName: Record<YouTubePrivacy, string> = { private: "Private", unlisted: "Unlisted", public: "Public" };
 export type Platform = "bluesky" | "threads" | "linkedin" | "facebook" | "instagram" | "youtube" | "x" | "tiktok";
 export type Post = {
   id: string;
@@ -99,6 +102,8 @@ export type Post = {
   cover?: string | null;
   // A TikTok post's settings; null for none (a post made through the API).
   tiktok?: TikTokSettings | null;
+  // A YouTube post's settings; null or no privacy means private.
+  youtube?: { privacy?: YouTubePrivacy | null } | null;
   status: PostStatus;
   scheduled_at: string | null;
   published_at: string | null;
@@ -123,6 +128,8 @@ export type PostInput = {
   cover?: string;
   // TikTok settings: only a TikTok post takes them, and a group gives them to its TikTok post.
   tiktok?: TikTokSettings;
+  // YouTube settings: only a YouTube post takes them, and a group gives them to its YouTube post.
+  youtube?: { privacy: YouTubePrivacy };
   // ISO time to publish; null keeps the post a draft. A past time means now.
   scheduled_at: string | null;
   // A list to put the post in; one it is already in would move it to the end.

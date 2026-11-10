@@ -43,6 +43,8 @@ import {
   type ThreadPart,
   type TikTokCreator,
   type TikTokSettings,
+  type YouTubePrivacy,
+  youtubePrivacyName,
 } from "@/lib/posts";
 import { fitsList, listLists, partLabel, type PostList } from "@/lib/lists";
 import { listSets, type SocialSet } from "@/lib/sets";
@@ -102,6 +104,8 @@ export function PostEditor({ id }: { id?: string }) {
   const [tiktok, setTikTok] = useState<TikTokSettings>(noTikTok);
   const [creatorRead, setCreatorRead] = useState<{ key: string; value: TikTokCreator | Failure } | null>(null);
   const [creatorTry, setCreatorTry] = useState(0);
+  // The YouTube video's visibility: private unless chosen.
+  const [ytPrivacy, setYtPrivacy] = useState<YouTubePrivacy>("private");
   // The platforms ticked for a new post; null means every platform with an account in the set.
   const [chosen, setChosen] = useState<Platform[] | null>(null);
   // Per-platform text that replaces the main post on that platform.
@@ -142,6 +146,7 @@ export function PostEditor({ id }: { id?: string }) {
     setCommentCustom({});
     setCover(p.cover ?? "");
     setTikTok(p.tiktok ?? noTikTok);
+    setYtPrivacy(p.youtube?.privacy ?? "private");
     setCustom({});
     setAt(toLocalInput(p.status === "scheduled" ? p.scheduled_at : null));
     setListId("");
@@ -282,7 +287,7 @@ export function PostEditor({ id }: { id?: string }) {
         const r = await publishAll([saved.id, ...unsent.filter((u) => u !== saved.id)]);
         return isFailure(r) ? r : r[0]!;
       }
-      const g = await createPostGroup({ ...shared, platforms: selected, body, media: images, thread: parts, first_comment: comment.trim() ? comment : undefined, tiktok: selected.includes("tiktok") ? tiktokOut : undefined, overrides });
+      const g = await createPostGroup({ ...shared, platforms: selected, body, media: images, thread: parts, first_comment: comment.trim() ? comment : undefined, tiktok: selected.includes("tiktok") ? tiktokOut : undefined, youtube: selected.includes("youtube") ? { privacy: ytPrivacy } : undefined, overrides });
       if (isFailure(g)) return g;
       const posts = g.posts;
       made = posts.length;
@@ -397,6 +402,7 @@ export function PostEditor({ id }: { id?: string }) {
     first_comment: commentText(p).trim() ? commentText(p) : undefined,
     cover: coverFor(p),
     tiktok: p === "tiktok" ? tiktokOut : undefined,
+    youtube: p === "youtube" ? { privacy: ytPrivacy } : undefined,
   });
   // TikTok: the account's creator info (null while it loads), and the settings as sent. A photo post has no duet or
   // stitch, and an interaction the creator turned off in TikTok stays off.
@@ -638,6 +644,14 @@ export function PostEditor({ id }: { id?: string }) {
                 {post.tiktok.commercial_content ? ` Disclosed as ${post.tiktok.branded_content ? "a paid partnership" : "promotional content"}.` : ""}
                 {post.tiktok.ai_generated ? " Marked as AI-generated." : ""}
               </p>
+            </section>
+          )}
+          {post.platform === "youtube" && (
+            <section aria-labelledby="youtube-summary-heading" className="card grid gap-2 p-5">
+              <h2 id="youtube-summary-heading" className="font-display text-lg font-extrabold tracking-tight">
+                YouTube visibility
+              </h2>
+              <p className="text-sm">{youtubePrivacyName[post.youtube?.privacy ?? "private"]}</p>
             </section>
           )}
           {post.cover && (
@@ -1014,6 +1028,20 @@ export function PostEditor({ id }: { id?: string }) {
               )}
             </fieldset>
             )}
+            {selected.includes("youtube") && (
+              <div className="grid gap-1.5">
+                <label htmlFor="youtube-privacy" className="label">
+                  YouTube visibility
+                </label>
+                <select id="youtube-privacy" className="field justify-self-start" value={ytPrivacy} onChange={(e) => setYtPrivacy(e.target.value as YouTubePrivacy)}>
+                  {(Object.keys(youtubePrivacyName) as YouTubePrivacy[]).map((v) => (
+                    <option key={v} value={v}>
+                      {youtubePrivacyName[v]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             {selected.includes("tiktok") && (
               <TikTokPanel creator={creator} settings={tiktokOut} onChange={setTikTok} photosOnly={photosOnly} onRetry={() => setCreatorTry((n) => n + 1)} />
             )}
@@ -1133,8 +1161,8 @@ function CommentCounts({ id, text, platforms }: { id: string; text: string; plat
 function YouTubeNote() {
   return (
     <p className="hint">
-      On YouTube the first line is the video&apos;s title and the rest its description. The video goes up as public, but until Google has audited the
-      YouTube API project behind this server, YouTube keeps new uploads private.
+      On YouTube the first line is the video&apos;s title and the rest its description. The video goes up with the visibility chosen below (Private
+      unless you pick another), but until Google has audited the YouTube API project behind this server, YouTube keeps new uploads private.
     </p>
   );
 }
