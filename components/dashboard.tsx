@@ -73,7 +73,7 @@ export function Dashboard() {
       />
       {/* Shown only when something failed, so a calm week reads calm. */}
       {failed.length > 0 && (
-        <Panel id="needs-attention" title="Needs attention" link={{ href: "/posts", label: "All posts" }} load={posts}>
+        <Panel id="needs-attention" title="Needs attention" note={failed.length > 3 ? `${failed.length} this week` : undefined} link={{ href: "/posts", label: "All posts" }} load={posts}>
           <PostRows posts={failed.slice(0, 3)} at={postTime} detail={(p) => p.error} />
         </Panel>
       )}
