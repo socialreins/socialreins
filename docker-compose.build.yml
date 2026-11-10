@@ -1,0 +1,5 @@
+# Build brain from the ./brain submodule instead of pulling its image. See README "Self-host".
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+services:
+  brain:
+    build: ./brain
