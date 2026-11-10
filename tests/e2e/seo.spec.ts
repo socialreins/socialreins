@@ -35,6 +35,7 @@ for (const path of publicPages) {
     expect(html).toContain('<meta property="og:description"');
     expect(html).toContain('<meta property="og:image"');
     const description = html.match(/<meta name="description" content="([^"]*)"/)?.[1] ?? "";
+    expect(description.length).toBeGreaterThanOrEqual(110);
     expect(description.length).toBeLessThanOrEqual(160);
   });
 }
