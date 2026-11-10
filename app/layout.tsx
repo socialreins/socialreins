@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://socialreins.com"),
   title: "SocialReins: open-source social media manager",
   description:
-    "An open-source social media manager for Facebook, Instagram, Threads, LinkedIn, Bluesky, X, TikTok and YouTube. Self-hostable now; publishing and a hosted version are coming.",
+    "Open-source social media manager for Facebook, Instagram, Threads, LinkedIn, Bluesky, X, TikTok and YouTube. Self-host now; publishing and hosting are coming.",
 };
 
 export const viewport: Viewport = { themeColor: "#121212" };

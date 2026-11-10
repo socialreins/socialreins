@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ContactLink, LegalPage } from "@/components/legal-page";
 
-export const metadata: Metadata = { title: "Privacy Policy: SocialReins" };
+export const metadata: Metadata = { title: "Privacy Policy: SocialReins", alternates: { canonical: "/privacy" } };
 
 export default function Privacy() {
   return (

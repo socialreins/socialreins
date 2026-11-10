@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { AuthPage } from "@/components/auth-page";
 import { LoginForm, LoginFormWithError } from "@/components/login-form";
 
-export const metadata: Metadata = { title: "Log in to SocialReins" };
+export const metadata: Metadata = { title: "Log in to SocialReins", robots: { index: false } };
 
 export default function Login() {
   return (
