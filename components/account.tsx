@@ -1,69 +1,135 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { useId, useRef, useState, type PointerEvent } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "@/lib/auth";
 import { useSession } from "@/components/app-shell";
-import { Icon } from "@/components/ui";
+import { Icon, type IconName } from "@/components/ui";
 
-// Who is signed in, and Sign out, at the foot of the app's sidebar.
-export function Account() {
+const item = "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-ink/[0.045]";
+
+// The signed-in user at the foot of the sidebar: name and avatar only. Hover or click opens the menu
+// with the profile pages, the admin console and Sign out (a native popover: Escape and clicking outside close it).
+export function Account({ collapsed }: { collapsed: boolean }) {
   const router = useRouter();
   const { user } = useSession();
+  const inAdmin = usePathname().startsWith("/admin");
   const [signOutFailed, setSignOutFailed] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const button = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const leaving = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const byHover = useRef(false);
+  const [open, setOpen] = useState(false);
+  // Next keeps a left layout mounted but hidden, so the admin and app shells can both be in the page.
+  const id = useId();
+  const name = user.name || user.email;
+
+  const isOpen = () => panel.current?.matches(":popover-open") ?? false;
+  function show(hover: boolean) {
+    clearTimeout(leaving.current);
+    if (isOpen()) return;
+    byHover.current = hover;
+    panel.current?.showPopover();
+  }
+  // A short delay lets the pointer cross the gap between the button and the menu.
+  const hoverEnter = (e: PointerEvent) => e.pointerType === "mouse" && show(true);
+  const hoverLeave = (e: PointerEvent) => {
+    if (e.pointerType !== "mouse" || !byHover.current) return;
+    leaving.current = setTimeout(() => panel.current?.hidePopover(), 200);
+  };
+
+  const links: { href: string; label: string; icon: IconName }[] = [
+    { href: "/profile", label: "Profile", icon: "user" },
+    { href: "/security", label: "Sign-in and security", icon: "security" },
+    { href: "/security#passkeys", label: "Passkeys", icon: "fingerprint" },
+  ];
+  if (user.is_admin) links.push(inAdmin ? { href: "/home", label: "Back to the app", icon: "left" } : { href: "/admin", label: "Admin console", icon: "admin" });
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-2 border-t border-[var(--line)] px-2 pt-3">
-      <div className="flex items-center gap-3">
-        <span aria-hidden="true" className="grid size-7 shrink-0 place-items-center rounded-full bg-ink/10 text-xs font-bold">
-          {[...(user.name || user.email)][0].toUpperCase()}
+    <div className="border-t border-[var(--line)] pt-2" onPointerEnter={hoverEnter} onPointerLeave={hoverLeave}>
+      <button
+        ref={button}
+        type="button"
+        aria-haspopup="true"
+        aria-expanded={open}
+        aria-controls={id}
+        aria-label={collapsed ? `Account: ${name}` : undefined}
+        title={collapsed ? name : undefined}
+        className={`flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-ink/[0.045] ${collapsed ? "md:justify-center md:px-0" : ""}`}
+        // A click pins a menu that hover opened, and otherwise toggles it.
+        onClick={() => {
+          if (isOpen() && !byHover.current) return panel.current?.hidePopover();
+          show(false);
+          byHover.current = false;
+        }}
+      >
+        <span aria-hidden="true" className="grid size-7 shrink-0 place-items-center rounded-full bg-signal-deep text-xs font-semibold text-paper">
+          {[...name][0].toUpperCase()}
         </span>
-        <p className="min-w-0 text-sm leading-snug">
-          {user.name && <span className="block truncate font-bold">{user.name}</span>}
-          <span className="block text-ink-soft">Signed in as</span>{" "}
-          <strong className="block truncate" title={user.email}>
+        <span className={`min-w-0 flex-1 truncate font-medium ${collapsed ? "md:sr-only" : ""}`}>{name}</span>
+        <Icon name="down" className={`size-3.5 rotate-180 text-[var(--faint)] ${collapsed ? "md:hidden" : ""}`} />
+      </button>
+      <div
+        ref={panel}
+        id={id}
+        popover="auto"
+        // Placed before it shows: above the button, or beside it on the icon rail.
+        onBeforeToggle={(e) => {
+          const opening = (e.nativeEvent as ToggleEvent).newState === "open";
+          setOpen(opening);
+          // Closing with focus inside (Escape) hands focus back to the button.
+          if (!opening) return void (panel.current!.contains(document.activeElement) && button.current?.focus());
+          const r = button.current!.getBoundingClientRect();
+          const rail = r.width < 80;
+          const s = panel.current!.style;
+          s.bottom = `${innerHeight - (rail ? r.bottom : r.top - 4)}px`;
+          s.left = `${Math.max(8, Math.min(rail ? r.right + 8 : r.left, innerWidth - 248))}px`;
+        }}
+        onClick={(e) => (e.target as Element).closest("a") && panel.current?.hidePopover()}
+        // Escape closes only this menu, not the mobile menu around it.
+        onKeyDown={(e) => e.key === "Escape" && e.stopPropagation()}
+        className="account-menu app-root fixed m-0 w-60 max-w-[calc(100vw-1rem)] rounded-lg bg-paper p-1.5 text-sm shadow-[0_0_0_1px_var(--line),0_10px_30px_rgb(0_0_0/0.12)] [inset:auto]"
+      >
+        <p className="px-2 pt-1 pb-1.5 text-xs text-ink-soft">
+          Signed in as{" "}
+          <strong className="block truncate font-medium text-ink" title={user.email}>
             {user.email}
           </strong>
         </p>
+        <ul className="grid">
+          {links.map((l) => (
+            <li key={l.href}>
+              <Link href={l.href} className={item}>
+                <Icon name={l.icon} className="size-4 text-[var(--faint)]" />
+                {l.label}
+              </Link>
+            </li>
+          ))}
+        </ul>
+        <div className="my-1.5 border-t border-[var(--line)]" />
+        <button
+          type="button"
+          disabled={signingOut}
+          className={item}
+          onClick={async () => {
+            setSigningOut(true);
+            setSignOutFailed(false);
+            if (await signOut()) return router.push("/");
+            setSignOutFailed(true);
+            setSigningOut(false);
+          }}
+        >
+          <Icon name="out" className="size-4 text-[var(--faint)]" />
+          Sign out
+        </button>
+        {signOutFailed && (
+          <p role="alert" className="waitlist-error px-2 text-sm">
+            Sign out didn&apos;t go through. Try again in a moment.
+          </p>
+        )}
       </div>
-      <Suspense fallback={null}>
-        <AdminLink />
-      </Suspense>
-      <button
-        type="button"
-        disabled={signingOut}
-        className="btn btn-quiet btn-sm justify-self-start"
-        onClick={async () => {
-          setSigningOut(true);
-          setSignOutFailed(false);
-          if (await signOut()) return router.push("/");
-          setSignOutFailed(true);
-          setSigningOut(false);
-        }}
-      >
-        <Icon name="out" className="size-4" />
-        Sign out
-      </button>
-      {signOutFailed && (
-        <p role="alert" className="waitlist-error text-sm">
-          Sign out didn&apos;t go through. Try again in a moment.
-        </p>
-      )}
     </div>
-  );
-}
-
-// Site admins switch between the app and the admin console here; nobody else sees it.
-function AdminLink() {
-  const { user } = useSession();
-  const inAdmin = usePathname().startsWith("/admin");
-  if (!user.is_admin) return null;
-  return (
-    <Link href={inAdmin ? "/home" : "/admin"} className="btn btn-quiet btn-sm justify-self-start">
-      <Icon name={inAdmin ? "left" : "admin"} className="size-4" />
-      {inAdmin ? "Back to the app" : "Admin console"}
-    </Link>
   );
 }

@@ -48,14 +48,11 @@ const nav: NavGroup[] = [
       { href: "/api-tokens", label: "API tokens", icon: "key" },
     ],
   },
-  {
-    label: "Profile settings",
-    items: [
-      { href: "/profile", label: "Profile", icon: "user" },
-      { href: "/security", label: "Sign-in and security", icon: "security" },
-      { href: "/security#passkeys", label: "Passkeys", icon: "fingerprint" },
-    ],
-  },
+];
+// Personal pages live in the account menu at the foot of the sidebar; listed here for the breadcrumb.
+const profilePages: NavItem[] = [
+  { href: "/profile", label: "Profile", icon: "user" },
+  { href: "/security", label: "Sign-in and security", icon: "security" },
 ];
 // The admin console at /admin, for site admins only; it has its own nav and colours.
 const adminNav: NavGroup[] = [{ label: "", items: [{ href: "/admin/waitlist", label: "Waitlist", icon: "admin" }] }];
@@ -184,17 +181,18 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
             </div>
             <div
               id="app-menu"
+              // Following a link (the nav or the account menu) closes the menu on small screens.
+              onClick={(e) => (e.target as Element).closest("a") && setOpen(false)}
               className={`${open ? "flex" : "hidden"} max-h-[calc(100dvh-4rem)] min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-2.5 pb-4 md:pt-3 md:flex md:max-h-none`}
             >
-              {/* Following a link closes the menu on small screens. */}
-              <nav aria-label="App" onClick={(e) => (e.target as Element).closest("a") && setOpen(false)}>
+              <nav aria-label="App">
                 <Suspense fallback={<NavGroups path="" groups={groups} collapsed={collapsed} />}>
                   <CurrentNavGroups groups={groups} collapsed={collapsed} />
                 </Suspense>
               </nav>
               {/* minmax(0,1fr): a long team name or email truncates instead of widening the sidebar. */}
-              <div className={`mt-auto grid grid-cols-[minmax(0,1fr)] gap-4 ${collapsed ? "md:hidden" : ""}`}>
-                {session ? <Account /> : <div className="h-16 rounded-2xl bg-ink/5 motion-safe:animate-pulse" />}
+              <div className="mt-auto grid grid-cols-[minmax(0,1fr)]">
+                {session ? <Account collapsed={collapsed} /> : <div className="h-10 rounded-md bg-ink/5 motion-safe:animate-pulse" />}
               </div>
             </div>
           </div>
@@ -209,7 +207,7 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
           <TopBar
             session={session !== null}
             admin={admin}
-            pages={groups.flatMap((g) => g.items)}
+            pages={[...groups.flatMap((g) => g.items), ...profilePages]}
             collapsed={collapsed}
             onToggle={() => store("sidebar-collapsed", collapsed ? "0" : "1")}
           />
@@ -236,7 +234,7 @@ function NavGroups({ path, groups, collapsed }: { path: string; groups: NavGroup
   );
 }
 
-// Hash links (Passkeys) point into a page another link already marks as current.
+// Hash links point into a page another link already marks as current.
 // Home (/home) matches only itself, or it would hold every page.
 export const isActive = (path: string, href: string) =>
   !href.includes("#") && (path === href || (href !== "/home" && path.startsWith(`${href}/`)));

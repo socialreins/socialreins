@@ -16,12 +16,14 @@ async function brain(page: Page, passkeys: unknown[] | null = [key]) {
 
 const nav = (page: Page) => page.getByRole("navigation", { name: "App" });
 const group = (page: Page, name: string) => nav(page).getByRole("button", { name, exact: true });
+const accountButton = (page: Page) => page.locator("aside button[aria-haspopup]:visible");
+const accountMenu = (page: Page) => page.locator(".account-menu");
 const dialog = (page: Page) => page.getByRole("dialog", { name: "Add a passkey" });
 
 test("sidebar groups open and close and remember it", async ({ page }) => {
   await brain(page);
   await page.goto("/posts");
-  for (const name of ["Publish", "Engage", "Workspace", "Profile settings"]) await expect(group(page, name)).toBeVisible();
+  for (const name of ["Publish", "Engage", "Workspace"]) await expect(group(page, name)).toBeVisible();
   const engage = group(page, "Engage");
   await expect(engage).toHaveAttribute("aria-expanded", "true");
   await engage.click();
@@ -59,7 +61,11 @@ test("the sidebar collapses to an icon rail and back, across reloads", async ({ 
   await expect(posts).toBeVisible();
   await expect(posts).toHaveAttribute("title", "Posts");
   await expect(posts).toHaveAttribute("aria-current", "page");
-  await expect(nav(page).getByRole("link", { name: "Sign-in and security", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Account: Mira" })).toBeVisible();
+  await page.getByRole("button", { name: "Account: Mira" }).click();
+  await expect(accountMenu(page).getByRole("link", { name: "Sign-in and security" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(accountMenu(page)).toBeHidden();
   expect((await page.locator("aside").boundingBox())!.width).toBeLessThan(100);
 
   await page.reload();
@@ -77,10 +83,32 @@ test("the mobile menu shows the groups", async ({ page }) => {
   await page.goto("/posts");
   await expect(page.getByRole("button", { name: "Collapse sidebar" })).toBeHidden();
   await page.getByRole("button", { name: "Menu" }).click();
-  await expect(group(page, "Profile settings")).toBeVisible();
-  await nav(page).getByRole("link", { name: "Profile", exact: true }).click();
+  await expect(group(page, "Publish")).toBeVisible();
+  await accountButton(page).click();
+  await accountMenu(page).getByRole("link", { name: "Profile", exact: true }).click();
   await expect(page).toHaveURL("/profile");
-  await expect(group(page, "Profile settings")).toBeHidden();
+  await expect(group(page, "Publish")).toBeHidden();
+  await expect(accountMenu(page)).toBeHidden();
+});
+
+test("the account menu opens on hover and holds the profile pages and sign out", async ({ page }) => {
+  await brain(page);
+  await page.goto("/posts");
+  await expect(accountButton(page)).toContainText("Mira");
+  await expect(accountMenu(page)).toBeHidden();
+  await accountButton(page).hover();
+  await expect(accountMenu(page)).toBeVisible();
+  for (const name of ["Profile", "Sign-in and security", "Passkeys", "Sign out"]) await expect(accountMenu(page).getByRole(name === "Sign out" ? "button" : "link", { name, exact: true })).toBeVisible();
+  await expect(accountMenu(page)).toContainText("me@example.com");
+  await page.mouse.move(800, 400);
+  await expect(accountMenu(page)).toBeHidden();
+  // A click pins it open; Escape closes it and returns focus.
+  await accountButton(page).click();
+  await expect(accountButton(page)).toHaveAttribute("aria-expanded", "true");
+  await accountMenu(page).getByRole("link", { name: "Profile", exact: true }).focus();
+  await page.keyboard.press("Escape");
+  await expect(accountMenu(page)).toBeHidden();
+  await expect(accountButton(page)).toBeFocused();
 });
 
 test("the profile page shows the user, with links to security", async ({ page }) => {
@@ -92,7 +120,8 @@ test("the profile page shows the user, with links to security", async ({ page })
   await expect(main.getByText("me@example.com")).toBeVisible();
   await expect(main.getByLabel("Name", { exact: true })).toHaveValue("Mira");
   await expect(main.getByRole("link", { name: /Passkeys/ })).toHaveAttribute("href", "/security#passkeys");
-  await expect(nav(page).getByRole("link", { name: "Profile", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Profile");
+  await expect(nav(page).getByRole("link", { name: "Profile" })).toHaveCount(0);
 });
 
 test("no passkey dialog for a user who has one, or when the list fails", async ({ page }) => {
@@ -173,7 +202,7 @@ test("the profile name is saved and shows in the sidebar", async ({ page }) => {
   });
   await page.goto("/profile");
   const main = page.getByRole("main");
-  const account = page.locator("p", { hasText: "Signed in as" });
+  const account = accountButton(page);
   await expect(account).toContainText("Mira");
 
   // Empty or too long: checked here, no request.

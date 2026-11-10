@@ -42,12 +42,14 @@ test("only site admins get the Admin console link, and it opens a separate conso
   await brain(page, true);
   await page.goto("/posts");
   await expect(page.getByRole("link", { name: "Waitlist", exact: true })).toHaveCount(0);
+  await page.locator("aside button[aria-haspopup]:visible").click();
   await page.getByRole("link", { name: "Admin console" }).click();
   await expect(page).toHaveURL("/admin/waitlist");
   await expect(page.getByRole("heading", { name: "Waitlist", level: 1 })).toBeVisible();
   await expect(page.locator(".admin-root")).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Admin console");
   await expect(page.getByRole("link", { name: "Posts", exact: true })).toHaveCount(0);
+  await page.locator("aside button[aria-haspopup]:visible").click();
   await page.getByRole("link", { name: "Back to the app" }).click();
   await expect(page).toHaveURL("/home");
 });
