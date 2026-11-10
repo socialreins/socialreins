@@ -8,7 +8,7 @@ import { SessionLink } from "@/components/session-link";
 import { WaitlistForm } from "@/components/waitlist-form";
 import { org } from "@/lib/github";
 
-const repo = "https://github.com/socialreins/web";
+const repo = "https://github.com/socialreins/socialreins";
 
 const headerLink = "whitespace-nowrap font-bold underline decoration-signal decoration-2 underline-offset-4 hover:text-signal-deep";
 
@@ -44,8 +44,8 @@ const features = [
   },
 ];
 
-const compose = `git clone https://github.com/socialreins/web
-cd web && cp .env.example .env
+const compose = `git clone https://github.com/socialreins/socialreins
+cd socialreins && cp .env.example .env
 # edit .env: POSTGRES_PASSWORD, BRAIN_URL, WEB_URL
 docker compose up -d`;
 
@@ -196,6 +196,9 @@ export default function Home() {
           </Link>
           <a href={repo} className={headerLink}>
             SocialReins on GitHub
+          </a>
+          <a href="https://github.com/sponsors/HarunRRayhan" rel="noopener" className={headerLink}>
+            Sponsor
           </a>
         </span>
       </footer>

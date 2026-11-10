@@ -1,4 +1,4 @@
-# AGENTS.md: socialreins/web
+# AGENTS.md: socialreins/socialreins
 
 Next.js frontend for SocialReins (socialreins.com) and the main repo of the project (its README is the entry point for users): the marketing landing page with the waitlist now, the logged-in app later, in one codebase. The backend is the Rust API in github.com/socialreins/brain.
 

@@ -1,7 +1,7 @@
 export const org = "https://github.com/socialreins";
 
 export const repos = [
-  { name: "web", href: `${org}/web`, blurb: "Start here: install and self-host", main: true },
+  { name: "socialreins", href: `${org}/socialreins`, blurb: "Start here: install and self-host", main: true },
   { name: "brain", href: `${org}/brain`, blurb: "The API server, in Rust", main: false },
 ] as const;
 

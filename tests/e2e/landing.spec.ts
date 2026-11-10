@@ -18,11 +18,11 @@ test("landing page renders and the waitlist form joins", async ({ page }) => {
   await expect(page.getByRole("link", { name: "SocialReins", exact: true })).toHaveAttribute("href", "/");
   const menu = page.locator("details").filter({ hasText: "Follow on GitHub" });
   await menu.getByText("Follow on GitHub").click();
-  await expect(menu.getByRole("link", { name: /socialreins\/web/ })).toHaveAttribute(
+  await expect(menu.getByRole("link", { name: /socialreins\/socialreins/ })).toHaveAttribute(
     "href",
-    "https://github.com/socialreins/web",
+    "https://github.com/socialreins/socialreins",
   );
-  await expect(menu.getByRole("link", { name: /socialreins\/web/ })).toContainText("main");
+  await expect(menu.getByRole("link", { name: /socialreins\/socialreins/ })).toContainText("main");
   await expect(menu.getByRole("link", { name: /socialreins\/brain/ })).toHaveAttribute(
     "href",
     "https://github.com/socialreins/brain",
