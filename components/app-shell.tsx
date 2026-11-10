@@ -84,7 +84,7 @@ function store(key: string, value: string) {
   listeners.forEach((f) => f());
 }
 
-// The set picked in the top bar, per team on this device; "" means all sets.
+// The set picked in the top bar, per team on this device; "" only until the top bar picks the Default set.
 export function useCurrentSet(): [string, (id: string) => void] {
   const team = useSession().user.current_team.id;
   const key = `current-set:${team}`;

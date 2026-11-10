@@ -238,29 +238,29 @@ function SetMenu({ path }: { path: string }) {
   const [current, setCurrent] = useCurrentSet();
   const [sets, setSets] = useState<SocialSet[] | Failure | null>(null);
 
-  // The name of a picked set is needed before the menu opens; with all sets, nothing to load yet.
-  // Loaded again on each page change, so a set deleted on the Sets page drops out of the filter.
+  // One set at a time, like one team. Loaded again on each page change, so a set deleted on the Sets page drops out.
   useEffect(() => {
     let live = true;
-    if (current) listSets().then((r) => live && setSets(r));
+    listSets().then((r) => live && setSets(r));
     return () => {
       live = false;
     };
-  }, [current, path]);
-  // A set deleted elsewhere falls back to all sets.
+  }, [path]);
+  // No pick yet, or a set deleted elsewhere: the Default set.
   useEffect(() => {
-    if (current && Array.isArray(sets) && !sets.some((s) => s.id === current)) setCurrent("");
+    const fallback = Array.isArray(sets) && !sets.some((s) => s.id === current) && sets.find((s) => s.is_default);
+    if (fallback) setCurrent(fallback.id);
   }, [current, sets, setCurrent]);
 
-  const name = (Array.isArray(sets) && sets.find((s) => s.id === current)?.name) || "All sets";
+  const name = (Array.isArray(sets) && sets.find((s) => s.id === current)?.name) || "Default";
   const pick = (id: string) => {
     setCurrent(id);
     hide("set-menu");
   };
   const option = (id: string, label: string) => (
-    <li key={id || "all"}>
+    <li key={id}>
       <button type="button" className={item} aria-current={id === current || undefined} onClick={() => pick(id)}>
-        <Icon name={id ? "sets" : "lists"} className="size-4 text-ink-soft" />
+        <Icon name="sets" className="size-4 text-ink-soft" />
         <span className="min-w-0 flex-1 truncate">{label}</span>
         {id === current && <Icon name="check" className="size-4 text-signal-deep" />}
       </button>
@@ -269,14 +269,13 @@ function SetMenu({ path }: { path: string }) {
 
   return (
     <Menu id="set-menu" onOpen={() => listSets().then(setSets)} trigger={<span className="truncate">{name}</span>}>
-      <p className="px-2 pt-1 pb-1.5 text-xs text-ink-soft">Show posts from one set, or all of them.</p>
+      <p className="px-2 pt-1 pb-1.5 text-xs text-ink-soft">Work in one set at a time.</p>
       {isFailure(sets) && (
         <p role="alert" className="waitlist-error px-2">
           Sets couldn&apos;t be loaded. {problemText(sets)}
         </p>
       )}
       <ul className="grid">
-        {option("", "All sets")}
         {Array.isArray(sets) && sets.map((s) => option(s.id, s.name))}
       </ul>
       <div className="my-1.5 border-t border-[var(--line)]" />

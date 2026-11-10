@@ -108,7 +108,7 @@ test("calendar shows the month's posts, drafts below, with filter and month step
   await page.getByRole("button", { name: "Next month" }).click();
   await expect(page.getByRole("heading", { name: "December 2026" })).toBeVisible();
   await expect.poll(() => queries.some((q) => q.get("from") === "2026-11-30T23:00:00.000Z")).toBe(true);
-  await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "All sets" }).click();
+  await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "Default" }).click();
   await page.locator("#set-menu").getByRole("button", { name: "Clients" }).click();
   await expect(page.locator("#set-menu")).toBeHidden();
   await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "Clients" })).toBeVisible();
