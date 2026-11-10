@@ -7,4 +7,5 @@
 - [Privacy Policy](https://socialreins.com/privacy)
 - [Terms of Service](https://socialreins.com/terms)
 - [Data Deletion](https://socialreins.com/data-deletion)
+- [What you can post where](https://socialreins.com/post-types): post types each network supports
 - [Source code](https://github.com/socialreins/web)

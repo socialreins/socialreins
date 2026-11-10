@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-const publicPages = ["/", "/contact", "/privacy", "/terms", "/data-deletion"];
+const publicPages = ["/", "/contact", "/privacy", "/terms", "/data-deletion", "/post-types"];
 const hiddenPages = ["/login", "/login/email", "/signup", "/signup/email", "/welcome", "/admin/waitlist", "/home", "/posts"];
 const noindex = /<meta name="robots" content="noindex"/;
 
