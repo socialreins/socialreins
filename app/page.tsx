@@ -188,6 +188,9 @@ export default function Home() {
           <Link href="/terms" className={headerLink}>
             Terms
           </Link>
+          <Link href="/post-types" className={headerLink}>
+            Post types
+          </Link>
           <Link href="/contact" className={headerLink}>
             Contact
           </Link>
