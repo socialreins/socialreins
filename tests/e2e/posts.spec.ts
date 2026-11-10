@@ -683,6 +683,73 @@ test("a published post shows its cover and, per account, why it was not set", as
   await expect(page.getByText(/Cover image: The video is up, but its cover image was not set\. Cover: YouTube refused the custom thumbnail\. It is not tried again/)).toBeVisible();
 });
 
+test("a YouTube video goes up private unless another visibility is chosen", async ({ page }) => {
+  await brain(page, { accounts: [youtubeAcc] });
+  let sent: Record<string, unknown> | undefined;
+  await page.route("**/v1/posts", (route) => {
+    sent = route.request().postDataJSON();
+    return route.fulfill({ status: 201, json: post("p1", sent) });
+  });
+  await page.goto("/posts/new");
+  await page.getByLabel("Post", { exact: true }).fill("My title");
+  await page.getByRole("button", { name: "Add image" }).click();
+  await page.getByLabel("Image 1 link").fill("https://example.com/clip.mp4");
+  const visibility = page.getByLabel("YouTube visibility");
+  await expect(visibility).toHaveValue("private");
+  await expect(page.getByText("YouTube keeps new uploads private").first()).toBeVisible();
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page).toHaveURL("/posts/p1");
+  expect(sent).toMatchObject({ platform: "youtube", youtube: { privacy: "private" } });
+
+  // The saved draft keeps its choice, and a new one is sent.
+  await expect(visibility).toHaveValue("private");
+  await page.route("**/v1/posts/p1", (route) => {
+    if (route.request().method() !== "PUT") return route.fallback();
+    sent = route.request().postDataJSON();
+    return route.fulfill({ json: post("p1", sent) });
+  });
+  await visibility.selectOption("public");
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect.poll(() => (sent?.youtube as { privacy?: string } | undefined)?.privacy).toBe("public");
+  await expect(visibility).toHaveValue("public");
+});
+
+test("a group gives the YouTube visibility to its YouTube post", async ({ page }) => {
+  await brain(page, { accounts: [youtubeAcc, facebookAcc] });
+  let sent: Record<string, unknown> | undefined;
+  await page.route("**/v1/post-groups", (route) => {
+    sent = route.request().postDataJSON();
+    return route.fulfill({ status: 201, json: { group_id: "g1", posts: [post("g-y", { platform: "youtube", group_id: "g1" }), post("g-f", { platform: "facebook", group_id: "g1" })] } });
+  });
+  await page.goto("/posts/new");
+  await page.getByLabel("Post", { exact: true }).fill("My title");
+  await page.getByRole("button", { name: "Add image" }).click();
+  await page.getByLabel("Image 1 link").fill("https://example.com/clip.mp4");
+  await page.getByLabel("YouTube visibility").selectOption("unlisted");
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page).toHaveURL("/posts/g-y");
+  expect(sent).toMatchObject({ youtube: { privacy: "unlisted" } });
+});
+
+test("a published YouTube post shows its visibility", async ({ page }) => {
+  await brain(page, { accounts: [youtubeAcc] });
+  const published = (id: string, youtube: object | null) =>
+    page.route(`**/v1/posts/${id}`, (route) =>
+      route.fulfill({
+        json: post(id, { platform: "youtube", status: "published", published_at: "2026-11-03T08:00:00Z", media: ["https://example.com/clip.mp4"], youtube, targets: [target({ social_account_id: "c5" })] }),
+      }),
+    );
+  await published("p8", { privacy: "public" });
+  await published("p9", null);
+  const shown = page.getByRole("region", { name: "YouTube visibility" });
+  await page.goto("/posts/p8");
+  await expect(shown).toContainText("Public");
+  await expect(page.getByRole("combobox", { name: "YouTube visibility" })).toHaveCount(0);
+  // A post saved without a choice went up private.
+  await page.goto("/posts/p9");
+  await expect(shown).toContainText("Private");
+});
+
 const xAcc = { ...account("c6", "x", "Ann on X"), handle: "ann_lee" };
 
 test("X counts its own way, takes four images and a thread", async ({ page }) => {
