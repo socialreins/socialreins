@@ -14,6 +14,7 @@ test("login sends a link and shows the check-your-email state", async ({ page })
   const done = page.getByRole("heading", { name: "Check your email" });
   await expect(done).toBeFocused();
   expect(body).toEqual({ email: "someone@example.com", login_only: true });
+  await expect(page.getByText(/waitlist/)).toHaveCount(0);
   await page.getByRole("button", { name: "Use a different email" }).click();
   await expect(page.getByLabel("Email")).toBeFocused();
 });
@@ -33,6 +34,10 @@ test("sign up asks for a name and sends it with the email", async ({ page }) => 
   await page.getByRole("button", { name: "Sign up with a link" }).click();
   await expect(page.getByRole("heading", { name: "Check your email" })).toBeFocused();
   expect(body).toEqual({ email: "ann@example.com", name: "Ann Lee" });
+  // The same words for everyone, so they never say whether the address may sign up.
+  await expect(page.getByText(/^If ann@example.com can sign in/)).toHaveText(
+    "If ann@example.com can sign in, a link is on its way. It works once and expires in 15 minutes. If sign-ups are closed for your address, the email says you're on the waitlist instead.",
+  );
 });
 
 test("login explains rate limits and bad links", async ({ page }) => {
