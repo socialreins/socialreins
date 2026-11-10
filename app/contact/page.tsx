@@ -2,11 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ContactForm } from "@/components/contact-form";
 import { LogoMark } from "@/components/logo";
+import { publicPage } from "@/lib/seo";
 
 export const metadata: Metadata = {
   title: "Contact: SocialReins",
   description: "Send the SocialReins team a message with a question or feedback about the open-source social media manager. We reply by email.",
-  alternates: { canonical: "/contact" },
+  ...publicPage("/contact"),
 };
 
 export default function Contact() {

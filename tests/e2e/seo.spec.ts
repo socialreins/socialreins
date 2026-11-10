@@ -29,11 +29,11 @@ for (const path of publicPages) {
     const url = `https://socialreins.com${path === "/" ? "" : path}`;
     expect(html).not.toMatch(noindex);
     expect(html).toMatch(new RegExp(`<link rel="canonical" href="${url}/?"`));
-    // A page-level openGraph drops the root share image on child pages, so only the home page sets og:url.
-    if (path === "/") expect(html).toMatch(new RegExp(`<meta property="og:url" content="${url}/?"`));
+    expect(html).toMatch(new RegExp(`<meta property="og:url" content="${url}/?"`));
     expect(html).toContain('<meta property="og:title"');
     expect(html).toContain('<meta property="og:description"');
-    expect(html).toContain('<meta property="og:image"');
+    expect(html).toMatch(/<meta property="og:image" content="https:\/\/socialreins\.com\/opengraph-image\.png/);
+    expect(html).toContain('<meta property="og:image:width" content="1200"');
     const description = html.match(/<meta name="description" content="([^"]*)"/)?.[1] ?? "";
     expect(description.length).toBeGreaterThanOrEqual(110);
     expect(description.length).toBeLessThanOrEqual(160);

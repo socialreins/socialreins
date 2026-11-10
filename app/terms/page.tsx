@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
+import { publicPage } from "@/lib/seo";
 import Link from "next/link";
 import { ContactLink, LegalPage } from "@/components/legal-page";
 
-export const metadata: Metadata = { title: "Terms of Service: SocialReins", alternates: { canonical: "/terms" } };
+export const metadata: Metadata = { title: "Terms of Service: SocialReins", ...publicPage("/terms") };
 
 export default function Terms() {
   return (

@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { Admin } from "@/components/admin";
 import { PageHeader } from "@/components/ui";
 
-export const metadata: Metadata = { title: "Waitlist: SocialReins admin", robots: { index: false } };
+export const metadata: Metadata = { title: "Waitlist: SocialReins admin" };
 
 export default function AdminPage() {
   return (

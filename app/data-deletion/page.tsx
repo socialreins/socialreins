@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
+import { publicPage } from "@/lib/seo";
 import Link from "next/link";
 import { ContactLink, LegalPage } from "@/components/legal-page";
 
-export const metadata: Metadata = { title: "Data Deletion: SocialReins", alternates: { canonical: "/data-deletion" } };
+export const metadata: Metadata = { title: "Data Deletion: SocialReins", ...publicPage("/data-deletion") };
 
 const link = "font-bold underline decoration-signal decoration-2 underline-offset-4 hover:text-signal-deep";
 
