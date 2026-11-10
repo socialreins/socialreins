@@ -27,6 +27,7 @@ test("home shows what failed, what is up next, recent posts, the inbox and a few
         post("p-later", { status: "scheduled", scheduled_at: "2026-11-30T09:00:00Z", body: "Month end" }),
         post("p-pub", { status: "published", scheduled_at: "2026-11-08T09:00:00Z", published_at: "2026-11-08T09:00:00Z", body: "Hello" }),
         post("p-fail", { status: "failed", scheduled_at: "2026-11-09T09:00:00Z", error: "Bluesky refused the image", body: "Broken" }),
+        post("p-old-fail", { status: "failed", scheduled_at: "2026-11-01T09:00:00Z", error: "An old failure", body: "Old" }),
       ],
     });
   });
@@ -56,6 +57,8 @@ test("home shows what failed, what is up next, recent posts, the inbox and a few
   await expect(upNext.getByRole("listitem").nth(1)).toContainText("Month end");
   await expect(upNext.getByRole("link", { name: "Open calendar" })).toHaveAttribute("href", "/calendar");
   await expect(page.getByRole("region", { name: "Needs attention" })).toContainText("Bluesky refused the image");
+  // Failures older than a week drop off Home.
+  await expect(page.getByRole("region", { name: "Needs attention" })).not.toContainText("An old failure");
   await expect(page.getByRole("region", { name: "Recently published" }).getByRole("link", { name: /Hello/ })).toBeVisible();
   const inbox = page.getByRole("region", { name: "Inbox" });
   await expect(inbox.getByRole("link", { name: /Bob/ })).toHaveAttribute("href", "/inbox/all?item=i1");
