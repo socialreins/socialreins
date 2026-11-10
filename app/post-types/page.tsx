@@ -60,6 +60,8 @@ export default function PostTypes() {
         </p>
       </div>
 
+      {/* The table is 66rem wide; below that only the first networks show, so say there are more. */}
+      <p className="-mb-5 text-sm text-ink-soft min-[70rem]:hidden">Scroll the table sideways to see all eight networks.</p>
       <div className="relative min-w-0 overflow-x-auto rounded-lg border border-ink/10 bg-paper" tabIndex={0} role="region" aria-label="Post types by network">
         <table className="w-full min-w-[66rem] border-collapse text-left text-[0.95rem] leading-snug">
           <thead>
