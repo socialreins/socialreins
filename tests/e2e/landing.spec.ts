@@ -111,3 +111,17 @@ test("the web app manifest lists the home-screen icons", async ({ request }) => 
     expect(res.headers()["content-type"]).toBe("image/png");
   }
 });
+
+test("on a phone the header fits and the page never scrolls sideways", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  // Signed in, the header says Open the app, its widest form.
+  await page.route("**/auth/me", (route) =>
+    route.fulfill({ json: { id: "u1", email: "me@example.com", name: "Me", username: null, current_team: { id: "t1", name: "Me", role: "owner" } } }),
+  );
+  await page.goto("/");
+  const header = page.locator("header").first();
+  await expect(header.getByRole("link", { name: "SocialReins" })).toBeVisible();
+  const open = header.getByRole("link", { name: "Open the app" });
+  await expect(open).toBeInViewport({ ratio: 1 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
