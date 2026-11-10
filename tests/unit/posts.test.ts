@@ -216,7 +216,7 @@ describe("post checks", () => {
       threads: { chars: 500, media: 20, thread: true, comment: null, cover: false },
       linkedin: { chars: 3000, media: 20, thread: false, comment: 1250, cover: false },
       facebook: { chars: 63_206, media: 10, thread: false, comment: 8000, cover: true },
-      instagram: { chars: 2200, media: 10, thread: false, comment: 2200, cover: true },
+      instagram: { chars: 2200, media: 20, thread: false, comment: 2200, cover: true },
       youtube: { chars: 100, media: 1, thread: false, comment: 10_000, cover: true },
       x: { chars: 280, media: 4, thread: true, comment: null, cover: false },
       tiktok: { chars: 2200, media: 35, thread: false, comment: null, cover: false },
@@ -234,7 +234,8 @@ describe("post checks", () => {
     expect(checkPost("no picture", [], "instagram")).toBe("media_required");
     expect(checkPost("", img(1), "instagram")).toBeNull();
     expect(checkPost(" ", [], "instagram")).toBe("empty_post");
-    expect(checkPost("a".repeat(2200), img(10), "instagram")).toBeNull();
+    expect(checkPost("a".repeat(2200), img(20), "instagram")).toBeNull();
+    expect(checkPost("x", img(21), "instagram")).toBe("too_many_images");
     expect(checkPost("a".repeat(2201), img(1), "instagram")).toBe("too_long");
     expect(checkPost("a".repeat(2200), img(35), "tiktok")).toBeNull();
     expect(checkPost("", img(1), "tiktok")).toBeNull();
