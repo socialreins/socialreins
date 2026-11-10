@@ -43,14 +43,35 @@ function GoogleMark() {
   );
 }
 
-// Reads ?error= on the client; the page shows <LoginForm linkError={null} /> as its server-rendered fallback.
+const waitlistedNote = "You're on the waitlist. Sign-ups are closed for now; we'll email you when SocialReins is live.";
+
+// Reads ?error= and brain's ?waitlisted=1 (a Google sign-up it put on the waitlist) on the client;
+// the page shows <LoginForm linkError={null} /> as its server-rendered fallback.
 export function LoginFormWithError({ mode }: { mode: Mode }) {
   const params = useSearchParams();
-  return <LoginForm mode={mode} linkError={params.get("error")} next={params.get("next")} />;
+  // Read once, so dropping it from the URL below keeps the note on screen.
+  const [waitlisted] = useState(() => params.get("waitlisted") === "1");
+  useEffect(() => {
+    if (!waitlisted) return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("waitlisted");
+    window.history.replaceState(null, "", url);
+  }, [waitlisted]);
+  return <LoginForm mode={mode} linkError={params.get("error")} next={params.get("next")} waitlisted={waitlisted} />;
 }
 
 // The ways to log in or sign up. `next`: where to go after Google or passkey sign-in, if it is a path on this site.
-export function LoginForm({ mode, linkError, next = null }: { mode: Mode; linkError: string | null; next?: string | null }) {
+export function LoginForm({
+  mode,
+  linkError,
+  next = null,
+  waitlisted = false,
+}: {
+  mode: Mode;
+  linkError: string | null;
+  next?: string | null;
+  waitlisted?: boolean;
+}) {
   const router = useRouter();
   const login = mode === "login";
   const [google, setGoogle] = useState(false);
@@ -75,6 +96,11 @@ export function LoginForm({ mode, linkError, next = null }: { mode: Mode; linkEr
   const query = next ? `?next=${encodeURIComponent(next)}` : "";
   return (
     <div className="grid gap-6">
+      {waitlisted && !tried && (
+        <p role="status" className="waitlist-done">
+          {waitlistedNote}
+        </p>
+      )}
       {linkError !== null && !tried && (
         <p role="alert" className="waitlist-error">
           {Object.hasOwn(linkErrors, linkError) ? linkErrors[linkError] : unknownLinkError}

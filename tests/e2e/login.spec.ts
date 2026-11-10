@@ -107,6 +107,15 @@ test("sign up explains a Google account with no account yet, and starts Google w
   await expect(page.getByRole("link", { name: "Continue with Google" })).toHaveAttribute("href", /\/auth\/google\/start\?next=%2Fhome$/);
 });
 
+test("sign up shows a Google sign-up brain put on the waitlist as a status, then drops the param", async ({ page }) => {
+  await page.goto("/signup?waitlisted=1&next=%2Fposts");
+  const note = page.getByRole("status").filter({ hasText: "You're on the waitlist." });
+  await expect(note).toHaveText("You're on the waitlist. Sign-ups are closed for now; we'll email you when SocialReins is live.");
+  await expect(page).toHaveURL("/signup?next=%2Fposts");
+  await expect(note).toBeVisible();
+  await expect(page.locator(".waitlist-error")).toHaveCount(0);
+});
+
 test("login explains Google and closed sign-up errors", async ({ page }) => {
   await page.goto("/login?error=google_failed");
   await expect(page.getByRole("alert").filter({ hasText: "Google sign-in didn't finish" })).toBeVisible();

@@ -61,6 +61,7 @@ export function EmailLinkForm({ mode }: { mode: "login" | "signup" }) {
         </h2>
         <p className="waitlist-done">
           If {email.trim()} can sign in, a link is on its way. It works once and expires in 15 minutes.
+          {signup && " If sign-ups are closed for your address, the email says you're on the waitlist instead."}
         </p>
         <button
           type="button"
