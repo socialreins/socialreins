@@ -51,9 +51,12 @@ export function Lists() {
   const sets = useSets();
   const [name, setName] = useState("");
   // A new list starts in the set picked in the top bar.
-  const [chosenSet, setSetId] = useState(useCurrentSet()[0]);
-  // The top bar's set may be gone; then the new list starts with all sets.
-  const setId = sets.some((s) => s.id === chosenSet) ? chosenSet : "";
+  // Follows the top bar until picked here, since the top bar may still be choosing Default.
+  const [current] = useCurrentSet();
+  const [chosenSet, setSetId] = useState<string | null>(null);
+  const picked = chosenSet ?? current;
+  // The set may be gone; then the new list starts with all sets.
+  const setId = sets.some((s) => s.id === picked) ? picked : "";
   const [open, setOpen] = useState<{ kind: "rename" | "delete"; id: string } | null>(null);
   const [newName, setNewName] = useState("");
   const { busy, problem, failedKey, done, run } = useAction();

@@ -151,7 +151,7 @@ export function PostEditor({ id }: { id?: string }) {
     listSets().then((r) => {
       setSets(r);
       // A new post starts in the set picked in the top bar.
-      if (Array.isArray(r) && r[0]) setSetId((v) => v || (r.some((s) => s.id === startSet.current) ? startSet.current : r[0]!.id));
+      if (Array.isArray(r) && r[0]) setSetId((v) => v || (r.some((s) => s.id === startSet.current) ? startSet.current : (r.find((s) => s.is_default) ?? r[0]!).id));
     });
     listConnections().then((r) => {
       if (Array.isArray(r)) setAccounts(r);
