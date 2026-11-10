@@ -66,7 +66,8 @@ export default function Home() {
       <header className="flex items-center justify-between gap-3 py-6">
         <Link href="/" className="flex items-center gap-2.5 font-display text-xl font-extrabold tracking-tight">
           <LogoMark className="size-9" />
-          SocialReins
+          {/* On a phone the mark alone leaves room for GitHub and Open the app. */}
+          <span className="max-sm:sr-only">SocialReins</span>
         </Link>
         <nav aria-label="Site" className="flex items-center gap-4 sm:gap-6">
           <GitHubRepos
