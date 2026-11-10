@@ -241,3 +241,68 @@ test("the profile name is saved and shows in the sidebar", async ({ page }) => {
   await expect(main.getByText("Mira Stone", { exact: true })).toBeVisible();
   await expect(account).toContainText("Mira Stone");
 });
+
+test("Calendar in the Publish group opens the month grid; Posts stays its own page", async ({ page }) => {
+  await brain(page);
+  await page.goto("/home");
+  await nav(page).getByRole("link", { name: "Calendar", exact: true }).click();
+  await expect(page).toHaveURL("/calendar");
+  await expect(nav(page).getByRole("link", { name: "Calendar", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(nav(page).getByRole("link", { name: "Posts", exact: true })).not.toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Calendar");
+  await expect(page.getByRole("table", { name: /^Posts in / })).toBeVisible();
+});
+
+test("the theme switch sets data-theme and survives a reload", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await brain(page);
+  await page.goto("/posts");
+  const html = page.locator("html");
+  const theme = page.getByRole("group", { name: "Theme" });
+  await expect(theme.getByRole("button", { name: "System" })).toHaveAttribute("aria-pressed", "true");
+  await expect(html).toHaveAttribute("data-theme", "light");
+  // System follows the OS, live.
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(html).toHaveAttribute("data-theme", "dark");
+  await page.emulateMedia({ colorScheme: "light" });
+  await theme.getByRole("button", { name: "Dark" }).click();
+  await expect(theme.getByRole("button", { name: "Dark" })).toHaveAttribute("aria-pressed", "true");
+  await expect(html).toHaveAttribute("data-theme", "dark");
+  await page.reload();
+  await expect(html).toHaveAttribute("data-theme", "dark");
+  await expect(page.getByRole("group", { name: "Theme" }).getByRole("button", { name: "Dark" })).toHaveAttribute("aria-pressed", "true");
+
+  // The icon rail has one button that steps Light, Dark, System.
+  await page.getByRole("button", { name: "Collapse sidebar" }).click();
+  await page.getByRole("button", { name: "Theme: Dark. Switch to System" }).click();
+  await page.getByRole("button", { name: "Theme: System. Switch to Light" }).click();
+  await expect(html).toHaveAttribute("data-theme", "light");
+  expect(await page.evaluate(() => localStorage.getItem("theme"))).toBe("light");
+});
+
+test("the account shows the role in the current team under the name", async ({ page }) => {
+  await brain(page);
+  await page.goto("/posts");
+  await expect(accountButton(page)).toContainText("Mira");
+  await expect(accountButton(page)).toContainText("Owner");
+});
+
+test("the sidebar holds the team switcher with the plan, and Upgrade opens /billing", async ({ page }) => {
+  await brain(page);
+  await page.goto("/posts");
+  const side = page.locator("aside");
+  await expect(side.getByRole("button", { name: "Acme", exact: true })).toBeVisible();
+  await expect(side).toContainText("Free plan");
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" })).not.toContainText("Acme");
+  await side.getByRole("link", { name: "Upgrade" }).click();
+  await expect(page).toHaveURL("/billing");
+  await expect(page.getByRole("heading", { name: "Plans", level: 1 })).toBeVisible();
+  await expect(page.getByRole("main")).toContainText("Your team is on the Free plan. Paid plans are coming soon.");
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Plans");
+
+  // The icon rail keeps only the team's initial, still opening the switcher.
+  await page.getByRole("button", { name: "Collapse sidebar" }).click();
+  await expect(side.getByText("Free plan")).toBeHidden();
+  await side.getByRole("button", { name: "Acme", exact: true }).click();
+  await expect(page.locator("#team-menu").getByRole("link", { name: "Manage team" })).toBeVisible();
+});

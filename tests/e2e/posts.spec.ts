@@ -78,7 +78,7 @@ test("posts sends a signed-out visitor to login", async ({ page }) => {
   await expect(page).toHaveURL("/login");
 });
 
-test("calendar shows the month's posts, drafts below, with filter and month steps", async ({ page }) => {
+test("calendar shows the month's posts, with filter and month steps; posts lists them with drafts", async ({ page }) => {
   await page.clock.setFixedTime(new Date("2026-11-10T12:00:00+01:00"));
   await brain(page);
   const queries: URLSearchParams[] = [];
@@ -98,12 +98,20 @@ test("calendar shows the month's posts, drafts below, with filter and month step
   });
   await page.goto("/posts");
   await expect(page.getByRole("heading", { name: "November 2026" })).toBeVisible();
+  await expect(page.getByRole("table")).toHaveCount(0);
+  const days = page.getByRole("list", { name: "Posts in November 2026" });
+  await expect(days.getByRole("link", { name: /10:30.*Launch day$/ })).toHaveAttribute("href", "/posts/p-sched");
+  await expect(page.getByRole("region", { name: "Drafts" }).getByRole("link", { name: "An unfinished thought" })).toHaveAttribute("href", "/posts/p-draft");
+  expect(queries[0]?.get("to")).toBe("2026-11-30T23:00:00.000Z");
+
+  await page.getByRole("navigation", { name: "App" }).getByRole("link", { name: "Calendar" }).click();
+  await expect(page).toHaveURL("/calendar");
+  await expect(page.getByRole("heading", { name: "Calendar", level: 1 })).toBeVisible();
   const table = page.getByRole("table", { name: "Posts in November 2026" });
   await expect(table.getByRole("link", { name: /10:30.*Launch day$/ })).toHaveAttribute("href", "/posts/p-sched");
   await expect(table.getByRole("link", { name: /0?9:00.*Hello Bluesky$/ })).toHaveAttribute("href", "/posts/p-pub");
   await expect(table.getByRole("link", { name: "View on Bluesky" })).toHaveAttribute("href", "https://bsky.app/profile/alice.bsky.social/post/1");
-  await expect(page.getByRole("region", { name: "Drafts" }).getByRole("link", { name: "An unfinished thought" })).toHaveAttribute("href", "/posts/p-draft");
-  expect(queries[0]?.get("to")).toBe("2026-11-30T23:00:00.000Z");
+  await expect(page.getByRole("region", { name: "Drafts" })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Next month" }).click();
   await expect(page.getByRole("heading", { name: "December 2026" })).toBeVisible();
@@ -112,9 +120,11 @@ test("calendar shows the month's posts, drafts below, with filter and month step
   await page.locator("#set-menu").getByRole("button", { name: "Clients" }).click();
   await expect(page.locator("#set-menu")).toBeHidden();
   await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "Clients" })).toBeVisible();
-  await expect.poll(() => queries.some((q) => q.get("social_set_id") === "s1" && q.get("status") === "draft")).toBe(true);
+  await expect.poll(() => queries.some((q) => q.get("social_set_id") === "s1" && q.get("from") !== null)).toBe(true);
 
-  // The picked set is the default for a new post, and survives a reload.
+  // The picked set filters the drafts on Posts, is the default for a new post, and survives a reload.
+  await page.goto("/posts");
+  await expect.poll(() => queries.some((q) => q.get("social_set_id") === "s1" && q.get("status") === "draft")).toBe(true);
   await page.reload();
   await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "Clients" })).toBeVisible();
   await page.goto("/posts/new");
@@ -130,7 +140,7 @@ test("on a phone the month is a list of days, not a wide grid", async ({ page })
       json: new URL(route.request().url()).searchParams.get("status") === "draft" ? [] : [post("p-sched", { status: "scheduled", scheduled_at: "2026-11-12T09:30:00Z", body: "Launch day" })],
     }),
   );
-  await page.goto("/posts");
+  await page.goto("/calendar");
   await expect(page.getByRole("table")).toBeHidden();
   const days = page.getByRole("list", { name: "Posts in November 2026" });
   await expect(days.getByRole("link", { name: /Launch day/ })).toHaveAttribute("href", "/posts/p-sched");
@@ -875,7 +885,7 @@ test("calendar marks each post with its platform", async ({ page }) => {
           : ["bluesky", "instagram"].map((p) => post(`p-${p}`, { platform: p, group_id: "g1", status: "scheduled", scheduled_at: "2026-11-12T09:30:00Z", body: "Launch day" })),
     }),
   );
-  await page.goto("/posts");
+  await page.goto("/calendar");
   const table = page.getByRole("table", { name: "Posts in November 2026" });
   await expect(table.getByRole("link", { name: /^Bluesky: 10:30.*Launch day$/ })).toHaveAttribute("href", "/posts/p-bluesky");
   await expect(table.getByRole("link", { name: /^Instagram: 10:30.*Launch day$/ })).toHaveAttribute("href", "/posts/p-instagram");

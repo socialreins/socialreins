@@ -78,7 +78,7 @@ export function AccountNote() {
   if (!missing) return null;
   return (
     <div className="card flex flex-wrap items-center gap-4 border-signal/40 p-5">
-      <span className="grid size-11 place-items-center rounded-xl bg-[#e7f1ff]" style={{ color: bluesky.color }}>
+      <span className="grid size-11 place-items-center rounded-xl bg-[#1185FE]/10" style={{ color: bluesky.color }}>
         <PlatformIcon platform={bluesky} className="size-6" />
       </span>
       <p className="min-w-0 flex-1 basis-60">
@@ -157,7 +157,8 @@ function MonthList({ posts, y, m, title }: { posts: Post[]; y: number; m: number
   );
 }
 
-export function Posts() {
+// /posts lists the month's posts by day with the drafts below; /calendar shows the month as a grid (a list of days on narrow screens).
+export function Posts({ view }: { view: "list" | "calendar" }) {
   const now = new Date();
   const [month, setMonth] = useState({ y: now.getFullYear(), m: now.getMonth() });
   // The set picked in the top bar filters the calendar and drafts.
@@ -179,12 +180,13 @@ export function Posts() {
   }, [month, setId]);
 
   useEffect(() => {
+    if (view !== "list") return;
     let live = true;
     listPosts({ social_set_id: setId, status: "draft" }).then((r) => live && setDrafts(r));
     return () => {
       live = false;
     };
-  }, [setId]);
+  }, [setId, view]);
 
   const step = (by: number) => setMonth(({ y, m }) => ({ y: m + by < 0 ? y - 1 : m + by > 11 ? y + 1 : y, m: (m + by + 12) % 12 }));
   const title = new Date(month.y, month.m, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
@@ -221,9 +223,10 @@ export function Posts() {
         ) : (
           <>
             {/* Narrow screens get the month as a list of days; the grid needs about 46rem. */}
-            <div className="lg:hidden">
+            <div className={view === "calendar" ? "lg:hidden" : ""}>
               <MonthList posts={calendarPosts} y={month.y} m={month.m} title={title} />
             </div>
+            {view === "calendar" && (
             <div className="card hidden overflow-x-auto lg:block">
             <table className="w-full min-w-[46rem] table-fixed border-collapse text-sm">
               <caption className="sr-only">Posts in {title}</caption>
@@ -276,6 +279,7 @@ export function Posts() {
               </tbody>
             </table>
             </div>
+            )}
           </>
         )}
         <ul aria-label="Colors" className="flex flex-wrap gap-2">
@@ -286,6 +290,7 @@ export function Posts() {
           ))}
         </ul>
       </section>
+      {view === "list" && (
       <section aria-labelledby="drafts-heading" className="grid gap-4">
         <h2 id="drafts-heading" className="font-display text-xl font-extrabold tracking-tight">
           Drafts
@@ -315,6 +320,7 @@ export function Posts() {
           </ul>
         )}
       </section>
+      )}
     </div>
   );
 }

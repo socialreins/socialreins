@@ -5,11 +5,12 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "@/lib/auth";
 import { useSession } from "@/components/app-shell";
+import { roleName } from "@/components/team-ui";
 import { Icon, type IconName } from "@/components/ui";
 
 const item = "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-ink/[0.045]";
 
-// The signed-in user at the foot of the sidebar: name and avatar only. Hover or click opens the menu
+// The signed-in user at the foot of the sidebar: avatar, name and role in the current team. Hover or click opens the menu
 // with the profile pages, the admin console and Sign out (a native popover: Escape and clicking outside close it).
 export function Account({ collapsed }: { collapsed: boolean }) {
   const router = useRouter();
@@ -80,7 +81,10 @@ export function Account({ collapsed }: { collapsed: boolean }) {
         <span aria-hidden="true" className="grid size-7 shrink-0 place-items-center rounded-full bg-signal-deep text-xs font-semibold text-paper">
           {[...name][0].toUpperCase()}
         </span>
-        <span className={`min-w-0 flex-1 truncate font-medium ${collapsed ? "md:sr-only" : ""}`}>{name}</span>
+        <span className={`grid min-w-0 flex-1 leading-tight ${collapsed ? "md:sr-only" : ""}`}>
+          <span className="truncate font-medium">{name}</span>
+          <span className="truncate text-xs text-[var(--faint)]">{roleName[user.current_team.role]}</span>
+        </span>
         <Icon name="down" className={`size-3.5 rotate-180 text-[var(--faint)] ${collapsed ? "md:hidden" : ""}`} />
       </button>
       <div

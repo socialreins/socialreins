@@ -269,7 +269,7 @@ export function AutomationForm({
             <span className="text-ink-soft">to Sam</span>
           </p>
           {dm.trim() ? (
-            <p className="justify-self-end whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-[#1185FE] px-3.5 py-2.5 text-[0.95rem] leading-snug text-paper">
+            <p className="justify-self-end whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-[#1185FE] px-3.5 py-2.5 text-[0.95rem] leading-snug text-white">
               {sample(dm)}
             </p>
           ) : (
