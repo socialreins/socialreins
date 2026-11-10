@@ -86,7 +86,7 @@ test("long team names stay inside the top bar and emails inside the sidebar", as
   await button.click();
   const panel = await page.locator("#team-menu").boundingBox();
   expect(panel!.x + panel!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
-  const [account, aside] = await Promise.all([page.getByText("someone.with.a.really.long.address@example-company.com").boundingBox(), page.locator("aside").boundingBox()]);
+  const [account, aside] = await Promise.all([page.locator("aside button[data-account]:visible").boundingBox(), page.locator("aside").boundingBox()]);
   expect(account!.x + account!.width).toBeLessThanOrEqual(aside!.x + aside!.width);
 });
 
