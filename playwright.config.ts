@@ -9,7 +9,7 @@ export default defineConfig({
     command: "npm run start",
     url: "http://localhost:3000",
     reuseExistingServer: !process.env.CI,
-    env: { BRAIN_URL: "http://localhost:8080" },
+    env: { BRAIN_URL: "http://localhost:8080", INDEXNOW_KEY: "e2e-indexnow-key" },
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
 });

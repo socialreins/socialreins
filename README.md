@@ -138,7 +138,7 @@ npm run build && npm run test:e2e   # Playwright against the production build
 
 ## Deploy
 
-`Dockerfile` builds a standalone Next.js server; `railway.json` deploys it on Railway. Set `BRAIN_URL` at run time (production: `https://brain.socialreins.com`): `/config.js` hands it to the browser and `proxy.ts` puts its origin in the CSP, so one image serves any domain. `.github/workflows/image.yml` publishes the image to GHCR.
+`Dockerfile` builds a standalone Next.js server; `railway.json` deploys it on Railway. Set `BRAIN_URL` at run time (production: `https://brain.socialreins.com`): `/config.js` hands it to the browser and `proxy.ts` puts its origin in the CSP, so one image serves any domain. Optional `INDEXNOW_KEY` serves `/indexnow.txt` for IndexNow pings; unset, it returns 404. `.github/workflows/image.yml` publishes the image to GHCR.
 
 ## License
 

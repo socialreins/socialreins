@@ -17,6 +17,12 @@ test("the sitemap lists the public pages and no app page", async ({ request }) =
   expect(urls).toEqual(publicPages.map((p) => `https://socialreins.com${p === "/" ? "" : p}`));
 });
 
+test("/indexnow.txt serves the IndexNow key from INDEXNOW_KEY", async ({ request }) => {
+  const response = await request.get("/indexnow.txt");
+  expect(response.status()).toBe(200);
+  expect((await response.text()).trim()).toBe("e2e-indexnow-key");
+});
+
 test("llms.txt describes the site", async ({ request }) => {
   const response = await request.get("/llms.txt");
   expect(response.status()).toBe(200);

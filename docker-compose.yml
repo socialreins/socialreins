@@ -33,6 +33,7 @@ services:
     restart: unless-stopped
     environment:
       BRAIN_URL: ${BRAIN_URL:-http://localhost:8080}
+      INDEXNOW_KEY: ${INDEXNOW_KEY:-}
     depends_on: [brain]
     ports: ["127.0.0.1:${WEB_PORT:-3000}:3000"]
 
