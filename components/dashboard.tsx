@@ -55,7 +55,8 @@ export function Dashboard() {
 
   const list = Array.isArray(posts) ? posts : [];
   const upcoming = list.filter((p) => (p.status === "scheduled" || p.status === "queued") && p.scheduled_at).sort((a, b) => Date.parse(a.scheduled_at!) - Date.parse(b.scheduled_at!));
-  const failed = list.filter((p) => p.status === "failed").sort((a, b) => Date.parse(postTime(b)) - Date.parse(postTime(a)));
+  // Only this week's failures: failed posts cannot be deleted, so older ones would sit here forever.
+  const failed = list.filter((p) => p.status === "failed" && Date.parse(postTime(p)) > now - 7 * DAY).sort((a, b) => Date.parse(postTime(b)) - Date.parse(postTime(a)));
   const published = list.filter((p) => p.status === "published").sort((a, b) => Date.parse(postTime(b)) - Date.parse(postTime(a)));
   const nextWeek = upcoming.filter((p) => Date.parse(p.scheduled_at!) < now + 7 * DAY).length;
   const count = <T,>(v: Load<T[]>, n?: number) => (v === null ? null : isFailure(v) ? "-" : (n ?? v.length).toLocaleString());
@@ -72,8 +73,8 @@ export function Dashboard() {
       />
       {/* Shown only when something failed, so a calm week reads calm. */}
       {failed.length > 0 && (
-        <Panel id="needs-attention" title="Needs attention" load={posts}>
-          <PostRows posts={failed.slice(0, 5)} at={postTime} detail={(p) => p.error} />
+        <Panel id="needs-attention" title="Needs attention" link={{ href: "/posts", label: "All posts" }} load={posts}>
+          <PostRows posts={failed.slice(0, 3)} at={postTime} detail={(p) => p.error} />
         </Panel>
       )}
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
