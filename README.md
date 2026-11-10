@@ -16,7 +16,7 @@ This repo is the starting point: the website and the app, built with Next.js. Th
 
 | Repo | What it is |
 |---|---|
-| [web](https://github.com/socialreins/web) | This repo: the website, the app and the docs |
+| [socialreins](https://github.com/socialreins/socialreins) | This repo: the website, the app and the docs |
 | [brain](https://github.com/socialreins/brain) | The API server, written in Rust |
 
 ## Self-host
@@ -31,8 +31,8 @@ and `linux/arm64`.
 
    ```sh
    mkdir socialreins && cd socialreins
-   curl -fsSLO https://raw.githubusercontent.com/socialreins/web/main/docker-compose.yml
-   curl -fsSL https://raw.githubusercontent.com/socialreins/web/main/.env.example -o .env
+   curl -fsSLO https://raw.githubusercontent.com/socialreins/socialreins/main/docker-compose.yml
+   curl -fsSL https://raw.githubusercontent.com/socialreins/socialreins/main/.env.example -o .env
    ```
 
 2. Edit `.env`: set `POSTGRES_PASSWORD` (`openssl rand -hex 24`), `ENCRYPTION_KEY`
@@ -139,6 +139,10 @@ npm run build && npm run test:e2e   # Playwright against the production build
 ## Deploy
 
 `Dockerfile` builds a standalone Next.js server; `railway.json` deploys it on Railway. Set `BRAIN_URL` at run time (production: `https://brain.socialreins.com`): `/config.js` hands it to the browser and `proxy.ts` puts its origin in the CSP, so one image serves any domain. Optional `INDEXNOW_KEY` serves `/indexnow.txt` for IndexNow pings (send `keyLocation=https://<your host>/indexnow.txt` with each ping); unset, it returns 404. `.github/workflows/image.yml` publishes the image to GHCR.
+
+## Sponsor
+
+SocialReins is free and open source. If it helps you, you can support its development through [GitHub Sponsors](https://github.com/sponsors/HarunRRayhan).
 
 ## License
 

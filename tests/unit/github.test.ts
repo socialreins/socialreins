@@ -6,7 +6,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe("fetchStars", () => {
   it("returns the repo's stargazers_count", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ stargazers_count: 42 })));
-    expect(await fetchStars("web")).toBe(42);
+    expect(await fetchStars("socialreins")).toBe(42);
   });
 
   it.each([
@@ -15,7 +15,7 @@ describe("fetchStars", () => {
     ["a missing count", () => Promise.resolve(Response.json({}))],
   ])("returns null on %s", async (_, impl) => {
     vi.stubGlobal("fetch", vi.fn().mockImplementation(impl));
-    expect(await fetchStars("web")).toBeNull();
+    expect(await fetchStars("socialreins")).toBeNull();
   });
 });
 
