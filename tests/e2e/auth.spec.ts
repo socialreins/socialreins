@@ -63,7 +63,7 @@ test("app shows the signed-in user and signs out", async ({ page }) => {
   await page.route("**/auth/me", (route) => route.fulfill({ json: user }));
   await page.route("**/auth/logout", (route) => route.fulfill({ status: 204 }));
   await page.goto("/home");
-  await page.locator("aside button[aria-haspopup]:visible").click();
+  await page.locator("aside button[data-account]:visible").click();
   await expect(page.getByText("Signed in as someone@example.com")).toBeVisible();
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL("/");

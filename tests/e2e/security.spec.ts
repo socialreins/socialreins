@@ -12,7 +12,7 @@ test("app links to the security page", async ({ page }) => {
   await signedIn(page, [key]);
   await page.goto("/home");
   const nav = page.getByRole("navigation", { name: "App" });
-  await page.locator("aside button[aria-haspopup]:visible").click();
+  await page.locator("aside button[data-account]:visible").click();
   await page.locator(".account-menu").getByRole("link", { name: "Sign-in and security", exact: true }).click();
   await expect(page).toHaveURL("/security");
   await expect(page.getByRole("heading", { name: "Sign-in and security", level: 1 })).toBeVisible();

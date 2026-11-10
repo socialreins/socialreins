@@ -16,7 +16,7 @@ async function brain(page: Page, passkeys: unknown[] | null = [key]) {
 
 const nav = (page: Page) => page.getByRole("navigation", { name: "App" });
 const group = (page: Page, name: string) => nav(page).getByRole("button", { name, exact: true });
-const accountButton = (page: Page) => page.locator("aside button[aria-haspopup]:visible");
+const accountButton = (page: Page) => page.locator("aside button[data-account]:visible");
 const accountMenu = (page: Page) => page.locator(".account-menu");
 const dialog = (page: Page) => page.getByRole("dialog", { name: "Add a passkey" });
 
@@ -84,6 +84,12 @@ test("the mobile menu shows the groups", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Collapse sidebar" })).toBeHidden();
   await page.getByRole("button", { name: "Menu" }).click();
   await expect(group(page, "Publish")).toBeVisible();
+  // Escape with focus on the account button closes only its menu.
+  await accountButton(page).click();
+  await expect(accountMenu(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(accountMenu(page)).toBeHidden();
+  await expect(group(page, "Publish")).toBeVisible();
   await accountButton(page).click();
   await accountMenu(page).getByRole("link", { name: "Profile", exact: true }).click();
   await expect(page).toHaveURL("/profile");
@@ -105,6 +111,12 @@ test("the account menu opens on hover and holds the profile pages and sign out",
   // A click pins it open; Escape closes it and returns focus.
   await accountButton(page).click();
   await expect(accountButton(page)).toHaveAttribute("aria-expanded", "true");
+  await page.mouse.move(800, 400);
+  await expect(accountMenu(page)).toBeVisible();
+  await accountButton(page).click();
+  await expect(accountMenu(page)).toBeHidden();
+  await accountButton(page).click();
+  await expect(accountMenu(page)).toBeVisible();
   await accountMenu(page).getByRole("link", { name: "Profile", exact: true }).focus();
   await page.keyboard.press("Escape");
   await expect(accountMenu(page)).toBeHidden();

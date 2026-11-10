@@ -21,6 +21,8 @@ export function Account({ collapsed }: { collapsed: boolean }) {
   const panel = useRef<HTMLDivElement>(null);
   const leaving = useRef<ReturnType<typeof setTimeout>>(undefined);
   const byHover = useRef(false);
+  // Clicking the button light-dismisses an open menu before the click lands, so pointerdown notes it was open.
+  const wasOpen = useRef(false);
   const [open, setOpen] = useState(false);
   // Next keeps a left layout mounted but hidden, so the admin and app shells can both be in the page.
   const id = useId();
@@ -48,19 +50,29 @@ export function Account({ collapsed }: { collapsed: boolean }) {
   if (user.is_admin) links.push(inAdmin ? { href: "/home", label: "Back to the app", icon: "left" } : { href: "/admin", label: "Admin console", icon: "admin" });
 
   return (
-    <div className="border-t border-[var(--line)] pt-2" onPointerEnter={hoverEnter} onPointerLeave={hoverLeave}>
+    <div
+      className="border-t border-[var(--line)] pt-2"
+      onPointerEnter={hoverEnter}
+      onPointerLeave={hoverLeave}
+      // Escape closes only this menu, not the mobile menu around it.
+      onKeyDown={(e) => open && e.key === "Escape" && e.stopPropagation()}
+    >
       <button
         ref={button}
         type="button"
-        aria-haspopup="true"
+        data-account
         aria-expanded={open}
         aria-controls={id}
         aria-label={collapsed ? `Account: ${name}` : undefined}
         title={collapsed ? name : undefined}
         className={`flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-ink/[0.045] ${collapsed ? "md:justify-center md:px-0" : ""}`}
         // A click pins a menu that hover opened, and otherwise toggles it.
-        onClick={() => {
-          if (isOpen() && !byHover.current) return panel.current?.hidePopover();
+        onPointerDown={() => (wasOpen.current = isOpen() && !byHover.current)}
+        onClick={(e) => {
+          // A mouse click arrives with the menu already dismissed; a key press with it still open.
+          const pinned = e.detail ? wasOpen.current : isOpen() && !byHover.current;
+          wasOpen.current = false;
+          if (pinned) return panel.current?.hidePopover();
           show(false);
           byHover.current = false;
         }}
@@ -88,8 +100,6 @@ export function Account({ collapsed }: { collapsed: boolean }) {
           s.left = `${Math.max(8, Math.min(rail ? r.right + 8 : r.left, innerWidth - 248))}px`;
         }}
         onClick={(e) => (e.target as Element).closest("a") && panel.current?.hidePopover()}
-        // Escape closes only this menu, not the mobile menu around it.
-        onKeyDown={(e) => e.key === "Escape" && e.stopPropagation()}
         className="account-menu app-root fixed m-0 w-60 max-w-[calc(100vw-1rem)] rounded-lg bg-paper p-1.5 text-sm shadow-[0_0_0_1px_var(--line),0_10px_30px_rgb(0_0_0/0.12)] [inset:auto]"
       >
         <p className="px-2 pt-1 pb-1.5 text-xs text-ink-soft">
