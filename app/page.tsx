@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { GitHubRepos } from "@/components/github-repos";
+import { GitHubLink } from "@/components/github-link";
 import { LogoMark } from "@/components/logo";
 import { PlatformIcon, platforms } from "@/components/platform-icons";
 import { Reins } from "@/components/reins";
@@ -70,10 +70,10 @@ export default function Home() {
           <span className="max-sm:sr-only">SocialReins</span>
         </Link>
         <nav aria-label="Site" className="flex items-center gap-4 sm:gap-6">
-          <GitHubRepos
+          <GitHubLink
             label="GitHub"
             mark
-            summaryClassName="rounded-full border-2 border-ink px-3.5 py-1.5 font-bold hover:bg-ink hover:text-paper"
+            className="rounded-full border-2 border-ink px-3.5 py-1.5 font-bold hover:bg-ink hover:text-paper"
           />
           <SessionLink className={headerLink} />
         </nav>
@@ -152,10 +152,9 @@ export default function Home() {
               paid subscription coming later.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <GitHubRepos
+              <GitHubLink
                 label="Star on GitHub"
-                align="left"
-                summaryClassName="rounded-full bg-signal px-6 py-3 font-bold text-ink hover:bg-paper"
+                className="rounded-full bg-signal px-6 py-3 font-bold text-ink hover:bg-paper"
               />
               <a href="#waitlist" className="rounded-full border-2 border-paper px-6 py-3 font-bold hover:bg-paper hover:text-ink">
                 Join the waitlist

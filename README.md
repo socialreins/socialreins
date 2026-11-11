@@ -1,4 +1,4 @@
-<p align="center"><img src="https://raw.githubusercontent.com/socialreins/.github/main/brand/logo.svg" width="96" height="96" alt="SocialReins logo"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/socialreins/socialreins/main/brand/logo.svg" width="96" height="96" alt="SocialReins logo"></p>
 
 <h1 align="center">SocialReins</h1>
 
@@ -121,7 +121,7 @@ Bluesky needs no app: you connect it with an app password.
 
 ## Contributing
 
-See [CONTRIBUTING.md](https://github.com/socialreins/.github/blob/main/CONTRIBUTING.md) and the [Code of Conduct](https://github.com/socialreins/.github/blob/main/CODE_OF_CONDUCT.md). To report a vulnerability, follow [SECURITY.md](https://github.com/socialreins/.github/blob/main/SECURITY.md).
+See [CONTRIBUTING.md](https://github.com/socialreins/socialreins/blob/main/CONTRIBUTING.md) and the [Code of Conduct](https://github.com/socialreins/socialreins/blob/main/CODE_OF_CONDUCT.md). To report a vulnerability, follow [SECURITY.md](https://github.com/socialreins/socialreins/blob/main/SECURITY.md).
 
 ## Develop
 
