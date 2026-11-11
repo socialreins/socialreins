@@ -3,7 +3,9 @@ import {
   charCount,
   checkComment,
   checkCover,
+  checkMediaTypes,
   checkPost,
+  coverTypeHint,
   checkThread,
   checkTikTok,
   createPost,
@@ -336,6 +338,37 @@ describe("post checks", () => {
       expect(checkCover(link, p, 0)).toBe("cover_needs_one_video");
       expect(checkCover(link, p, 2)).toBe("cover_needs_one_video");
     }
+  });
+
+  it("hints at media types by link, never blocking a save, and leaves links without an extension to brain", () => {
+    const u = (...names: string[]) => names.map((n) => `https://cdn.example/${n}`);
+    expect(checkMediaTypes(u("clip.mp4", "a.jpg"), "tiktok")).toBe("mixed_media");
+    // brain turns a PNG into a JPEG for TikTok and Instagram.
+    expect(checkMediaTypes(u("a.png"), "tiktok")).toBeNull();
+    expect(checkMediaTypes(u("a.gif"), "tiktok")).toBe("media_type_not_supported");
+    expect(checkMediaTypes(u("a.jpg", "b.webp"), "tiktok")).toBeNull();
+    expect(checkMediaTypes(u("a.png", "clip.MP4?dl=1"), "bluesky")).toBe("mixed_media");
+    expect(checkMediaTypes(u("a.gif", "b.jpg"), "x")).toBe("mixed_media");
+    expect(checkMediaTypes(u("doc.pdf"), "facebook")).toBe("media_type_not_supported");
+    expect(checkMediaTypes(u("doc.pdf"), "linkedin")).toBeNull();
+    expect(checkMediaTypes(u("doc.pdf", "a.jpg"), "linkedin")).toBe("mixed_media");
+    expect(checkMediaTypes(u("clip.mov"), "linkedin")).toBe("media_type_not_supported");
+    expect(checkMediaTypes(u("clip.mp4", "a.png"), "threads")).toBeNull();
+    expect(checkMediaTypes(u("a.png", "b.webp"), "instagram")).toBeNull();
+    expect(checkMediaTypes(u("a.gif"), "instagram")).toBe("media_type_not_supported");
+    // No extension (a Drive link) or an unknown one: brain probes the file.
+    const drive = "https://drive.google.com/file/d/1AbC/view?usp=sharing";
+    expect(checkMediaTypes([drive, ...u("clip.mp4")], "bluesky")).toBe("mixed_media");
+    expect(checkMediaTypes([drive, drive], "tiktok")).toBeNull();
+    // Hints only: a save is never blocked by an extension, since brain reads the bytes.
+    expect(checkPost("hi", u("a.gif"), "tiktok")).toBeNull();
+    expect(checkPost("hi", u("clip.mp4", "a.jpg"), "bluesky")).toBeNull();
+    expect(checkThread("hi", [], [{ body: "two", media: u("doc.pdf") }], "bluesky")).toBeNull();
+    expect(checkCover("https://cdn.example/c.gif", "instagram", 1)).toBeNull();
+    expect(coverTypeHint("https://cdn.example/c.png", "instagram")).toBeNull();
+    expect(coverTypeHint("https://cdn.example/c.gif", "instagram")).toBe("invalid_cover_type");
+    expect(coverTypeHint("https://cdn.example/c.png", "youtube")).toBeNull();
+    expect(coverTypeHint("https://cdn.example/c.webp", "facebook")).toBe("invalid_cover_type");
   });
 
   it("checks TikTok settings as brain does", () => {

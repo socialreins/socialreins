@@ -162,7 +162,40 @@ export const limits: Record<Platform, { chars: number; media: number; thread: bo
   tiktok: { chars: 2200, media: 35, thread: false, comment: null, cover: false },
 };
 // The image types each cover platform takes: Instagram's cover_url wants a JPEG; Facebook and YouTube take JPEG or PNG.
-export const coverTypes: Partial<Record<Platform, string>> = { instagram: "a JPEG", facebook: "a JPEG or PNG", youtube: "a JPEG or PNG" };
+export const coverTypes: Partial<Record<Platform, string>> = { instagram: "a JPEG, PNG or WebP", facebook: "a JPEG or PNG", youtube: "a JPEG or PNG" };
+// The media types each platform's publisher takes (brain's media_types), and how to say them.
+const JPEG = "jpeg", PNG = "png", GIF = "gif", WEBP = "webp", MP4 = "mp4", MOV = "mov", PDF = "pdf";
+export const mediaTypes: Record<Platform, { types: string[]; text: string }> = {
+  bluesky: { types: [JPEG, PNG, WEBP, GIF, MP4, MOV], text: "JPEG, PNG, WebP or GIF images or an MP4 or MOV video" },
+  threads: { types: [JPEG, PNG, MP4, MOV], text: "JPEG or PNG images or MP4 or MOV videos" },
+  linkedin: { types: [JPEG, PNG, GIF, MP4, PDF], text: "JPEG, PNG or GIF images, an MP4 video or a PDF" },
+  facebook: { types: [JPEG, PNG, GIF, MP4, MOV], text: "JPEG, PNG or GIF images or an MP4 or MOV video" },
+  // brain turns PNG and WebP images into JPEGs for Instagram, and PNG photos for TikTok, at publish.
+  instagram: { types: [JPEG, PNG, WEBP, MP4, MOV], text: "JPEG, PNG or WebP images or MP4 or MOV videos" },
+  youtube: { types: [MP4, MOV], text: "an MP4 or MOV video" },
+  x: { types: [JPEG, PNG, WEBP, GIF, MP4, MOV], text: "JPEG, PNG, WebP or GIF images or an MP4 or MOV video" },
+  tiktok: { types: [JPEG, PNG, WEBP, MP4, MOV], text: "one MP4 or MOV video, or JPEG, PNG or WebP photos" },
+};
+// What a link's extension says its file is; null when it says nothing (a Drive link, no extension).
+export function linkType(url: string): string | null {
+  const ext = /\.([a-z0-9]+)(?:[?#]|$)/i.exec(url.split(/[?#]/)[0] ?? "")?.[1]?.toLowerCase();
+  if (ext === "jpg" || ext === "jpeg") return JPEG;
+  return ext && [PNG, GIF, WEBP, MP4, MOV, PDF].includes(ext) ? ext : null;
+}
+// Whether a file of this type must be the post's only media item (a video, a PDF on LinkedIn, a GIF on X).
+const alone = (platform: Platform, t: string) =>
+  ((t === MP4 || t === MOV) && ["bluesky", "facebook", "linkedin", "x", "tiktok"].includes(platform)) ||
+  (t === PDF && platform === "linkedin") ||
+  (t === GIF && platform === "x");
+// A hint from the links' extensions of what brain's media checks will likely say. Never blocks a save: brain
+// reads each file's first bytes when the post is saved (a .mov may hold MP4 bytes, a host may not answer), so
+// its answer is the final word, and only it knows sizes (media_too_large).
+export function checkMediaTypes(media: string[], platform: Platform): Failure | null {
+  const types = media.map(linkType);
+  if (types.some((t) => t !== null && !mediaTypes[platform].types.includes(t))) return "media_type_not_supported";
+  return media.length > 1 && types.some((t) => t !== null && alone(platform, t)) ? "mixed_media" : null;
+}
+
 // A YouTube video's description (the body after its first line) is limited in UTF-8 bytes.
 export const YOUTUBE_DESCRIPTION_BYTES = 5000;
 export const publishing = Object.keys(limits) as Platform[];
@@ -315,6 +348,13 @@ export function checkCover(url: string, platform: Platform, mediaCount: number):
   if (!limits[platform].cover) return "cover_not_supported";
   if (!/^https:\/\/[^\s/]+\/?\S*$/.test(cover)) return "invalid_cover";
   return mediaCount === 1 ? null : "cover_needs_one_video";
+}
+
+// A hint from the cover link's extension, like checkMediaTypes: Facebook and YouTube take a JPEG or PNG,
+// Instagram a JPEG (brain turns a PNG or WebP into one). Never blocks a save; brain reads the file.
+export function coverTypeHint(url: string, platform: Platform): Failure | null {
+  const t = linkType(url.trim());
+  return t === null || t === JPEG || t === PNG || (t === WEBP && platform === "instagram") ? null : "invalid_cover_type";
 }
 
 // checkPost for the first post and every part; `part` is the 1-based follow-up at fault, as brain answers.

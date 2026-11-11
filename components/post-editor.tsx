@@ -10,6 +10,9 @@ import {
   charCount,
   checkComment,
   checkCover,
+  checkMediaTypes,
+  coverTypeHint,
+  mediaTypes,
   coverTypes,
   checkThread,
   checkTikTok,
@@ -73,11 +76,15 @@ function platformProblem(platform: Platform, failure: Failure): ReactNode {
   if (failure === "too_long") return `${name} takes at most ${limits[platform].chars.toLocaleString("en")} characters.`;
   if (failure === "too_many_images" && platform === "x") return "X takes at most 4 images, or one GIF or video.";
   if (failure === "too_many_images") return platform === "youtube" ? "YouTube takes exactly one video." : `${name} takes at most ${limits[platform].media} images.`;
-  if (failure === "media_required") return platform === "youtube" ? "YouTube needs one MP4 or MOV video: add its link." : platform === "tiktok" ? "TikTok needs one MP4 or MOV video, or JPEG or WebP photos: add their links." : `${name} needs at least one image or video.`;
+  if (failure === "media_required") return platform === "youtube" ? "YouTube needs one MP4 or MOV video: add its link." : platform === "tiktok" ? "TikTok needs one MP4 or MOV video, or JPEG, PNG or WebP photos: add their links." : `${name} needs at least one image or video.`;
   if (failure === "thread_not_supported") return `${name} can't post threads.`;
   if (failure === "first_comment_not_supported") return `${name} can't post a first comment.`;
   if (failure === "cover_not_supported") return `${name} can't take a cover image.`;
   if (failure === "tiktok_privacy_required") return "Choose who can view the TikTok post.";
+  if (failure === "media_type_not_supported") return `${name} takes ${mediaTypes[platform].text}.`;
+  if (failure === "mixed_media")
+    return platform === "linkedin" ? "LinkedIn takes one video or one PDF on its own, or images." : platform === "x" ? "X takes up to 4 images, or one GIF, or one video, not a mix." : platform === "tiktok" ? "TikTok takes one MP4 or MOV video, or photos, not both." : `${name} takes a video on its own, not with other media.`;
+  if (failure === "invalid_cover_type") return `${name} takes ${coverTypes[platform] ?? "a JPEG or PNG"} cover image.`;
   if (failure === "first_comment_too_long") return `${name} takes a first comment of at most ${(limits[platform].comment ?? 0).toLocaleString("en")} characters.`;
   return postMessages[failure] ?? failure;
 }
@@ -440,9 +447,13 @@ export function PostEditor({ id }: { id?: string }) {
   const commentMain = commentable.filter((p) => commentCustomFor(p) === undefined);
   // Shared images must fit every chosen platform.
   const cap = (list: Platform[]) => (list.length ? Math.min(...list.map((p) => limits[p].media)) : limits.bluesky.media);
-  const mediaProblems = selected.flatMap((p) =>
-    (p === "instagram" || p === "youtube") && images.length === 0 ? [platformProblem(p, "media_required")] : images.length > limits[p].media ? [platformProblem(p, "too_many_images")] : [],
-  );
+  const mediaProblems = selected.flatMap((p) => {
+    if ((p === "instagram" || p === "youtube") && images.length === 0) return [platformProblem(p, "media_required")];
+    if (images.length > limits[p].media) return [platformProblem(p, "too_many_images")];
+    // Hints only: brain reads the files when the post is saved and has the last word.
+    const bad = checkMediaTypes(images, p) ?? (coverFor(p) ? coverTypeHint(coverFor(p)!, p) : null);
+    return bad ? [platformProblem(p, bad)] : [];
+  });
   // YouTube's title is the first line of its text, which brain refuses to leave out or to hold < or >.
   const ytBody = selected.includes("youtube") ? (customFor("youtube") ?? body) : null;
   const textProblems =
@@ -1191,7 +1202,7 @@ function ImageLinks({ media, max, post, onChange }: { media: string[]; max: numb
       {!post && (
         <p className="hint">
           Up to {max}. Public https links to image, video or PDF files, or Google Drive share links. Bluesky takes JPEG, PNG, WebP or GIF of 1 MB
-          or less, or one MP4 or MOV video; Instagram takes JPEG, MP4 or MOV; LinkedIn takes JPEG, PNG or GIF images, or one MP4 video or one PDF (posted as a document, the swipeable carousel) on its own; YouTube takes exactly one MP4 or MOV video. X takes up to 4 JPEG, PNG or WebP images, or one GIF or MP4 or MOV video. TikTok takes one MP4 or MOV video, or up to 35 JPEG or WebP photos.
+          or less, or one MP4 or MOV video; Instagram takes JPEG, PNG or WebP images or MP4 or MOV videos; LinkedIn takes JPEG, PNG or GIF images, or one MP4 video or one PDF (posted as a document, the swipeable carousel) on its own; YouTube takes exactly one MP4 or MOV video. X takes up to 4 JPEG, PNG or WebP images, or one GIF or MP4 or MOV video. TikTok takes one MP4 or MOV video, or up to 35 JPEG, PNG or WebP photos.
         </p>
       )}
       {media.length > 0 && (
