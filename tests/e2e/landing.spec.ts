@@ -16,16 +16,9 @@ test("landing page renders and the waitlist form joins", async ({ page }) => {
   await expect(page.getByText("1 person on the waitlist")).toBeVisible();
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   await expect(page.getByRole("link", { name: "SocialReins", exact: true })).toHaveAttribute("href", "/");
-  const menu = page.locator("details").filter({ hasText: "Star on GitHub" });
-  await menu.getByText("Star on GitHub").click();
-  await expect(menu.getByRole("link", { name: /socialreins\/socialreins/ })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: /Star on GitHub/ })).toHaveAttribute(
     "href",
     "https://github.com/socialreins/socialreins",
-  );
-  await expect(menu.getByRole("link", { name: /socialreins\/socialreins/ })).toContainText("main");
-  await expect(menu.getByRole("link", { name: /socialreins\/brain/ })).toHaveAttribute(
-    "href",
-    "https://github.com/socialreins/brain",
   );
   await page.getByLabel("Email for the hosted version waitlist").fill("someone@example.com");
   await page.getByRole("button", { name: "Join the waitlist" }).click();
@@ -85,20 +78,20 @@ test("the waitlist verify page explains a bad link, a missing token and other fa
   await expect(page.getByRole("status").filter({ hasText: /couldn't be confirmed. Try again/ })).toBeVisible();
 });
 
-test("the header GitHub menu shows the GitHub mark", async ({ page }) => {
+test("the header GitHub link shows the GitHub mark and opens the main repo", async ({ page }) => {
   await page.route("**/auth/me", (route) => route.fulfill({ status: 401, json: { error: "unauthorized" } }));
   await page.goto("/");
-  const summary = page.getByRole("banner").locator("summary");
-  await expect(summary).toContainText("GitHub");
-  await expect(summary.locator("svg")).toHaveCount(1);
+  const link = page.getByRole("banner").getByRole("link", { name: /GitHub/ });
+  await expect(link).toHaveAttribute("href", "https://github.com/socialreins/socialreins");
+  await expect(link.locator("svg")).toHaveCount(1);
 });
 
 test("both GitHub buttons show the same org-wide star total", async ({ page }) => {
   await page.route("**/auth/me", (route) => route.fulfill({ status: 401, json: { error: "unauthorized" } }));
   await page.goto("/");
   // The count comes from GitHub at build time, so it may be absent (rate limit), but never differs.
-  const header = await page.getByRole("banner").locator("summary .sr-only").allTextContents();
-  const hero = page.getByRole("main").locator("summary").filter({ hasText: "Star on GitHub" });
+  const header = await page.getByRole("banner").getByRole("link", { name: /GitHub/ }).locator(".sr-only").allTextContents();
+  const hero = page.getByRole("main").getByRole("link", { name: /Star on GitHub/ });
   expect(await hero.locator(".sr-only").allTextContents()).toEqual(header);
 });
 

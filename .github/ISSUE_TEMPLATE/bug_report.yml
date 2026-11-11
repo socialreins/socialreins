@@ -1,0 +1,54 @@
+name: Bug report
+description: Something does not work as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: For security problems, do not file an issue. Email security@socialreins.com instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      options:
+        - Hosted (socialreins.com)
+        - Self-hosted
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform involved
+      multiple: true
+      options:
+        - Facebook Pages
+        - Instagram
+        - Threads
+        - LinkedIn
+        - Bluesky
+        - X
+        - REST API
+        - MCP server
+        - None of these
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or error messages
+      description: Remove any tokens, passwords or personal data first.
+      render: text
