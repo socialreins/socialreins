@@ -5,6 +5,7 @@ import {
   checkCover,
   checkMediaTypes,
   checkPost,
+  coverTypeHint,
   checkThread,
   checkTikTok,
   createPost,
@@ -339,7 +340,7 @@ describe("post checks", () => {
     }
   });
 
-  it("checks media types by link as brain does by bytes, and leaves links without an extension to brain", () => {
+  it("hints at media types by link, never blocking a save, and leaves links without an extension to brain", () => {
     const u = (...names: string[]) => names.map((n) => `https://cdn.example/${n}`);
     expect(checkMediaTypes(u("clip.mp4", "a.jpg"), "tiktok")).toBe("mixed_media");
     // brain turns a PNG into a JPEG for TikTok and Instagram.
@@ -359,11 +360,15 @@ describe("post checks", () => {
     const drive = "https://drive.google.com/file/d/1AbC/view?usp=sharing";
     expect(checkMediaTypes([drive, ...u("clip.mp4")], "bluesky")).toBe("mixed_media");
     expect(checkMediaTypes([drive, drive], "tiktok")).toBeNull();
-    expect(checkPost("hi", u("a.gif"), "tiktok")).toBe("media_type_not_supported");
-    expect(checkCover("https://cdn.example/c.png", "instagram", 1)).toBeNull();
-    expect(checkCover("https://cdn.example/c.gif", "instagram", 1)).toBe("invalid_cover_type");
-    expect(checkCover("https://cdn.example/c.png", "youtube", 1)).toBeNull();
-    expect(checkCover("https://cdn.example/c.webp", "facebook", 1)).toBe("invalid_cover_type");
+    // Hints only: a save is never blocked by an extension, since brain reads the bytes.
+    expect(checkPost("hi", u("a.gif"), "tiktok")).toBeNull();
+    expect(checkPost("hi", u("clip.mp4", "a.jpg"), "bluesky")).toBeNull();
+    expect(checkThread("hi", [], [{ body: "two", media: u("doc.pdf") }], "bluesky")).toBeNull();
+    expect(checkCover("https://cdn.example/c.gif", "instagram", 1)).toBeNull();
+    expect(coverTypeHint("https://cdn.example/c.png", "instagram")).toBeNull();
+    expect(coverTypeHint("https://cdn.example/c.gif", "instagram")).toBe("invalid_cover_type");
+    expect(coverTypeHint("https://cdn.example/c.png", "youtube")).toBeNull();
+    expect(coverTypeHint("https://cdn.example/c.webp", "facebook")).toBe("invalid_cover_type");
   });
 
   it("checks TikTok settings as brain does", () => {

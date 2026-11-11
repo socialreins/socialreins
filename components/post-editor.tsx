@@ -11,6 +11,7 @@ import {
   checkComment,
   checkCover,
   checkMediaTypes,
+  coverTypeHint,
   mediaTypes,
   coverTypes,
   checkThread,
@@ -449,7 +450,8 @@ export function PostEditor({ id }: { id?: string }) {
   const mediaProblems = selected.flatMap((p) => {
     if ((p === "instagram" || p === "youtube") && images.length === 0) return [platformProblem(p, "media_required")];
     if (images.length > limits[p].media) return [platformProblem(p, "too_many_images")];
-    const bad = checkMediaTypes(images, p);
+    // Hints only: brain reads the files when the post is saved and has the last word.
+    const bad = checkMediaTypes(images, p) ?? (coverFor(p) ? coverTypeHint(coverFor(p)!, p) : null);
     return bad ? [platformProblem(p, bad)] : [];
   });
   // YouTube's title is the first line of its text, which brain refuses to leave out or to hold < or >.

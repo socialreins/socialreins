@@ -1057,7 +1057,7 @@ test("the editor warns when a ticked platform's account needs a reconnect", asyn
   await expect(notice).toHaveCount(0);
 });
 
-test("media a platform can never take is shown before save, and brain's media refusals read plainly", async ({ page }) => {
+test("media a platform likely won't take is hinted before save, and brain's media refusals read plainly", async ({ page }) => {
   await brain(page, { accounts: [tiktokAcc] });
   await tiktokCreator(page, creatorInfo);
   let creates = 0;
@@ -1072,16 +1072,11 @@ test("media a platform can never take is shown before save, and brain's media re
   await page.getByRole("button", { name: "Add image" }).click();
   await page.getByLabel("Image 2 link").fill("https://example.com/a.jpg");
   await expect(page.getByText("TikTok takes one MP4 or MOV video, or photos, not both.").first()).toBeVisible();
-  await page.getByLabel("Who can view this video").selectOption("SELF_ONLY");
-  await page.getByRole("button", { name: "Save draft" }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "not both" })).toBeVisible();
-  expect(creates).toBe(0);
-
   await page.getByLabel("Image 2 link").fill("https://example.com/a.gif");
   await expect(page.getByText("TikTok takes one MP4 or MOV video, or JPEG, PNG or WebP photos.").first()).toBeVisible();
 
-  // brain judges by the file itself.
-  await page.getByRole("button", { name: "Remove image 2" }).click();
+  // The hints never block a save: brain reads the files and has the last word.
+  await page.getByLabel("Who can view this video").selectOption("SELF_ONLY");
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "TikTok doesn't offer that visibility to this account now" })).toBeVisible();
   expect(creates).toBe(1);

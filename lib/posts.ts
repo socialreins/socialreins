@@ -187,8 +187,9 @@ const alone = (platform: Platform, t: string) =>
   ((t === MP4 || t === MOV) && ["bluesky", "facebook", "linkedin", "x", "tiktok"].includes(platform)) ||
   (t === PDF && platform === "linkedin") ||
   (t === GIF && platform === "x");
-// Mirrors brain's media checks as far as a link's extension tells: brain reads the file's first bytes and
-// size when the post is saved, and also answers media_too_large, which only it can know.
+// A hint from the links' extensions of what brain's media checks will likely say. Never blocks a save: brain
+// reads each file's first bytes when the post is saved (a .mov may hold MP4 bytes, a host may not answer), so
+// its answer is the final word, and only it knows sizes (media_too_large).
 export function checkMediaTypes(media: string[], platform: Platform): Failure | null {
   const types = media.map(linkType);
   if (types.some((t) => t !== null && !mediaTypes[platform].types.includes(t))) return "media_type_not_supported";
@@ -317,7 +318,7 @@ export function checkPost(body: string, media: string[], platform: Platform = "b
   if (overLimit(platform, body) || (platform === "bluesky" && utf8Bytes(body) > MAX_BYTES)) return "too_long";
   if (media.length > max.media) return "too_many_images";
   if (media.some((m) => !/^https:\/\/[^\s/]+\/?\S*$/.test(m))) return "invalid_media";
-  return checkMediaTypes(media, platform);
+  return null;
 }
 
 // Mirrors brain's first comment checks: blank is none, only four platforms take one, each with its own limit.
@@ -346,9 +347,13 @@ export function checkCover(url: string, platform: Platform, mediaCount: number):
   if (!cover) return null;
   if (!limits[platform].cover) return "cover_not_supported";
   if (!/^https:\/\/[^\s/]+\/?\S*$/.test(cover)) return "invalid_cover";
-  if (mediaCount !== 1) return "cover_needs_one_video";
-  const t = linkType(cover);
-  // Facebook and YouTube take a JPEG or PNG; Instagram a JPEG, and brain turns a PNG or WebP into one.
+  return mediaCount === 1 ? null : "cover_needs_one_video";
+}
+
+// A hint from the cover link's extension, like checkMediaTypes: Facebook and YouTube take a JPEG or PNG,
+// Instagram a JPEG (brain turns a PNG or WebP into one). Never blocks a save; brain reads the file.
+export function coverTypeHint(url: string, platform: Platform): Failure | null {
+  const t = linkType(url.trim());
   return t === null || t === JPEG || t === PNG || (t === WEBP && platform === "instagram") ? null : "invalid_cover_type";
 }
 
