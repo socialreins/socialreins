@@ -1057,6 +1057,36 @@ test("the editor warns when a ticked platform's account needs a reconnect", asyn
   await expect(notice).toHaveCount(0);
 });
 
+test("media a platform can never take is shown before save, and brain's media refusals read plainly", async ({ page }) => {
+  await brain(page, { accounts: [tiktokAcc] });
+  await tiktokCreator(page, creatorInfo);
+  let creates = 0;
+  await page.route("**/v1/posts", (route) => {
+    creates++;
+    return route.fulfill({ status: 422, json: { error: "tiktok_privacy_not_offered", platform: "tiktok", detail: "TikTok does not offer SELF_ONLY to @ann." } });
+  });
+  await page.goto("/posts/new");
+  await page.getByLabel("Post", { exact: true }).fill("Clip");
+  await page.getByRole("button", { name: "Add image" }).click();
+  await page.getByLabel("Image 1 link").fill("https://example.com/clip.mp4");
+  await page.getByRole("button", { name: "Add image" }).click();
+  await page.getByLabel("Image 2 link").fill("https://example.com/a.jpg");
+  await expect(page.getByText("TikTok takes one MP4 or MOV video, or photos, not both.").first()).toBeVisible();
+  await page.getByLabel("Who can view this video").selectOption("SELF_ONLY");
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "not both" })).toBeVisible();
+  expect(creates).toBe(0);
+
+  await page.getByLabel("Image 2 link").fill("https://example.com/a.gif");
+  await expect(page.getByText("TikTok takes one MP4 or MOV video, or JPEG, PNG or WebP photos.").first()).toBeVisible();
+
+  // brain judges by the file itself.
+  await page.getByRole("button", { name: "Remove image 2" }).click();
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "TikTok doesn't offer that visibility to this account now" })).toBeVisible();
+  expect(creates).toBe(1);
+});
+
 test("TikTok settings: privacy is chosen, the disclosure and consent follow TikTok's rules, and it is all sent", async ({ page }) => {
   await brain(page, { accounts: [tiktokAcc] });
   await tiktokCreator(page, creatorInfo);
