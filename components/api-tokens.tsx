@@ -42,6 +42,7 @@ function TokensPage() {
   const [name, setName] = useState("");
   const [setId, setSetId] = useState("");
   const [expiry, setExpiry] = useState("");
+  const [readOnly, setReadOnly] = useState(false);
   // The secret lives only here: never in the URL or storage, and gone on reload.
   const [created, setCreated] = useState<{ name: string; secret: string } | null>(null);
   const [copied, setCopied] = useState(false);
@@ -70,7 +71,7 @@ function TokensPage() {
 
   function onCreate(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const body = { name, ...(setId && { social_set_id: setId }), ...(expiry && { expires_in_days: Number(expiry) }) };
+    const body = { name, ...(setId && { social_set_id: setId }), ...(expiry && { expires_in_days: Number(expiry) }), ...(readOnly && { read_only: true }) };
     main.run("create", () => createToken(body), (r) => {
       setTokens((l) => [r.token, ...(Array.isArray(l) ? l : [])]);
       setCreated({ name: r.token.name, secret: r.secret });
@@ -129,6 +130,11 @@ function TokensPage() {
             </option>
           ))}
         </select>
+        <label className="flex items-center gap-2">
+          {/* .waitlist stretches and pads every input; a checkbox wants neither. */}
+          <input type="checkbox" style={{ flex: "none", padding: 0 }} checked={readOnly} onChange={(e) => setReadOnly(e.target.checked)} />
+          Read only (can view posts and accounts, but not create, change or delete anything)
+        </label>
         <label htmlFor="token-expiry">Expires</label>
         <div className="waitlist-row">
           <select id="token-expiry" value={expiry} onChange={(e) => setExpiry(e.target.value)}>
@@ -180,7 +186,8 @@ function TokensPage() {
             <li key={t.id} className="grid gap-1 border-l-4 border-ink bg-paper px-4 py-3">
               <p className="font-bold">{t.name}</p>
               <p className="text-sm text-ink-soft">
-                {scopeName(t.social_set_id)}. <code>{t.prefix_hint}...</code>
+                {scopeName(t.social_set_id)}. {t.read_only && "Read only. "}
+                <code>{t.prefix_hint}...</code>
               </p>
               <p className="text-sm text-ink-soft">
                 Created {date(t.created_at)}. Last used {t.last_used_at ? date(t.last_used_at) : "never"}.{" "}
