@@ -85,6 +85,8 @@ const codes = [
   "unsupported_pds",
   "bluesky_unreachable",
   "invalid_query",
+  "invalid_mode",
+  "invalid_domains",
   "too_many_sets",
   "name_taken",
   "default_set",

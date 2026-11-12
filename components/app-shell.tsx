@@ -58,7 +58,18 @@ const profilePages: NavItem[] = [
   { href: "/billing", label: "Plans", icon: "settings" },
 ];
 // The admin console at /admin, for site admins only; it has its own nav and colours.
-const adminNav: NavGroup[] = [{ label: "", items: [{ href: "/admin/waitlist", label: "Waitlist", icon: "admin" }] }];
+const adminNav: NavGroup[] = [
+  {
+    label: "",
+    items: [
+      { href: "/admin", label: "Overview", icon: "home" },
+      { href: "/admin/users", label: "Users", icon: "user" },
+      { href: "/admin/teams", label: "Teams", icon: "team" },
+      { href: "/admin/waitlist", label: "Waitlist", icon: "admin" },
+      { href: "/admin/settings", label: "Sign-up settings", icon: "settings" },
+    ],
+  },
+];
 
 // Sidebar preferences in localStorage. The server snapshot is null, so hydration matches and the stored value applies right after.
 const listeners = new Set<() => void>();
@@ -258,9 +269,9 @@ function NavGroups({ path, groups, collapsed }: { path: string; groups: NavGroup
 }
 
 // Hash links point into a page another link already marks as current.
-// Home (/home) matches only itself, or it would hold every page.
+// Home (/home) and the admin Overview (/admin) match only themselves, or they would hold every page.
 export const isActive = (path: string, href: string) =>
-  !href.includes("#") && (path === href || (href !== "/home" && path.startsWith(`${href}/`)));
+  !href.includes("#") && (path === href || (href !== "/home" && href !== "/admin" && path.startsWith(`${href}/`)));
 
 function NavSection({ path, group, collapsed, first }: { path: string; group: NavGroup; collapsed: boolean; first: boolean }) {
   const key = `sidebar-group:${group.label}`;
