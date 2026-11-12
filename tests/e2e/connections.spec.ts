@@ -159,6 +159,34 @@ test("Connect Threads goes through brain and says how it went", async ({ page })
   await expect(page).toHaveURL("/connections");
 });
 
+test("an account connected while a set is picked joins that set too", async ({ page }) => {
+  await signedIn(page, "owner");
+  const threadsOn = providers.map((p) => (p.provider === "threads" ? { ...p, configured: true } : p));
+  await page.route("**/v1/connections/providers", (route) => route.fulfill({ json: threadsOn }));
+  const set = (id: string, name: string) => ({ id, name, is_default: id === "s1", account_ids: [], account_count: 0, created_at: "2026-10-01T10:00:00Z", deleted_at: null });
+  await page.route(/\/v1\/social-sets$/, (route) => route.fulfill({ json: [set("s1", "Default"), set("s2", "English")] }));
+  const puts: unknown[] = [];
+  await page.route(/\/v1\/connections\/[^/]+\/sets$/, (route) => {
+    puts.push([route.request().url().split("/").at(-2), route.request().postDataJSON()]);
+    return route.fulfill({ json: { ...alice, id: "c2", set_ids: ["s1", "s2"] } });
+  });
+  await page.addInitScript(() => localStorage.setItem("current-set:t1", "s2"));
+  await page.goto("/connections");
+  const back = new URL("/connections?connected=threads", page.url()).href;
+  await page.route("http://localhost:8080/connections/threads/redirect", (route) =>
+    route.fulfill({ status: 303, headers: { location: back } }),
+  );
+  await openAdd(page);
+  await page.getByRole("dialog").getByRole("link", { name: "Threads", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Connected your Threads account." })).toBeVisible();
+  // Only the account that wasn't there before the connect (c2), not the old one (c1).
+  await expect.poll(() => puts).toEqual([["c2", { set_ids: ["s1", "s2"] }]]);
+  // A plain reload is not a connect, so nothing more is added.
+  await page.reload();
+  await expect(page.getByText("alice.bsky.social").first()).toBeVisible();
+  expect(puts).toHaveLength(1);
+});
+
 test("Connect LinkedIn goes through brain and says how it went", async ({ page }) => {
   await signedIn(page, "owner");
   const on = providers.map((p) => (p.provider === "linkedin" ? { ...p, configured: true } : p));

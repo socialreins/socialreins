@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode, typ
 import { flushSync } from "react-dom";
 import Link from "next/link";
 import type { Failure } from "@/lib/auth";
-import { useSession } from "@/components/app-shell";
+import { useCurrentSet, useSession } from "@/components/app-shell";
 import {
   attention,
   cancelMetaPick,
@@ -21,6 +21,8 @@ import {
   metaPickPending,
   oauthProviders,
   pickMeta,
+  rememberConnect,
+  takeConnect,
   providerState,
   safeAvatar,
   type Connection,
@@ -28,7 +30,7 @@ import {
   type MetaChoices,
   type Provider,
 } from "@/lib/connections";
-import { listSets, setAccountSets, setNames, type SocialSet } from "@/lib/sets";
+import { joinSet, listSets, setAccountSets, setNames, type SocialSet } from "@/lib/sets";
 import { manages } from "@/lib/teams";
 import { PlatformIcon, platformOf, platforms } from "@/components/platform-icons";
 import { PlatformMark } from "@/components/posts";
@@ -141,10 +143,18 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
 
   const reload = () => listConnections().then(setList);
   useEffect(() => {
-    listConnections().then(setList);
+    const search = window.location.search;
+    const before = takeConnect();
+    listConnections().then(async (l) => {
+      // Back from a connect that worked: the account that wasn't here before joins the set picked when it started.
+      if (before && connectResult(search)?.error === null && Array.isArray(l)) {
+        const joined = await joinSet(before.set, l.filter((c) => !before.ids.includes(c.id)));
+        if (joined.length) l = await listConnections();
+      }
+      setList(l);
+    });
     listSets().then(setSets);
     // Drop the flags so a reload doesn't show the message again.
-    const search = window.location.search;
     if (connectResult(search) || metaPickPending(search)) window.history.replaceState(null, "", window.location.pathname);
   }, []);
 
@@ -492,6 +502,7 @@ function MetaPicker({ team, onConnected }: { team: string; onConnected: () => vo
   const [checked, setChecked] = useState<string[]>([]);
   // open: the form; stale: brain no longer holds the pick, so only the error stays; finished: only the outcome stays.
   const [stage, setStage] = useState<"open" | "stale" | "finished">("open");
+  const [currentSet] = useCurrentSet();
   const { busy, problem, done, run } = useAction();
 
   useEffect(() => {
@@ -509,6 +520,8 @@ function MetaPicker({ team, onConnected }: { team: string; onConnected: () => vo
     const call = async () => {
       const r = await pickMeta(ids("facebook"), ids("instagram"));
       if (r === "not_found" || r === "invalid_pick") setStage("stale");
+      // The picker only offers accounts the team doesn't have, so every one saved is new.
+      if (Array.isArray(r)) await joinSet(currentSet, r);
       return r;
     };
     await run("pick", call, (saved) => {
@@ -621,6 +634,7 @@ function AddAccount({
   const { busy, problem, done, run } = useAction();
   const blueskyRef = useRef<HTMLButtonElement>(null);
   const handleRef = useRef<HTMLInputElement>(null);
+  const [currentSet] = useCurrentSet();
 
   useEffect(() => {
     listProviders().then(setProviders);
@@ -641,6 +655,7 @@ function AddAccount({
       const r = await connectBluesky(handle.trim(), password);
       // brain may finish after the browser stops waiting, so the list could hold the account.
       if (r === "timeout") onConnected();
+      else if (!isFailure(r) && !connected.some((x) => x.id === r.id)) await joinSet(currentSet, [r]);
       return r;
     };
     await run("connect", call, (c) => {
@@ -682,7 +697,11 @@ function AddAccount({
                       {p.name}
                     </button>
                   ) : (
-                    <a href={connectUrl(p.id)} className={`${tile} hover:border-ink`}>
+                    <a
+                      href={connectUrl(p.id)}
+                      className={`${tile} hover:border-ink`}
+                      onClick={() => rememberConnect(currentSet, connected.map((c) => c.id))}
+                    >
                       <span style={{ color: p.color }}>{icon}</span>
                       {p.name}
                     </a>
