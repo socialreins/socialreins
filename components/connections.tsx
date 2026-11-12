@@ -280,6 +280,7 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
       {adding && (
         <AddAccount
           connected={Array.isArray(list) ? list : []}
+          loaded={Array.isArray(list)}
           onClose={() => setAdding(false)}
           onConnected={reload}
           announce={announce}
@@ -617,11 +618,14 @@ const tile = "flex items-center gap-3 rounded-xl border border-ink/15 px-3 py-3 
 // Pick a network, then follow what it needs: a sign-in on the network, or Bluesky's app password.
 function AddAccount({
   connected,
+  loaded,
   onClose,
   onConnected,
   announce,
 }: {
   connected: Connection[];
+  // False while the list is loading or failed: then `connected` can't tell a new account from an old one.
+  loaded: boolean;
   onClose: () => void;
   onConnected: () => void;
   announce: (text: string) => void;
@@ -655,7 +659,7 @@ function AddAccount({
       const r = await connectBluesky(handle.trim(), password);
       // brain may finish after the browser stops waiting, so the list could hold the account.
       if (r === "timeout") onConnected();
-      else if (!isFailure(r) && !connected.some((x) => x.id === r.id)) await joinSet(currentSet, [r]);
+      else if (loaded && !isFailure(r) && !connected.some((x) => x.id === r.id)) await joinSet(currentSet, [r]);
       return r;
     };
     await run("connect", call, (c) => {
@@ -700,7 +704,7 @@ function AddAccount({
                     <a
                       href={connectUrl(p.id)}
                       className={`${tile} hover:border-ink`}
-                      onClick={() => rememberConnect(currentSet, connected.map((c) => c.id))}
+                      onClick={() => loaded && rememberConnect(currentSet, connected.map((c) => c.id))}
                     >
                       <span style={{ color: p.color }}>{icon}</span>
                       {p.name}
