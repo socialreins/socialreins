@@ -9,7 +9,7 @@ import { Account } from "@/components/account";
 import { LogoMark } from "@/components/logo";
 import { PasskeyPrompt } from "@/components/passkey-prompt";
 import { ThemeSwitch } from "@/components/theme";
-import { TeamMenu, TopBar } from "@/components/top-bar";
+import { TopBar } from "@/components/top-bar";
 import { Icon, type IconName } from "@/components/ui";
 
 type Session = { user: User; setUser: (u: User) => void; setTeam: (t: Team) => void; refresh: () => Promise<void> };
@@ -179,27 +179,12 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
             <div
               className={`flex items-center justify-between gap-3 px-2.5 py-2 md:min-h-12 md:pt-3 md:pb-1 ${collapsed ? "md:justify-center md:px-0" : ""}`}
             >
-              {admin ? (
-                <Link href="/admin" className="flex items-center gap-2 px-1.5 font-display text-base font-bold tracking-tight">
-                  <LogoMark className="size-7" />
-                  <span className={collapsed ? "md:sr-only" : ""}>SocialReins</span>
-                  <span className={`badge bg-signal-deep text-paper ${collapsed ? "md:sr-only" : ""}`}>Admin</span>
-                </Link>
-              ) : session ? (
-                // The team you work in, with its plan: every team is on Free until billing exists.
-                <div className="grid min-w-0 gap-0.5">
-                  <TeamMenu collapsed={collapsed} />
-                  <p className={`flex items-center gap-1.5 pl-[2.375rem] text-xs text-[var(--faint)] ${collapsed ? "md:hidden" : ""}`}>
-                    Free plan
-                    <span aria-hidden="true">·</span>
-                    <Link href="/billing" className="font-semibold text-signal-deep hover:underline">
-                      Upgrade
-                    </Link>
-                  </p>
-                </div>
-              ) : (
-                <div className="h-10 w-40 rounded-md bg-ink/5 motion-safe:animate-pulse" />
-              )}
+              {/* The logo: mark and name, or only the mark on the icon rail. The team and its plan are in the top bar. */}
+              <Link href={admin ? "/admin" : "/home"} className="flex items-center gap-2 px-1.5 font-display text-base font-bold tracking-tight">
+                <LogoMark className="size-7" />
+                <span className={collapsed ? "md:sr-only" : ""}>SocialReins</span>
+                {admin && <span className={`badge bg-signal-deep text-paper ${collapsed ? "md:sr-only" : ""}`}>Admin</span>}
+              </Link>
               <button
                 ref={menuRef}
                 type="button"
