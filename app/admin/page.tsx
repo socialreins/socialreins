@@ -1,6 +1,14 @@
-import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+import { AdminOverview } from "@/components/admin-overview";
+import { PageHeader } from "@/components/ui";
 
-// The waitlist is the console's only page so far.
+export const metadata: Metadata = { title: "Overview: SocialReins admin" };
+
 export default function AdminHome() {
-  redirect("/admin/waitlist");
+  return (
+    <div className="max-w-5xl">
+      <PageHeader title="Overview" />
+      <AdminOverview />
+    </div>
+  );
 }

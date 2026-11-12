@@ -106,7 +106,7 @@ body { margin: 0; font-family: var(--font-body); font-size: 1.0625rem; line-heig
 .tone[data-status="deleted"] { text-decoration: line-through; }
 .tone[data-status="draft"] { background: transparent; outline: 1.5px dashed color-mix(in srgb, var(--color-ink) 30%, transparent); outline-offset: -1.5px; }
 .tone[data-status="sent"], .tone[data-status="verified"] { background: #e2f2e7; color: #17603a; }
-.tone[data-status="running"] { background: #e3efff; color: #0a4fa8; }
+.tone[data-status="running"], .tone[data-status="approved"] { background: #e3efff; color: #0a4fa8; }
 .tone[data-kind="comment"] { background: #e3efff; color: #0a4fa8; }
 .tone[data-kind="mention"] { background: #e2f2e7; color: #17603a; }
 .tone[data-kind="dm"] { background: #ffeadf; color: #a32a06; }
@@ -176,7 +176,7 @@ body { margin: 0; font-family: var(--font-body); font-size: 1.0625rem; line-heig
 /* Status tones on dark: tinted fills with light text. */
 :root[data-theme="dark"] .app-root {
   .tone[data-status="scheduled"], .tone[data-kind="dm"] { background: rgb(255 122 69 / 0.16); color: #ffb391; }
-  .tone:is([data-status="queued"], [data-status="running"], [data-kind="comment"]) { background: rgb(59 125 221 / 0.2); color: #a3c6ff; }
+  .tone:is([data-status="queued"], [data-status="running"], [data-status="approved"], [data-kind="comment"]) { background: rgb(59 125 221 / 0.2); color: #a3c6ff; }
   .tone:is([data-status="published"], [data-status="sent"], [data-status="verified"], [data-kind="mention"]) { background: rgb(47 158 91 / 0.2); color: #95dcae; }
   .tone[data-status="failed"] { background: rgb(214 58 47 / 0.22); color: #ffa39b; }
 }
