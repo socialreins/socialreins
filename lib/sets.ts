@@ -25,6 +25,10 @@ export const deleteSet = (id: string) => api(`/v1/social-sets/${enc(id)}`, "DELE
 export const restoreSet = (id: string) => api<SocialSet>(`/v1/social-sets/${enc(id)}/restore`, "POST");
 export const setAccountSets = (connectionId: string, setIds: string[]) =>
   api<Connection>(`/v1/connections/${enc(connectionId)}/sets`, "PUT", { set_ids: setIds });
+// brain puts a newly connected account in the Default set only; this also puts it in `setId`, the set
+// picked in the top bar. A refused call is left alone: the account stays in Default, and its Settings can add the set.
+export const joinSet = (setId: string, accounts: Connection[]) =>
+  Promise.all(accounts.filter((c) => setId && !c.set_ids.includes(setId)).map((c) => setAccountSets(c.id, [...c.set_ids, setId])));
 
 export const purgeDate = (deletedAt: string) => new Date(Date.parse(deletedAt) + RESTORE_DAYS * 86_400_000);
 
