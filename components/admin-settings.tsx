@@ -51,10 +51,11 @@ export function AdminSettings() {
       </p>
     );
 
-  // The list is sent with every mode, so it is still there when the third choice is picked again.
+  // brain checks and stores the list with every mode. The box only shows for the third choice, so the other two
+  // send the saved list, never a hidden draft: it is still there when the third choice is picked again.
   const save = () =>
     action
-      .run("save", () => saveSignupSettings(mode, parseDomains(domains)), (s) => {
+      .run("save", () => saveSignupSettings(mode, mode === "domains" ? parseDomains(domains) : saved.domains), (s) => {
         show(s);
         return "Sign-up settings saved.";
       })

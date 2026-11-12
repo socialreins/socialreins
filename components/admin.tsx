@@ -23,6 +23,10 @@ export const heading = "font-display text-xl font-extrabold tracking-tight";
 export const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
 export const th = "border-b border-ink/10 px-4 py-2 font-bold";
 export const td = "px-4 py-2.5";
+const overrides = {
+  forbidden: "You don't have access to the admin panel.",
+  not_found: "Someone else already removed that entry. It is gone from the list.",
+};
 const filters: { value: Verified; label: string }[] = [
   { value: null, label: "All" },
   { value: true, label: "Verified" },
@@ -72,7 +76,7 @@ export function Admin() {
   // The answer remembers its filter, so a new filter shows loading, not the old rows.
   const [loaded, setLoaded] = useState<{ key: string; data: Waitlist | Failure } | null>(null);
   // The waitlist answer has no approved total; the overview does. Kept in step with approve and remove below.
-  const [approved, setApproved] = useState<number | null>(null);
+  const [approved, setApproved] = useState<number | "failed" | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
   const action = useAction();
 
@@ -84,27 +88,38 @@ export function Admin() {
     };
   }, [verified, q, key]);
   useEffect(() => {
-    getOverview().then((o) => isFailure(o) || setApproved(o.waitlist.approved));
+    getOverview().then((o) => setApproved(isFailure(o) ? "failed" : o.waitlist.approved));
   }, []);
 
   const data = loaded?.key === key ? loaded.data : null;
   if (data === "forbidden") return <Forbidden />;
 
-  const change = (f: (w: Waitlist) => Waitlist) => setLoaded((l) => (l && !isFailure(l.data) ? { ...l, data: f(l.data) } : l));
+  // Patches only the list the action started on: after a change of filter the new answer already has it.
+  const change = (f: (w: Waitlist) => Waitlist) => setLoaded((l) => (l && l.key === key && !isFailure(l.data) ? { ...l, data: f(l.data) } : l));
+  const bump = (by: number) => setApproved((n) => (typeof n === "number" ? n + by : n));
+
+  // The entry is gone, removed here or by another admin: the row and the totals follow.
+  const drop = (s: Signup) => {
+    setRemoving(null);
+    change((w) => ({ total: w.total - 1, verified: w.verified - (s.verified_at ? 1 : 0), signups: w.signups.filter((x) => x.id !== s.id) }));
+    if (s.approved_at) bump(-1);
+  };
+  const orGone = <T,>(s: Signup, r: T | Failure) => {
+    if (r === "not_found") drop(s);
+    return r;
+  };
 
   function onApprove(s: Signup) {
-    action.run(`approve:${s.id}`, () => approveSignup(s.id), (r) => {
+    action.run(`approve:${s.id}`, () => approveSignup(s.id).then((r) => orGone(s, r)), (r) => {
       change((w) => ({ ...w, signups: w.signups.map((x) => (x.id === s.id ? r.signup : x)) }));
-      if (r.mail !== "already_approved") setApproved((n) => (n === null ? n : n + 1));
+      if (r.mail !== "already_approved") bump(1);
       return approvalText(r);
     });
   }
 
   function onRemove(s: Signup) {
-    action.run(`remove:${s.id}`, () => removeSignup(s.id), () => {
-      setRemoving(null);
-      change((w) => ({ total: w.total - 1, verified: w.verified - (s.verified_at ? 1 : 0), signups: w.signups.filter((x) => x.id !== s.id) }));
-      if (s.approved_at) setApproved((n) => (n === null ? n : n - 1));
+    action.run(`remove:${s.id}`, () => removeSignup(s.id).then((r) => orGone(s, r)), () => {
+      drop(s);
       return `Removed ${s.email} from the waitlist.`;
     });
   }
@@ -135,7 +150,7 @@ export function Admin() {
             ].map(([label, n]) => (
               <div key={label} className="card grid gap-1 p-4">
                 <dt className="text-sm font-bold text-ink-soft">{label}</dt>
-                <dd className="font-display text-2xl font-extrabold">{typeof n === "number" ? n.toLocaleString() : "..."}</dd>
+                <dd className="font-display text-2xl font-extrabold">{typeof n === "number" ? n.toLocaleString() : n === "failed" ? "-" : "..."}</dd>
               </div>
             ))}
           </dl>
@@ -154,7 +169,7 @@ export function Admin() {
             </nav>
             <SearchBox label="Search by email" q={q} hrefFor={(text) => `/admin/waitlist${waitlistQuery(verified, text)}`} />
           </div>
-          <Status problem={action.problem} done={action.done} />
+          <Status problem={action.problem} done={action.done} overrides={overrides} />
           {!data ? (
             <p role="status" className="text-ink-soft">
               Loading the waitlist...

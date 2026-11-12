@@ -72,9 +72,11 @@ export type Page = { q: string; limit: number; offset: number };
 export const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 
-const whole = (v: string | null) => (v !== null && /^\d+$/.test(v) ? Number(v) : null);
+// A whole number JavaScript holds exactly, which also fits brain's integers; anything else is null.
+const whole = (v: string | null) => (v !== null && /^\d+$/.test(v) && Number.isSafeInteger(Number(v)) ? Number(v) : null);
 
-// `?q=&limit=&offset=` of a list page, kept within what brain accepts so a hand-edited URL never gets a 422.
+// `?q=&limit=&offset=` of a list page, kept within what brain accepts so a hand-edited URL never gets a 422:
+// a `limit` or `offset` that is not a safe whole number, or a `limit` outside 1 to 200, falls back to its default.
 export function parsePage(params: { get(name: string): string | null }): Page {
   const limit = whole(params.get("limit"));
   return {
@@ -93,8 +95,9 @@ export function pageQuery({ q, limit, offset }: Page) {
   return p.size ? `?${p}` : "";
 }
 
-// The pages before and after; null when there is none.
-export const previousPage = (p: Page): Page | null => (p.offset > 0 ? { ...p, offset: Math.max(0, p.offset - p.limit) } : null);
+// The pages before and after; null when there is none. Given the total, a page past the end steps back to the last page with rows.
+export const previousPage = (p: Page, total = Infinity): Page | null =>
+  p.offset > 0 ? { ...p, offset: Math.max(0, Math.min(p.offset - p.limit, Math.floor((total - 1) / p.limit) * p.limit)) } : null;
 export const nextPage = (p: Page, total: number): Page | null => (p.offset + p.limit < total ? { ...p, offset: p.offset + p.limit } : null);
 
 // "Showing 51 to 100 of 240", from the rows that came back.

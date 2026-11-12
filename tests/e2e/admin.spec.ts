@@ -218,6 +218,18 @@ test("users: the table, search and paging in the URL", async ({ page }) => {
   await page.getByRole("navigation", { name: "Pages" }).getByRole("link", { name: "Previous" }).click();
   await expect(page).toHaveURL("/admin/users?limit=2&offset=2");
 
+  // Past the end (a hand-edited URL, or rows gone): Previous goes to the last page with rows, and a huge number is ignored.
+  await page.goto("/admin/users?limit=2&offset=40");
+  await expect(main(page).getByText("Showing 0 of 5")).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Pages" }).getByRole("link")).toHaveText(["Previous"]);
+  await page.getByRole("navigation", { name: "Pages" }).getByRole("link", { name: "Previous" }).click();
+  await expect(page).toHaveURL("/admin/users?limit=2&offset=4");
+  await expect(rows(page)).toHaveText([/user4@example\.com/]);
+  await page.goto(`/admin/users?limit=2&offset=${"9".repeat(30)}`);
+  await expect(main(page).getByText("Showing 1 to 2 of 5")).toBeVisible();
+  await page.goto("/admin/users?limit=2&offset=2");
+  await expect(main(page).getByText("Showing 3 to 4 of 5")).toBeVisible();
+
   // A search starts again at the first page.
   await page.getByRole("searchbox", { name: "Search by name or email" }).fill("user3");
   await page.getByRole("button", { name: "Search" }).click();
@@ -237,6 +249,9 @@ test("users: the table, search and paging in the URL", async ({ page }) => {
     "users?limit=2&offset=2",
     "users?limit=2&offset=4",
     "users?limit=2&offset=4",
+    "users?limit=2&offset=40",
+    "users?limit=2&offset=4",
+    "users?limit=2",
     "users?limit=2&offset=2",
     "users?q=user3&limit=2",
     "users?q=nobody&limit=2",
@@ -342,10 +357,34 @@ test("approve tells an entry someone else approved meanwhile, and a missing one"
   await expect(rows(page).nth(0)).toContainText("Approved Nov 12, 2026");
   await expect(page.locator("dl > div").nth(3)).toHaveText("Approved30");
 
-  // Another admin removed it.
+  // Another admin removed it: the page says so, and the row and the total follow.
   state.signups = state.signups.filter((s) => s.id !== "w2");
   await page.getByRole("button", { name: "Approve new@example.com" }).click();
-  await expect(main(page).getByRole("alert")).toHaveText("That is no longer there. Reload the page to see the latest.");
+  const alert = main(page).getByRole("alert");
+  await expect(alert).toHaveText("Someone else already removed that entry. It is gone from the list.");
+  await expect(rows(page)).toHaveText([/newest@example\.com/, /old@example\.com/]);
+  await expect(page.locator("dl > div")).toHaveText(["Total1,199", "Verified700", "Unverified499", "Approved30"]);
+
+  // The same for Remove, here of an approved, verified entry.
+  state.signups = state.signups.filter((s) => s.id !== "w1");
+  await page.getByRole("button", { name: "Remove old@example.com" }).click();
+  await page.getByRole("button", { name: "Yes, remove" }).click();
+  await expect(alert).toHaveText("Someone else already removed that entry. It is gone from the list.");
+  await expect(rows(page)).toHaveText([/newest@example\.com/]);
+  await expect(page.locator("dl > div")).toHaveText(["Total1,198", "Verified699", "Unverified499", "Approved29"]);
+});
+
+test("approve and remove tell an admin whose rights are gone, in the console's words", async ({ page }) => {
+  await brain(page);
+  await page.goto("/admin/waitlist");
+  await expect(rows(page)).toHaveCount(3);
+  await page.route(/\/v1\/admin\/waitlist\/[^/]+(\/approve)?$/, (route) => route.fulfill({ status: 403, json: { error: "forbidden" } }));
+  await page.getByRole("button", { name: "Approve newest@example.com" }).click();
+  await expect(main(page).getByRole("alert")).toHaveText("You don't have access to the admin panel.");
+  await page.getByRole("button", { name: "Remove new@example.com" }).click();
+  await page.getByRole("button", { name: "Yes, remove" }).click();
+  await expect(main(page).getByRole("alert")).toHaveText("You don't have access to the admin panel.");
+  await expect(rows(page)).toHaveCount(3);
 });
 
 test("remove asks first, warns about an approval, and drops the row", async ({ page }) => {
@@ -401,6 +440,24 @@ test("sign-up settings: shows the current rules and saves a domain list", async 
   await page.reload();
   await expect(page.getByRole("radio", { name: /^Only these domains or addresses/ })).toBeChecked();
   await expect(page.getByRole("textbox", { name: "Domains and addresses" })).toHaveValue("example.com\nacme.io\nada@example.org");
+});
+
+test("sign-up settings: Closed and Open send the saved list, never the hidden draft", async ({ page }) => {
+  const state = await brain(page);
+  state.settings = { mode: "domains", domains: ["example.com"], source: "saved" };
+  await page.goto("/admin/settings");
+  const list = page.getByRole("textbox", { name: "Domains and addresses" });
+  await expect(list).toHaveValue("example.com");
+  // A draft brain would refuse, then another choice hides the box.
+  await list.fill("not a domain!");
+  await page.getByRole("radio", { name: /^Closed/ }).check();
+  await expect(list).toHaveCount(0);
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(main(page).getByRole("status")).toHaveText("Sign-up settings saved.");
+  expect(state.saves).toEqual([{ mode: "closed", domains: ["example.com"] }]);
+  // The saved list is back when the third choice is picked again.
+  await page.getByRole("radio", { name: /^Only these domains or addresses/ }).check();
+  await expect(list).toHaveValue("example.com");
 });
 
 test("sign-up settings: opening to everyone asks once more", async ({ page }) => {

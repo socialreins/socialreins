@@ -46,7 +46,7 @@ function AdminList<R extends { id: string }>({
   const data = loaded?.key === key ? loaded.data : null;
   if (data === "forbidden") return <Forbidden />;
   const ok = data !== null && !isFailure(data) ? data : null;
-  const previous = previousPage(page);
+  const previous = previousPage(page, ok?.total);
   const next = ok && nextPage(page, ok.total);
 
   return (

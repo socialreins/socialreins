@@ -70,6 +70,10 @@ describe("admin list pages", () => {
     expect(page("limit=0&offset=-5")).toEqual({ q: "", limit: 50, offset: 0 });
     expect(page("limit=201&offset=1.5")).toEqual({ q: "", limit: 50, offset: 0 });
     expect(page("limit=abc&offset=x")).toEqual({ q: "", limit: 50, offset: 0 });
+    // Too big to hold exactly: brain would answer 422.
+    expect(page(`limit=${"9".repeat(30)}&offset=${"9".repeat(30)}`)).toEqual({ q: "", limit: 50, offset: 0 });
+    expect(page("offset=9007199254740992")).toEqual({ q: "", limit: 50, offset: 0 });
+    expect(page("offset=9007199254740991").offset).toBe(Number.MAX_SAFE_INTEGER);
     expect(page(`q=${"a".repeat(300)}`).q).toHaveLength(200);
   });
 
@@ -84,6 +88,11 @@ describe("admin list pages", () => {
     expect(previousPage(p)).toEqual({ q: "x", limit: 50, offset: 0 });
     expect(previousPage({ ...p, offset: 0 })).toBeNull();
     expect(previousPage({ ...p, offset: 20 })).toEqual({ q: "x", limit: 50, offset: 0 });
+    // Past the end, Previous goes straight to the last page with rows.
+    expect(previousPage({ ...p, offset: 500 }, 120)).toEqual({ q: "x", limit: 50, offset: 100 });
+    expect(previousPage({ ...p, offset: 500 }, 100)).toEqual({ q: "x", limit: 50, offset: 50 });
+    expect(previousPage({ ...p, offset: 500 }, 0)).toEqual({ q: "x", limit: 50, offset: 0 });
+    expect(previousPage({ ...p, offset: 100 }, 120)).toEqual({ q: "x", limit: 50, offset: 50 });
     expect(nextPage(p, 101)).toEqual({ q: "x", limit: 50, offset: 100 });
     expect(nextPage(p, 100)).toBeNull();
   });
