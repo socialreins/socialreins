@@ -142,6 +142,11 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
   const [tab, setTab] = useState<string | null>(() => (returned?.error === null ? (returned.provider === "meta" ? "facebook" : returned.provider) : null));
 
   const reload = () => listConnections().then(setList);
+  // An account connected on this page: load it and open its network's tab, so it is on screen.
+  const connectedTo = (network: string) => {
+    setTab(network);
+    reload();
+  };
   useEffect(() => {
     listConnections().then(setList);
     listSets().then(setSets);
@@ -187,7 +192,7 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
           )}
         </p>
       )}
-      {picking && <MetaPicker team={team} onConnected={reload} />}
+      {picking && <MetaPicker team={team} onConnected={() => connectedTo("facebook")} />}
       <Status problem={problem} done={done} overrides={connectMessages} />
       {list === null ? (
         <div role="status" className="h-28 rounded-2xl bg-ink/5 motion-safe:animate-pulse">
@@ -215,7 +220,7 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
                   aria-controls="network-panel"
                   // Arrow keys move between tabs, so only the picked one is a Tab stop.
                   tabIndex={on ? 0 : -1}
-                  className={`-mb-px flex shrink-0 items-center gap-2 border-b-2 px-3 py-2 font-bold ${on ? "border-ink" : "border-transparent text-ink-soft hover:text-ink"}`}
+                  className={`flex shrink-0 items-center gap-2 border-b-2 px-3 py-2 font-bold focus-visible:-outline-offset-2 ${on ? "border-ink" : "border-transparent text-ink-soft hover:text-ink"}`}
                   onClick={() => setTab(g.id)}
                 >
                   {platform && (
@@ -305,7 +310,7 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
         <AddAccount
           connected={Array.isArray(list) ? list : []}
           onClose={() => setAdding(false)}
-          onConnected={reload}
+          onConnected={() => connectedTo("bluesky")}
           announce={announce}
         />
       )}
