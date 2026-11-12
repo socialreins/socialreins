@@ -50,9 +50,10 @@ test("app shows the team switcher, switches and creates a team", async ({ page }
     return route.fulfill({ json: { id: "t2", name: "Beta", role: "member" } });
   });
   await page.goto("/home");
-  // The team switcher sits at the top of the sidebar, no longer in the breadcrumb.
-  const side = page.locator("aside");
-  await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "Acme" })).toHaveCount(0);
+  // The team switcher is first in the breadcrumb; the sidebar's top holds the logo.
+  const side = page.getByRole("navigation", { name: "Breadcrumb" });
+  await expect(page.locator("aside").getByRole("button", { name: "Acme" })).toHaveCount(0);
+  await expect(page.locator("aside").getByRole("link", { name: "SocialReins" })).toHaveAttribute("href", "/home");
   await expect(side.getByText("Free plan")).toBeVisible();
   await side.getByRole("button", { name: "Acme", exact: true }).click();
   const team = page.locator("#team-menu");
@@ -73,7 +74,7 @@ test("app shows the team switcher, switches and creates a team", async ({ page }
   await expect(team).toBeHidden();
 });
 
-test("long team names and emails stay inside the sidebar", async ({ page }) => {
+test("long team names stay inside the top bar, and long emails inside the sidebar", async ({ page }) => {
   const long = "Bytech Social Media Marketing Agency International";
   await page.route("**/auth/me", (route) =>
     route.fulfill({ json: me("owner", { email: "someone.with.a.really.long.address@example-company.com", current_team: { id: "t1", name: long, role: "owner" } }) }),
@@ -82,10 +83,11 @@ test("long team names and emails stay inside the sidebar", async ({ page }) => {
     route.fulfill({ json: [{ id: "t1", name: long, role: "owner" }, { id: "t2", name: `${long} Second Office`, role: "member" }] }),
   );
   await page.goto("/home");
-  const button = page.locator("aside").getByRole("button", { name: long });
+  const button = page.getByRole("banner").getByRole("button", { name: long });
   await expect(button).toBeVisible();
-  const [box, bar] = await Promise.all([button.boundingBox(), page.locator("aside").boundingBox()]);
-  expect(box!.x + box!.width).toBeLessThanOrEqual(bar!.x + bar!.width);
+  // The name is cut short, so the set after it is still on screen.
+  expect((await button.boundingBox())!.width).toBeLessThan(300);
+  await expect(page.getByRole("banner").getByRole("button", { name: "Default" })).toBeInViewport();
   await button.click();
   const panel = await page.locator("#team-menu").boundingBox();
   expect(panel!.x + panel!.width).toBeLessThanOrEqual(page.viewportSize()!.width);

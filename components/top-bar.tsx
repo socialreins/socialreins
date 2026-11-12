@@ -14,7 +14,7 @@ import { isFailure, problemText, roleName, Status, useAction } from "@/component
 const crumb = "flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 font-bold hover:bg-ink/[0.045]";
 const item = "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-ink/[0.045]";
 
-// Above every app page: the sidebar toggle, then where you are as Set / page; the set opens a menu to switch. The team is in the sidebar.
+// Above every app page: the sidebar toggle, then where you are as Team / Set / page; the team and the set each open a menu to switch.
 export function TopBar({ session, admin, pages, collapsed, onToggle }: { session: boolean; admin: boolean; pages: NavItem[]; collapsed: boolean; onToggle: () => void }) {
   return (
     <header className="flex h-12 items-center gap-1 border-b border-[var(--line)] bg-paper px-3 text-sm sm:px-6 md:sticky md:top-0 md:z-[5]">
@@ -39,11 +39,25 @@ export function TopBar({ session, admin, pages, collapsed, onToggle }: { session
                 </Link>
               </li>
             ) : (
-              <li className="min-w-0">
-                <Suspense fallback={null}>
-                  <TeamSets />
-                </Suspense>
-              </li>
+              <>
+                <li className="flex min-w-0 items-center">
+                  <TeamMenu />
+                </li>
+                {/* Every team is on Free until billing exists. */}
+                <li className="hidden shrink-0 items-center gap-1.5 pr-1 text-xs text-[var(--faint)] md:flex">
+                  Free plan
+                  <span aria-hidden="true">·</span>
+                  <Link href="/billing" className="font-semibold text-signal-deep hover:underline">
+                    Upgrade
+                  </Link>
+                </li>
+                <li aria-hidden="true" className="text-[var(--line)]">/</li>
+                <li className="min-w-0">
+                  <Suspense fallback={null}>
+                    <TeamSets />
+                  </Suspense>
+                </li>
+              </>
             )}
             <Suspense fallback={null}>
               <PageCrumb pages={pages} />
@@ -70,14 +84,14 @@ function PageCrumb({ pages }: { pages: NavItem[] }) {
 }
 
 // A button that opens a small panel under it (a native popover: Escape and clicking outside close it).
-function Menu({ id, trigger, onOpen, children, className = crumb, chevron = "" }: { id: string; trigger: ReactNode; onOpen?: () => void; children: ReactNode; className?: string; chevron?: string }) {
+function Menu({ id, trigger, onOpen, children }: { id: string; trigger: ReactNode; onOpen?: () => void; children: ReactNode }) {
   const button = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   return (
     <>
-      <button ref={button} type="button" popoverTarget={id} className={className}>
+      <button ref={button} type="button" popoverTarget={id} className={crumb}>
         {trigger}
-        <Icon name="down" className={`size-3.5 text-[var(--faint)] ${chevron}`} />
+        <Icon name="down" className="size-3.5 text-[var(--faint)]" />
       </button>
       <div
         ref={panel}
@@ -101,8 +115,8 @@ function Menu({ id, trigger, onOpen, children, className = crumb, chevron = "" }
 
 const hide = (id: string) => (document.getElementById(id) as HTMLElement | null)?.hidePopover();
 
-// The team switcher at the top of the sidebar; on the icon rail only the team's initial shows.
-export function TeamMenu({ collapsed }: { collapsed: boolean }) {
+// The team switcher, first in the breadcrumb.
+function TeamMenu() {
   const { user, setTeam } = useSession();
   const current = user.current_team;
   const [teams, setTeams] = useState<Team[] | Failure | null>(null);
@@ -140,14 +154,12 @@ export function TeamMenu({ collapsed }: { collapsed: boolean }) {
     <Menu
       id="team-menu"
       onOpen={() => listTeams().then(setTeams)}
-      className={`flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-left font-semibold hover:bg-ink/[0.05] ${collapsed ? "md:px-1" : ""}`}
-      chevron={collapsed ? "md:hidden" : ""}
       trigger={
         <>
           <span aria-hidden="true" className="grid size-6 shrink-0 place-items-center rounded-md bg-signal-deep text-xs font-bold text-paper">
             {current.name.charAt(0).toUpperCase()}
           </span>
-          <span className={`truncate ${collapsed ? "md:sr-only" : ""}`} title={current.name}>
+          <span className="max-w-48 truncate" title={current.name}>
             {current.name}
           </span>
         </>

@@ -287,22 +287,25 @@ test("the account shows the role in the current team under the name", async ({ p
   await expect(accountButton(page)).toContainText("Owner");
 });
 
-test("the sidebar holds the team switcher with the plan, and Upgrade opens /billing", async ({ page }) => {
+test("the top bar holds the team switcher with the plan, the sidebar the logo, and Upgrade opens /billing", async ({ page }) => {
   await brain(page);
   await page.goto("/posts");
-  const side = page.locator("aside");
+  const side = page.getByRole("navigation", { name: "Breadcrumb" });
+  const logo = page.locator("aside").getByRole("link", { name: "SocialReins" });
   await expect(side.getByRole("button", { name: "Acme", exact: true })).toBeVisible();
   await expect(side).toContainText("Free plan");
-  await expect(page.getByRole("navigation", { name: "Breadcrumb" })).not.toContainText("Acme");
+  await expect(page.locator("aside").getByRole("button", { name: "Acme", exact: true })).toHaveCount(0);
+  await expect(logo.getByText("SocialReins")).toBeInViewport();
   await side.getByRole("link", { name: "Upgrade" }).click();
   await expect(page).toHaveURL("/billing");
   await expect(page.getByRole("heading", { name: "Plans", level: 1 })).toBeVisible();
   await expect(page.getByRole("main")).toContainText("Your team is on the Free plan. Paid plans are coming soon.");
   await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Plans");
 
-  // The icon rail keeps only the team's initial, still opening the switcher.
+  // The icon rail keeps only the logo mark (the name stays for screen readers); the team stays in the top bar.
   await page.getByRole("button", { name: "Collapse sidebar" }).click();
-  await expect(side.getByText("Free plan")).toBeHidden();
+  await expect(logo).toBeVisible();
+  expect((await logo.boundingBox())!.width).toBeLessThan(64);
   await side.getByRole("button", { name: "Acme", exact: true }).click();
   await expect(page.locator("#team-menu").getByRole("link", { name: "Manage team" })).toBeVisible();
 });
