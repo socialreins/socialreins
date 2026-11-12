@@ -180,7 +180,11 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
               className={`flex items-center justify-between gap-3 px-2.5 py-2 md:min-h-12 md:pt-3 md:pb-1 ${collapsed ? "md:justify-center md:px-0" : ""}`}
             >
               {/* The logo: mark and name, or only the mark on the icon rail. The team and its plan are in the top bar. */}
-              <Link href={admin ? "/admin" : "/home"} className="flex items-center gap-2 px-1.5 font-display text-base font-bold tracking-tight">
+              <Link
+                href={admin ? "/admin" : "/home"}
+                className="flex items-center gap-2 px-1.5 font-display text-base font-bold tracking-tight"
+                onClick={() => setOpen(false)}
+              >
                 <LogoMark className="size-7" />
                 <span className={collapsed ? "md:sr-only" : ""}>SocialReins</span>
                 {admin && <span className={`badge bg-signal-deep text-paper ${collapsed ? "md:sr-only" : ""}`}>Admin</span>}
@@ -208,7 +212,7 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
                   <CurrentNavGroups groups={groups} collapsed={collapsed} />
                 </Suspense>
               </nav>
-              {/* minmax(0,1fr): a long team name or email truncates instead of widening the sidebar. */}
+              {/* minmax(0,1fr): a long name or email truncates instead of widening the sidebar. */}
               <div className="mt-auto grid grid-cols-[minmax(0,1fr)] gap-2">
                 <ThemeSwitch collapsed={collapsed} />
                 {session ? <Account collapsed={collapsed} /> : <div className="h-10 rounded-md bg-ink/5 motion-safe:animate-pulse" />}

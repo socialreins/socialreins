@@ -84,14 +84,14 @@ function PageCrumb({ pages }: { pages: NavItem[] }) {
 }
 
 // A button that opens a small panel under it (a native popover: Escape and clicking outside close it).
-function Menu({ id, trigger, onOpen, children, className = crumb, chevron = "" }: { id: string; trigger: ReactNode; onOpen?: () => void; children: ReactNode; className?: string; chevron?: string }) {
+function Menu({ id, trigger, onOpen, children }: { id: string; trigger: ReactNode; onOpen?: () => void; children: ReactNode }) {
   const button = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   return (
     <>
-      <button ref={button} type="button" popoverTarget={id} className={className}>
+      <button ref={button} type="button" popoverTarget={id} className={crumb}>
         {trigger}
-        <Icon name="down" className={`size-3.5 text-[var(--faint)] ${chevron}`} />
+        <Icon name="down" className="size-3.5 text-[var(--faint)]" />
       </button>
       <div
         ref={panel}
