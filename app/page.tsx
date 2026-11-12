@@ -66,7 +66,7 @@ export default function Home() {
       <header className="flex items-center justify-between gap-3 py-6">
         <Link href="/" className="flex items-center gap-2.5 font-display text-xl font-extrabold tracking-tight">
           <LogoMark className="size-9" />
-          {/* On a phone the mark alone leaves room for GitHub and Open the app. */}
+          {/* On a phone the mark alone leaves room for GitHub and Get started. */}
           <span className="max-sm:sr-only">SocialReins</span>
         </Link>
         <nav aria-label="Site" className="flex items-center gap-4 sm:gap-6">
@@ -194,10 +194,10 @@ export default function Home() {
           <Link href="/contact" className={headerLink}>
             Contact
           </Link>
-          <a href={repo} className={headerLink}>
+          <a href={repo} target="_blank" rel="noopener noreferrer" className={headerLink}>
             SocialReins on GitHub
           </a>
-          <a href="https://github.com/sponsors/HarunRRayhan" rel="noopener" className={headerLink}>
+          <a href="https://github.com/sponsors/HarunRRayhan" target="_blank" rel="noopener noreferrer" className={headerLink}>
             Sponsor
           </a>
         </span>

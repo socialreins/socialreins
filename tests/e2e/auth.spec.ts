@@ -80,14 +80,15 @@ test("app sends a signed-out visitor to login", async ({ page }) => {
   await expect(page).toHaveURL("/login");
 });
 
-test("header links to sign in, or to the app when signed in", async ({ page }) => {
+test("header offers Get started, or the dashboard when signed in", async ({ page }) => {
   await page.route("**/auth/me", (route) => route.fulfill({ status: 401, json: { error: "unauthorized" } }));
   await page.goto("/");
-  await expect(page.getByRole("link", { name: "Log in" })).toHaveAttribute("href", "/login");
+  await expect(page.getByRole("link", { name: "Get started" })).toHaveAttribute("href", "/signup");
   await page.unrouteAll();
   await page.route("**/auth/me", (route) => route.fulfill({ json: user }));
   await page.reload();
-  await expect(page.getByRole("link", { name: "Open the app" })).toHaveAttribute("href", "/home");
+  await expect(page.getByRole("link", { name: "Dashboard" })).toHaveAttribute("href", "/home");
+  await expect(page.getByRole("link", { name: "Get started" })).toHaveCount(0);
 });
 
 test("old /app links redirect and keep their query", async ({ request }) => {

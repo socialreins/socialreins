@@ -28,7 +28,7 @@ export async function GitHubLink({
   const total = stars?.total ?? null;
 
   return (
-    <a href={`${org}/socialreins`} className={`inline-flex items-center gap-2 whitespace-nowrap ${className}`}>
+    <a href={`${org}/socialreins`} target="_blank" rel="noopener noreferrer" className={`inline-flex items-center gap-2 whitespace-nowrap ${className}`}>
       {mark && (
         <svg viewBox="0 0 24 24" className="size-5" aria-hidden="true" fill="currentColor">
           <path d={githubMark} />
