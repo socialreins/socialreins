@@ -249,6 +249,7 @@ test("users: the table, search and paging in the URL", async ({ page }) => {
     "users?limit=2&offset=2",
     "users?limit=2&offset=4",
     "users?limit=2&offset=4",
+    "users?limit=2&offset=2",
     "users?limit=2&offset=40",
     "users?limit=2&offset=4",
     "users?limit=2",
