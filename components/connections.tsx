@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { flushSync } from "react-dom";
 import Link from "next/link";
 import type { Failure } from "@/lib/auth";
@@ -138,6 +138,8 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
   const [returned] = useState(() => connectResult(window.location.search));
   // brain sent the browser back from a Meta login with Pages and Instagram accounts to pick.
   const [picking] = useState(() => canManage && metaPickPending(window.location.search));
+  // brain names Facebook and Instagram together as "meta"; their tabs start at Facebook.
+  const [tab, setTab] = useState<string | null>(() => (returned?.error === null ? (returned.provider === "meta" ? "facebook" : returned.provider) : null));
 
   const reload = () => listConnections().then(setList);
   useEffect(() => {
@@ -151,6 +153,16 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
   // What a closed dialog did, shown (and focused) on the page behind it.
   const announce = (text: string) => run("notice", async () => "ok" as const, () => text);
   const opened = Array.isArray(list) ? list.find((c) => c.id === settingsId) : undefined;
+  // One network at a time, as tabs. The first one, or the one just connected, until a tab is picked.
+  const groups = Array.isArray(list) ? byNetwork(list) : [];
+  const group = groups.find((g) => g.id === tab) ?? groups[0];
+  function onTabKey(e: KeyboardEvent<HTMLDivElement>) {
+    const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+    if (!step) return;
+    const next = groups[(groups.indexOf(group) + step + groups.length) % groups.length];
+    flushSync(() => setTab(next.id));
+    document.getElementById(`network-tab-${next.id}`)?.focus();
+  }
 
   return (
     <section aria-labelledby="accounts-heading" className="grid gap-4">
@@ -188,13 +200,36 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
       ) : list.length === 0 ? (
         <p className="card p-5 text-ink-soft">No accounts connected yet.{canManage ? " Use Add account to connect one." : ""}</p>
       ) : (
-        <div className="grid gap-6">
-          {byNetwork(list).map((group) => (
-            <section key={group.id} aria-label={group.name} className="grid gap-3">
-              <h3 className="flex items-center gap-2 font-bold">
-                {group.name}
-                <span className="text-sm font-normal text-ink-soft">{group.items.length}</span>
-              </h3>
+        <div className="grid gap-4">
+          <div role="tablist" aria-label="Networks" className="flex gap-1 overflow-x-auto border-b border-[var(--line)]" onKeyDown={onTabKey}>
+            {groups.map((g) => {
+              const platform = platformOf(g.id);
+              const on = g.id === group.id;
+              return (
+                <button
+                  key={g.id}
+                  id={`network-tab-${g.id}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={on}
+                  aria-controls="network-panel"
+                  // Arrow keys move between tabs, so only the picked one is a Tab stop.
+                  tabIndex={on ? 0 : -1}
+                  className={`-mb-px flex shrink-0 items-center gap-2 border-b-2 px-3 py-2 font-bold ${on ? "border-ink" : "border-transparent text-ink-soft hover:text-ink"}`}
+                  onClick={() => setTab(g.id)}
+                >
+                  {platform && (
+                    <span style={{ color: platform.color }}>
+                      <PlatformIcon platform={platform} className="size-4" />
+                    </span>
+                  )}
+                  {g.name}
+                  <span className="text-sm font-normal text-ink-soft">{g.items.length}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div id="network-panel" role="tabpanel" aria-labelledby={`network-tab-${group.id}`}>
             <ul className="grid gap-3 sm:grid-cols-2">
               {group.items.map((c) => {
                 const platform = platformOf(c.provider);
@@ -241,8 +276,7 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
                 );
               })}
             </ul>
-            </section>
-          ))}
+          </div>
         </div>
       )}
       {!canManage && <p className="text-ink-soft">Only team owners and admins can connect or disconnect accounts.</p>}
