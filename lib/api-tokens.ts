@@ -5,13 +5,15 @@ export type ApiToken = {
   name: string;
   // null: the token works across the whole team.
   social_set_id: string | null;
+  // true: the token can only read; brain answers read_only_token to a write.
+  read_only?: boolean;
   prefix_hint: string;
   created_by: string | null;
   last_used_at: string | null;
   expires_at: string | null;
   created_at: string;
 };
-export type NewToken = { name: string; social_set_id?: string; expires_in_days?: number };
+export type NewToken = { name: string; social_set_id?: string; expires_in_days?: number; read_only?: boolean };
 
 // Owners and admins only; brain answers forbidden to a member.
 export const listTokens = () => api<ApiToken[]>("/v1/api-tokens");

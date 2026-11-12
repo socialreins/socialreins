@@ -51,7 +51,7 @@ async function brain(page: Page, role: Role) {
     state.bodies.push(req.postDataJSON());
     if (state.reauth) return route.fulfill({ status: 403, json: { error: "reauth_required" } });
     const body = req.postDataJSON();
-    const made = token("k2", body.name, { social_set_id: body.social_set_id ?? null, prefix_hint: "sr_set_live_k2ab" });
+    const made = token("k2", body.name, { social_set_id: body.social_set_id ?? null, read_only: body.read_only ?? false, prefix_hint: "sr_set_live_k2ab" });
     state.tokens.unshift(made);
     return route.fulfill({ status: 201, json: { token: made, secret: SECRET } });
   });
@@ -90,6 +90,7 @@ test("create asks for a fresh sign-in, then shows the secret once", async ({ pag
   await page.getByLabel("Token name").fill("Clients CM");
   await page.getByLabel("Scope").selectOption({ label: "Clients" });
   await page.getByLabel("Expires").selectOption({ label: "90 days" });
+  await page.getByLabel(/^Read only/).check();
   await page.getByRole("button", { name: "Create token" }).click();
   const reauth = page.getByRole("alert").filter({ hasText: "needs a fresh sign-in" });
   await expect(reauth).toBeVisible();
@@ -111,9 +112,11 @@ test("create asks for a fresh sign-in, then shows the secret once", async ({ pag
   await expect(page.getByLabel(/Secret for/)).toHaveCount(0);
   await expect(page.getByLabel("Token name")).toBeFocused();
   await expect(items(page).first()).toContainText("Clients CM");
+  await expect(items(page).first()).toContainText("Clients. Read only. sr_set_live_k2ab...");
+  await expect(items(page).nth(1)).not.toContainText("Read only");
   expect(state.bodies).toEqual([
-    { name: "Clients CM", social_set_id: "s1", expires_in_days: 90 },
-    { name: "Clients CM", social_set_id: "s1", expires_in_days: 90 },
+    { name: "Clients CM", social_set_id: "s1", expires_in_days: 90, read_only: true },
+    { name: "Clients CM", social_set_id: "s1", expires_in_days: 90, read_only: true },
   ]);
   // Never in the URL or storage, so a reload leaves only the hint.
   expect(page.url()).not.toContain(SECRET);
