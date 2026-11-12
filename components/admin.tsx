@@ -44,14 +44,14 @@ export function SearchBox({ label, q, hrefFor }: { label: string; q: string; hre
   return (
     <form
       role="search"
-      className="flex flex-wrap items-center gap-2"
+      className="flex w-full max-w-md items-center gap-2"
       onSubmit={(e) => {
         e.preventDefault();
         router.push(hrefFor(String(new FormData(e.currentTarget).get("q") ?? "").trim()));
       }}
     >
       {/* The key resets the box when the URL's search changes (Clear, Back). */}
-      <input key={q} type="search" name="q" aria-label={label} placeholder={label} defaultValue={q} maxLength={200} className="field max-w-xs" />
+      <input key={q} type="search" name="q" aria-label={label} placeholder={label} defaultValue={q} maxLength={200} className="field min-w-0 flex-1" />
       <button type="submit" className="btn btn-secondary btn-sm">
         Search
       </button>

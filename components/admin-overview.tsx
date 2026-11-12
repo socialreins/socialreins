@@ -109,7 +109,7 @@ export function AdminOverview() {
       <Card id="posts" name="Posts" total={Object.values(posts).reduce((a, b) => a + b, 0)}>
         <Rows
           rows={statuses.map((s) => [
-            <span className="badge tone" data-status={s}>
+            <span key={s} className="badge tone" data-status={s}>
               {title(s)}
             </span>,
             posts[s],
