@@ -62,6 +62,28 @@ export const cancelMetaPick = () => api("/v1/connections/meta/pick", "DELETE");
 export const connectUrl = (platform: string) =>
   `${apiUrl}/connections/${encodeURIComponent(providerKey(platform))}/redirect`;
 
+// An OAuth connect leaves the page, and brain's callback doesn't say which account it made. So the
+// picked set and the accounts already here wait in sessionStorage, to find the new one on the way back.
+const STARTED = "connect-started";
+// Longer than brain keeps an OAuth state (10 minutes); an older note is from a connect that was given up.
+const STARTED_MS = 15 * 60_000;
+export function rememberConnect(set: string, ids: string[]) {
+  try {
+    sessionStorage.setItem(STARTED, JSON.stringify({ set, ids, at: Date.now() }));
+  } catch {
+    // Storage refused (private window): the account still connects, into Default only.
+  }
+}
+export function takeConnect(): { set: string; ids: string[] } | null {
+  try {
+    const v = JSON.parse(sessionStorage.getItem(STARTED) ?? "null");
+    sessionStorage.removeItem(STARTED);
+    return v && typeof v.set === "string" && Array.isArray(v.ids) && Date.now() - v.at < STARTED_MS ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 export type ConnectResult = { provider: string; error: string | null };
 // What brain's callback put in the URL: ?connected=<provider>, or ?connect_error=<code>&provider=<provider>.
 export function connectResult(search: string): ConnectResult | null {
