@@ -50,13 +50,33 @@ const openBluesky = async (page: Page) => {
 };
 const openSettings = (page: Page, name: string) => page.getByRole("button", { name: `Settings for ${name}` }).click();
 
-test("accounts are grouped by network", async ({ page }) => {
+test("accounts show one network at a time, as tabs", async ({ page }) => {
   const fb = { ...alice, id: "f1", provider: "facebook", handle: null, display_name: "Page One", avatar_url: null };
   await signedIn(page, "owner", [alice, fb]);
   await page.goto("/connections");
-  await expect(page.getByRole("heading", { level: 3 })).toHaveText([/^Facebook/, /^Bluesky/]);
-  await expect(page.getByRole("region", { name: "Facebook" })).toContainText("Page One");
-  await expect(page.getByRole("region", { name: "Bluesky" })).toContainText("Alice");
+  const tabs = page.getByRole("tablist", { name: "Networks" }).getByRole("tab");
+  await expect(tabs).toHaveText([/^Facebook\s*1$/, /^Bluesky\s*1$/]);
+  // The first network shows; the others wait behind their tabs.
+  await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tabpanel")).toContainText("Page One");
+  await expect(page.getByRole("tabpanel")).not.toContainText("Alice");
+  await tabs.nth(1).click();
+  await expect(page.getByRole("tabpanel")).toContainText("Alice");
+  await expect(page.getByRole("tabpanel")).not.toContainText("Page One");
+  // Arrow keys move between tabs and wrap around.
+  await page.keyboard.press("ArrowRight");
+  await expect(tabs.first()).toBeFocused();
+  await expect(page.getByRole("tabpanel")).toContainText("Page One");
+});
+
+test("coming back from a connect opens that network's tab", async ({ page }) => {
+  const x = { ...alice, id: "x1", provider: "x", handle: "alice_x", display_name: "Alice X", avatar_url: null };
+  await signedIn(page, "owner", [alice, x]);
+  await page.goto("/connections");
+  await expect(page.getByRole("tab", { name: /Bluesky/ })).toHaveAttribute("aria-selected", "true");
+  await page.goto("/connections?connected=x");
+  await expect(page.getByRole("tab", { name: /^X/ })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tabpanel")).toContainText("Alice X");
 });
 
 test("app links to connected accounts", async ({ page }) => {
@@ -307,8 +327,11 @@ test("a member sees the badge but no Reconnect button, and is not told to reconn
   const li = { ...alice, provider: "linkedin", handle: null, avatar_url: null, external_id: "abc", display_name: "Gone Gia", status: "reconnect" };
   await signedIn(page, "member", [li, { ...alice, id: "c5", display_name: "Old Bea", status: "reconnect" }]);
   await page.goto("/connections");
-  await expect(page.getByText("Reconnect needed", { exact: true })).toHaveCount(2);
+  await expect(page.getByText("Reconnect needed", { exact: true })).toHaveCount(1);
+  await page.getByRole("tab", { name: /Bluesky/ }).click();
+  await expect(page.getByText("Reconnect needed", { exact: true })).toHaveCount(1);
   await expect(page.getByRole("link", { name: /^Reconnect/ })).toHaveCount(0);
+  await page.getByRole("tab", { name: /LinkedIn/ }).click();
   await openSettings(page, "Gone Gia");
   await expect(page.getByRole("dialog").getByText("Ask a team owner or admin to reconnect it.")).toBeVisible();
   await expect(page.getByRole("dialog").getByRole("link", { name: /^Reconnect/ })).toHaveCount(0);
