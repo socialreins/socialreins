@@ -28,7 +28,7 @@ test("landing footer links both pages", async ({ page }) => {
   await expect(footer.getByRole("link", { name: "Terms" })).toHaveAttribute("href", "/terms");
   const sponsor = footer.getByRole("link", { name: "Sponsor" });
   await expect(sponsor).toHaveAttribute("href", "https://github.com/sponsors/HarunRRayhan");
-  await expect(sponsor).toHaveAttribute("rel", "noopener");
+  await expect(sponsor).toHaveAttribute("rel", "noopener noreferrer");
 });
 
 test("data deletion page explains how to delete data", async ({ page }) => {

@@ -83,6 +83,9 @@ test("the header GitHub link shows the GitHub mark and opens the main repo", asy
   await page.goto("/");
   const link = page.getByRole("banner").getByRole("link", { name: /GitHub/ });
   await expect(link).toHaveAttribute("href", "https://github.com/socialreins/socialreins");
+  // Both GitHub buttons open a new tab, so the landing page stays open.
+  await expect(link).toHaveAttribute("target", "_blank");
+  await expect(page.getByRole("main").getByRole("link", { name: /Star on GitHub/ })).toHaveAttribute("target", "_blank");
   await expect(link.locator("svg")).toHaveCount(1);
 });
 
@@ -107,14 +110,12 @@ test("the web app manifest lists the home-screen icons", async ({ request }) => 
 
 test("on a phone the header fits and the page never scrolls sideways", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  // Signed in, the header says Open the app, its widest form.
-  await page.route("**/auth/me", (route) =>
-    route.fulfill({ json: { id: "u1", email: "me@example.com", name: "Me", username: null, current_team: { id: "t1", name: "Me", role: "owner" } } }),
-  );
+  // Signed out, the header shows the Get started button, its widest form.
+  await page.route("**/auth/me", (route) => route.fulfill({ status: 401, json: { error: "unauthorized" } }));
   await page.goto("/");
   const header = page.locator("header").first();
   await expect(header.getByRole("link", { name: "SocialReins" })).toBeVisible();
-  const open = header.getByRole("link", { name: "Open the app" });
+  const open = header.getByRole("link", { name: "Get started" });
   await expect(open).toBeInViewport({ ratio: 1 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
