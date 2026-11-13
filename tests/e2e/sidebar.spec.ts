@@ -59,7 +59,9 @@ test("the sidebar collapses to an icon rail and back, across reloads", async ({ 
   await expect(group(page, "Publish")).toBeHidden();
   const posts = nav(page).getByRole("link", { name: "Posts", exact: true });
   await expect(posts).toBeVisible();
-  await expect(posts).toHaveAttribute("title", "Posts");
+  // The rail names an icon beside it as soon as the pointer is over it.
+  await posts.hover();
+  expect(await posts.evaluate((el) => getComputedStyle(el, "::after").content)).toContain("Posts");
   await expect(posts).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("button", { name: "Account: Mira" })).toBeVisible();
   await page.getByRole("button", { name: "Account: Mira" }).click();
