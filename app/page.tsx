@@ -36,7 +36,6 @@ const features = [
   },
   {
     title: "Built for AI agents",
-    soon: true,
     body: "A REST API and an MCP server let your agents post for you, limited to the sets you choose.",
   },
 ];
@@ -125,11 +124,7 @@ export default function Home() {
             {features.map((f) => (
               <div key={f.title} className="rounded-3xl border border-ink/10 bg-paper p-6">
                 <dt className="grid justify-items-start gap-3 font-display text-xl font-bold">
-                  <span
-                    className={`rounded-full px-2.5 py-0.5 font-body text-xs font-bold ${f.soon ? "bg-canvas text-signal-deep" : "bg-ink text-paper"}`}
-                  >
-                    {f.soon ? "Coming soon" : "Live now"}
-                  </span>
+                  <span className="rounded-full bg-ink px-2.5 py-0.5 font-body text-xs font-bold text-paper">Live now</span>
                   {f.title}
                 </dt>
                 <dd className="mt-2 text-ink-soft">{f.body}</dd>
@@ -190,6 +185,9 @@ export default function Home() {
           </Link>
           <Link href="/post-types" className={headerLink}>
             Post types
+          </Link>
+          <Link href="/compare" className={headerLink}>
+            Compare
           </Link>
           <Link href="/contact" className={headerLink}>
             Contact

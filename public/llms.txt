@@ -16,4 +16,11 @@
 - [What you can post to YouTube](https://socialreins.com/youtube): post types and limits on YouTube
 - [What you can post to X](https://socialreins.com/x): post types and limits on X
 - [What you can post to TikTok](https://socialreins.com/tiktok): post types and limits on TikTok
+- [Compare SocialReins](https://socialreins.com/compare): SocialReins next to other tools
+- [SocialReins vs PostSyncer](https://socialreins.com/compare/postsyncer)
+- [SocialReins vs Manychat](https://socialreins.com/compare/manychat)
+- [SocialReins vs Buffer](https://socialreins.com/compare/buffer)
+- [SocialReins vs Hootsuite](https://socialreins.com/compare/hootsuite)
+- [SocialReins vs Later](https://socialreins.com/compare/later)
+- [SocialReins vs Postiz](https://socialreins.com/compare/postiz)
 - [Source code](https://github.com/socialreins/socialreins)
