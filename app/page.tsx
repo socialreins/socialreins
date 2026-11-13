@@ -64,18 +64,18 @@ const organization = JSON.stringify({
 export default function Home() {
   return (
     <div className="mx-auto max-w-6xl px-5 sm:px-8">
-      <header className="flex items-center justify-between gap-3 py-6">
+      <header className="relative flex items-center justify-between gap-3 py-6">
         <Link href="/" className="flex items-center gap-2.5 font-display text-xl font-extrabold tracking-tight">
           <LogoMark className="size-9" />
           {/* On a phone the mark alone leaves room for GitHub and Get started. */}
           <span className="max-sm:sr-only">SocialReins</span>
         </Link>
-        <nav aria-label="Site" className="flex items-center gap-4 sm:gap-6">
+        <nav aria-label="Site" className="flex items-center gap-2.5 sm:gap-6">
           <SocialsMenu className={headerLink} />
           <GitHubLink
             label="GitHub"
             mark
-            className="rounded-full border-2 border-ink px-3.5 py-1.5 font-bold hover:bg-ink hover:text-paper"
+            className="rounded-full border-2 border-ink px-3.5 py-1.5 font-bold hover:bg-ink hover:text-paper max-[23rem]:hidden"
           />
           <SessionLink className={headerLink} />
         </nav>

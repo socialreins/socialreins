@@ -49,13 +49,23 @@ test("the home page header has a Socials menu that lists every network and links
   await expect(nav.getByRole("link", { name: "Compare all networks" })).toHaveAttribute("href", "/post-types");
   // The strip of networks below links to the same pages.
   await expect(page.getByRole("region", { name: "Coming to" }).getByRole("link", { name: "Bluesky" })).toHaveAttribute("href", "/bluesky");
+  // Escape and a click elsewhere both close it.
+  await page.keyboard.press("Escape");
+  await expect(nav.getByRole("link", { name: "TikTok" })).toBeHidden();
+  await nav.getByText("Socials", { exact: true }).click();
+  await page.getByRole("heading", { level: 1 }).click();
+  await expect(nav.getByRole("link", { name: "TikTok" })).toBeHidden();
+  await nav.getByText("Socials", { exact: true }).click();
   await nav.getByRole("link", { name: "YouTube", exact: true }).click();
   await expect(page.getByRole("heading", { name: "What you can post to YouTube", level: 1 })).toBeVisible();
 });
 
 test("on a phone the open Socials menu stays inside the screen", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/");
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `header fits at ${width}`).toBe(true);
+  }
   await page.getByRole("navigation", { name: "Site" }).getByText("Socials", { exact: true }).click();
   const box = await page.getByRole("link", { name: "Compare all networks" }).boundingBox();
   expect(box && box.x >= 0 && box.x + box.width <= 390).toBe(true);
