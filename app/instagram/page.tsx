@@ -4,7 +4,7 @@ import { LogoMark } from "@/components/logo";
 import { publicPage } from "@/lib/seo";
 
 export const metadata: Metadata = {
-  title: "Post to Instagram: carousels, Motion Carousels and Reels: SocialReins",
+  title: "What you can post to Instagram: SocialReins",
   description: "What SocialReins posts to Instagram: photos, Reels, carousels and Motion Carousels of up to 20 slides, covers and first comments.",
   ...publicPage("/instagram"),
 };

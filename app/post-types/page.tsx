@@ -15,14 +15,14 @@ const networks = ["Bluesky", "Threads", "LinkedIn", "Facebook Page", "Instagram"
 // Mirrors brain's crates/core/src/post.rs, controllers/posts.rs and connectors, and `limits` in lib/posts.ts.
 const rows: [string, string[]][] = [
   ["Text only", ["Yes", "Yes", "Yes", "Yes", "No", "No", "Yes", "No"]],
-  ["One image", ["Yes", "Yes", "Yes", "Yes", "Yes, JPEG", "No", "Yes", "Yes"]],
+  ["One image", ["Yes", "Yes", "Yes", "Yes", "Yes, JPEG, PNG or WebP", "No", "Yes", "Yes"]],
   ["Several images (max)", ["Yes, up to 4", "Yes, up to 20", "Yes, up to 20", "Yes, up to 10", "Yes, up to 20", "No", "Yes, up to 4", "Yes, up to 35"]],
   ["One video", ["Yes", "Yes", "Yes, MP4", "Yes, as a Reel", "Yes, as a Reel", "Yes", "Yes", "Yes"]],
   ["Several videos or photos mixed in one post", ["No", "Yes, up to 20", "No", "No", "Yes, up to 20 (Motion Carousel)", "No", "No", "No"]],
   ["Reels / Shorts", ["No", "No", "No", "Yes, one video", "Yes, one video", "Yes, a vertical video becomes a Short", "No", "Yes, every video"]],
   ["PDF document", ["No", "No", "Yes, one PDF", "No", "No", "No", "No", "No"]],
   ["GIF", ["Yes", "No", "Yes", "Yes", "No", "No", "Yes, one", "No"]],
-  ["Video cover image", ["No", "No", "No", "Yes", "Yes, JPEG", "Yes", "No", "No!"]],
+  ["Video cover image", ["No", "No", "No", "Yes", "Yes, JPEG, PNG or WebP", "Yes", "No", "No!"]],
   ["Thread (reply chain)", ["Yes, up to 25 replies", "Yes, up to 25 replies", "No", "No", "No", "No", "Yes, up to 25 replies", "No"]],
   ["First comment", ["No", "No", "Yes", "Yes", "Yes", "Yes", "No", "No"]],
   ["Stories", ["No", "No", "No", "No!", "No!", "No", "No", "No"]],
