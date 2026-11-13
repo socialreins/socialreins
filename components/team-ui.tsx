@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { Failure, Role } from "@/lib/auth";
+import { api, getMe, signInWithPasskey, type Failure, type Role } from "@/lib/auth";
 
 // Back to this page after signing in (with Google or a passkey; an emailed link always lands on /home).
 function SignInAgain({ text }: { text: string }) {
@@ -17,6 +17,55 @@ function SignInAgain({ text }: { text: string }) {
 }
 
 export const signInLink = (text: string) => <SignInAgain text={text} />;
+
+// A fresh sign-in without leaving the page: a passkey check here, or a link to the user's own email.
+// Either one starts a new session, which is what brain's reauth_required asks for.
+function Reverify() {
+  const [state, setState] = useState<"idle" | "busy" | "verified" | "sent" | "cancelled" | Failure>("idle");
+
+  async function passkey() {
+    setState("busy");
+    const before = await getMe();
+    const r = await signInWithPasskey();
+    if (r !== "ok") return setState(r);
+    const after = await getMe();
+    // A passkey of another account signs that account in: reload so the page shows it.
+    if (typeof before === "object" && typeof after === "object" && before.user.id !== after.user.id) {
+      return window.location.reload();
+    }
+    setState("verified");
+  }
+
+  async function email() {
+    setState("busy");
+    const r = await api<{ status: string }>("/auth/link/me", "POST");
+    setState(typeof r === "string" ? r : "sent");
+  }
+
+  if (state === "verified") return <>Confirmed, it is you. Now try again.</>;
+  if (state === "sent") {
+    return <>We emailed you a sign-in link. Open it, then come back to this tab and try again.</>;
+  }
+  const busy = state === "busy";
+  return (
+    <>
+      For your safety, this needs a fresh sign-in. Confirm it is you with{" "}
+      <button type="button" className={linkButton} disabled={busy} onClick={passkey}>
+        a passkey
+      </button>{" "}
+      or{" "}
+      <button type="button" className={linkButton} disabled={busy} onClick={email}>
+        an emailed link
+      </button>
+      , then try again.
+      {state === "cancelled" && " The passkey check was cancelled."}
+      {state === "rate_limited" && " Too many attempts. Wait a minute, then try again."}
+      {!["idle", "busy", "cancelled", "rate_limited"].includes(state) && " That did not work. Try the other way."}
+    </>
+  );
+}
+
+export const reverify = <Reverify />;
 
 const messages: Partial<Record<Failure, ReactNode>> = {
   forbidden: "Your role in this team can't do that.",
@@ -34,7 +83,7 @@ const messages: Partial<Record<Failure, ReactNode>> = {
   mail_failed: "The invitation email couldn't be sent, so no invitation was made. Try again later.",
   last_owner: "A team needs at least one owner. Make someone else an owner first.",
   last_team: "This is your only team, so it can't be deleted. Create or join another team first.",
-  reauth_required: <>For your safety, this needs a fresh sign-in. {signInLink("Sign in again")}, then come back here.</>,
+  reauth_required: reverify,
   signed_out: <>You are signed out. {signInLink("Sign in again")} to continue.</>,
   rate_limited: "Too many attempts. Wait a while, then try again.",
   timeout: "The server took too long to answer. Try again in a moment.",

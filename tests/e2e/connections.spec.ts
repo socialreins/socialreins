@@ -567,7 +567,8 @@ test("disconnect asks to sign in again when brain needs it", async ({ page }) =>
   await page.getByRole("button", { name: "Yes, disconnect" }).click();
   const alert = page.getByRole("alert").filter({ hasText: "needs a fresh sign-in" });
   await expect(alert).toBeVisible();
-  await expect(alert.getByRole("link", { name: "Sign in again" })).toHaveAttribute("href", "/login?next=%2Fconnections");
+  await expect(alert.getByRole("button", { name: "an emailed link" })).toBeVisible();
+  await expect(alert.getByRole("link", { name: "Sign in again" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Disconnect", exact: true })).toBeFocused();
 });
 
