@@ -191,6 +191,9 @@ export default function Home() {
           <Link href="/post-types" className={headerLink}>
             Post types
           </Link>
+          <Link href="/compare" className={headerLink}>
+            Compare
+          </Link>
           <Link href="/contact" className={headerLink}>
             Contact
           </Link>
