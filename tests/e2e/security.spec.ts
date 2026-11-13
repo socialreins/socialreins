@@ -140,7 +140,8 @@ test("adding a passkey without a recent sign-in asks to sign in again, then relo
   await page.getByRole("button", { name: "Add a passkey" }).click();
   const alert = page.getByRole("alert").filter({ hasText: "needs a fresh sign-in" });
   await expect(alert).toBeVisible();
-  await expect(alert.getByRole("link", { name: "Sign in again" })).toHaveAttribute("href", "/login?next=%2Fsecurity");
+  await expect(alert.getByRole("button", { name: "an emailed link" })).toBeVisible();
+  await expect(alert.getByRole("link", { name: "Sign in again" })).toHaveCount(0);
   await expect(page.locator('input[type="password"]')).toHaveCount(0);
   await page.getByRole("button", { name: "Add a passkey" }).click();
   await expect(page.getByText('Passkey "Work laptop" added.')).toBeFocused();

@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { addPasskey, getMe, safeNext, type AddResult, type MeResult, type Passkey } from "@/lib/auth";
 import { snoozePasskeyPrompt } from "@/components/passkey-prompt";
-import { linkButton, signInLink } from "@/components/team-ui";
+import { linkButton, reverify } from "@/components/team-ui";
 
 const noSubscribe = () => () => {};
 const hasWebAuthn = () => typeof window.PublicKeyCredential === "function";
@@ -16,7 +16,7 @@ const failures: Partial<Record<Exclude<AddResult, Passkey>, ReactNode>> = {
   passkey_exists: "This device already has a passkey for your account.",
   invalid_passkey: "Your device's passkey couldn't be checked. Try again.",
   invalid_challenge: "That took too long. Try again.",
-  reauth_required: <>For your safety, this needs a fresh sign-in. {signInLink("Sign in again")}, then add it from Passkeys.</>,
+  reauth_required: reverify,
   rate_limited: "Too many attempts. Wait a minute, then try again.",
   timeout: "The server took too long to answer. Try again in a moment.",
 };

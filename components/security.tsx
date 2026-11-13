@@ -9,14 +9,14 @@ import {
   type Failure,
   type Passkey,
 } from "@/lib/auth";
-import { signInLink } from "@/components/team-ui";
+import { reverify, signInLink } from "@/components/team-ui";
 
 const signIn = signInLink;
 
 type Problem = Failure | "cancelled" | "unsupported";
 
 const messages: Partial<Record<Problem, ReactNode>> = {
-  reauth_required: <>For your safety, this needs a fresh sign-in. {signIn("Sign in again")}, then come back here.</>,
+  reauth_required: reverify,
   signed_out: <>You are signed out. {signIn("Sign in again")} to continue.</>,
   rate_limited: "Too many attempts. Wait a minute, then try again.",
   invalid_name: "Keep the passkey name to 64 characters or fewer.",

@@ -213,7 +213,8 @@ test("an owner deletes the team after typing its name, signing in again when nee
   await del.click();
   const reauth = page.getByRole("alert").filter({ hasText: "needs a fresh sign-in" });
   await expect(reauth).toBeVisible();
-  await expect(reauth.getByRole("link", { name: "Sign in again" })).toHaveAttribute("href", "/login?next=%2Fteam");
+  await expect(reauth.getByRole("button", { name: "an emailed link" })).toBeVisible();
+  await expect(reauth.getByRole("link", { name: "Sign in again" })).toHaveCount(0);
   await expect(page.locator('input[type="password"]')).toHaveCount(0);
   await del.click();
   await expect(page.getByRole("alert").filter({ hasText: "your only team" })).toBeVisible();
@@ -287,7 +288,8 @@ test("role change, removal and an admin invite ask to sign in again when brain n
   await page.getByLabel("Role for Max").selectOption("admin");
   await page.getByRole("button", { name: "Change Max's role" }).click();
   await expect(again("Members")).toBeVisible();
-  await expect(again("Members").getByRole("link", { name: "Sign in again" })).toHaveAttribute("href", "/login?next=%2Fteam");
+  await expect(again("Members").getByRole("button", { name: "an emailed link" })).toBeVisible();
+  await expect(again("Members").getByRole("link", { name: "Sign in again" })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Remove Max" }).click();
   await page.getByRole("button", { name: "Yes, remove" }).click();

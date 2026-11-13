@@ -498,7 +498,8 @@ test("sign-up settings: a stale sign-in and brain's refusals are explained", asy
   await page.getByRole("button", { name: "Save" }).click();
   const alert = main(page).getByRole("alert");
   await expect(alert).toContainText("needs a fresh sign-in");
-  await expect(alert.getByRole("link", { name: "Sign in again" })).toHaveAttribute("href", "/login?next=%2Fadmin%2Fsettings");
+  await expect(alert.getByRole("button", { name: "an emailed link" })).toBeVisible();
+  await expect(alert.getByRole("link", { name: "Sign in again" })).toHaveCount(0);
   // Nothing typed is lost.
   await expect(list).toHaveValue("example.com");
 

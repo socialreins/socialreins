@@ -94,8 +94,23 @@ test("create asks for a fresh sign-in, then shows the secret once", async ({ pag
   await page.getByRole("button", { name: "Create token" }).click();
   const reauth = page.getByRole("alert").filter({ hasText: "needs a fresh sign-in" });
   await expect(reauth).toBeVisible();
-  await expect(reauth.getByRole("link", { name: "Sign in again" })).toHaveAttribute("href", "/login?next=%2Fapi-tokens");
+  await expect(reauth.getByRole("button", { name: "an emailed link" })).toBeVisible();
+  await expect(reauth.getByRole("link", { name: "Sign in again" })).toHaveCount(0);
   await expect(page.getByLabel(/Secret for/)).toHaveCount(0);
+
+  // Confirming happens on this page: no trip to /login.
+  let asked = 0;
+  await page.route("**/auth/link/me", (route) => {
+    asked += 1;
+    return route.fulfill({ status: 202, json: { status: "sent" } });
+  });
+  await page.route("**/auth/passkeys/login/start", (route) => route.fulfill({ status: 429, json: { error: "rate_limited" } }));
+  await reauth.getByRole("button", { name: "a passkey" }).click();
+  await expect(reauth).toContainText("Too many attempts. Wait a minute, then try again.");
+  await reauth.getByRole("button", { name: "an emailed link" }).click();
+  await expect(page.getByText("We emailed you a sign-in link")).toBeFocused();
+  expect(asked).toBe(1);
+  await expect(page).toHaveURL(/\/api-tokens$/);
 
   state.reauth = false;
   await page.getByRole("button", { name: "Create token" }).click();
