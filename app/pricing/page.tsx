@@ -21,10 +21,10 @@ const plans = [
     points: [
       "Every feature. There is no paid tier in the code.",
       "All eight networks, and you turn on only the ones you want.",
-      "Your data stays in your own Postgres database.",
-      "One Docker Compose command to start, one to update.",
-      "You register your own developer app with each network you use.",
-      "Help from the community on GitHub.",
+      "Your data stays on your own server, in your own Postgres database.",
+      "One Docker Compose command to start, one line to update.",
+      "You register your own developer app with each network you use, except Bluesky, which needs none.",
+      "Report problems and ask questions on GitHub.",
     ],
     cta: { label: "Read the self-host guide", href: `${repo}#self-host`, external: true },
   },
@@ -37,14 +37,14 @@ const plans = [
       "Nothing to install, update or keep running.",
       "We register the apps with each network, so you only sign in.",
       "Early access is by invitation from the waitlist.",
-      "It will be a paid subscription. People on the waitlist hear the price first.",
+      "Early access is free for now. It will become a paid subscription, and people on the waitlist hear the price first.",
     ],
     cta: { label: "Join the waitlist", href: "/#waitlist", external: false },
   },
 ];
 
 const questions: [string, string][] = [
-  ["Is the self-hosted version limited?", "No. It is the same code that runs the cloud version, under the AGPL-3.0 license. Nothing is held back for paying customers."],
+  ["Is the self-hosted version limited?", "No. There are no plan limits: it is the same code that runs the cloud version, under the AGPL-3.0 license, and nothing is held back for paying customers."],
   ["What will the cloud version cost?", "We have not set a price. We will publish it here before anyone is charged, and tell the waitlist first."],
   ["Does self-hosting cost anything at all?", "SocialReins itself is free. You pay for your own server, and X charges for its API. The other networks do not charge for posting."],
   ["Can I try the cloud version now?", "Join the waitlist. We let people in a few at a time while it is in early access."],

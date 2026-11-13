@@ -13,7 +13,7 @@ export default function BillingPage() {
         <h2 id="plan-heading" className="font-display text-xl font-bold">
           Free
         </h2>
-        <p>Your team is on the Free plan. Paid plans are coming soon.</p>
+        <p>Your team is on the Free plan. Paid plans are coming to the hosted version.</p>
       </section>
     </>
   );
