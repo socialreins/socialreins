@@ -16,22 +16,18 @@ const headerLink = "whitespace-nowrap font-bold underline decoration-signal deco
 const features = [
   {
     title: "Publish and schedule",
-    soon: true,
     body: "Write once and send it to every account in a set, now or at a time you pick.",
   },
   {
     title: "A caption for each platform",
-    soon: true,
     body: "Give X a short line, LinkedIn a longer one and a PDF, and the rest your images, in one post.",
   },
   {
     title: "Take posts down everywhere",
-    soon: true,
     body: "Pull a published post back from every platform it went out on, in one step.",
   },
   {
     title: "Sets and lists",
-    soon: true,
     body: "Group accounts into sets, like one per language or brand, and posts into ordered lists.",
   },
   {
@@ -94,9 +90,9 @@ export default function Home() {
               Every social account, one set of reins.
             </h1>
             <p className="max-w-[34rem] text-lg text-ink-soft">
-              SocialReins is an open-source social media manager. It will publish and schedule your posts to eight
-              platforms from one place, and pull a post back from all of them when you need to. Sign-in, teams and
-              self-hosting work today; publishing comes next.
+              SocialReins is an open-source social media manager. It publishes and schedules your posts to eight
+              platforms from one place, and pulls a post back from all of them when you need to. Publishing, teams and
+              self-hosting work today; a hosted plan comes next.
             </p>
             <WaitlistForm />
           </div>

@@ -2,8 +2,8 @@
 
 <h1 align="center">SocialReins</h1>
 
-SocialReins is an open-source social media manager. It is in development: sign-in, teams and
-self-hosting work today, and these come next:
+SocialReins is an open-source social media manager. It is in development, and these work today,
+along with sign-in, teams and self-hosting:
 
 - Publish and schedule posts to Facebook, Instagram, Threads, LinkedIn, Bluesky, X, TikTok and YouTube.
 - Take down published posts.
