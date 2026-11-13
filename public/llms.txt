@@ -8,4 +8,5 @@
 - [Terms of Service](https://socialreins.com/terms)
 - [Data Deletion](https://socialreins.com/data-deletion)
 - [What you can post where](https://socialreins.com/post-types): post types each network supports
+- [What you can post to Instagram](https://socialreins.com/instagram): carousels and Motion Carousels of up to 20 slides, Reels, covers, first comments
 - [Source code](https://github.com/socialreins/socialreins)

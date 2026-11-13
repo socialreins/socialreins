@@ -97,6 +97,9 @@ export default function PostTypes() {
           Instagram has no API for live or motion photos. Post the clip as an MP4 instead: on its own it goes out as a Reel, and with
           other photos or videos it becomes a carousel item.
         </p>
+        <p>
+          More on carousels and Motion Carousels: <Link href="/instagram" className="font-bold underline decoration-signal decoration-2 underline-offset-4 hover:text-signal-deep">What you can post to Instagram</Link>.
+        </p>
       </div>
     </main>
   );
