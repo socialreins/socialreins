@@ -176,7 +176,8 @@ body { margin: 0; font-family: var(--font-body); font-size: 1.0625rem; line-heig
 /* Collapsed rail: the name beside an icon on hover or keyboard focus. Fixed with no offsets keeps it at the icon while the scrolling sidebar cannot clip it. */
 @media (min-width: 48rem) {
   .app-root [data-tip]:is(:hover, :focus-visible)::after {
-    content: attr(data-tip); position: fixed; z-index: 30; transform: translateX(calc(50% + 1.75rem)); pointer-events: none;
+    /* The second form keeps the label out of the accessible name, which the hidden text already gives. */
+    content: attr(data-tip); content: attr(data-tip) / ""; position: fixed; z-index: 30; transform: translateX(calc(50% + 1.75rem)); pointer-events: none;
     padding: 0.2rem 0.5rem; border-radius: 0.375rem; background: var(--color-ink); color: var(--color-paper);
     font-size: 0.75rem; font-weight: 500; white-space: nowrap; box-shadow: 0 2px 6px rgb(0 0 0 / 0.18);
   }
