@@ -54,7 +54,7 @@ export function ThemeSwitch({ collapsed }: { collapsed: boolean }) {
         <button
           type="button"
           aria-label={`Theme: ${current.label}. Switch to ${next.label}`}
-          title={`Theme: ${current.label}`}
+          data-tip={`Theme: ${current.label}`}
           onClick={() => store("theme", next.id)}
           className="hidden h-8 w-full place-items-center rounded-md text-[var(--faint)] hover:bg-ink/[0.05] hover:text-ink md:grid"
         >

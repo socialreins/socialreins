@@ -308,7 +308,7 @@ function NavSection({ path, group, collapsed, first }: { path: string; group: Na
               <Link
                 href={item.href}
                 aria-current={active ? "page" : undefined}
-                title={collapsed ? item.label : undefined}
+                data-tip={collapsed ? item.label : undefined}
                 className={`app-nav-link flex h-8 items-center gap-2.5 rounded-md px-2.5 font-medium ${collapsed ? "md:justify-center" : ""} ${
                   active ? "" : "text-[var(--nav)] hover:bg-ink/[0.05] hover:text-ink"
                 }`}
