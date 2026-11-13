@@ -16,6 +16,7 @@
 - [What you can post to YouTube](https://socialreins.com/youtube): post types and limits on YouTube
 - [What you can post to X](https://socialreins.com/x): post types and limits on X
 - [What you can post to TikTok](https://socialreins.com/tiktok): post types and limits on TikTok
+- [Pricing](https://socialreins.com/pricing): free to self-host; the hosted cloud version is in early access with no price set yet
 - [Compare SocialReins](https://socialreins.com/compare): SocialReins next to other tools
 - [SocialReins vs PostSyncer](https://socialreins.com/compare/postsyncer)
 - [SocialReins vs Manychat](https://socialreins.com/compare/manychat)
