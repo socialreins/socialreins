@@ -80,7 +80,7 @@ export function NetworkPage({ slug }: { slug: string }) {
           .
         </p>
         <nav aria-label="Other networks">
-          <ul className="!flex !list-none flex-wrap gap-x-4 gap-y-1 !pl-0">
+          <ul className="!flex !list-none flex-wrap !gap-x-4 !gap-y-1 !pl-0">
             {networks
               .filter((o) => o.slug !== n.slug)
               .map((o) => (

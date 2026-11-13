@@ -33,7 +33,7 @@ export const networks: Network[] = [
       {
         heading: "Good to know",
         bullets: [
-          "Bluesky takes images up to 1 MB. A larger photo is made smaller for you before it is posted.",
+          "Bluesky takes images up to 1 MB. A larger photo is made smaller for you before it is posted; a larger GIF is refused.",
           "Links in the text become clickable.",
           "You connect with your handle and an app password, not your main password.",
         ],
@@ -154,7 +154,10 @@ export const networks: Network[] = [
     sections: [
       {
         heading: "Good to know",
-        bullets: ["YouTube refuses the characters < and > in a title or description."],
+        bullets: [
+          "YouTube refuses the characters < and > in a title or description.",
+          "YouTube only takes a custom thumbnail from a verified channel.",
+        ],
       },
     ],
   },
@@ -200,7 +203,7 @@ export const networks: Network[] = [
         bullets: [
           "TikTok asks you to say when a post promotes your own brand or is paid for by another one. The post form has both switches.",
           "A video and photos cannot go in the same post.",
-          "Until TikTok finishes its review of SocialReins, TikTok only lets posts go out as private.",
+          "Until TikTok finishes its review of SocialReins, TikTok only lets posts go out as private, and only from a private TikTok account.",
         ],
       },
     ],
