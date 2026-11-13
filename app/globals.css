@@ -173,6 +173,14 @@ body { margin: 0; font-family: var(--font-body); font-size: 1.0625rem; line-heig
 .app-nav-link[aria-current="page"] { color: var(--color-ink); font-weight: 600; background: color-mix(in srgb, var(--color-ink) 7%, transparent); }
 .app-nav-link[aria-current="page"] svg { color: var(--color-signal-deep); }
 .app-nav-link svg { stroke-width: 2; }
+/* Collapsed rail: the name beside an icon on hover or keyboard focus. Fixed with no offsets keeps it at the icon while the scrolling sidebar cannot clip it. */
+@media (min-width: 48rem) {
+  .app-root [data-tip]:is(:hover, :focus-visible)::after {
+    content: attr(data-tip); position: fixed; z-index: 30; transform: translateX(calc(50% + 1.75rem)); pointer-events: none;
+    padding: 0.2rem 0.5rem; border-radius: 0.375rem; background: var(--color-ink); color: var(--color-paper);
+    font-size: 0.75rem; font-weight: 500; white-space: nowrap; box-shadow: 0 2px 6px rgb(0 0 0 / 0.18);
+  }
+}
 /* Status tones on dark: tinted fills with light text. */
 :root[data-theme="dark"] .app-root {
   .tone[data-status="scheduled"], .tone[data-kind="dm"] { background: rgb(255 122 69 / 0.16); color: #ffb391; }
