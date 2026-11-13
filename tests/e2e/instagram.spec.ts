@@ -48,7 +48,7 @@ test("the home page header has a Socials menu that lists every network and links
   }
   await expect(nav.getByRole("link", { name: "Compare all networks" })).toHaveAttribute("href", "/post-types");
   // The strip of networks below links to the same pages.
-  await expect(page.getByRole("region", { name: "Coming to" }).getByRole("link", { name: "Bluesky" })).toHaveAttribute("href", "/bluesky");
+  await expect(page.getByRole("region", { name: "Works with" }).getByRole("link", { name: "Bluesky" })).toHaveAttribute("href", "/bluesky");
   // Escape and a click elsewhere both close it.
   await page.keyboard.press("Escape");
   await expect(nav.getByRole("link", { name: "TikTok" })).toBeHidden();
