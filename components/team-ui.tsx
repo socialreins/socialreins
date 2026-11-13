@@ -30,9 +30,9 @@ function Reverify() {
     if (r !== "ok") return setState(r);
     const after = await getMe();
     // A passkey of another account signs that account in: reload so the page shows it.
-    if (typeof before === "object" && typeof after === "object" && before.user.id !== after.user.id) {
-      return window.location.reload();
-    }
+    // Unknown (a lookup failed) counts as another account.
+    const same = typeof before === "object" && typeof after === "object" && before.user.id === after.user.id;
+    if (!same) return window.location.reload();
     setState("verified");
   }
 
@@ -42,10 +42,17 @@ function Reverify() {
     setState(typeof r === "string" ? r : "sent");
   }
 
-  if (state === "verified") return <>Confirmed, it is you. Now try again.</>;
+  // The pressed button is gone once the result shows, so the result takes focus.
+  const result = (text: string) => (
+    <span tabIndex={-1} ref={(el) => el?.focus()} className="outline-none">
+      {text}
+    </span>
+  );
+  if (state === "verified") return result("Confirmed, it is you. Now try again.");
   if (state === "sent") {
-    return <>We emailed you a sign-in link. Open it, then come back to this tab and try again.</>;
+    return result("We emailed you a sign-in link. Open it, then come back to this tab and try again.");
   }
+  if (state === "signed_out") return <>You are signed out. {signInLink("Sign in again")} to continue.</>;
   const busy = state === "busy";
   return (
     <>

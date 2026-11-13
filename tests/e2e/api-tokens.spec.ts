@@ -104,8 +104,11 @@ test("create asks for a fresh sign-in, then shows the secret once", async ({ pag
     asked += 1;
     return route.fulfill({ status: 202, json: { status: "sent" } });
   });
+  await page.route("**/auth/passkeys/login/start", (route) => route.fulfill({ status: 429, json: { error: "rate_limited" } }));
+  await reauth.getByRole("button", { name: "a passkey" }).click();
+  await expect(reauth).toContainText("Too many attempts. Wait a minute, then try again.");
   await reauth.getByRole("button", { name: "an emailed link" }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "We emailed you a sign-in link" })).toBeVisible();
+  await expect(page.getByText("We emailed you a sign-in link")).toBeFocused();
   expect(asked).toBe(1);
   await expect(page).toHaveURL(/\/api-tokens$/);
 
