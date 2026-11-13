@@ -105,7 +105,7 @@ export default function Home() {
 
         <section aria-labelledby="platforms-title" className="border-y-2 border-ink/10 py-8">
           <h2 id="platforms-title" className="text-sm font-bold tracking-wide text-ink-soft uppercase">
-            Coming to
+            Works with
           </h2>
           <ul className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:flex sm:flex-wrap sm:justify-between">
             {platforms.map((p) => (
