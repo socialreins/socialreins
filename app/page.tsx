@@ -67,7 +67,7 @@ export default function Home() {
       <header className="relative flex items-center justify-between gap-3 py-6">
         <Link href="/" className="flex items-center gap-2.5 font-display text-xl font-extrabold tracking-tight">
           <LogoMark className="size-9" />
-          {/* On a phone the mark alone leaves room for GitHub and Get started. */}
+          {/* On a phone the mark alone leaves room for Socials and Get started; GitHub is in the footer. */}
           <span className="max-sm:sr-only">SocialReins</span>
         </Link>
         <nav aria-label="Site" className="flex items-center gap-2.5 sm:gap-6">
@@ -75,7 +75,7 @@ export default function Home() {
           <GitHubLink
             label="GitHub"
             mark
-            className="rounded-full border-2 border-ink px-3.5 py-1.5 font-bold hover:bg-ink hover:text-paper max-[23rem]:hidden"
+            className="rounded-full border-2 border-ink px-3.5 py-1.5 font-bold hover:bg-ink hover:text-paper max-sm:hidden"
           />
           <SessionLink className={headerLink} />
         </nav>
