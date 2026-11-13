@@ -37,3 +37,27 @@ test("the Instagram page fits a phone without sideways page scroll", async ({ pa
   await page.goto("/instagram");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
+
+test("the home page header has a Socials menu that lists every network and links to its page", async ({ page }) => {
+  await page.goto("/");
+  const nav = page.getByRole("navigation", { name: "Site" });
+  await expect(nav.getByRole("link", { name: "TikTok" })).toBeHidden();
+  await nav.getByText("Socials", { exact: true }).click();
+  for (const [slug, name] of Object.entries(pages)) {
+    await expect(nav.getByRole("link", { name, exact: true })).toHaveAttribute("href", `/${slug}`);
+  }
+  await expect(nav.getByRole("link", { name: "Compare all networks" })).toHaveAttribute("href", "/post-types");
+  // The strip of networks below links to the same pages.
+  await expect(page.getByRole("region", { name: "Coming to" }).getByRole("link", { name: "Bluesky" })).toHaveAttribute("href", "/bluesky");
+  await nav.getByRole("link", { name: "YouTube", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "What you can post to YouTube", level: 1 })).toBeVisible();
+});
+
+test("on a phone the open Socials menu stays inside the screen", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.getByRole("navigation", { name: "Site" }).getByText("Socials", { exact: true }).click();
+  const box = await page.getByRole("link", { name: "Compare all networks" }).boundingBox();
+  expect(box && box.x >= 0 && box.x + box.width <= 390).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
