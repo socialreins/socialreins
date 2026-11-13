@@ -11,6 +11,27 @@ test("the Instagram page states the Motion Carousel and its 20-slide limit, and 
   await expect(page.getByRole("link", { name: "What you can post to Instagram" })).toHaveAttribute("href", "/instagram");
 });
 
+const pages = { bluesky: "Bluesky", threads: "Threads", linkedin: "LinkedIn", facebook: "Facebook", instagram: "Instagram", youtube: "YouTube", x: "X", tiktok: "TikTok" };
+
+test("every network has its own page, linked from the post types page and from each other", async ({ page }) => {
+  await page.goto("/post-types");
+  for (const [slug, name] of Object.entries(pages)) {
+    await expect(page.getByRole("link", { name: `What you can post to ${name}`, exact: true })).toHaveAttribute("href", `/${slug}`);
+  }
+  for (const [slug, name] of Object.entries(pages)) {
+    await page.goto(`/${slug}`);
+    await expect(page.getByRole("heading", { name: `What you can post to ${name}`, level: 1 })).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: `On ${name}`, exact: true })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Other networks" }).getByRole("link")).toHaveCount(7);
+  }
+  await page.goto("/x");
+  await expect(page.getByRole("row", { name: /Thread/ })).toContainText("up to 25 replies");
+});
+
+test("a one-segment path that is not a network is still a 404", async ({ page }) => {
+  expect((await page.goto("/myspace"))?.status()).toBe(404);
+});
+
 test("the Instagram page fits a phone without sideways page scroll", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/instagram");

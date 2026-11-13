@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 
-const publicPages = ["/", "/contact", "/privacy", "/terms", "/data-deletion", "/post-types", "/instagram"];
+const publicPages = ["/", "/contact", "/privacy", "/terms", "/data-deletion", "/post-types", "/bluesky", "/threads", "/linkedin", "/facebook", "/instagram", "/youtube", "/x", "/tiktok"];
 const hiddenPages = ["/login", "/login/email", "/signup", "/signup/email", "/welcome", "/admin/waitlist", "/home", "/posts"];
 const noindex = /<meta name="robots" content="noindex"/;
 // lib/seo.ts repeats this alt text (a page-level openGraph replaces the file-based image). Next uses the .alt.txt files verbatim, so they must not end with a newline.

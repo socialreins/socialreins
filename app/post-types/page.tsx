@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { LogoMark } from "@/components/logo";
+import { networks as pages } from "@/lib/networks";
 import { publicPage } from "@/lib/seo";
 
 export const metadata: Metadata = {
@@ -97,9 +98,16 @@ export default function PostTypes() {
           Instagram has no API for live or motion photos. Post the clip as an MP4 instead: on its own it goes out as a Reel, and with
           other photos or videos it becomes a carousel item.
         </p>
-        <p>
-          More on carousels and Motion Carousels: <Link href="/instagram" className="font-bold underline decoration-signal decoration-2 underline-offset-4 hover:text-signal-deep">What you can post to Instagram</Link>.
-        </p>
+        <h2>Each network on its own page</h2>
+        <ul>
+          {pages.map((n) => (
+            <li key={n.slug}>
+              <Link href={`/${n.slug}`} className="font-bold underline decoration-signal decoration-2 underline-offset-4 hover:text-signal-deep">
+                What you can post to {n.name}
+              </Link>
+            </li>
+          ))}
+        </ul>
       </div>
     </main>
   );
