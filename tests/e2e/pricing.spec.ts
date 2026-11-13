@@ -5,6 +5,11 @@ test("the pricing page shows self-hosted as free and cloud with no price yet", a
   await page.getByRole("contentinfo").getByRole("link", { name: "Pricing", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Pricing", level: 1 })).toBeVisible();
 
+  // Cloud is the standard choice, so it comes first; self-hosting is the free one.
+  await expect(page.getByRole("region").first()).toHaveAccessibleName("Cloud");
+  await expect(page.getByRole("region", { name: "Cloud" })).toContainText("The standard way");
+  await expect(page.getByRole("region", { name: "Self-hosted" })).toContainText("The free way");
+
   const self = page.getByRole("region", { name: "Self-hosted" });
   await expect(self).toContainText("Free");
   await expect(self).toContainText("Every feature. There is no paid tier in the code.");

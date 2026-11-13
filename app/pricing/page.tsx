@@ -5,7 +5,7 @@ import { publicPage } from "@/lib/seo";
 
 export const metadata: Metadata = {
   title: "Pricing: SocialReins",
-  description: "SocialReins is free to run on your own server, with every feature. A hosted cloud version is in early access; its price is not set yet.",
+  description: "SocialReins Cloud is the standard way to use it and is in early access, with no price set yet. Self-hosting is free, with every feature.",
   ...publicPage("/pricing"),
 };
 
@@ -15,9 +15,24 @@ const link = "font-bold underline decoration-signal decoration-2 underline-offse
 // Cloud has no price yet (plan/migration.md, phase 5): say so plainly and promise nothing.
 const plans = [
   {
+    name: "Cloud",
+    tag: "The standard way",
+    price: "Price not set yet",
+    note: "We run it for you. This is how most people will use SocialReins.",
+    points: [
+      "Every feature, the same as the self-hosted version.",
+      "Nothing to install, update or keep running.",
+      "We register the apps with each network, so you only sign in.",
+      "Early access is by invitation from the waitlist.",
+      "Early access is free for now. It will become a paid subscription, and people on the waitlist hear the price first.",
+    ],
+    cta: { label: "Join the waitlist", href: "/#waitlist", external: false },
+  },
+  {
     name: "Self-hosted",
+    tag: "The free way",
     price: "Free",
-    note: "Open source, on your own server.",
+    note: "Open source, on your own server, free for good.",
     points: [
       "Every feature. There is no paid tier in the code.",
       "All eight networks, and you turn on only the ones you want.",
@@ -27,19 +42,6 @@ const plans = [
       "Report problems and ask questions on GitHub.",
     ],
     cta: { label: "Read the self-host guide", href: `${repo}#self-host`, external: true },
-  },
-  {
-    name: "Cloud",
-    price: "Price not set yet",
-    note: "We run it for you. In early access.",
-    points: [
-      "The same features as self-hosted.",
-      "Nothing to install, update or keep running.",
-      "We register the apps with each network, so you only sign in.",
-      "Early access is by invitation from the waitlist.",
-      "Early access is free for now. It will become a paid subscription, and people on the waitlist hear the price first.",
-    ],
-    cta: { label: "Join the waitlist", href: "/#waitlist", external: false },
   },
 ];
 
@@ -59,13 +61,14 @@ export default function Pricing() {
       </Link>
       <div className="grid max-w-2xl gap-2">
         <h1 className="font-display text-4xl font-extrabold tracking-tight">Pricing</h1>
-        <p className="text-ink-soft">Run SocialReins yourself for free, or let us run it for you.</p>
+        <p className="text-ink-soft">SocialReins Cloud is the standard way to use it: we run everything. If you want it free, run it yourself.</p>
       </div>
 
       <div className="grid gap-5 md:grid-cols-2">
         {plans.map((p) => (
-          <section key={p.name} aria-labelledby={`plan-${p.name}`} className="grid content-start gap-5 rounded-3xl border border-ink/10 bg-paper p-6">
+          <section key={p.name} aria-labelledby={`plan-${p.name}`} className={`grid content-start gap-5 rounded-3xl bg-paper p-6 ${p.name === "Cloud" ? "border-2 border-ink" : "border border-ink/10"}`}>
             <div className="grid gap-1">
+              <p className="justify-self-start rounded-full bg-canvas px-2.5 py-0.5 text-xs font-bold text-signal-deep">{p.tag}</p>
               <h2 id={`plan-${p.name}`} className="font-display text-xl font-extrabold">
                 {p.name}
               </h2>
