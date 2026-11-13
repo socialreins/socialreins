@@ -8,5 +8,12 @@
 - [Terms of Service](https://socialreins.com/terms)
 - [Data Deletion](https://socialreins.com/data-deletion)
 - [What you can post where](https://socialreins.com/post-types): post types each network supports
-- [What you can post to Instagram](https://socialreins.com/instagram): carousels and Motion Carousels of up to 20 slides, Reels, covers, first comments
+- [What you can post to Bluesky](https://socialreins.com/bluesky): post types and limits on Bluesky
+- [What you can post to Threads](https://socialreins.com/threads): post types and limits on Threads
+- [What you can post to LinkedIn](https://socialreins.com/linkedin): post types and limits on LinkedIn
+- [What you can post to Facebook](https://socialreins.com/facebook): post types and limits on Facebook
+- [What you can post to Instagram](https://socialreins.com/instagram): post types and limits on Instagram
+- [What you can post to YouTube](https://socialreins.com/youtube): post types and limits on YouTube
+- [What you can post to X](https://socialreins.com/x): post types and limits on X
+- [What you can post to TikTok](https://socialreins.com/tiktok): post types and limits on TikTok
 - [Source code](https://github.com/socialreins/socialreins)
