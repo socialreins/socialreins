@@ -301,7 +301,7 @@ test("the top bar holds the team switcher with the plan, the sidebar the logo, a
   await side.getByRole("link", { name: "Upgrade" }).click();
   await expect(page).toHaveURL("/billing");
   await expect(page.getByRole("heading", { name: "Plans", level: 1 })).toBeVisible();
-  await expect(page.getByRole("main")).toContainText("Your team is on the Free plan. Paid plans are coming soon.");
+  await expect(page.getByRole("main")).toContainText("Your team is on the Free plan. Paid plans are coming to the hosted version.");
   await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Plans");
 
   // The icon rail keeps only the logo mark (the name stays for screen readers); the team stays in the top bar.
