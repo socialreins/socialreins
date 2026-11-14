@@ -45,6 +45,7 @@ body { margin: 0; font-family: var(--font-body); font-size: 1.0625rem; line-heig
 .waitlist-pill:has(input:focus-visible) { outline: 3px solid var(--color-signal-deep); outline-offset: 3px; }
 .waitlist-pill input { border-color: transparent; background: transparent; padding: 0.65rem 1rem; outline: none; }
 .waitlist-pill input[aria-invalid] { border-color: transparent; }
+.waitlist-pill:has(input[aria-invalid]) { border-color: var(--color-signal-deep); }
 .waitlist-pill button { flex: 1 0 auto; padding: 0.65rem 1.4rem; }
 .waitlist-note { margin: 0; color: var(--color-ink-soft); font-size: 0.95rem; }
 .waitlist-error { margin: 0; color: var(--color-signal-deep); font-weight: 700; font-size: 0.95rem; }
