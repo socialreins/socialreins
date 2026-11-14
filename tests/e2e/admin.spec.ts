@@ -561,7 +561,7 @@ test("the tables scroll sideways at phone width instead of widening the page", a
   }
   for (const path of ["/admin", "/admin/settings"]) {
     await page.goto(path);
-    await expect(main(page).getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   }
 });

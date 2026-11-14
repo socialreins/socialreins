@@ -7,6 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { getMe, type MeResult, type Team, type User } from "@/lib/auth";
 import { Account } from "@/components/account";
 import { LogoMark } from "@/components/logo";
+import { TitleSlot } from "@/components/page-title";
 import { PasskeyPrompt } from "@/components/passkey-prompt";
 import { ThemeSwitch } from "@/components/theme";
 import { TopBar } from "@/components/top-bar";
@@ -51,12 +52,6 @@ const nav: NavGroup[] = [
       { href: "/api-tokens", label: "API tokens", icon: "key" },
     ],
   },
-];
-// Pages linked from the account menu and the team block instead of the nav; listed here for the breadcrumb.
-const profilePages: NavItem[] = [
-  { href: "/profile", label: "Profile", icon: "user" },
-  { href: "/security", label: "Sign-in and security", icon: "security" },
-  { href: "/billing", label: "Plans", icon: "settings" },
 ];
 // The admin console at /admin, for site admins only; it has its own nav and colours.
 const adminNav: NavGroup[] = [
@@ -124,6 +119,7 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
   const router = useRouter();
   const [me, setMe] = useState<MeResult | null>(null);
   const [open, setOpen] = useState(false);
+  const [titleSlot, setTitleSlot] = useState<HTMLElement | null>(null);
   const menuRef = useRef<HTMLButtonElement>(null);
   // The icon rail applies from md up; small screens keep the menu button.
   const collapsed = useStored("sidebar-collapsed") === "1";
@@ -169,7 +165,6 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
         <p role="status" className="sr-only">
           Checking your sign-in...
         </p>
-        <div className="h-9 w-48 rounded-xl bg-ink/5 motion-safe:animate-pulse" />
         <div className="h-64 rounded-2xl bg-ink/5 motion-safe:animate-pulse" />
         <div className="h-24 rounded-2xl bg-ink/5 motion-safe:animate-pulse" />
       </div>
@@ -242,12 +237,13 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
           <TopBar
             session={session !== null}
             admin={admin}
-            pages={[...groups.flatMap((g) => g.items), ...profilePages]}
+            pages={groups.flatMap((g) => g.items)}
             collapsed={collapsed}
             onToggle={() => store("sidebar-collapsed", collapsed ? "0" : "1")}
+            titleRef={setTitleSlot}
           />
           <main id="main" tabIndex={-1} className="app-main mx-auto w-full max-w-7xl px-4 py-6 focus:outline-none sm:px-8 md:py-8">
-            {content}
+            <TitleSlot.Provider value={titleSlot}>{content}</TitleSlot.Provider>
           </main>
         </div>
       </div>
