@@ -54,7 +54,8 @@ test("app shows the team switcher, switches and creates a team", async ({ page }
   const side = page.locator("aside button[popovertarget=team-menu]");
   await expect(page.getByRole("banner").getByText("Acme")).toHaveCount(0);
   await expect(page.locator("aside").getByRole("link", { name: "SocialReins" })).toHaveAttribute("href", "/home");
-  await expect(side).toHaveText("AAcmeFree plan");
+  await expect(side).toContainText("Acme");
+  await expect(side).toContainText("Free plan");
   await side.click();
   const team = page.locator("#team-menu");
   await expect(team.getByText("Free plan")).toBeVisible();

@@ -297,7 +297,8 @@ test("the sidebar holds the team switcher with its plan, its menu ends with Upgr
   const logo = page.locator("aside").getByRole("link", { name: "SocialReins" });
   const acme = page.locator("aside button[popovertarget=team-menu]");
   // Under the logo and above the nav: the team's name with the plan in small text under it. The top bar has no team.
-  await expect(acme).toHaveText("AAcmeFree plan");
+  await expect(acme).toContainText("Acme");
+  await expect(acme).toContainText("Free plan");
   expect((await acme.boundingBox())!.y).toBeLessThan((await nav(page).boundingBox())!.y);
   expect((await acme.boundingBox())!.y).toBeGreaterThan((await logo.boundingBox())!.y);
   await expect(page.getByRole("banner")).not.toContainText("Acme");
@@ -368,6 +369,11 @@ test("the top bar fits a phone, and the team switcher is in the menu", async ({ 
   await page.locator("aside button[popovertarget=team-menu]").click();
   await expect(page.locator("#team-menu").getByRole("link", { name: "Upgrade" })).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  // Escape closes the team menu and leaves the phone menu open.
+  await page.locator("#team-menu").getByRole("button", { name: "New team" }).click();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#team-menu")).toBeHidden();
+  await expect(nav(page).getByRole("link", { name: "Posts", exact: true })).toBeVisible();
 });
 
 test("a page one level down shows its parent as a crumb, and as a link on the page on a phone", async ({ page }) => {

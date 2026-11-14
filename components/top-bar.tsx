@@ -62,7 +62,7 @@ function Menu({ id, label, trigger, onOpen, children, className = crumb, chevron
   const panel = useRef<HTMLDivElement>(null);
   return (
     <>
-      <button ref={button} type="button" popoverTarget={id} aria-label={label} title={label} className={className}>
+      <button ref={button} type="button" popoverTarget={id} aria-label={label} className={className}>
         {trigger}
         <Icon name="down" className={`size-3.5 shrink-0 text-[var(--faint)] ${chevron}`} />
       </button>

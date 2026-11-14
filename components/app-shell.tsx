@@ -214,11 +214,15 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
               onClick={(e) => (e.target as Element).closest("a") && setOpen(false)}
               className={`${open ? "flex" : "hidden"} min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-2.5 pb-3 md:pt-3 md:flex`}
             >
-              {session && !admin && (
-                <div>
-                  <TeamMenu collapsed={collapsed} />
-                </div>
-              )}
+              {!admin &&
+                (session ? (
+                  // Escape closes only the open team menu, not the mobile menu around it.
+                  <div onKeyDown={(e) => e.key === "Escape" && e.currentTarget.querySelector(":popover-open") && e.stopPropagation()}>
+                    <TeamMenu collapsed={collapsed} />
+                  </div>
+                ) : (
+                  <div className="h-11 rounded-md bg-ink/5 motion-safe:animate-pulse" />
+                ))}
               <nav aria-label="App">
                 <Suspense fallback={<NavGroups path="" groups={groups} collapsed={collapsed} />}>
                   <CurrentNavGroups groups={groups} collapsed={collapsed} />
