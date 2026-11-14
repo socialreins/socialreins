@@ -10,7 +10,12 @@ export function Menu({ summary, className, children }: { summary: ReactNode; cla
     const close = (e: Event) => {
       const el = ref.current;
       if (!el?.open) return;
-      if (e instanceof KeyboardEvent ? e.key === "Escape" : !el.contains(e.target as Node)) el.open = false;
+      if (e instanceof KeyboardEvent) {
+        if (e.key !== "Escape") return;
+        // Focus inside the panel would be lost when it closes, so hand it back to the button.
+        if (el.contains(document.activeElement)) el.querySelector("summary")?.focus();
+      } else if (el.contains(e.target as Node)) return;
+      el.open = false;
     };
     document.addEventListener("click", close);
     document.addEventListener("keydown", close);
