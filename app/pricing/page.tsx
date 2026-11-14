@@ -5,32 +5,31 @@ import { publicPage } from "@/lib/seo";
 
 export const metadata: Metadata = {
   title: "Pricing: SocialReins",
-  description: "SocialReins Cloud is the standard way to use it and is in early access, with no price set yet. Self-hosting is free, with every feature.",
+  description: "Self-hosting SocialReins is free, with every feature, and works today. SocialReins Cloud is not open yet and has no price set.",
   ...publicPage("/pricing"),
 };
 
-const repo = "https://github.com/socialreins/socialreins";
 const link = "font-bold underline decoration-signal decoration-2 underline-offset-4 hover:text-signal-deep";
 
 // Cloud has no price yet (plan/migration.md, phase 5): say so plainly and promise nothing.
 const plans = [
   {
     name: "Cloud",
-    tag: "The standard way",
+    tag: "Not open yet",
     price: "Price not set yet",
-    note: "We run it for you. This is how most people will use SocialReins.",
+    note: "We run it for you. You cannot sign up yet; join the waitlist to hear when it opens.",
     points: [
       "Every feature, the same as the self-hosted version.",
       "Nothing to install, update or keep running.",
       "We register the apps with each network, so you only sign in.",
-      "Early access is by invitation from the waitlist.",
-      "Early access is free for now. It will become a paid subscription, and people on the waitlist hear the price first.",
+      "Not open yet. Join the waitlist and we email you when it is.",
+      "It will be a paid subscription, and people on the waitlist hear the price first.",
     ],
     cta: { label: "Join the waitlist", href: "/#waitlist", external: false },
   },
   {
     name: "Self-hosted",
-    tag: "The free way",
+    tag: "Works today",
     price: "Free",
     note: "Open source, on your own server, free for good.",
     points: [
@@ -41,7 +40,7 @@ const plans = [
       "You register your own developer app with each network you use, except Bluesky, which needs none.",
       "Report problems and ask questions on GitHub.",
     ],
-    cta: { label: "Read the self-host guide", href: `${repo}#self-host`, external: true },
+    cta: { label: "Read the install guide", href: "/docs/self-hosted", external: false },
   },
 ];
 
@@ -49,7 +48,7 @@ const questions: [string, string][] = [
   ["Is the self-hosted version limited?", "No. There are no plan limits: it is the same code that runs the cloud version, under the AGPL-3.0 license, and nothing is held back for paying customers."],
   ["What will the cloud version cost?", "We have not set a price. We will publish it here before anyone is charged, and tell the waitlist first."],
   ["Does self-hosting cost anything at all?", "SocialReins itself is free. You pay for your own server, and X charges for its API. The other networks do not charge for posting."],
-  ["Can I try the cloud version now?", "Join the waitlist. We let people in a few at a time while it is in early access."],
+  ["Can I try the cloud version now?", "No. SocialReins Cloud is not open yet. Join the waitlist and we email you when it is. You can self-host today."],
 ];
 
 export default function Pricing() {
@@ -59,7 +58,7 @@ export default function Pricing() {
       <div className="grid w-full gap-10">
       <div className="grid max-w-2xl gap-2">
         <h1 className="font-display text-4xl font-extrabold tracking-tight">Pricing</h1>
-        <p className="text-ink-soft">SocialReins Cloud is the standard way to use it: we run everything. If you want it free, run it yourself.</p>
+        <p className="text-ink-soft">Run SocialReins on your own server today, free. SocialReins Cloud, where we run everything for you, is not open yet.</p>
       </div>
 
       <div className="grid gap-5 md:grid-cols-2">

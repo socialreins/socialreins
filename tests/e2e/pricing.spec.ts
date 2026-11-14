@@ -7,15 +7,13 @@ test("the pricing page shows self-hosted as free and cloud with no price yet", a
 
   // Cloud is the standard choice, so it comes first; self-hosting is the free one.
   await expect(page.getByRole("region").first()).toHaveAccessibleName("Cloud");
-  await expect(page.getByRole("region", { name: "Cloud" })).toContainText("The standard way");
-  await expect(page.getByRole("region", { name: "Self-hosted" })).toContainText("The free way");
+  await expect(page.getByRole("region", { name: "Cloud" })).toContainText("Not open yet");
+  await expect(page.getByRole("region", { name: "Self-hosted" })).toContainText("Works today");
 
   const self = page.getByRole("region", { name: "Self-hosted" });
   await expect(self).toContainText("Free");
   await expect(self).toContainText("Every feature. There is no paid tier in the code.");
-  const guide = self.getByRole("link", { name: "Read the self-host guide" });
-  await expect(guide).toHaveAttribute("href", "https://github.com/socialreins/socialreins#self-host");
-  await expect(guide).toHaveAttribute("target", "_blank");
+  await expect(self.getByRole("link", { name: "Read the install guide" })).toHaveAttribute("href", "/docs/self-hosted");
 
   const cloud = page.getByRole("region", { name: "Cloud" });
   await expect(cloud).toContainText("Price not set yet");
