@@ -54,6 +54,8 @@ export function Dashboard() {
   }, []);
 
   const list = Array.isArray(posts) ? posts : [];
+  // Like the posts, and the Accounts page the count links to: only the picked set's accounts. The default set holds them all.
+  const inSet = Array.isArray(accounts) && setId ? accounts.filter((c) => c.set_ids.includes(setId)) : accounts;
   const upcoming = list.filter((p) => (p.status === "scheduled" || p.status === "queued") && p.scheduled_at).sort((a, b) => Date.parse(a.scheduled_at!) - Date.parse(b.scheduled_at!));
   // Only this week's failures: failed posts cannot be deleted, so older ones would sit here forever.
   const failed = list.filter((p) => p.status === "failed" && Date.parse(postTime(p)) > now - 7 * DAY).sort((a, b) => Date.parse(postTime(b)) - Date.parse(postTime(a)));
@@ -66,7 +68,7 @@ export function Dashboard() {
     <div className="grid gap-6">
       <AccountNote />
       <ReconnectNotice
-        accounts={Array.isArray(accounts) ? needingReconnect(accounts) : []}
+        accounts={Array.isArray(inSet) ? needingReconnect(inSet) : []}
         canManage={manages(user.current_team.role)}
         title="Accounts need reconnecting"
         lead="A sign-in that has ended, or ends within a week, stops posts to that account. Reconnect it to keep posting."
@@ -131,7 +133,7 @@ export function Dashboard() {
             <ul className="divide-y divide-[var(--line-soft)]">
               <Stat href="/calendar" label="Scheduled, next 7 days" value={count(posts, nextWeek)} />
               <Stat href="/posts" label="Drafts" value={count(drafts)} />
-              <Stat href="/connections" label="Connected accounts" value={count(accounts)} />
+              <Stat href="/connections" label="Connected accounts" value={count(inSet)} />
             </ul>
           </section>
         </div>

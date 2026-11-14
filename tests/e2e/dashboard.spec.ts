@@ -105,6 +105,30 @@ test("home warns about accounts to reconnect, with a Reconnect link for owners",
   await expect(warning.getByRole("link", { name: "Reconnect Gone Gia" })).toHaveAttribute("href", "http://localhost:8080/connections/linkedin/redirect");
 });
 
+test("home counts and warns about only the picked set's accounts", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("passkey-prompt-snoozed-at", String(Date.now()));
+    localStorage.setItem("current-set:t1", "s2");
+  });
+  await page.route("http://localhost:8080/**", (r) => r.fulfill({ json: [] }));
+  await page.route("**/auth/me", (r) => r.fulfill({ json: me }));
+  const set = (id: string, name: string) => ({ id, name, is_default: id === "d", account_ids: [], account_count: 0, created_at: "2026-10-01T10:00:00Z", deleted_at: null });
+  await page.route(/\/v1\/social-sets$/, (r) => r.fulfill({ json: [set("d", "All sets"), set("s2", "English")] }));
+  const account = { id: "c1", provider: "bluesky", external_id: "did:plc:a", handle: "acme.bsky.social", display_name: "Acme", avatar_url: null, token_expires_at: null, set_ids: ["d", "s2"], created_at: "2026-10-20T10:00:00Z", status: "ok" };
+  await page.route("**/v1/connections", (r) =>
+    r.fulfill({ json: [account, { ...account, id: "c2", provider: "linkedin", handle: null, display_name: "Gone Gia", set_ids: ["d"], status: "reconnect", token_expires_at: "2026-11-01T10:00:00Z" }] }),
+  );
+  await page.goto("/home");
+  const stat = page.getByRole("link", { name: /^Connected accounts/ });
+  await expect(stat).toContainText("1");
+  await expect(page.getByRole("region", { name: "Accounts need reconnecting" })).toHaveCount(0);
+  // The default set holds every account, the one to reconnect included.
+  await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "English" }).click();
+  await page.locator("#set-menu").getByRole("button", { name: "All sets" }).click();
+  await expect(stat).toContainText("2");
+  await expect(page.getByRole("region", { name: "Accounts need reconnecting" }).getByRole("listitem")).toHaveCount(1);
+});
+
 test("home shows no warning when every account is fine", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("passkey-prompt-snoozed-at", String(Date.now())));
   await page.route("http://localhost:8080/**", (r) => r.fulfill({ json: [] }));
