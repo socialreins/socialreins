@@ -12,7 +12,7 @@ test("home shows what failed, what is up next, recent posts, the inbox and a few
   await page.addInitScript(() => localStorage.setItem("passkey-prompt-snoozed-at", String(Date.now())));
   await page.route("http://localhost:8080/**", (r) => r.fulfill({ json: [] }));
   await page.route("**/auth/me", (r) => r.fulfill({ json: me }));
-  await page.route(/\/v1\/social-sets$/, (r) => r.fulfill({ json: [{ id: "d", name: "Default", is_default: true, account_ids: ["c1"], account_count: 1, created_at: "2026-10-01T10:00:00Z", deleted_at: null }] }));
+  await page.route(/\/v1\/social-sets$/, (r) => r.fulfill({ json: [{ id: "d", name: "All sets", is_default: true, account_ids: ["c1"], account_count: 1, created_at: "2026-10-01T10:00:00Z", deleted_at: null }] }));
   await page.route("**/v1/connections", (r) =>
     r.fulfill({ json: [{ id: "c1", provider: "bluesky", external_id: "did:plc:a", handle: "acme.bsky.social", display_name: "Acme", avatar_url: null, token_expires_at: null, set_ids: ["d"], created_at: "2026-10-20T10:00:00Z" }] }),
   );
@@ -66,8 +66,8 @@ test("home shows what failed, what is up next, recent posts, the inbox and a few
   // The calmer home leaves automations and the account list to their own pages.
   await expect(page.getByRole("region", { name: "Automations" })).toHaveCount(0);
 
-  await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "Default" }).click();
-  await page.locator("#set-menu").getByRole("button", { name: "Default" }).click();
+  await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "All sets" }).click();
+  await page.locator("#set-menu").getByRole("button", { name: "All sets" }).click();
   await expect.poll(() => queries.some((q) => q.get("social_set_id") === "d" && q.get("status") === "draft")).toBe(true);
 });
 

@@ -34,7 +34,7 @@ const set = (id: string, name: string, accountIds: string[], extra = {}) => ({
 // A small in-memory brain for sets, so reloads see each change.
 async function brain(page: Page, role: Role) {
   const state = {
-    live: [set("d", "Default", ["c1", "c2"]), set("s1", "Clients", ["c1"])],
+    live: [set("d", "All sets", ["c1", "c2"]), set("s1", "Clients", ["c1"])],
     deleted: [set("s9", "Old", [], { deleted_at: "2026-10-20T10:00:00Z" })] as ReturnType<typeof set>[],
     accounts: [{ ...account("c1", "Alice"), set_ids: ["d", "s1"] }, account("c2", "Bob")],
   };
@@ -69,17 +69,17 @@ test("sets sends a signed-out visitor to login", async ({ page }) => {
   await expect(page).toHaveURL("/login");
 });
 
-test("lists sets with Default pinned and never deletable", async ({ page }) => {
+test("lists sets with All sets pinned and never deletable", async ({ page }) => {
   await brain(page, "owner");
   await page.goto("/sets");
   const items = page.getByRole("region", { name: "Sets" }).getByRole("listitem").filter({ has: page.getByRole("heading", { level: 3 }) });
-  await expect(items.first().getByRole("heading")).toHaveText("Default");
+  await expect(items.first().getByRole("heading")).toHaveText("All sets");
   await expect(items.first()).toContainText("Every account");
   await expect(items.first()).toContainText("2 accounts");
   // Each account says its network, so one name on two networks reads as two accounts.
   await expect(page.getByRole("list", { name: "Accounts in Clients" }).getByRole("listitem")).toHaveText(["AAliceBluesky, @alice.bsky.social"]);
-  await expect(page.getByRole("button", { name: "Rename Default" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Delete Default" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Rename All sets" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Delete All sets" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Delete Clients" })).toBeVisible();
   const bin = page.getByRole("region", { name: "Recently deleted" });
   await expect(bin.getByRole("listitem")).toHaveText(/^Old0 accounts\. Gone for good on .*\.Restore$/);
@@ -93,10 +93,10 @@ test("a set with many accounts stays folded and the page fits a phone", async ({
     provider: networks[i % networks.length]!,
   }));
   const ids = state.accounts.map((a) => a.id);
-  state.live = [set("d", "Default", ids), set("s1", "A set with a name as long as the sixty characters brain allows", ids.slice(0, 6))];
+  state.live = [set("d", "All sets", ids), set("s1", "A set with a name as long as the sixty characters brain allows", ids.slice(0, 6))];
   await page.setViewportSize({ width: 390, height: 800 });
   await page.goto("/sets");
-  const all = page.getByRole("list", { name: "Accounts in Default" });
+  const all = page.getByRole("list", { name: "Accounts in All sets" });
   await expect(page.getByText("Show all 14")).toBeVisible();
   await expect(all).toBeHidden();
   await expect(page.getByRole("list", { name: /^Accounts in A set/ }).getByRole("listitem")).toHaveCount(6);
@@ -130,10 +130,10 @@ test("create explains a taken name, then creates", async ({ page }) => {
   await page.getByLabel("New set name").fill("Friends");
   await page.getByRole("button", { name: "Create set" }).click();
   await expect(page.getByText("Created Friends.")).toBeFocused();
-  expect(state.live.map((s) => s.name)).toEqual(["Default", "Clients", "Friends"]);
+  expect(state.live.map((s) => s.name)).toEqual(["All sets", "Clients", "Friends"]);
 });
 
-test("rename the Default set", async ({ page }) => {
+test("rename the default set", async ({ page }) => {
   await brain(page, "owner");
   let body: unknown;
   await page.route("**/v1/social-sets/d", (route) => {
@@ -143,8 +143,8 @@ test("rename the Default set", async ({ page }) => {
       : route.fulfill({ json: set("d", "Everything", ["c1", "c2"]) });
   });
   await page.goto("/sets");
-  await page.getByRole("button", { name: "Rename Default" }).click();
-  const input = page.getByLabel("New name for Default");
+  await page.getByRole("button", { name: "Rename All sets" }).click();
+  const input = page.getByLabel("New name for All sets");
   await expect(input).toBeFocused();
   await input.fill("Clients");
   await page.getByRole("button", { name: "Save name" }).click();
@@ -235,12 +235,12 @@ test("a member sees sets read-only", async ({ page }) => {
   await expect(page.getByLabel("New set name")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^(Rename|Delete|Restore)/ })).toHaveCount(0);
   await page.goto("/connections");
-  await expect(page.getByRole("list", { name: "Sets for Alice" }).getByRole("listitem")).toHaveText(["Default", "Clients"]);
+  await expect(page.getByRole("list", { name: "Sets for Alice" }).getByRole("listitem")).toHaveText(["All sets", "Clients"]);
   await page.getByRole("button", { name: "Settings for Alice" }).click();
   await expect(page.getByRole("button", { name: "Save sets" })).toHaveCount(0);
 });
 
-test("connections edits an account's sets with Default locked", async ({ page }) => {
+test("connections edits an account's sets with All sets locked", async ({ page }) => {
   const state = await brain(page, "owner");
   const bodies: unknown[] = [];
   let setLoads = 0;
@@ -254,12 +254,12 @@ test("connections edits an account's sets with Default locked", async ({ page })
     return route.fulfill({ json: { ...state.accounts[1], set_ids: ["d", "s1"] } });
   });
   await page.goto("/connections");
-  await expect(page.getByRole("list", { name: "Sets for Alice" }).getByRole("listitem")).toHaveText(["Default", "Clients"]);
-  await expect(page.getByRole("list", { name: "Sets for Bob" }).getByRole("listitem")).toHaveText(["Default"]);
+  await expect(page.getByRole("list", { name: "Sets for Alice" }).getByRole("listitem")).toHaveText(["All sets", "Clients"]);
+  await expect(page.getByRole("list", { name: "Sets for Bob" }).getByRole("listitem")).toHaveText(["All sets"]);
   await page.getByRole("button", { name: "Settings for Bob" }).click();
   const group = page.getByRole("group", { name: "Sets" });
-  await expect(group.getByRole("checkbox", { name: /Default/ })).toBeChecked();
-  await expect(group.getByRole("checkbox", { name: /Default/ })).toBeDisabled();
+  await expect(group.getByRole("checkbox", { name: /All sets/ })).toBeChecked();
+  await expect(group.getByRole("checkbox", { name: /All sets/ })).toBeDisabled();
   await group.getByRole("checkbox", { name: "Clients" }).check();
   // The top bar loads sets too; the page reloads them once after the error.
   const before = setLoads;
@@ -268,6 +268,6 @@ test("connections edits an account's sets with Default locked", async ({ page })
   await expect.poll(() => setLoads).toBe(before + 1);
   await page.getByRole("button", { name: "Save sets" }).click();
   await expect(page.getByText("Sets saved for Bob.")).toBeFocused();
-  await expect(page.getByRole("list", { name: "Sets for Bob" }).getByRole("listitem")).toHaveText(["Default", "Clients"]);
+  await expect(page.getByRole("list", { name: "Sets for Bob" }).getByRole("listitem")).toHaveText(["All sets", "Clients"]);
   expect(bodies).toEqual([{ set_ids: ["d", "s1"] }, { set_ids: ["d", "s1"] }]);
 });

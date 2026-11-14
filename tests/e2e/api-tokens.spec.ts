@@ -43,7 +43,7 @@ async function brain(page: Page, role: Role) {
     reauth: false,
   };
   await page.route("**/auth/me", (route) => route.fulfill({ json: me(role) }));
-  await page.route(/\/v1\/social-sets$/, (route) => route.fulfill({ json: [set("d", "Default"), set("s1", "Clients")] }));
+  await page.route(/\/v1\/social-sets$/, (route) => route.fulfill({ json: [set("d", "All sets"), set("s1", "Clients")] }));
   await page.route("**/v1/api-tokens", (route) => {
     const req = route.request();
     if (role === "member") return route.fulfill({ status: 403, json: { error: "forbidden" } });

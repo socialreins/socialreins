@@ -89,7 +89,7 @@ test("long team names stay inside the top bar, and long emails inside the sideba
   await expect(button).toBeVisible();
   // The name is cut short, so the set after it is still on screen.
   expect((await button.boundingBox())!.width).toBeLessThan(300);
-  await expect(page.getByRole("banner").getByRole("button", { name: "Default" })).toBeInViewport();
+  await expect(page.getByRole("banner").getByRole("button", { name: "All sets" })).toBeInViewport();
   await button.click();
   const panel = await page.locator("#team-menu").boundingBox();
   expect(panel!.x + panel!.width).toBeLessThanOrEqual(page.viewportSize()!.width);

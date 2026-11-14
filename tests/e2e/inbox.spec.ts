@@ -64,7 +64,7 @@ async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items
   };
   await page.route("**/auth/me", (route) => route.fulfill({ json: me(role) }));
   await page.route("**/v1/connections", (route) => route.fulfill({ json: opts.accounts ?? [alice] }));
-  await page.route(/\/v1\/social-sets$/, (route) => route.fulfill({ json: [{ id: "d", name: "Default", is_default: true, account_ids: ["c1"], account_count: 1, created_at: "", deleted_at: null }] }));
+  await page.route(/\/v1\/social-sets$/, (route) => route.fulfill({ json: [{ id: "d", name: "All sets", is_default: true, account_ids: ["c1"], account_count: 1, created_at: "", deleted_at: null }] }));
   await page.route("**/v1/inboxes", (route) => {
     const req = route.request();
     if (req.method() === "POST") {

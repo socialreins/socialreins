@@ -80,7 +80,7 @@ describe("set helpers", () => {
 
   it("names the live sets an account is in, in list order", () => {
     const set = (id: string, name: string) => ({ id, name }) as SocialSet;
-    const sets = [set("d", "Default"), set("a", "Clients"), set("b", "Friends")];
-    expect(setNames(["b", "d", "gone"], sets)).toEqual(["Default", "Friends"]);
+    const sets = [set("d", "All sets"), set("a", "Clients"), set("b", "Friends")];
+    expect(setNames(["b", "d", "gone"], sets)).toEqual(["All sets", "Friends"]);
   });
 });
