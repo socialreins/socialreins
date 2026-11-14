@@ -10,7 +10,7 @@ import { LogoMark } from "@/components/logo";
 import { TitleSlot } from "@/components/page-title";
 import { PasskeyPrompt } from "@/components/passkey-prompt";
 import { ThemeSwitch } from "@/components/theme";
-import { TopBar } from "@/components/top-bar";
+import { TeamMenu, TopBar } from "@/components/top-bar";
 import { Icon, type IconName } from "@/components/ui";
 
 type Session = { user: User; setUser: (u: User) => void; setTeam: (t: Team) => void; refresh: () => Promise<void> };
@@ -186,7 +186,7 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
             <div
               className={`flex items-center justify-between gap-3 px-2.5 py-2 md:min-h-12 md:pt-3 md:pb-1 ${collapsed ? "md:justify-center md:px-0" : ""}`}
             >
-              {/* The logo: mark and name, or only the mark on the icon rail. The team is in the top bar. */}
+              {/* The logo: mark and name, or only the mark on the icon rail. The team switcher is the first thing in the menu below. */}
               <Link
                 href={admin ? "/admin" : "/home"}
                 className="flex items-center gap-2 px-1.5 font-display text-base font-bold tracking-tight"
@@ -214,6 +214,15 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
               onClick={(e) => (e.target as Element).closest("a") && setOpen(false)}
               className={`${open ? "flex" : "hidden"} min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-2.5 pb-3 md:pt-3 md:flex`}
             >
+              {!admin &&
+                (session ? (
+                  // Escape closes only the open team menu, not the mobile menu around it.
+                  <div onKeyDown={(e) => e.key === "Escape" && e.currentTarget.querySelector(":popover-open") && e.stopPropagation()}>
+                    <TeamMenu collapsed={collapsed} />
+                  </div>
+                ) : (
+                  <div className="h-11 rounded-md bg-ink/5 motion-safe:animate-pulse" />
+                ))}
               <nav aria-label="App">
                 <Suspense fallback={<NavGroups path="" groups={groups} collapsed={collapsed} />}>
                   <CurrentNavGroups groups={groups} collapsed={collapsed} />
