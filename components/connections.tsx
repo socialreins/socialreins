@@ -170,9 +170,11 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
   const announce = (text: string) => run("notice", async () => "ok" as const, () => text);
   const opened = Array.isArray(list) ? list.find((c) => c.id === settingsId) : undefined;
   // One network at a time, as tabs. The first one, or the one just connected, until a tab is picked.
-  // Only the accounts of the set picked in the top bar. Default holds every account, so it shows them all;
-  // until the sets load, or if the picked one is gone, nothing is filtered.
+  // Only the accounts of the set picked in the top bar. The default set holds every account, so it shows
+  // them all; until the sets load, or if the picked one is gone, nothing is filtered.
   const picked = Array.isArray(sets) ? sets.find((s) => s.id === currentSet) : undefined;
+  // The default set under the name the team gave it, for the hints on how to see every account.
+  const everything = Array.isArray(sets) ? sets.find((s) => s.is_default)?.name : undefined;
   const shown = Array.isArray(list) ? (picked ? list.filter((c) => c.set_ids.includes(picked.id)) : list) : [];
   const groups = byNetwork(shown);
   const group = groups.find((g) => g.id === tab) ?? groups[0];
@@ -192,7 +194,9 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
             Connected accounts
           </h2>
           <p className="text-ink-soft">
-            {picked && !picked.is_default ? `Accounts in the ${picked.name} set. Pick Default at the top to see every account in ${team}.` : `Accounts connected to ${team}.`}
+            {picked && !picked.is_default
+              ? `Accounts in the ${picked.name} set.${everything ? ` Pick ${everything} at the top to see every account in ${team}.` : ""}`
+              : `Accounts connected to ${team}.`}
           </p>
         </div>
         {canManage && (
@@ -223,7 +227,8 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
         <p className="card p-5 text-ink-soft">No accounts connected yet.{canManage ? " Use Add account to connect one." : ""}</p>
       ) : !group ? (
         <p className="card p-5 text-ink-soft">
-          No accounts in the {picked?.name} set yet.{canManage ? " Use Add account to connect one to it, or pick Default to add an existing account from its settings." : ""}
+          No accounts in the {picked?.name} set yet.
+          {canManage ? ` Use Add account to connect one to it${everything ? `, or pick ${everything} at the top and add an existing account from the account's settings` : ""}.` : ""}
         </p>
       ) : (
         <div className="grid gap-4">
