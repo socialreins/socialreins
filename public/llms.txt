@@ -1,6 +1,6 @@
 # SocialReins
 
-> Open-source social media manager for Facebook, Instagram, Threads, LinkedIn, Bluesky, X, TikTok and YouTube. Join our cloud's early access, or self-host it free.
+> Open-source social media manager for Facebook, Instagram, Threads, LinkedIn, Bluesky, X, TikTok and YouTube. Join our cloud's early access, or self-host free.
 
 - [Home](https://socialreins.com/): what SocialReins does and the waitlist
 - [Contact](https://socialreins.com/contact): send the team a message
