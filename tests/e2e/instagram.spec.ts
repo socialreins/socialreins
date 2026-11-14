@@ -71,3 +71,12 @@ test("on a phone the open Socials menu stays inside the screen", async ({ page }
   expect(box && box.x >= 0 && box.x + box.width <= 390).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
+
+test("a network page has the Socials menu, and choosing a network closes it", async ({ page }) => {
+  await page.goto("/instagram");
+  const nav = page.getByRole("navigation", { name: "Site" });
+  await nav.getByText("Socials", { exact: true }).click();
+  await nav.getByRole("link", { name: "YouTube", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "What you can post to YouTube", level: 1 })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "TikTok" })).toBeHidden();
+});

@@ -31,7 +31,10 @@ export function SocialsMenu({ className }: { className: string }) {
           <path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </summary>
-      <ul className="absolute right-0 z-20 mt-3 grid w-60 gap-0.5 rounded-xl border-2 border-ink/10 bg-paper p-2 shadow-lg max-sm:inset-x-0 max-sm:top-full max-sm:mt-0 max-sm:w-auto">
+      <ul className="absolute right-0 z-20 mt-3 grid w-60 gap-0.5 rounded-xl border-2 border-ink/10 bg-paper p-2 shadow-lg max-sm:inset-x-0 max-sm:top-full max-sm:mt-0 max-sm:w-auto"
+        // A link to another network page keeps this component mounted, so close on any choice.
+        onClick={() => ref.current?.removeAttribute("open")}
+      >
         {platforms.map((p) => (
           <li key={p.id}>
             <Link href={`/${p.id}`} className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 font-bold hover:bg-ink/5">
