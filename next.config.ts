@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { legacyRedirects } from "./lib/team-path";
 
 const nextConfig: NextConfig = {
   output: "standalone",
@@ -8,10 +9,11 @@ const nextConfig: NextConfig = {
   outputFileTracingExcludes: { "*": ["brain/**"] },
   cacheComponents: true,
   partialPrefetching: true,
-  // The app moved off /app; brain and old bookmarks still link there.
+  // The app moved off /app, then under /t/<team code>/ (lib/team-path.ts); brain and old bookmarks still link to both.
   redirects: async () => [
     { source: "/app", destination: "/home", permanent: true },
     { source: "/app/:path*", destination: "/:path*", permanent: true },
+    ...legacyRedirects(),
   ],
   headers: async () => [
     {

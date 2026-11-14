@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { TeamLink as Link } from "@/components/team-link";
+import { useSearchParams } from "next/navigation";
+import { useTeamRouter as useRouter } from "@/components/team-link";
 import type { Failure } from "@/lib/auth";
 import { listConnections, safeAvatar, type Connection } from "@/lib/connections";
 import {

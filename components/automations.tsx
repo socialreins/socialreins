@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { TeamLink as Link } from "@/components/team-link";
+import { useTeamRouter as useRouter } from "@/components/team-link";
 import type { Failure } from "@/lib/auth";
 import {
   actionName,

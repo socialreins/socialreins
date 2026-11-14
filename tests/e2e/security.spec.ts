@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-const user = { id: "1", email: "someone@example.com", name: "someone", username: null, current_team: { id: "t1", name: "Acme", role: "owner" } };
+const user = { id: "1", email: "someone@example.com", name: "someone", username: null, current_team: { id: "t1", name: "Acme", code: "acme22", role: "owner" } };
 const key = { id: "k1", name: "Old phone", created_at: "2026-10-01T10:00:00Z", last_used_at: null };
 const signedIn = (page: Page, passkeys: unknown[] = []) =>
   Promise.all([

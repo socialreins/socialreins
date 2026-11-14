@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
-import Link from "next/link";
+import { TeamLink as Link } from "@/components/team-link";
 import { usePathname } from "next/navigation";
 import { api, getMe, signInWithPasskey, type Failure, type Role } from "@/lib/auth";
 

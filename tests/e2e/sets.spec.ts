@@ -7,7 +7,7 @@ const me = (role: Role) => ({
   name: "Me",
   username: null,
 
-  current_team: { id: "t1", name: "Acme", role },
+  current_team: { id: "t1", name: "Acme", code: "acme22", role },
 });
 const account = (id: string, name: string) => ({
   id,
@@ -56,11 +56,11 @@ async function brain(page: Page, role: Role) {
 test("app and connections link to sets", async ({ page }) => {
   await brain(page, "owner");
   await page.goto("/home");
-  await expect(page.getByRole("link", { name: "Sets", exact: true })).toHaveAttribute("href", "/sets");
+  await expect(page.getByRole("link", { name: "Sets", exact: true })).toHaveAttribute("href", "/t/acme22/sets");
   await page.goto("/connections");
   await page.getByRole("button", { name: "Settings for Alice" }).click();
   await page.getByRole("link", { name: "Manage sets" }).click();
-  await expect(page).toHaveURL("/sets");
+  await expect(page).toHaveURL("/t/acme22/sets");
 });
 
 test("sets sends a signed-out visitor to login", async ({ page }) => {

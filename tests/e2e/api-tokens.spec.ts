@@ -6,7 +6,7 @@ const me = (role: Role) => ({
   email: "me@example.com",
   name: "Me",
   username: null,
-  current_team: { id: "t1", name: "Acme", role },
+  current_team: { id: "t1", name: "Acme", code: "acme22", role },
 });
 const set = (id: string, name: string) => ({
   id,
@@ -67,7 +67,7 @@ test("the sidebar links to API tokens", async ({ page }) => {
   await brain(page, "owner");
   await page.goto("/home");
   await page.getByRole("link", { name: "API tokens", exact: true }).click();
-  await expect(page).toHaveURL("/api-tokens");
+  await expect(page).toHaveURL("/t/acme22/api-tokens");
 });
 
 test("lists tokens with scope, prefix and dates", async ({ page }) => {

@@ -6,7 +6,7 @@ const me = (role: Role) => ({
   email: "me@example.com",
   name: "Me",
   username: null,
-  current_team: { id: "t1", name: "Acme", role },
+  current_team: { id: "t1", name: "Acme", code: "acme22", role },
 });
 const alice = {
   id: "c1",
@@ -123,7 +123,7 @@ test("creates a comment-to-DM automation with post links", async ({ page }) => {
   const state = await brain(page, "admin");
   await page.goto("/automations");
   await page.getByRole("link", { name: "New automation" }).click();
-  await expect(page).toHaveURL("/automations/new");
+  await expect(page).toHaveURL("/t/acme22/automations/new");
   await page.getByLabel("Name").fill("Guide");
   await page.getByLabel("Comment contains").fill("guide");
   await page.getByLabel("Comment contains").press("Enter");
@@ -141,7 +141,7 @@ test("creates a comment-to-DM automation with post links", async ({ page }) => {
   expect(state.bodies).toHaveLength(0);
   await page.getByLabel("Post links").fill("https://bsky.app/profile/alice.bsky.social/post/3abc\nat://did:plc:bob/app.bsky.feed.post/3xyz");
   await page.getByRole("button", { name: "Create automation" }).click();
-  await expect(page).toHaveURL("/automations/a2");
+  await expect(page).toHaveURL("/t/acme22/automations/a2");
   expect(state.bodies[0]).toEqual({
     name: "Guide",
     trigger: "comment_received",
@@ -165,7 +165,7 @@ test("detail shows runs with readable reasons, edits and deletes", async ({ page
   await expect(history.getByRole("listitem").filter({ hasText: "Sent" }).first()).toContainText("They only accept DMs from people they follow");
   await expect(history).toContainText("Reconnect with an app password that allows DMs");
   await expect(history).toContainText("The team reached 500 automation runs today");
-  await expect(history.getByRole("link", { name: "Open the comment" }).first()).toHaveAttribute("href", "/inbox?item=p1");
+  await expect(history.getByRole("link", { name: "Open the comment" }).first()).toHaveAttribute("href", "/t/acme22/inbox?item=p1");
 
   await page.getByRole("button", { name: "Edit" }).click();
   await expect(page.getByLabel("If the DM can't be delivered, reply publicly instead")).toBeChecked();
@@ -184,6 +184,6 @@ test("detail shows runs with readable reasons, edits and deletes", async ({ page
 
   await page.getByRole("button", { name: "Delete" }).click();
   await page.getByRole("button", { name: "Yes, delete" }).click();
-  await expect(page).toHaveURL("/automations");
+  await expect(page).toHaveURL("/t/acme22/automations");
   await expect(page.getByText("No automations yet")).toBeVisible();
 });

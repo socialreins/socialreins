@@ -6,7 +6,7 @@ const me = (role: Role) => ({
   email: "me@example.com",
   name: "Me",
   username: null,
-  current_team: { id: "t1", name: "Acme", role },
+  current_team: { id: "t1", name: "Acme", code: "acme22", role },
 });
 const alice = {
   id: "c1",
@@ -126,7 +126,7 @@ test("inbox lists items, filters by kind, and opens one by URL", async ({ page }
   await expect(page.getByRole("button", { name: "DMs" })).toHaveAttribute("aria-pressed", "true");
   await expect(rows).toHaveCount(1);
   await list.getByRole("link", { name: /Hi, can we talk/ }).click();
-  await expect(page).toHaveURL("/inbox?item=p3");
+  await expect(page).toHaveURL("/t/acme22/inbox?item=p3");
   const detail = page.getByRole("region", { name: "Item" });
   await expect(detail.getByRole("heading", { name: "Bob" })).toBeFocused();
   await expect(detail.getByLabel("Send DM")).toBeVisible();
@@ -167,7 +167,7 @@ test("reply publicly, then mark done and reopen", async ({ page }) => {
   await expect(detail.getByText("Marked done.")).toBeFocused();
   await expect(page.getByRole("region", { name: "All" }).getByRole("link", { name: /What is the price/ })).toHaveCount(0);
   await page.getByRole("link", { name: "Done", exact: true }).click();
-  await expect(page).toHaveURL("/inbox?state=done&item=p1");
+  await expect(page).toHaveURL("/t/acme22/inbox?state=done&item=p1");
   await expect(page.getByRole("region", { name: "All" }).getByRole("link", { name: /What is the price/ })).toBeVisible();
   await detail.getByRole("button", { name: "Reopen" }).click();
   await expect(detail.getByText("Reopened.")).toBeFocused();
@@ -183,14 +183,14 @@ test("a DM that can't be sent says why", async ({ page }) => {
   await detail.getByLabel("Send DM").fill("Sure");
   await detail.getByRole("button", { name: "Send DM" }).click();
   await expect(detail.getByRole("alert")).toContainText("Reconnect with an app password that allows DMs");
-  await expect(detail.getByRole("alert").getByRole("link", { name: "Open Accounts" })).toHaveAttribute("href", "/connections");
+  await expect(detail.getByRole("alert").getByRole("link", { name: "Open Accounts" })).toHaveAttribute("href", "/t/acme22/connections");
 });
 
 test("empty states: no accounts, then no items", async ({ page }) => {
   await brain(page, "owner", { accounts: [] });
   await page.goto("/inbox");
   await expect(page.getByText("No accounts connected")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Connect an account" })).toHaveAttribute("href", "/connections");
+  await expect(page.getByRole("link", { name: "Connect an account" })).toHaveAttribute("href", "/t/acme22/connections");
   await page.unrouteAll({ behavior: "ignoreErrors" });
   await brain(page, "owner", { items: [] });
   await page.goto("/inbox");
@@ -243,9 +243,9 @@ test.describe("on a phone", () => {
     await expect(page.getByRole("region", { name: "Item" }).getByRole("heading", { name: "Bob" })).toBeVisible();
     await expect(page.getByRole("region", { name: "Questions" })).toBeHidden();
     await page.getByRole("link", { name: "Back to Questions" }).click();
-    await expect(page).toHaveURL("/inbox/i2");
+    await expect(page).toHaveURL("/t/acme22/inbox/i2");
     await page.getByRole("link", { name: "Inboxes", exact: true }).click();
-    await expect(page).toHaveURL("/inbox");
+    await expect(page).toHaveURL("/t/acme22/inbox");
   });
 });
 

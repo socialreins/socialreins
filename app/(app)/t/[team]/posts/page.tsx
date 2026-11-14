@@ -1,20 +1,20 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { TeamLink as Link } from "@/components/team-link";
 import { Posts } from "@/components/posts";
 import { Icon, PageHeader } from "@/components/ui";
 
-export const metadata: Metadata = { title: "SocialReins calendar" };
+export const metadata: Metadata = { title: "SocialReins posts" };
 
-export default function CalendarPage() {
+export default function PostsPage() {
   return (
     <>
-      <PageHeader title="Calendar">
+      <PageHeader title="Posts">
         <Link href="/posts/new" className="btn btn-primary">
           <Icon name="plus" className="size-4" />
           New post
         </Link>
       </PageHeader>
-      <Posts view="calendar" />
+      <Posts view="list" />
     </>
   );
 }

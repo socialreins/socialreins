@@ -1,4 +1,4 @@
-import { api } from "@/lib/auth";
+import { api, getTabTeam } from "@/lib/auth";
 import { apiUrl } from "@/lib/waitlist";
 
 export type ConnectionStatus = "ok" | "expiring" | "reconnect";
@@ -58,9 +58,12 @@ export const pickMeta = (facebook: string[], instagram: string[]) =>
   api<Connection[]>("/v1/connections/meta/pick", "POST", { facebook, instagram });
 export const cancelMetaPick = () => api("/v1/connections/meta/pick", "DELETE");
 
-// brain checks the session and the role, and connects to the current team.
-export const connectUrl = (platform: string) =>
-  `${apiUrl}/connections/${encodeURIComponent(providerKey(platform))}/redirect`;
+// brain checks the session and the role, and connects to the team this tab is on (a page
+// navigation cannot send the X-Team header, so the code rides in the query).
+export const connectUrl = (platform: string) => {
+  const team = getTabTeam();
+  return `${apiUrl}/connections/${encodeURIComponent(providerKey(platform))}/redirect${team ? `?team=${encodeURIComponent(team)}` : ""}`;
+};
 
 // An OAuth connect leaves the page, and brain's callback doesn't say which account it made. So the
 // picked set and the accounts already here wait in sessionStorage, to find the new one on the way back.
@@ -69,7 +72,7 @@ const STARTED = "connect-started";
 const STARTED_MS = 15 * 60_000;
 export function rememberConnect(set: string, ids: string[]) {
   try {
-    sessionStorage.setItem(STARTED, JSON.stringify({ set, ids, at: Date.now() }));
+    sessionStorage.setItem(STARTED, JSON.stringify({ set, ids, at: Date.now(), team: getTabTeam() }));
   } catch {
     // Storage refused (private window): the account still connects, into Default only.
   }
@@ -78,7 +81,8 @@ export function takeConnect(): { set: string; ids: string[] } | null {
   try {
     const v = JSON.parse(sessionStorage.getItem(STARTED) ?? "null");
     sessionStorage.removeItem(STARTED);
-    return v && typeof v.set === "string" && Array.isArray(v.ids) && Date.now() - v.at < STARTED_MS ? v : null;
+    // The note is about one team's set and accounts: on another team's page (the return can land on the team opened last) it means nothing.
+    return v && typeof v.set === "string" && Array.isArray(v.ids) && Date.now() - v.at < STARTED_MS && v.team === getTabTeam() ? v : null;
   } catch {
     return null;
   }

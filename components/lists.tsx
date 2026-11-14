@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
-import Link from "next/link";
+import { TeamLink as Link } from "@/components/team-link";
 import type { Failure } from "@/lib/auth";
 import {
   addToList,

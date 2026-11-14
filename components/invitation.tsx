@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import { TeamLink as Link } from "@/components/team-link";
 import { getMe, type Failure, type MeResult, type Team } from "@/lib/auth";
 import { acceptInvitation, previewInvitation, type InvitationPreview } from "@/lib/teams";
 import { isFailure, linkButton, problemText, roleName, Status, useAction } from "@/components/team-ui";

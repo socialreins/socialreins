@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-const me = { id: "u-me", email: "me@example.com", name: "Me", username: null, current_team: { id: "t1", name: "Acme", role: "owner" } };
+const me = { id: "u-me", email: "me@example.com", name: "Me", username: null, current_team: { id: "t1", name: "Acme", code: "acme22", role: "owner" } };
 const post = (id: string, extra: Record<string, unknown>) => ({
   id, social_set_id: "d", platform: "bluesky", body: `Body of ${id}`, media: [], thread: [], status: "draft",
   scheduled_at: null, published_at: null, error: null, created_by: "u-me",
@@ -47,21 +47,21 @@ test("home shows what failed, what is up next, recent posts, the inbox and a few
   await expect(page.getByRole("link", { name: "Home", exact: true })).toHaveAttribute("aria-current", "page");
   const stat = (label: string) => page.getByRole("region", { name: "Overview" }).getByRole("link", { name: new RegExp(`^${label}`) });
   await expect(stat("Scheduled, next 7 days")).toContainText("1");
-  await expect(stat("Scheduled, next 7 days")).toHaveAttribute("href", "/calendar");
+  await expect(stat("Scheduled, next 7 days")).toHaveAttribute("href", "/t/acme22/calendar");
   await expect(stat("Drafts")).toContainText("1");
   await expect(stat("Connected accounts")).toContainText("1");
 
   const upNext = page.getByRole("region", { name: "Up next" });
-  await expect(upNext.getByRole("link", { name: /Launch day/ })).toHaveAttribute("href", "/posts/p-soon");
+  await expect(upNext.getByRole("link", { name: /Launch day/ })).toHaveAttribute("href", "/t/acme22/posts/p-soon");
   await expect(upNext.getByRole("listitem")).toHaveCount(2);
   await expect(upNext.getByRole("listitem").nth(1)).toContainText("Month end");
-  await expect(upNext.getByRole("link", { name: "Open calendar" })).toHaveAttribute("href", "/calendar");
+  await expect(upNext.getByRole("link", { name: "Open calendar" })).toHaveAttribute("href", "/t/acme22/calendar");
   await expect(page.getByRole("region", { name: "Needs attention" })).toContainText("Bluesky refused the image");
   // Failures older than a week drop off Home.
   await expect(page.getByRole("region", { name: "Needs attention" })).not.toContainText("An old failure");
   await expect(page.getByRole("region", { name: "Recently published" }).getByRole("link", { name: /Hello/ })).toBeVisible();
   const inbox = page.getByRole("region", { name: "Inbox" });
-  await expect(inbox.getByRole("link", { name: /Bob/ })).toHaveAttribute("href", "/inbox/all?item=i1");
+  await expect(inbox.getByRole("link", { name: /Bob/ })).toHaveAttribute("href", "/t/acme22/inbox/all?item=i1");
   await expect(inbox).toContainText("1+ open");
   // The calmer home leaves automations and the account list to their own pages.
   await expect(page.getByRole("region", { name: "Automations" })).toHaveCount(0);
@@ -102,7 +102,7 @@ test("home warns about accounts to reconnect, with a Reconnect link for owners",
   await expect(warning.getByRole("listitem").nth(0)).toContainText("Soon Sam");
   await expect(warning.getByRole("listitem").nth(0)).toContainText("stops working on");
   await expect(warning.getByRole("listitem").nth(1)).toContainText("Gone Gia needs reconnecting");
-  await expect(warning.getByRole("link", { name: "Reconnect Gone Gia" })).toHaveAttribute("href", "http://localhost:8080/connections/linkedin/redirect");
+  await expect(warning.getByRole("link", { name: "Reconnect Gone Gia" })).toHaveAttribute("href", "http://localhost:8080/connections/linkedin/redirect?team=acme22");
 });
 
 test("home counts and warns about only the picked set's accounts", async ({ page }) => {

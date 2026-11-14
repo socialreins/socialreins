@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import Link from "next/link";
+import { TeamLink as Link } from "@/components/team-link";
 import type { Failure } from "@/lib/auth";
 import { listConnections, needingReconnect, type Connection } from "@/lib/connections";
 import { manages } from "@/lib/teams";

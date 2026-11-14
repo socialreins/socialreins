@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import Link from "next/link";
+import { TeamLink as Link } from "@/components/team-link";
 import { PageTitle } from "@/components/page-title";
 
 // Line icons on a 24x24 grid, drawn for the app. Decorative: every icon sits next to text or an aria-label.

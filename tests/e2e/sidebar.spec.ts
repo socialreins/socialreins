@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-const user = { id: "u1", email: "me@example.com", name: "Mira", username: null, current_team: { id: "t1", name: "Acme", role: "owner" } };
+const user = { id: "u1", email: "me@example.com", name: "Mira", username: null, current_team: { id: "t1", name: "Acme", code: "acme22", role: "owner" } };
 const key = { id: "k1", name: "Phone", created_at: "2026-10-01T10:00:00Z", last_used_at: null };
 
 // passkeys: the list brain returns, or null to fail it.
@@ -201,7 +201,7 @@ test("no passkey dialog on the security page, or after skipping it on /welcome",
 
   await page.goto("/welcome");
   await page.getByRole("link", { name: "Skip for now" }).click();
-  await expect(page).toHaveURL("/home");
+  await expect(page).toHaveURL("/t/acme22/home");
   await page.waitForTimeout(500);
   await expect(dialog(page)).toHaveCount(0);
 });
@@ -250,7 +250,7 @@ test("Calendar in the Publish group opens the month grid; Posts stays its own pa
   await brain(page);
   await page.goto("/home");
   await nav(page).getByRole("link", { name: "Calendar", exact: true }).click();
-  await expect(page).toHaveURL("/calendar");
+  await expect(page).toHaveURL("/t/acme22/calendar");
   await expect(nav(page).getByRole("link", { name: "Calendar", exact: true })).toHaveAttribute("aria-current", "page");
   await expect(nav(page).getByRole("link", { name: "Posts", exact: true })).not.toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Calendar");
@@ -308,7 +308,7 @@ test("the sidebar holds the team switcher with its plan, its menu ends with Upgr
   const menu = page.locator("#team-menu");
   await expect(menu.locator("> :last-child")).toHaveText("Free plan·Upgrade");
   await menu.getByRole("link", { name: "Upgrade" }).click();
-  await expect(page).toHaveURL("/billing");
+  await expect(page).toHaveURL("/t/acme22/billing");
   await expect(menu).toBeHidden();
   await expect(page.getByRole("heading", { name: "Plans", level: 1 })).toBeVisible();
   await expect(page.getByRole("main")).toContainText("Your team is on the Free plan. Paid plans are coming to the hosted version.");
@@ -322,7 +322,7 @@ test("the sidebar holds the team switcher with its plan, its menu ends with Upgr
   await expect(acme).toHaveAccessibleName("Team: Acme");
   await acme.click();
   await expect(menu.getByRole("link", { name: "Manage team" })).toBeVisible();
-  await expect(menu.getByRole("link", { name: "Upgrade" })).toHaveAttribute("href", "/billing");
+  await expect(menu.getByRole("link", { name: "Upgrade" })).toHaveAttribute("href", "/t/acme22/billing");
 });
 
 test("the set switcher shows only on the pages the set filters, with no visible label", async ({ page }) => {
@@ -385,7 +385,7 @@ test("a page one level down shows its parent as a crumb, and as a link on the pa
   await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
   await expect(main.getByRole("link", { name: "Posts", exact: true })).toBeHidden();
   await crumbs.getByRole("link", { name: "Posts", exact: true }).click();
-  await expect(page).toHaveURL("/posts");
+  await expect(page).toHaveURL("/t/acme22/posts");
   await expect(crumbs.getByRole("heading", { name: "Posts", level: 1 })).toBeVisible();
   await expect(crumbs.getByRole("link", { name: "Posts", exact: true })).toHaveCount(0);
 
@@ -419,7 +419,7 @@ test("the account menu links to Plans, also on the icon rail", async ({ page }) 
   await page.getByRole("button", { name: "Collapse sidebar" }).click();
   await page.getByRole("button", { name: "Account: Mira" }).click();
   await accountMenu(page).getByRole("link", { name: "Plans" }).click();
-  await expect(page).toHaveURL("/billing");
+  await expect(page).toHaveURL("/t/acme22/billing");
 });
 
 test("the open mobile menu fits the screen with the account row visible", async ({ page }) => {

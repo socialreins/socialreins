@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
+import { MY_TEAM, teamPath } from "@/lib/team-path";
 import type { Failure, Role, Team, User } from "@/lib/auth";
 import { useSession } from "@/components/app-shell";
 import {
@@ -89,7 +90,7 @@ function Rename({ team, onRenamed }: { team: Team; onRenamed: (t: Team) => void 
 
 function Members({ me, mine, onChanged }: { me: User; mine: Role; onChanged: () => void }) {
   const router = useRouter();
-  const { refresh } = useSession();
+
   const [members, setMembers] = useState<Member[] | Failure | null>(null);
   const [roles, setRoles] = useState<Record<string, Role>>({});
   const [confirming, setConfirming] = useState<string | null>(null);
@@ -118,11 +119,8 @@ function Members({ me, mine, onChanged }: { me: User; mine: Role; onChanged: () 
       onChanged();
       return `${m.name} was removed from the team.`;
     });
-    // Leaving changes the current team, so the shell loads the new one.
-    if (ok && leaving) {
-      await refresh();
-      return router.push("/home");
-    }
+    // Leaving changes the current team; the address of "my team" makes the shell load the new one.
+    if (ok && leaving) return router.push(teamPath(MY_TEAM, "/home"));
     flushSync(() => setConfirming(null));
     if (!ok) removeRefs.current.get(m.id)?.focus();
   }
@@ -323,15 +321,13 @@ function Invitations({ version }: { version: number }) {
 
 function DeleteTeam({ team }: { team: Team }) {
   const router = useRouter();
-  const { refresh } = useSession();
   const [typed, setTyped] = useState("");
   const { busy, problem, done, run } = useAction();
 
   async function onDelete(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!(await run("delete", deleteTeam, () => undefined))) return;
-    await refresh();
-    router.push("/home");
+    router.push(teamPath(MY_TEAM, "/home"));
   }
 
   return (
