@@ -16,7 +16,11 @@ const date = (d: string | Date) => new Date(d).toLocaleDateString(undefined, { d
 const count = (n: number) => `${n} ${n === 1 ? "account" : "accounts"}`;
 // A set with more accounts than this shows a row of avatars and opens on request.
 const FOLD = 8;
-const networkOrder = (c: Connection) => (platforms.findIndex((p) => p.id === c.provider) + platforms.length + 1) % (platforms.length + 1);
+// Networks in the order they are listed everywhere else; an unknown one goes last.
+const networkOrder = (c: Connection) => {
+  const i = platforms.findIndex((p) => p.id === c.provider);
+  return i < 0 ? platforms.length : i;
+};
 
 // One account: its picture with the network's mark, its name, and the network in words.
 function Account({ account: a }: { account: Connection }) {
@@ -137,7 +141,7 @@ function SetsPage({ canManage }: { canManage: boolean }) {
           Sets
         </h2>
         <p className="max-w-prose text-ink-soft">
-          Sets group connected accounts, so a post can go to one group at a time.
+          Sets group connected accounts.
           {first && ` Every account is always in ${first.name}.`}
         </p>
         {canManage ? (
@@ -276,11 +280,9 @@ function SetsPage({ canManage }: { canManage: boolean }) {
                       </div>
                     </form>
                   )}
-                  {members.length === 0 ? (
-                    <p className="text-sm text-ink-soft">
-                      {s.account_count === 0 ? "No accounts yet. Add some from an account's settings on the Accounts page." : ""}
-                    </p>
-                  ) : members.length > FOLD ? (
+                  {s.account_count === 0 ? (
+                    <p className="text-sm text-ink-soft">No accounts yet. Add some from an account&apos;s settings on the Accounts page.</p>
+                  ) : members.length === 0 ? null : members.length > FOLD ? (
                     <details className="group grid gap-3">
                       <summary className="flex cursor-pointer list-none items-center gap-2 justify-self-start rounded-md text-sm font-medium text-ink-soft hover:text-ink [&::-webkit-details-marker]:hidden">
                         <span aria-hidden="true" className="flex items-center gap-2 group-open:hidden">
