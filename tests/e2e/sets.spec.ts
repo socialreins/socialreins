@@ -100,7 +100,7 @@ test("create explains a taken name, then creates", async ({ page }) => {
   expect(state.live.map((s) => s.name)).toEqual(["All sets", "Clients", "Friends"]);
 });
 
-test("rename the All sets set", async ({ page }) => {
+test("rename the default set", async ({ page }) => {
   await brain(page, "owner");
   let body: unknown;
   await page.route("**/v1/social-sets/d", (route) => {

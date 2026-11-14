@@ -112,7 +112,7 @@ function SetsPage({ canManage }: { canManage: boolean }) {
         <h2 id="sets-heading" ref={headingRef} tabIndex={-1} className={heading}>
           Sets
         </h2>
-        <p className="text-ink-soft">Sets group connected accounts. Every account is always in All sets.</p>
+        <p className="text-ink-soft">Sets group connected accounts. Every account is always in {(Array.isArray(live) && live.find((s) => s.is_default)?.name) || "All sets"}.</p>
         {canManage ? (
           <form onSubmit={onCreate} className="waitlist">
             <label htmlFor="new-set-name">New set name</label>

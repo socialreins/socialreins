@@ -36,7 +36,7 @@ export const listMessages: Partial<Record<Failure, ReactNode>> = {
 };
 
 const setLabel = (l: Pick<PostList, "social_set_id">, sets: SocialSet[]) =>
-  l.social_set_id === null ? "All sets" : (sets.find((s) => s.id === l.social_set_id)?.name ?? "A deleted set");
+  l.social_set_id === null ? "Whole team" : (sets.find((s) => s.id === l.social_set_id)?.name ?? "A deleted set");
 
 function useSets() {
   const [sets, setSets] = useState<SocialSet[]>([]);
@@ -152,7 +152,7 @@ export function Lists() {
         <label className="grid gap-1.5">
           <span className="label">Set</span>
           <select className="field w-auto" value={setId} onChange={(e) => setSetId(e.target.value)}>
-            <option value="">All sets</option>
+            <option value="">Whole team</option>
             {sets.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}

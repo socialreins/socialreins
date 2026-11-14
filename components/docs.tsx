@@ -204,7 +204,7 @@ function Use({ mode }: { mode: Mode }) {
         </p>
       )}
       <h2>2. Group accounts into sets</h2>
-      <p>A set is a group of accounts you post to together, such as one brand or one client. Every team starts with a set named All sets, which holds every account. Open Sets to add more and choose which accounts belong to each.</p>
+      <p>A set is a group of accounts you post to together, such as one brand or one client. Every team starts with one set that holds every account, named All sets until you rename it. Open Sets to add more and choose which accounts belong to each.</p>
       <h2>3. Write a post</h2>
       <p>
         Open Posts and write a post. Under Post to, pick the networks. Add your text, photos or a video, and a first comment or a thread where the network allows one. Then publish now or pick a time to schedule it. The <Link href="/post-types" className={link}>post types page</Link> lists what each network accepts.
@@ -238,7 +238,7 @@ function Ai({ mode }: { mode: Mode }) {
       <p>In an assistant that reads a JSON settings file:</p>
       <Code>{`{\n  "mcpServers": {\n    "socialreins": {\n      "type": "http",\n      "url": "${api}/mcp",\n      "headers": { "Authorization": "Bearer YOUR_TOKEN" }\n    }\n  }\n}`}</Code>
       <h2>3. Ask it to do something</h2>
-      <p>Try &quot;list my connected accounts&quot; or &quot;schedule this post to All sets for tomorrow at 9&quot;. The assistant gets these tools:</p>
+      <p>Try &quot;list my connected accounts&quot; or &quot;schedule this post to my English set for tomorrow at 9&quot;. The assistant gets these tools:</p>
       <ul>
         <li>
           Accounts and sets: <C>list-social-accounts</C>, <C>list-social-sets</C>.
