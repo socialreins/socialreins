@@ -43,9 +43,9 @@ export default function Terms() {
 
       <h2>Plans</h2>
       <p>
-        The hosted service is not open to new accounts yet, and nobody is charged for it today. When it opens it will
-        be a paid subscription; we will announce its prices before charging anything. You can always run SocialReins
-        yourself for free instead.
+        The hosted service is not open to new accounts yet, and we do not charge for it today. When it opens it will
+        be a paid subscription; we will announce its prices before charging anything. You can run SocialReins
+        yourself instead; the software is free and open source.
       </p>
 
       <h2>Changes</h2>
