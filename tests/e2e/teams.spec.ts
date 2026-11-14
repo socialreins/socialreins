@@ -50,13 +50,12 @@ test("app shows the team switcher, switches and creates a team", async ({ page }
     return route.fulfill({ json: { id: "t2", name: "Beta", role: "member" } });
   });
   await page.goto("/home");
-  // The team switcher is first in the breadcrumb; the sidebar's top holds the logo.
-  const side = page.getByRole("navigation", { name: "Breadcrumb" });
-  await expect(page.locator("aside").getByRole("button", { name: "Acme" })).toHaveCount(0);
+  // The team switcher is at the top of the sidebar, under the logo, with the plan under the team's name; the top bar has neither.
+  const side = page.locator("aside button[popovertarget=team-menu]");
+  await expect(page.getByRole("banner").getByText("Acme")).toHaveCount(0);
   await expect(page.locator("aside").getByRole("link", { name: "SocialReins" })).toHaveAttribute("href", "/home");
-  // The plan is at the foot of the team menu, not in the bar.
-  await expect(side.getByText("Free plan")).toBeHidden();
-  await side.getByRole("button", { name: "Acme", exact: true }).click();
+  await expect(side).toHaveText("AAcmeFree plan");
+  await side.click();
   const team = page.locator("#team-menu");
   await expect(team.getByText("Free plan")).toBeVisible();
   await expect(team.getByRole("button", { name: /Acme/ })).toHaveAttribute("aria-current", "true");
@@ -64,19 +63,19 @@ test("app shows the team switcher, switches and creates a team", async ({ page }
   await team.getByRole("button", { name: /Beta/ }).click();
   await expect(page.getByText("Switched to Beta.")).toBeFocused();
   expect(switched).toEqual({ team_id: "t2" });
-  await expect(side.getByRole("button", { name: "Beta", exact: true })).toBeVisible();
+  await expect(side).toContainText("Beta");
 
   await team.getByRole("button", { name: "New team" }).click();
   await expect(page.getByLabel("New team name")).toBeFocused();
   await page.getByLabel("New team name").fill("Gamma");
   await page.getByRole("button", { name: "Create team" }).click();
   await expect(page.getByText("Created Gamma. It is now your current team.")).toBeFocused();
-  await expect(side.getByRole("button", { name: "Gamma", exact: true })).toBeVisible();
+  await expect(side).toContainText("Gamma");
   await page.keyboard.press("Escape");
   await expect(team).toBeHidden();
 });
 
-test("long team names stay inside the top bar, and long emails inside the sidebar", async ({ page }) => {
+test("long team names and long emails stay inside the sidebar", async ({ page }) => {
   const long = "Bytech Social Media Marketing Agency International";
   await page.route("**/auth/me", (route) =>
     route.fulfill({ json: me("owner", { email: "someone.with.a.really.long.address@example-company.com", current_team: { id: "t1", name: long, role: "owner" } }) }),
@@ -85,15 +84,14 @@ test("long team names stay inside the top bar, and long emails inside the sideba
     route.fulfill({ json: [{ id: "t1", name: long, role: "owner" }, { id: "t2", name: `${long} Second Office`, role: "member" }] }),
   );
   await page.goto("/home");
-  const button = page.getByRole("banner").getByRole("button", { name: long });
-  await expect(button).toBeVisible();
-  // The name is cut short, so the set after it is still on screen.
-  expect((await button.boundingBox())!.width).toBeLessThan(300);
-  await expect(page.getByRole("banner").getByRole("button", { name: "All sets" })).toBeInViewport();
+  const button = page.locator("aside button[popovertarget=team-menu]");
+  await expect(button).toContainText(long);
   await button.click();
   const panel = await page.locator("#team-menu").boundingBox();
   expect(panel!.x + panel!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
-  const [account, aside] = await Promise.all([page.locator("aside button[data-account]:visible").boundingBox(), page.locator("aside").boundingBox()]);
+  // Both names are cut short, so neither block is wider than the sidebar.
+  const [team, account, aside] = await Promise.all([button.boundingBox(), page.locator("aside button[data-account]:visible").boundingBox(), page.locator("aside").boundingBox()]);
+  expect(team!.x + team!.width).toBeLessThanOrEqual(aside!.x + aside!.width);
   expect(account!.x + account!.width).toBeLessThanOrEqual(aside!.x + aside!.width);
 });
 

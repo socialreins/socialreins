@@ -291,17 +291,17 @@ test("the account shows the role in the current team under the name", async ({ p
   await expect(accountButton(page)).toContainText("Owner");
 });
 
-test("the top bar holds the team switcher, its menu ends with the plan, and Upgrade opens /billing", async ({ page }) => {
+test("the sidebar holds the team switcher with its plan, its menu ends with Upgrade, which opens /billing", async ({ page }) => {
   await brain(page);
   await page.goto("/posts");
-  const side = page.getByRole("navigation", { name: "Breadcrumb" });
   const logo = page.locator("aside").getByRole("link", { name: "SocialReins" });
-  const acme = side.getByRole("button", { name: "Acme", exact: true });
-  await expect(acme).toBeVisible();
-  // Closed, the bar shows neither the plan nor Upgrade.
-  await expect(side.getByText("Free plan")).toBeHidden();
-  await expect(side.getByRole("link", { name: "Upgrade" })).toBeHidden();
-  await expect(page.locator("aside").getByRole("button", { name: "Acme", exact: true })).toHaveCount(0);
+  const acme = page.locator("aside button[popovertarget=team-menu]");
+  // Under the logo and above the nav: the team's name with the plan in small text under it. The top bar has no team.
+  await expect(acme).toHaveText("AAcmeFree plan");
+  expect((await acme.boundingBox())!.y).toBeLessThan((await nav(page).boundingBox())!.y);
+  expect((await acme.boundingBox())!.y).toBeGreaterThan((await logo.boundingBox())!.y);
+  await expect(page.getByRole("banner")).not.toContainText("Acme");
+  await expect(page.locator("aside").getByRole("link", { name: "Upgrade" })).toBeHidden();
   await expect(logo.getByText("SocialReins")).toBeInViewport();
   await acme.click();
   const menu = page.locator("#team-menu");
@@ -313,10 +313,12 @@ test("the top bar holds the team switcher, its menu ends with the plan, and Upgr
   await expect(page.getByRole("main")).toContainText("Your team is on the Free plan. Paid plans are coming to the hosted version.");
   await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Plans");
 
-  // The icon rail keeps only the logo mark (the name stays for screen readers); the team, with the plan in its menu, stays in the top bar.
+  // The icon rail keeps only the logo mark and the team's avatar (the names stay for screen readers); the menu still opens.
   await page.getByRole("button", { name: "Collapse sidebar" }).click();
   await expect(logo).toBeVisible();
   expect((await logo.boundingBox())!.width).toBeLessThan(64);
+  expect((await acme.boundingBox())!.width).toBeLessThan(64);
+  await expect(acme).toHaveAccessibleName("Team: Acme");
   await acme.click();
   await expect(menu.getByRole("link", { name: "Manage team" })).toBeVisible();
   await expect(menu.getByRole("link", { name: "Upgrade" })).toHaveAttribute("href", "/billing");
@@ -339,17 +341,15 @@ test("the set switcher shows only on the pages the set filters, with no visible 
   await expect(picker).toHaveText("Everything");
   for (const path of ["/inbox", "/inbox/all", "/automations", "/sets", "/team", "/api-tokens", "/profile", "/security", "/billing"]) {
     await page.goto(path);
-    await expect(crumbs.getByRole("button", { name: "Acme", exact: true }), path).toBeVisible();
-    await expect(crumbs.getByRole("button", { name: /^Set: / }), path).toHaveCount(0);
+    await expect(crumbs.getByRole("heading", { level: 1 }), path).toBeVisible();
+    await expect(crumbs.getByRole("button"), path).toHaveCount(0);
   }
 });
 
-test("the top bar fits a phone, with the plan in the team menu", async ({ page }) => {
+test("the top bar fits a phone, and the team switcher is in the menu", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await brain(page);
-  // Long names are cut short on a phone, so the page title keeps room next to them.
-  const long = { ...user.current_team, name: "The Very Long Named Marketing Collective" };
-  await page.route("**/auth/me", (route) => route.fulfill({ json: { ...user, current_team: long } }));
+  // A long set name is cut short on a phone, so the page title keeps room next to it.
   const set = { id: "d", name: "Every single account we have ever connected", is_default: true, account_ids: [], account_count: 0, created_at: "2026-10-01T10:00:00Z", deleted_at: null };
   await page.route(/\/v1\/social-sets(\?.*)?$/, (route) => route.fulfill({ json: [set] }));
   await page.goto("/calendar");
@@ -357,14 +357,15 @@ test("the top bar fits a phone, with the plan in the team menu", async ({ page }
   await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: `Set: ${set.name}` })).toBeVisible();
   expect(await title.evaluate((el) => el.scrollWidth <= el.clientWidth), "the title is not cut").toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await page.route("**/auth/me", (route) => route.fulfill({ json: user }));
   for (const path of ["/posts", "/team", "/security"]) {
     await page.goto(path);
-    await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "Acme", exact: true })).toBeVisible();
     await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("heading", { level: 1 })).toBeInViewport();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), path).toBe(true);
   }
-  await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "Acme", exact: true }).click();
+  // The team switcher is the first thing in the phone menu.
+  await expect(page.locator("aside button[popovertarget=team-menu]")).toBeHidden();
+  await page.getByRole("button", { name: "Menu" }).click();
+  await page.locator("aside button[popovertarget=team-menu]").click();
   await expect(page.locator("#team-menu").getByRole("link", { name: "Upgrade" })).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
