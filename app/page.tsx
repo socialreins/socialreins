@@ -82,16 +82,16 @@ export default function Home() {
           <div className="grid gap-6">
             <p className="flex flex-wrap gap-2 text-sm font-bold">
               <span className="rounded-full bg-ink px-3 py-1 text-paper">Open source</span>
-              <span className="rounded-full border-2 border-ink px-3 py-0.5">Self-hostable</span>
-              <span className="rounded-full border-2 border-signal-deep px-3 py-0.5 text-signal-deep">In development</span>
+              <span className="rounded-full border-2 border-signal-deep px-3 py-0.5 text-signal-deep">Cloud in early access</span>
+              <span className="rounded-full border-2 border-ink px-3 py-0.5">Free to self-host</span>
             </p>
             <h1 className="font-display text-[clamp(2.6rem,7vw,4.9rem)] leading-[0.95] font-extrabold tracking-[-0.03em]">
               Every social account, one set of reins.
             </h1>
             <p className="max-w-[34rem] text-lg text-ink-soft">
               SocialReins is an open-source social media manager. It publishes and schedules your posts to eight
-              platforms from one place, and pulls a post back from all of them when you need to. Publishing, teams and
-              self-hosting work today; a hosted plan comes next.
+              platforms from one place, and pulls a post back from all of them when you need to. SocialReins Cloud is the
+              standard way to use it: we run everything, and it is in early access. Want it free? Run it yourself.
             </p>
             <WaitlistForm />
           </div>
@@ -139,21 +139,21 @@ export default function Home() {
         >
           <div>
             <h2 id="oss-title" className="font-display text-3xl font-extrabold tracking-tight md:text-4xl">
-              Run it yourself, or let us run it
+              Let us run it, or run it yourself for free
             </h2>
             <p className="mt-4 max-w-[34rem] text-lg text-canvas">
-              SocialReins is open source. A few commands start it on your own server with Postgres, and every
-              platform is optional. If you would rather not run servers, join the waitlist for the hosted version, a
-              paid subscription coming later.
+              SocialReins Cloud is the standard way: we run the servers, and early access is free for now. Join the
+              waitlist to get in. SocialReins is also open source, so a few commands start it on your own server with
+              Postgres, free, with every feature. See <Link href="/pricing" className="font-bold underline decoration-signal decoration-2 underline-offset-4">pricing</Link>.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <GitHubLink
-                label="Star on GitHub"
-                className="rounded-full bg-signal px-6 py-3 font-bold text-ink hover:bg-paper"
-              />
-              <a href="#waitlist" className="rounded-full border-2 border-paper px-6 py-3 font-bold hover:bg-paper hover:text-ink">
+              <a href="#waitlist" className="rounded-full bg-signal px-6 py-3 font-bold text-ink hover:bg-paper">
                 Join the waitlist
               </a>
+              <GitHubLink
+                label="Star on GitHub"
+                className="rounded-full border-2 border-paper px-6 py-3 font-bold hover:bg-paper hover:text-ink"
+              />
             </div>
           </div>
           <figure className="min-w-0">

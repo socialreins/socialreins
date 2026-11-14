@@ -62,7 +62,7 @@ export function WaitlistForm() {
       {count !== null && <p className="waitlist-note">{waitlistCountText(count)}</p>}
       {!joined && (
         <p id="waitlist-note" className="waitlist-note">
-          The hosted version will be a paid subscription, coming later.
+          SocialReins Cloud is in early access, free for now. It will be a paid subscription later.
         </p>
       )}
       <p

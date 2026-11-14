@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://socialreins.com"),
   title: "SocialReins: open-source social media manager",
   description:
-    "Open-source social media manager for Facebook, Instagram, Threads, LinkedIn, Bluesky, X, TikTok and YouTube. Publish and self-host now; hosting is coming.",
+    "Open-source social media manager for Facebook, Instagram, Threads, LinkedIn, Bluesky, X, TikTok and YouTube. Use our cloud, or self-host it free.",
 };
 
 const themeScript = `try{var t=localStorage.getItem("theme");document.documentElement.dataset.theme=t==="dark"||(t!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light"}catch(e){}`;
