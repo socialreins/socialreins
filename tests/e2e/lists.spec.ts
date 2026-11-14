@@ -72,7 +72,7 @@ test("creates, renames and deletes a list", async ({ page }) => {
   await page.goto("/lists");
   await expect(page.getByRole("link", { name: "Alpha" })).toBeVisible();
   await page.getByLabel("New list name").fill("Series");
-  await page.getByLabel("Set").selectOption("s1");
+  await page.getByRole("main").getByLabel("Set").selectOption("s1");
   await page.getByRole("button", { name: "Create list" }).click();
   await expect(page.getByText("Created Series.")).toBeVisible();
   expect(sent).toEqual({ name: "Series", social_set_id: "s1" });
