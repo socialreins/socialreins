@@ -41,8 +41,8 @@ export function WaitlistForm() {
     <form onSubmit={onSubmit} className="waitlist">
       {!joined && (
         <>
-          <label htmlFor="waitlist-email">Email for the hosted version waitlist</label>
-          <div className="waitlist-row">
+          <label htmlFor="waitlist-email" className="sr-only">Email for the hosted version waitlist</label>
+          <div className="waitlist-pill">
             <input
               id="waitlist-email"
               name="email"

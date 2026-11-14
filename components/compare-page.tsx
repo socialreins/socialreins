@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { LogoMark } from "@/components/logo";
+import { SiteHeader } from "@/components/site-header";
 import { CHECKED, rival, rivals } from "@/lib/compare";
 import { publicPage } from "@/lib/seo";
 
@@ -13,20 +13,11 @@ export function compareMetadata(slug: string): Metadata {
 const link = "font-bold underline decoration-signal decoration-2 underline-offset-4 hover:text-signal-deep";
 const cell = "border-t border-ink/10 px-3 py-2.5 align-top";
 
-export function Brand() {
-  return (
-    <Link href="/" className="flex items-center gap-2.5 justify-self-start font-display text-xl font-extrabold tracking-tight">
-      <LogoMark className="size-9" />
-      SocialReins
-    </Link>
-  );
-}
-
 export function ComparePage({ slug }: { slug: string }) {
   const r = rival(slug)!;
   return (
     <main className="mx-auto grid w-full max-w-4xl gap-8 px-5 py-12">
-      <Brand />
+      <SiteHeader />
       <div className="grid gap-2">
         <h1 className="font-display text-4xl font-extrabold tracking-tight">SocialReins vs {r.name}</h1>
         <p className="text-ink-soft">{r.intro}</p>

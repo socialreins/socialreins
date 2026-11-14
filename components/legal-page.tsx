@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { LogoMark } from "@/components/logo";
+import { SiteHeader } from "@/components/site-header";
 
 export const updated = "29 October 2026";
 
@@ -8,10 +8,7 @@ export const updated = "29 October 2026";
 export function LegalPage({ title, children }: { title: string; children: ReactNode }) {
   return (
     <main className="mx-auto grid w-full max-w-2xl gap-8 px-5 py-12">
-      <Link href="/" className="flex items-center gap-2.5 justify-self-start font-display text-xl font-extrabold tracking-tight">
-        <LogoMark className="size-9" />
-        SocialReins
-      </Link>
+      <SiteHeader />
       <div className="grid gap-2">
         <h1 className="font-display text-4xl font-extrabold tracking-tight">{title}</h1>
         <p className="text-ink-soft">Last updated {updated}</p>

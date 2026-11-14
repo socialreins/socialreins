@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { LogoMark } from "@/components/logo";
-import { SocialsMenu } from "@/components/socials-menu";
+import { SiteHeader } from "@/components/site-header";
 import { network, networks } from "@/lib/networks";
 import { publicPage } from "@/lib/seo";
 
@@ -21,15 +20,7 @@ export function NetworkPage({ slug }: { slug: string }) {
   const n = network(slug)!;
   return (
     <main className="mx-auto grid w-full max-w-3xl gap-8 px-5 py-12">
-      <header className="relative flex items-center justify-between gap-3">
-        <Link href="/" className="flex items-center gap-2.5 font-display text-xl font-extrabold tracking-tight">
-          <LogoMark className="size-9" />
-          SocialReins
-        </Link>
-        <nav aria-label="Site">
-          <SocialsMenu className={`${link} whitespace-nowrap`} />
-        </nav>
-      </header>
+      <SiteHeader />
       <div className="grid gap-2">
         <h1 className="font-display text-4xl font-extrabold tracking-tight">What you can post to {n.name}</h1>
         <p className="text-ink-soft">

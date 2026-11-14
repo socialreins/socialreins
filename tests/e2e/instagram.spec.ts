@@ -80,3 +80,14 @@ test("a network page has the Socials menu, and choosing a network closes it", as
   await expect(page.getByRole("heading", { name: "What you can post to YouTube", level: 1 })).toBeVisible();
   await expect(nav.getByRole("link", { name: "TikTok" })).toBeHidden();
 });
+
+test("every public page has the same menu bar", async ({ page }) => {
+  await page.route("**/auth/me", (route) => route.fulfill({ status: 401, json: { error: "unauthorized" } }));
+  for (const path of ["/", "/x", "/post-types", "/pricing", "/compare", "/compare/buffer", "/privacy", "/contact"]) {
+    await page.goto(path);
+    const nav = page.getByRole("navigation", { name: "Site" });
+    await expect(nav.getByText("Socials", { exact: true }), path).toBeVisible();
+    await expect(nav.getByRole("link", { name: "Get started" }), path).toHaveAttribute("href", "/signup");
+    await expect(nav.getByRole("link", { name: /GitHub/ }), path).toBeVisible();
+  }
+});

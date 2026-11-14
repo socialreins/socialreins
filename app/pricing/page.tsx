@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { LogoMark } from "@/components/logo";
+import { SiteHeader } from "@/components/site-header";
 import { publicPage } from "@/lib/seo";
 
 export const metadata: Metadata = {
@@ -55,10 +55,7 @@ const questions: [string, string][] = [
 export default function Pricing() {
   return (
     <main className="mx-auto grid w-full max-w-4xl gap-10 px-5 py-12">
-      <Link href="/" className="flex items-center gap-2.5 justify-self-start font-display text-xl font-extrabold tracking-tight">
-        <LogoMark className="size-9" />
-        SocialReins
-      </Link>
+      <SiteHeader />
       <div className="grid max-w-2xl gap-2">
         <h1 className="font-display text-4xl font-extrabold tracking-tight">Pricing</h1>
         <p className="text-ink-soft">SocialReins Cloud is the standard way to use it: we run everything. If you want it free, run it yourself.</p>
