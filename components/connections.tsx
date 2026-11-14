@@ -134,6 +134,7 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
   const [sets, setSets] = useState<SocialSet[] | Failure | null>(null);
   const [adding, setAdding] = useState(false);
   const [settingsId, setSettingsId] = useState<string | null>(null);
+  const [currentSet] = useCurrentSet();
   const { problem, done, run } = useAction();
   const headingRef = useRef<HTMLHeadingElement>(null);
   // How an OAuth connect went, from brain's redirect back here. The shell renders this page in the browser only.
@@ -169,7 +170,11 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
   const announce = (text: string) => run("notice", async () => "ok" as const, () => text);
   const opened = Array.isArray(list) ? list.find((c) => c.id === settingsId) : undefined;
   // One network at a time, as tabs. The first one, or the one just connected, until a tab is picked.
-  const groups = Array.isArray(list) ? byNetwork(list) : [];
+  // Only the accounts of the set picked in the top bar. Default holds every account, so it shows them all;
+  // until the sets load, or if the picked one is gone, nothing is filtered.
+  const picked = Array.isArray(sets) ? sets.find((s) => s.id === currentSet) : undefined;
+  const shown = Array.isArray(list) ? (picked ? list.filter((c) => c.set_ids.includes(picked.id)) : list) : [];
+  const groups = byNetwork(shown);
   const group = groups.find((g) => g.id === tab) ?? groups[0];
   function onTabKey(e: KeyboardEvent<HTMLDivElement>) {
     const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
@@ -186,7 +191,9 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
           <h2 id="accounts-heading" ref={headingRef} tabIndex={-1} className={heading}>
             Connected accounts
           </h2>
-          <p className="text-ink-soft">Accounts connected to {team}.</p>
+          <p className="text-ink-soft">
+            {picked && !picked.is_default ? `Accounts in the ${picked.name} set. Pick Default at the top to see every account in ${team}.` : `Accounts connected to ${team}.`}
+          </p>
         </div>
         {canManage && (
           <button type="button" className="btn btn-primary btn-sm" onClick={() => setAdding(true)}>
@@ -214,6 +221,10 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
         </p>
       ) : list.length === 0 ? (
         <p className="card p-5 text-ink-soft">No accounts connected yet.{canManage ? " Use Add account to connect one." : ""}</p>
+      ) : !group ? (
+        <p className="card p-5 text-ink-soft">
+          No accounts in the {picked?.name} set yet.{canManage ? " Use Add account to connect one to it, or pick Default to add an existing account from its settings." : ""}
+        </p>
       ) : (
         <div className="grid gap-4">
           <div role="tablist" aria-label="Networks" className="flex gap-1 overflow-x-auto border-b border-[var(--line)]" onKeyDown={onTabKey}>
