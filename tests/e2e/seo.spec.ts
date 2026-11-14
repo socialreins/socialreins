@@ -14,6 +14,14 @@ test("robots.txt allows crawling and names the sitemap", async ({ request }) => 
   expect(body).toContain("Sitemap: https://socialreins.com/sitemap.xml");
 });
 
+test("pages tell browsers to stay on https", async ({ request }) => {
+  for (const path of ["/", "/login", "/docs"]) {
+    const headers = (await request.get(path)).headers();
+    expect(headers["strict-transport-security"], path).toBe("max-age=31536000");
+    expect(headers["x-content-type-options"], path).toBe("nosniff");
+  }
+});
+
 test("the sitemap lists the public pages and no app page", async ({ request }) => {
   const body = await (await request.get("/sitemap.xml")).text();
   const urls = [...body.matchAll(/<loc>(.*?)<\/loc>/g)].map((m) => m[1]);

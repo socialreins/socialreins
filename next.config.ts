@@ -20,6 +20,10 @@ const nextConfig: NextConfig = {
       headers: [
         { key: "X-Content-Type-Options", value: "nosniff" },
         { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+        // Browsers ignore this over plain http, so a local or http-only install is unaffected.
+        // Once seen over https it holds for the hostname on every port for a year.
+        // No includeSubDomains: a self-hoster's other subdomains are not ours to decide for.
+        { key: "Strict-Transport-Security", value: "max-age=31536000" },
       ],
     },
   ],
