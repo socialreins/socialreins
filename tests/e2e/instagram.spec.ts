@@ -88,6 +88,6 @@ test("every public page has the same menu bar", async ({ page }) => {
     const nav = page.getByRole("navigation", { name: "Site" });
     await expect(nav.getByText("Socials", { exact: true }), path).toBeVisible();
     await expect(nav.getByRole("link", { name: "Get started" }), path).toHaveAttribute("href", "/signup");
-    await expect(nav.getByRole("link", { name: /GitHub/ }), path).toBeVisible();
+    await expect(nav.getByText("GitHub", { exact: true }), path).toBeVisible();
   }
 });

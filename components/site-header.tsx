@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { GitHubLink } from "@/components/github-link";
+import { GitHubMenu } from "@/components/github-link";
 import { LogoMark } from "@/components/logo";
 import { SessionLink } from "@/components/session-link";
 import { SocialsMenu } from "@/components/socials-menu";
@@ -17,11 +17,9 @@ export function SiteHeader({ className = "" }: { className?: string }) {
       </Link>
       <nav aria-label="Site" className="flex items-center gap-4 sm:gap-6">
         <SocialsMenu className={navLink} />
-        <GitHubLink
-          label="GitHub"
-          mark
-          className="rounded-full border-2 border-ink px-3.5 py-1.5 font-bold hover:bg-ink hover:text-paper max-sm:hidden"
-        />
+        <div className="max-sm:hidden">
+          <GitHubMenu className="rounded-full border-2 border-ink px-3.5 py-1.5 font-bold hover:bg-ink hover:text-paper" />
+        </div>
         <SessionLink className={navLink} />
       </nav>
     </header>

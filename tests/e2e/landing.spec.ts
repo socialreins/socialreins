@@ -81,22 +81,30 @@ test("the waitlist verify page explains a bad link, a missing token and other fa
   await expect(page.getByRole("status").filter({ hasText: /couldn't be confirmed. Try again/ })).toBeVisible();
 });
 
-test("the header GitHub link shows the GitHub mark and opens the main repo", async ({ page }) => {
+test("the header GitHub menu shows the GitHub mark and lists the main repo and the brain", async ({ page }) => {
   await page.route("**/auth/me", (route) => route.fulfill({ status: 401, json: { error: "unauthorized" } }));
   await page.goto("/");
-  const link = page.getByRole("banner").getByRole("link", { name: /GitHub/ });
-  await expect(link).toHaveAttribute("href", "https://github.com/socialreins/socialreins");
-  // Both GitHub buttons open a new tab, so the landing page stays open.
-  await expect(link).toHaveAttribute("target", "_blank");
+  const banner = page.getByRole("banner");
+  const menu = banner.locator("summary", { hasText: "GitHub" });
+  await expect(menu.locator("svg").first()).toBeVisible();
+  await expect(banner.getByRole("link", { name: /Brain/ })).toBeHidden();
+  await menu.click();
+  // Every GitHub link opens a new tab, so the landing page stays open.
+  for (const [name, repo] of [["SocialReins", "socialreins"], ["Brain", "brain"]]) {
+    const link = banner.getByRole("link", { name: new RegExp(`^${name}`) }).last();
+    await expect(link).toHaveAttribute("href", `https://github.com/socialreins/${repo}`);
+    await expect(link).toHaveAttribute("target", "_blank");
+  }
+  await page.keyboard.press("Escape");
+  await expect(banner.getByRole("link", { name: /Brain/ })).toBeHidden();
   await expect(page.getByRole("main").getByRole("link", { name: /Star on GitHub/ })).toHaveAttribute("target", "_blank");
-  await expect(link.locator("svg")).toHaveCount(1);
 });
 
-test("both GitHub buttons show the same org-wide star total", async ({ page }) => {
+test("the GitHub menu and the Star button show the same org-wide star total", async ({ page }) => {
   await page.route("**/auth/me", (route) => route.fulfill({ status: 401, json: { error: "unauthorized" } }));
   await page.goto("/");
   // The count comes from GitHub at build time, so it may be absent (rate limit), but never differs.
-  const header = await page.getByRole("banner").getByRole("link", { name: /GitHub/ }).locator(".sr-only").allTextContents();
+  const header = await page.getByRole("banner").locator("summary", { hasText: "GitHub" }).locator(".sr-only").allTextContents();
   const hero = page.getByRole("main").getByRole("link", { name: /Star on GitHub/ });
   expect(await hero.locator(".sr-only").allTextContents()).toEqual(header);
 });
