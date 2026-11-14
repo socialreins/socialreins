@@ -347,6 +347,17 @@ test("the set switcher shows only on the pages the set filters, with no visible 
 test("the top bar fits a phone, with the plan in the team menu", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await brain(page);
+  // Long names are cut short on a phone, so the page title keeps room next to them.
+  const long = { ...user.current_team, name: "The Very Long Named Marketing Collective" };
+  await page.route("**/auth/me", (route) => route.fulfill({ json: { ...user, current_team: long } }));
+  const set = { id: "d", name: "Every single account we have ever connected", is_default: true, account_ids: [], account_count: 0, created_at: "2026-10-01T10:00:00Z", deleted_at: null };
+  await page.route(/\/v1\/social-sets(\?.*)?$/, (route) => route.fulfill({ json: [set] }));
+  await page.goto("/calendar");
+  const title = page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("heading", { name: "Calendar", level: 1 });
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: `Set: ${set.name}` })).toBeVisible();
+  expect(await title.evaluate((el) => el.scrollWidth <= el.clientWidth), "the title is not cut").toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.route("**/auth/me", (route) => route.fulfill({ json: user }));
   for (const path of ["/posts", "/team", "/security"]) {
     await page.goto(path);
     await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "Acme", exact: true })).toBeVisible();

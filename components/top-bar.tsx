@@ -135,7 +135,7 @@ function TeamMenu() {
           <span aria-hidden="true" className="grid size-6 shrink-0 place-items-center rounded-md bg-signal-deep text-xs font-bold text-paper">
             {current.name.charAt(0).toUpperCase()}
           </span>
-          <span className="max-w-48 truncate" title={current.name}>
+          <span className="max-w-16 truncate sm:max-w-48" title={current.name}>
             {current.name}
           </span>
         </>
@@ -273,7 +273,7 @@ function SetMenu({ path }: { path: string }) {
   );
 
   return (
-    <Menu id="set-menu" label={`Set: ${name}`} onOpen={() => listSets().then(setSets)} trigger={<span className="truncate">{name}</span>}>
+    <Menu id="set-menu" label={`Set: ${name}`} onOpen={() => listSets().then(setSets)} trigger={<span className="max-w-16 truncate sm:max-w-48" title={name}>{name}</span>}>
       <p className="px-2 pt-1 pb-1.5 text-xs text-ink-soft">Work in one set at a time.</p>
       {isFailure(sets) && (
         <p role="alert" className="waitlist-error px-2">

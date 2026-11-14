@@ -165,7 +165,6 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
         <p role="status" className="sr-only">
           Checking your sign-in...
         </p>
-        <div className="h-9 w-48 rounded-xl bg-ink/5 motion-safe:animate-pulse" />
         <div className="h-64 rounded-2xl bg-ink/5 motion-safe:animate-pulse" />
         <div className="h-24 rounded-2xl bg-ink/5 motion-safe:animate-pulse" />
       </div>

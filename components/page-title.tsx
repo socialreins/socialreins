@@ -22,7 +22,7 @@ export function PageTitle({ title, back }: { title: string; back?: { href: strin
           <span aria-hidden="true" className="hidden text-[var(--line)] sm:block">/</span>
         </>
       )}
-      <h1 aria-current="page" className="truncate px-2 font-bold">
+      <h1 aria-current="page" className="truncate px-2 font-bold" title={title}>
         {title}
       </h1>
     </>,
