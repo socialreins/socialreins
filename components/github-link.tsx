@@ -1,4 +1,5 @@
 import { cacheLife } from "next/cache";
+import { Menu } from "@/components/menu";
 import { fetchStars, formatStars, org } from "@/lib/github";
 
 // Star counts refresh four times a day; a failed fetch (GitHub rate limit) retries in minutes instead.
@@ -17,24 +18,16 @@ const githubMark =
 export async function GitHubLink({
   label,
   className,
-  mark = false,
 }: {
   label: string;
   className: string;
-  // The GitHub mark, with the label kept for screen readers only on small screens, for the site header.
-  mark?: boolean;
 }) {
   const stars = await getStars();
   const total = stars?.total ?? null;
 
   return (
     <a href={`${org}/socialreins`} target="_blank" rel="noopener noreferrer" className={`inline-flex items-center gap-2 whitespace-nowrap ${className}`}>
-      {mark && (
-        <svg viewBox="0 0 24 24" className="size-5" aria-hidden="true" fill="currentColor">
-          <path d={githubMark} />
-        </svg>
-      )}
-      <span className={mark ? "max-sm:sr-only" : undefined}>{label}</span>
+      {label}
       {total !== null && (
         <span className="border-l border-current/25 pl-2 text-sm">
           <span aria-hidden="true">★ {formatStars(total)}</span>
@@ -42,5 +35,47 @@ export async function GitHubLink({
         </span>
       )}
     </a>
+  );
+}
+
+// The header's "GitHub" menu: the repos worth opening, each with its own stars, under the org-wide total.
+const repos = [
+  { name: "socialreins", title: "SocialReins", about: "The website and the app" },
+  { name: "brain", title: "Brain", about: "The API and MCP server" },
+];
+
+export async function GitHubMenu({ className }: { className: string }) {
+  const stars = await getStars();
+  const count = (n: number) => (
+    <>
+      <span aria-hidden="true">★ {formatStars(n)}</span>
+      <span className="sr-only">, {n === 1 ? "1 star" : `${n} stars`}</span>
+    </>
+  );
+  return (
+    <Menu
+      className={`whitespace-nowrap ${className}`}
+      summary={
+        <>
+          <svg viewBox="0 0 24 24" className="size-5" aria-hidden="true" fill="currentColor">
+            <path d={githubMark} />
+          </svg>
+          GitHub
+          {stars && <span className="border-l border-current/25 pl-2 text-sm">{count(stars.total)}</span>}
+        </>
+      }
+    >
+      {repos.map((r) => (
+        <li key={r.name}>
+          <a href={`${org}/${r.name}`} target="_blank" rel="noopener noreferrer" className="flex items-baseline justify-between gap-3 rounded-lg px-2.5 py-2 hover:bg-ink/5">
+            <span className="grid">
+              <span className="font-bold">{r.title}</span>
+              <span className="text-sm text-ink-soft">{r.about}</span>
+            </span>
+            {stars?.byRepo[r.name] !== undefined && <span className="text-sm whitespace-nowrap">{count(stars.byRepo[r.name])}</span>}
+          </a>
+        </li>
+      ))}
+    </Menu>
   );
 }
