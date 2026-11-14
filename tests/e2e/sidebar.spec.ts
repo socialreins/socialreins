@@ -129,7 +129,9 @@ test("the profile page shows the user, with links to security", async ({ page })
   await brain(page);
   await page.goto("/profile");
   const main = page.getByRole("main");
-  await expect(main.getByRole("heading", { name: "Profile", level: 1 })).toBeVisible();
+  // The top bar holds the page's one title; the page does not repeat it.
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("heading", { name: "Profile", level: 1 })).toBeVisible();
+  await expect(main.getByRole("heading", { level: 1 })).toHaveCount(0);
   await expect(main.getByText("Mira", { exact: true })).toBeVisible();
   await expect(main.getByText("me@example.com")).toBeVisible();
   await expect(main.getByLabel("Name", { exact: true })).toHaveValue("Mira");
@@ -345,13 +347,35 @@ test("the set switcher shows only on the pages the set filters, with no visible 
 test("the top bar fits a phone, with the plan in the team menu", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await brain(page);
-  for (const path of ["/posts", "/team"]) {
+  for (const path of ["/posts", "/team", "/security"]) {
     await page.goto(path);
     await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "Acme", exact: true })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("heading", { level: 1 })).toBeInViewport();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), path).toBe(true);
   }
   await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "Acme", exact: true }).click();
   await expect(page.locator("#team-menu").getByRole("link", { name: "Upgrade" })).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("a page one level down shows its parent as a crumb, and as a link on the page on a phone", async ({ page }) => {
+  await brain(page);
+  await page.goto("/posts/new");
+  const crumbs = page.getByRole("navigation", { name: "Breadcrumb" });
+  const main = page.getByRole("main");
+  await expect(crumbs.getByRole("heading", { name: "New post", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
+  await expect(main.getByRole("link", { name: "Posts", exact: true })).toBeHidden();
+  await crumbs.getByRole("link", { name: "Posts", exact: true }).click();
+  await expect(page).toHaveURL("/posts");
+  await expect(crumbs.getByRole("heading", { name: "Posts", level: 1 })).toBeVisible();
+  await expect(crumbs.getByRole("link", { name: "Posts", exact: true })).toHaveCount(0);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/posts/new");
+  await expect(crumbs.getByRole("heading", { name: "New post", level: 1 })).toBeInViewport();
+  await expect(crumbs.getByRole("link", { name: "Posts", exact: true })).toBeHidden();
+  await expect(main.getByRole("link", { name: "Posts", exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 

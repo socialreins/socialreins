@@ -16,7 +16,7 @@ const item = "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left ho
 
 // Above every app page: the sidebar toggle, then where you are as Team / Set / page; the team and the set each open a menu to switch.
 // The set is a filter, so it shows only on the pages it filters; the plan sits at the foot of the team menu.
-export function TopBar({ session, admin, pages, collapsed, onToggle }: { session: boolean; admin: boolean; pages: NavItem[]; collapsed: boolean; onToggle: () => void }) {
+export function TopBar({ session, admin, pages, collapsed, onToggle, titleRef }: { session: boolean; admin: boolean; pages: NavItem[]; collapsed: boolean; onToggle: () => void; titleRef: (el: HTMLElement | null) => void }) {
   return (
     <header className="flex h-12 items-center gap-1 border-b border-[var(--line)] bg-paper px-3 text-sm sm:px-6 md:sticky md:top-0 md:z-[5]">
       <button
@@ -49,27 +49,13 @@ export function TopBar({ session, admin, pages, collapsed, onToggle }: { session
                 </Suspense>
               </>
             )}
-            <Suspense fallback={null}>
-              <PageCrumb pages={pages} />
-            </Suspense>
+            {/* The page puts its own title here (PageTitle), so the bar names the page and the page does not repeat it. */}
+            <li aria-hidden="true" className="text-[var(--line)]">/</li>
+            <li ref={titleRef} className="flex min-w-0 items-center gap-0.5" />
           </ol>
         </nav>
       )}
     </header>
-  );
-}
-
-function PageCrumb({ pages }: { pages: NavItem[] }) {
-  const path = usePathname();
-  const page = pages.find((p) => isActive(path, p.href));
-  if (!page) return null;
-  return (
-    <>
-      <li aria-hidden="true" className="hidden text-[var(--line)] sm:block">/</li>
-      <li className="hidden truncate px-2 text-ink-soft sm:block">
-        <span aria-current="page">{page.label}</span>
-      </li>
-    </>
   );
 }
 

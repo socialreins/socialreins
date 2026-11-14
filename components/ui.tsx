@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { PageTitle } from "@/components/page-title";
 
 // Line icons on a 24x24 grid, drawn for the app. Decorative: every icon sits next to text or an aria-label.
 const paths = {
@@ -47,20 +48,19 @@ export function Icon({ name, className = "size-5" }: { name: IconName; className
   );
 }
 
-// A page's title with its main action on the right; `back` adds a link up one level.
+// A page's title, shown in the top bar (`PageTitle`), with its main action on the right of the page.
+// `back` is the page one level up: a crumb in the top bar, and a link on the page on phones, where the bar has no room for it.
 export function PageHeader({ title, back, children }: { title: string; back?: { href: string; label: string }; children?: ReactNode }) {
   return (
-    <div className="mb-6 grid gap-1">
+    <>
+      <PageTitle title={title} back={back} />
       {back && (
-        <Link href={back.href} className="flex items-center gap-1 justify-self-start text-sm font-bold text-ink-soft hover:text-ink">
+        <Link href={back.href} className={`flex items-center gap-1 text-sm font-bold text-ink-soft hover:text-ink sm:hidden ${children ? "mb-1" : "mb-6"}`}>
           <Icon name="left" className="size-4" />
           {back.label}
         </Link>
       )}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-display text-3xl font-bold tracking-tight">{title}</h1>
-        {children && <div className="flex flex-wrap items-center gap-2">{children}</div>}
-      </div>
-    </div>
+      {children && <div className="mb-6 flex flex-wrap items-center justify-end gap-2">{children}</div>}
+    </>
   );
 }
