@@ -219,7 +219,7 @@ test("shows the accounts of the set picked in the top bar", async ({ page }) => 
   const fb = { ...alice, id: "f1", provider: "facebook", handle: null, display_name: "Page One", avatar_url: null };
   const bob = { ...alice, id: "c2", handle: "bob.bsky.social", display_name: "Bob", avatar_url: null };
   await signedIn(page, "owner");
-  await page.route("**/v1/connections", (route) => route.fulfill({ json: [{ ...alice, set_ids: ["s1", "s2"] }, bob, fb] }));
+  await page.route("**/v1/connections", (route) => route.fulfill({ json: [{ ...alice, set_ids: ["s1", "s2"] }, bob, { ...fb, set_ids: ["s1", "s2"] }] }));
   const set = (id: string, name: string) => ({ id, name, is_default: id === "s1", account_ids: [], account_count: 0, created_at: "2026-10-01T10:00:00Z", deleted_at: null });
   // The default set is told by `is_default`, whatever the team named it.
   await page.route(/\/v1\/social-sets$/, (route) => route.fulfill({ json: [set("s1", "Everything"), set("s2", "English"), set("s3", "Spanish")] }));
@@ -237,9 +237,10 @@ test("shows the accounts of the set picked in the top bar", async ({ page }) => 
   await tabs.nth(1).click();
   await expect(cards).toHaveCount(2);
 
-  // English holds Alice only; the Bluesky tab stays picked, and Facebook, with no account in it, is gone.
+  // English holds Alice and the Page, not Bob; the Bluesky tab stays picked.
   await pick("Everything", "English");
-  await expect(tabs).toHaveText([/^Bluesky\s*1$/]);
+  await expect(tabs).toHaveText([/^Facebook\s*1$/, /^Bluesky\s*1$/]);
+  await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
   await expect(cards).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Settings for Alice" })).toBeVisible();
   await expect(page.getByText("Accounts in the English set. Pick Everything at the top to see every account in Acme.")).toBeVisible();
@@ -249,13 +250,15 @@ test("shows the accounts of the set picked in the top bar", async ({ page }) => 
   await expect(page.getByText("No accounts in the Spanish set yet. Use Add account to connect one to it, or pick Everything at the top and add an existing account from the account's settings.")).toBeVisible();
   await expect(page.getByRole("tablist")).toHaveCount(0);
 
-  // Taking an account out of the picked set removes its card, and the page says what was saved.
+  // Taking an account out of the picked set removes its card and its network's tab, and the page says what was saved.
   await pick("Spanish", "English");
   await openSettings(page, "Alice");
   await page.getByRole("group", { name: "Sets" }).getByRole("checkbox", { name: "English" }).uncheck();
   await page.getByRole("button", { name: "Save sets" }).click();
-  await expect(page.getByText("Sets saved for Alice.")).toBeVisible();
-  await expect(page.getByText("No accounts in the English set yet.")).toBeVisible();
+  await expect(page.getByText("Sets saved for Alice.")).toBeFocused();
+  await expect(tabs).toHaveText([/^Facebook\s*1$/]);
+  await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("button", { name: "Settings for Page One" })).toBeVisible();
 
   await pick("English", "Everything");
   await expect(tabs).toHaveText([/^Facebook\s*1$/, /^Bluesky\s*2$/]);

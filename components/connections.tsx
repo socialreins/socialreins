@@ -161,10 +161,13 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
       }
       setList(l);
     });
-    listSets().then(setSets);
     // Drop the flags so a reload doesn't show the message again.
     if (connectResult(search) || metaPickPending(search)) window.history.replaceState(null, "", window.location.pathname);
   }, []);
+  // Loaded again on each pick, like the top bar's menu, so a set made or renamed elsewhere is known here too.
+  useEffect(() => {
+    listSets().then(setSets);
+  }, [currentSet]);
 
   // What a closed dialog did, shown (and focused) on the page behind it.
   const announce = (text: string) => run("notice", async () => "ok" as const, () => text);
@@ -175,7 +178,7 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
   const picked = Array.isArray(sets) ? sets.find((s) => s.id === currentSet) : undefined;
   // The default set under the name the team gave it, for the hints on how to see every account.
   const everything = Array.isArray(sets) ? sets.find((s) => s.is_default)?.name : undefined;
-  const shown = Array.isArray(list) ? (picked ? list.filter((c) => c.set_ids.includes(picked.id)) : list) : [];
+  const shown = Array.isArray(list) ? (picked && !picked.is_default ? list.filter((c) => c.set_ids.includes(picked.id)) : list) : [];
   const groups = byNetwork(shown);
   const group = groups.find((g) => g.id === tab) ?? groups[0];
   function onTabKey(e: KeyboardEvent<HTMLDivElement>) {
