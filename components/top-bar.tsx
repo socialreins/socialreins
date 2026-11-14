@@ -13,8 +13,8 @@ import { isFailure, problemText, roleName, Status, useAction } from "@/component
 const crumb = "flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 font-bold hover:bg-ink/[0.045]";
 const item = "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-ink/[0.045]";
 
-// Above every app page: the sidebar toggle, then where you are as Team / Set / page; the team and the set each open a menu to switch.
-// The set is a filter, so it shows only on the pages it filters; the plan sits at the foot of the team menu.
+// Above every app page: the sidebar toggle, then where you are as Set / page. The team switcher is at the top of the sidebar.
+// The set is a filter, so it shows only on the pages it filters.
 export function TopBar({ session, admin, pages, collapsed, onToggle, titleRef }: { session: boolean; admin: boolean; pages: NavItem[]; collapsed: boolean; onToggle: () => void; titleRef: (el: HTMLElement | null) => void }) {
   return (
     <header className="flex h-12 items-center gap-1 border-b border-[var(--line)] bg-paper px-3 text-sm sm:px-6 md:sticky md:top-0 md:z-[5]">
@@ -33,23 +33,20 @@ export function TopBar({ session, admin, pages, collapsed, onToggle, titleRef }:
         <nav aria-label="Breadcrumb" className="min-w-0">
           <ol className="flex min-w-0 items-center gap-0.5">
             {admin ? (
-              <li className="min-w-0">
-                <Link href="/admin" className={crumb}>
-                  Admin console
-                </Link>
-              </li>
-            ) : (
               <>
-                <li className="flex min-w-0 items-center">
-                  <TeamMenu />
+                <li className="min-w-0">
+                  <Link href="/admin" className={crumb}>
+                    Admin console
+                  </Link>
                 </li>
-                <Suspense fallback={null}>
-                  <TeamSets pages={pages} />
-                </Suspense>
+                <li aria-hidden="true" className="text-[var(--line)]">/</li>
               </>
+            ) : (
+              <Suspense fallback={null}>
+                <TeamSets pages={pages} />
+              </Suspense>
             )}
             {/* The page puts its own title here (PageTitle), so the bar names the page and the page does not repeat it. */}
-            <li aria-hidden="true" className="text-[var(--line)]">/</li>
             <li ref={titleRef} className="flex min-w-0 items-center gap-0.5" />
           </ol>
         </nav>
@@ -59,14 +56,14 @@ export function TopBar({ session, admin, pages, collapsed, onToggle, titleRef }:
 }
 
 // A button that opens a small panel under it (a native popover: Escape and clicking outside close it).
-function Menu({ id, label, trigger, onOpen, children }: { id: string; label?: string; trigger: ReactNode; onOpen?: () => void; children: ReactNode }) {
+function Menu({ id, label, trigger, onOpen, children, className = crumb, chevron = "" }: { id: string; label?: string; trigger: ReactNode; onOpen?: () => void; children: ReactNode; className?: string; chevron?: string }) {
   const button = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   return (
     <>
-      <button ref={button} type="button" popoverTarget={id} aria-label={label} className={crumb}>
+      <button ref={button} type="button" popoverTarget={id} aria-label={label} className={className}>
         {trigger}
-        <Icon name="down" className="size-3.5 text-[var(--faint)]" />
+        <Icon name="down" className={`size-3.5 shrink-0 text-[var(--faint)] ${chevron}`} />
       </button>
       <div
         ref={panel}
@@ -90,8 +87,8 @@ function Menu({ id, label, trigger, onOpen, children }: { id: string; label?: st
 
 const hide = (id: string) => (document.getElementById(id) as HTMLElement | null)?.hidePopover();
 
-// The team switcher, first in the breadcrumb.
-function TeamMenu() {
+// The team switcher at the top of the sidebar: the team with its plan under the name, or only the avatar on the icon rail.
+export function TeamMenu({ collapsed }: { collapsed: boolean }) {
   const { user, setTeam } = useSession();
   const current = user.current_team;
   const [teams, setTeams] = useState<Team[] | Failure | null>(null);
@@ -128,14 +125,21 @@ function TeamMenu() {
   return (
     <Menu
       id="team-menu"
+      label={collapsed ? `Team: ${current.name}` : undefined}
+      className={`flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-ink/[0.045] ${collapsed ? "md:justify-center md:px-0" : ""}`}
+      chevron={collapsed ? "md:hidden" : ""}
       onOpen={() => listTeams().then(setTeams)}
       trigger={
         <>
-          <span aria-hidden="true" className="grid size-6 shrink-0 place-items-center rounded-md bg-signal-deep text-xs font-bold text-paper">
+          <span aria-hidden="true" className="grid size-7 shrink-0 place-items-center rounded-md bg-signal-deep text-xs font-bold text-paper">
             {current.name.charAt(0).toUpperCase()}
           </span>
-          <span className="max-w-16 truncate sm:max-w-48" title={current.name}>
-            {current.name}
+          <span className={`grid min-w-0 flex-1 leading-tight ${collapsed ? "md:sr-only" : ""}`}>
+            <span className="truncate font-semibold" title={current.name}>
+              {current.name}
+            </span>
+            {/* Every team is on Free until billing exists. */}
+            <span className="truncate text-xs text-[var(--faint)]">Free plan</span>
           </span>
         </>
       }
@@ -230,10 +234,10 @@ function TeamSets({ pages }: { pages: NavItem[] }) {
   const hidden = pages.find((p) => isActive(path, p.href))?.set ? "" : "hidden";
   return (
     <>
-      <li aria-hidden="true" className={`text-[var(--line)] ${hidden}`}>/</li>
       <li className={`min-w-0 ${hidden}`}>
         <SetMenu key={team} path={path} />
       </li>
+      <li aria-hidden="true" className={`text-[var(--line)] ${hidden}`}>/</li>
     </>
   );
 }
@@ -272,7 +276,7 @@ function SetMenu({ path }: { path: string }) {
   );
 
   return (
-    <Menu id="set-menu" label={`Set: ${name}`} onOpen={() => listSets().then(setSets)} trigger={<span className="max-w-16 truncate sm:max-w-48" title={name}>{name}</span>}>
+    <Menu id="set-menu" label={`Set: ${name}`} onOpen={() => listSets().then(setSets)} trigger={<span className="max-w-32 truncate sm:max-w-48" title={name}>{name}</span>}>
       <p className="px-2 pt-1 pb-1.5 text-xs text-ink-soft">Work in one set at a time.</p>
       {isFailure(sets) && (
         <p role="alert" className="waitlist-error px-2">

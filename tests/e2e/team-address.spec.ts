@@ -24,7 +24,8 @@ async function brain(page: Page) {
   });
   return sent;
 }
-const crumb = (page: Page) => page.getByRole("navigation", { name: "Breadcrumb" });
+// The team switcher, at the top of the sidebar.
+const switcher = (page: Page) => page.locator("aside button[popovertarget=team-menu]");
 
 test("an old address leads to the current team's, keeping the path and the query", async ({ page }) => {
   await brain(page);
@@ -45,14 +46,14 @@ test("an old address leads to the current team's, keeping the path and the query
 test("a link to another team of mine opens that team, and every call names it", async ({ page }) => {
   const sent = await brain(page);
   await page.goto("/t/beta33/posts");
-  await expect(crumb(page).getByRole("button", { name: "Beta", exact: true })).toBeVisible();
+  await expect(switcher(page)).toContainText("Beta");
   await expect(page).toHaveURL("/t/beta33/posts");
   await expect(page.locator("aside").getByRole("link", { name: "Calendar" })).toHaveAttribute("href", "/t/beta33/calendar");
   await expect.poll(() => sent.some(([path]) => path === "/v1/posts")).toBe(true);
   expect(sent.filter(([, code]) => code !== "beta33")).toEqual([]);
   // The code is read in any case.
   await page.goto("/t/BETA33/home");
-  await expect(crumb(page).getByRole("button", { name: "Beta", exact: true })).toBeVisible();
+  await expect(switcher(page)).toContainText("Beta");
 });
 
 test("a team I am not in and a code no team has show the same page not found", async ({ page }) => {
@@ -71,13 +72,14 @@ test("a team I am not in and a code no team has show the same page not found", a
 test("the team switcher stays on the same page under the other team's code", async ({ page }) => {
   const sent = await brain(page);
   await page.goto("/t/acme22/posts/new");
-  await crumb(page).getByRole("button", { name: "Acme", exact: true }).click();
+  await switcher(page).click();
   await page.locator("#team-menu").getByRole("button", { name: /Beta/ }).click();
   await expect(page.getByText("Switched to Beta.")).toBeFocused();
   // The section is kept; what follows it (a post id) belongs to the team left behind.
   await expect(page).toHaveURL("/t/beta33/posts");
   await expect(page.getByRole("heading", { name: "Posts", level: 1 })).toBeVisible();
   sent.length = 0;
+  await page.keyboard.press("Escape");
   await page.locator("aside").getByRole("link", { name: "Calendar" }).click();
   await expect(page).toHaveURL("/t/beta33/calendar");
   await expect.poll(() => sent.length).toBeGreaterThan(0);
@@ -86,17 +88,17 @@ test("the team switcher stays on the same page under the other team's code", asy
   await page.goBack();
   await page.goBack();
   await expect(page).toHaveURL("/t/acme22/posts/new");
-  await expect(crumb(page).getByRole("button", { name: "Acme", exact: true })).toBeVisible();
+  await expect(switcher(page)).toContainText("Acme");
 });
 
 test("profile and security stay outside /t/ and keep the tab's team", async ({ page }) => {
   const sent = await brain(page);
   await page.goto("/t/beta33/home");
-  await expect(crumb(page).getByRole("button", { name: "Beta", exact: true })).toBeVisible();
+  await expect(switcher(page)).toContainText("Beta");
   await page.getByRole("button", { name: /Me/ }).first().click();
   await page.getByRole("link", { name: "Profile" }).click();
   await expect(page).toHaveURL("/profile");
-  await expect(crumb(page).getByRole("button", { name: "Beta", exact: true })).toBeVisible();
+  await expect(switcher(page)).toContainText("Beta");
   await expect(page.locator("aside").getByRole("link", { name: "Posts" })).toHaveAttribute("href", "/t/beta33/posts");
   expect(sent.filter(([, code]) => code !== "beta33")).toEqual([]);
 });
