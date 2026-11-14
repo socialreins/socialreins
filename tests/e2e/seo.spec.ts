@@ -14,7 +14,7 @@ test("robots.txt allows crawling and names the sitemap", async ({ request }) => 
   expect(body).toContain("Sitemap: https://socialreins.com/sitemap.xml");
 });
 
-test("every page tells browsers to stay on https", async ({ request }) => {
+test("pages tell browsers to stay on https", async ({ request }) => {
   for (const path of ["/", "/login", "/docs"]) {
     const headers = (await request.get(path)).headers();
     expect(headers["strict-transport-security"], path).toBe("max-age=31536000");

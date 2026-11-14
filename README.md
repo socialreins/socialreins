@@ -144,7 +144,7 @@ npm run build && npm run test:e2e   # Playwright against the production build
 
 ## Deploy
 
-`Dockerfile` builds a standalone Next.js server; `railway.json` deploys it on Railway. Set `BRAIN_URL` at run time (production: `https://brain.socialreins.com`): `/config.js` hands it to the browser and `proxy.ts` puts its origin in the CSP, so one image serves any domain. Optional `INDEXNOW_KEY` serves `/indexnow.txt` for IndexNow pings (send `keyLocation=https://<your host>/indexnow.txt` with each ping); unset, it returns 404. `.github/workflows/image.yml` publishes the image to GHCR.
+`Dockerfile` builds a standalone Next.js server; `railway.json` deploys it on Railway. Set `BRAIN_URL` at run time (production: `https://brain.socialreins.com`): `/config.js` hands it to the browser and `proxy.ts` puts its origin in the CSP, so one image serves any domain. Every response carries `Strict-Transport-Security: max-age=31536000` (no `includeSubDomains`): browsers ignore it over plain http, and once they see it over https they use https for that hostname, on every port, for a year. Optional `INDEXNOW_KEY` serves `/indexnow.txt` for IndexNow pings (send `keyLocation=https://<your host>/indexnow.txt` with each ping); unset, it returns 404. `.github/workflows/image.yml` publishes the image to GHCR.
 
 ## Sponsor
 
