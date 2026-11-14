@@ -1,6 +1,6 @@
 # SocialReins
 
-> Open-source social media manager for Facebook, Instagram, Threads, LinkedIn, Bluesky, X, TikTok and YouTube. Join the cloud early access, or self-host it free.
+> Open-source social media manager for Facebook, Instagram, Threads, LinkedIn, Bluesky, X, TikTok and YouTube. Self-host it free today; the cloud is not open yet.
 
 - [Home](https://socialreins.com/): what SocialReins does and the waitlist
 - [Contact](https://socialreins.com/contact): send the team a message
@@ -16,7 +16,14 @@
 - [What you can post to YouTube](https://socialreins.com/youtube): post types and limits on YouTube
 - [What you can post to X](https://socialreins.com/x): post types and limits on X
 - [What you can post to TikTok](https://socialreins.com/tiktok): post types and limits on TikTok
-- [Pricing](https://socialreins.com/pricing): the hosted cloud version is the standard way and is in early access with no price set yet; self-hosting is free
+- [Pricing](https://socialreins.com/pricing): self-hosting is free; the cloud version is not open yet and has no price set
+- [Docs](https://socialreins.com/docs): guides for the self-hosted and cloud versions
+- [Install SocialReins on your own server](https://socialreins.com/docs/self-hosted): Docker Compose install, domains, platform apps, updates
+- [Connect accounts and publish, self-hosted](https://socialreins.com/docs/self-hosted/use)
+- [Connect an AI assistant to your own SocialReins](https://socialreins.com/docs/self-hosted/ai): MCP server and API tokens
+- [Get started with SocialReins Cloud](https://socialreins.com/docs/cloud): not open yet, waitlist
+- [Connect accounts and publish on SocialReins Cloud](https://socialreins.com/docs/cloud/use)
+- [Connect an AI assistant to SocialReins Cloud](https://socialreins.com/docs/cloud/ai): MCP server and API tokens
 - [Compare SocialReins](https://socialreins.com/compare): SocialReins next to other tools
 - [SocialReins vs PostSyncer](https://socialreins.com/compare/postsyncer)
 - [SocialReins vs Manychat](https://socialreins.com/compare/manychat)

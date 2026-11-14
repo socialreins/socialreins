@@ -5,7 +5,7 @@ import { flushSync } from "react-dom";
 import { joinWaitlist, waitlistCount, waitlistCountText, type WaitlistResult } from "@/lib/waitlist";
 
 const messages: Record<WaitlistResult, string> = {
-  joined: "You're on the waitlist for the hosted version. Check your email for a link to confirm your spot.",
+  joined: "You're on the waitlist for SocialReins Cloud. Check your email for a link to confirm your spot.",
   invalid: "That email address doesn't look right. Check it and try again.",
   rate_limited: "Too many attempts from this connection. Wait a minute, then try again.",
   timeout: "The waitlist took too long to answer. Try again in a moment.",
@@ -62,7 +62,7 @@ export function WaitlistForm() {
       {count !== null && <p className="waitlist-note">{waitlistCountText(count)}</p>}
       {!joined && (
         <p id="waitlist-note" className="waitlist-note">
-          SocialReins Cloud is in early access, free for now. It will be a paid subscription later.
+          SocialReins Cloud is not open yet. We email you when it is. It will be a paid subscription.
         </p>
       )}
       <p

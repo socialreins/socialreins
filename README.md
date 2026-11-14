@@ -10,7 +10,7 @@ along with sign-in, teams and self-hosting:
 - Group accounts into sets, and posts into ordered lists.
 - Drive it all from a REST API or an MCP server.
 
-Join the waitlist for SocialReins Cloud, in early access, or self-host it free. See [socialreins.com](https://socialreins.com).
+Self-host it free today: see the [docs](https://socialreins.com/docs). SocialReins Cloud is not open yet; join the waitlist at [socialreins.com](https://socialreins.com).
 
 This repo is the starting point: the website and the app, built with Next.js. One clone gets everything:
 

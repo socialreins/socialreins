@@ -20,6 +20,9 @@ export function SiteHeader({ className = "" }: { className?: string }) {
       </Link>
       <nav aria-label="Site" className="flex items-center gap-4 sm:gap-6">
         <SocialsMenu className={navLink} />
+        <Link href="/docs" className={navLink}>
+          Docs
+        </Link>
         <div className="max-sm:hidden">
           <GitHubMenu className="rounded-full border-2 border-ink px-3.5 py-1.5 font-bold hover:bg-ink hover:text-paper" />
         </div>
