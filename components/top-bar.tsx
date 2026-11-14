@@ -261,7 +261,7 @@ function SetMenu({ path }: { path: string }) {
     if (fallback) setCurrent(fallback.id);
   }, [current, sets, setCurrent]);
 
-  const name = (Array.isArray(sets) && sets.find((s) => s.id === current)?.name) || "Default";
+  const name = (Array.isArray(sets) && sets.find((s) => s.id === current)?.name) || "All sets";
   const pick = (id: string) => {
     setCurrent(id);
     hide("set-menu");

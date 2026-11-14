@@ -57,7 +57,7 @@ async function brain(page: Page, role: Role) {
   const state = { list: [automation("a1", "Price to DM", { runs: { count: 3, last_at: runs[0]!.created_at } })], bodies: [] as unknown[] };
   await page.route("**/auth/me", (route) => route.fulfill({ json: me(role) }));
   await page.route("**/v1/connections", (route) => route.fulfill({ json: [alice] }));
-  await page.route(/\/v1\/social-sets$/, (route) => route.fulfill({ json: [{ id: "d", name: "Default", is_default: true, account_ids: ["c1"], account_count: 1, created_at: "", deleted_at: null }] }));
+  await page.route(/\/v1\/social-sets$/, (route) => route.fulfill({ json: [{ id: "d", name: "All sets", is_default: true, account_ids: ["c1"], account_count: 1, created_at: "", deleted_at: null }] }));
   await page.route("**/v1/automations", (route) => {
     const req = route.request();
     if (req.method() === "POST") {

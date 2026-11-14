@@ -4,7 +4,7 @@ test.use({ timezoneId: "Europe/Berlin" });
 
 const me = { id: "u-me", email: "me@example.com", name: "Me", username: null, current_team: { id: "t1", name: "Acme", role: "member" } };
 const sets = [
-  { id: "d", name: "Default", is_default: true, account_ids: [], account_count: 0, created_at: "2026-10-01T10:00:00Z", deleted_at: null },
+  { id: "d", name: "All sets", is_default: true, account_ids: [], account_count: 0, created_at: "2026-10-01T10:00:00Z", deleted_at: null },
   { id: "s1", name: "Clients", is_default: false, account_ids: [], account_count: 0, created_at: "2026-10-01T10:00:00Z", deleted_at: null },
 ];
 type Ref = { id: string; name: string; position: number };

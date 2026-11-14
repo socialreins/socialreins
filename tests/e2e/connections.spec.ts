@@ -184,7 +184,7 @@ test("an account connected while a set is picked joins that set too", async ({ p
   const threadsOn = providers.map((p) => (p.provider === "threads" ? { ...p, configured: true } : p));
   await page.route("**/v1/connections/providers", (route) => route.fulfill({ json: threadsOn }));
   const set = (id: string, name: string) => ({ id, name, is_default: id === "s1", account_ids: [], account_count: 0, created_at: "2026-10-01T10:00:00Z", deleted_at: null });
-  await page.route(/\/v1\/social-sets$/, (route) => route.fulfill({ json: [set("s1", "Default"), set("s2", "English")] }));
+  await page.route(/\/v1\/social-sets$/, (route) => route.fulfill({ json: [set("s1", "All sets"), set("s2", "English")] }));
   const puts: unknown[] = [];
   await page.route(/\/v1\/connections\/[^/]+\/sets$/, (route) => {
     puts.push([route.request().url().split("/").at(-2), route.request().postDataJSON()]);

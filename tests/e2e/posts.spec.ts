@@ -12,7 +12,7 @@ const me = {
   current_team: { id: "t1", name: "Acme", role: "member" },
 };
 const sets = [
-  { id: "d", name: "Default", is_default: true, account_ids: ["c1"], account_count: 1, created_at: "2026-10-01T10:00:00Z", deleted_at: null },
+  { id: "d", name: "All sets", is_default: true, account_ids: ["c1"], account_count: 1, created_at: "2026-10-01T10:00:00Z", deleted_at: null },
   { id: "s1", name: "Clients", is_default: false, account_ids: [], account_count: 0, created_at: "2026-10-01T10:00:00Z", deleted_at: null },
 ];
 const alice = {
@@ -116,7 +116,7 @@ test("calendar shows the month's posts, with filter and month steps; posts lists
   await page.getByRole("button", { name: "Next month" }).click();
   await expect(page.getByRole("heading", { name: "December 2026" })).toBeVisible();
   await expect.poll(() => queries.some((q) => q.get("from") === "2026-11-30T23:00:00.000Z")).toBe(true);
-  await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "Default" }).click();
+  await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "All sets" }).click();
   await page.locator("#set-menu").getByRole("button", { name: "Clients" }).click();
   await expect(page.locator("#set-menu")).toBeHidden();
   await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "Clients" })).toBeVisible();
