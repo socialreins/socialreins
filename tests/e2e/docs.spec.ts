@@ -30,11 +30,14 @@ test("the version switcher keeps the same guide and swaps the addresses", async 
 });
 
 test("the install guide has the commands, and a docs page fits a phone", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/docs/self-hosted");
   await expect(page.getByRole("article")).toContainText("docker compose up -d");
   await expect(page.getByRole("article")).toContainText("ENCRYPTION_KEY");
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  // Long setting names wrap, so even the narrowest phone has no sideways scroll.
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `fits at ${width}`).toBe(true);
+  }
   // The header still fits with the Docs link in it.
   await expect(page.locator("header").first().getByRole("link", { name: "Get started" })).toBeInViewport({ ratio: 1 });
 });

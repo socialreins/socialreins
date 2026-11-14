@@ -18,7 +18,7 @@ export function SiteHeader({ className = "" }: { className?: string }) {
         {/* On a phone the mark alone leaves room for Socials and Get started; the GitHub menu is hidden and the footer links to GitHub. */}
         <span className="max-sm:sr-only">SocialReins</span>
       </Link>
-      <nav aria-label="Site" className="flex items-center gap-4 sm:gap-6">
+      <nav aria-label="Site" className="flex items-center gap-4 max-[359px]:gap-2.5 max-[359px]:text-sm sm:gap-6">
         <SocialsMenu className={navLink} />
         <Link href="/docs" className={navLink}>
           Docs

@@ -61,7 +61,7 @@ function Code({ children }: { children: string }) {
   );
 }
 
-const C = ({ children }: { children: ReactNode }) => <code className="rounded bg-ink/5 px-1 py-0.5 font-mono text-[0.9em]">{children}</code>;
+const C = ({ children }: { children: ReactNode }) => <code className="rounded bg-ink/5 px-1 py-0.5 font-mono text-[0.9em] [overflow-wrap:anywhere]">{children}</code>;
 
 export function CloudNotice() {
   return (
@@ -322,7 +322,7 @@ export function DocPage({ mode, guide }: { mode: Mode; guide: Guide }) {
             <h1 className="font-display text-4xl font-extrabold tracking-tight">{titles[guide][mode]}</h1>
           </div>
           {mode === "cloud" && <CloudNotice />}
-          <div className="legal docs grid gap-4 leading-relaxed">
+          <div className="legal grid min-w-0 gap-4 leading-relaxed">
             <Body mode={mode} />
           </div>
         </article>
