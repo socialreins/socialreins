@@ -143,7 +143,7 @@ export default function Home() {
             </h2>
             <p className="mt-4 max-w-[34rem] text-lg text-canvas">
               SocialReins Cloud is the standard way: we run the servers, and early access is free for now. Join the
-              waitlist to get in. SocialReins is also open source, so a few commands start it on your own server with
+              waitlist for an invitation. SocialReins is also open source, so a few commands start it on your own server with
               Postgres, free, with every feature. See <Link href="/pricing" className="font-bold underline decoration-signal decoration-2 underline-offset-4">pricing</Link>.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
