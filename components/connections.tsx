@@ -345,6 +345,8 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
           onStale={() => listSets().then(setSets)}
           onSaved={(updated) => {
             setList((l) => (Array.isArray(l) ? l.map((x) => (x.id === updated.id ? updated : x)) : l));
+            // Its sets were chosen by hand now, so it follows the picked set like any other account.
+            setFresh((f) => f.filter((id) => id !== updated.id));
             announce(`Sets saved for ${accountName(updated)}.`);
           }}
           onGone={(c, already) => {
