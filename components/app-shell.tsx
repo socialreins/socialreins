@@ -4,7 +4,7 @@ import { createContext, Suspense, useContext, useEffect, useRef, useState, useSy
 import { flushSync } from "react-dom";
 import { TeamCode, TeamLink as Link, usePagePath } from "@/components/team-link";
 import { usePathname, useRouter } from "next/navigation";
-import { getMe, setTabTeam, type MeResult, type Team, type User } from "@/lib/auth";
+import { getMe, getTabTeam, setTabTeam, type MeResult, type Team, type User } from "@/lib/auth";
 import { MY_TEAM, splitTeamPath, teamPath } from "@/lib/team-path";
 import { Account } from "@/components/account";
 import { LogoMark } from "@/components/logo";
@@ -136,11 +136,12 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
 
   useEffect(() => {
     if (urlTeam === undefined) return;
-    // Same team as loaded, or a page outside /t/, which keeps the team this tab was on.
-    if (loaded.current && (urlTeam === null || urlTeam === loaded.current)) return;
     let live = true;
-    // The address names the team and every call carries it. "_" and pages outside /t/ name none: brain answers with the account's current team.
-    setTabTeam(urlTeam === MY_TEAM ? null : urlTeam);
+    // The address names the team and every call carries it. A page outside /t/ (profile, /admin) keeps the team this tab
+    // is on. "_" names none: brain answers with the account's current team.
+    // This also runs when Next shows a kept shell again (Back), so the tab's team and the sign-in are checked afresh.
+    if (urlTeam === null) setTabTeam(loaded.current ?? getTabTeam());
+    else setTabTeam(urlTeam === MY_TEAM ? null : urlTeam);
     getMe().then((r) => {
       if (!live) return;
       if (r === "signed_out") return router.replace("/login");
@@ -159,8 +160,6 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
   }, [urlTeam, router, admin]);
 
   const user = typeof me === "object" && me ? me.user : null;
-  // While the address names another team than the one loaded (mid-switch, or Back to another team), the page waits for that team.
-  const onTeam = user !== null && (urlTeam == null || urlTeam === user.current_team.code);
   const groups = admin ? adminNav : nav;
   const session: Session | null = user && {
     user,
@@ -184,6 +183,16 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
     menuRef.current?.focus();
   }
 
+  const waiting = (
+      <div aria-busy="true" className="grid gap-6">
+        <p role="status" className="sr-only">
+          Loading...
+        </p>
+        <div className="h-64 rounded-2xl bg-ink/5 motion-safe:animate-pulse" />
+        <div className="h-24 rounded-2xl bg-ink/5 motion-safe:animate-pulse" />
+      </div>
+  );
+
   const content =
     me === "error" ? (
       <p role="alert" className="waitlist-error">
@@ -198,17 +207,15 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
           Go to your team
         </Link>
       </div>
-    ) : session && onTeam ? (
+    ) : session ? (
       // A new current team remounts the page, so it loads that team's data.
-      <div key={session.user.current_team.id}>{children}</div>
+      <Suspense fallback={waiting}>
+        <OnTeam key={session.user.current_team.id} code={session.user.current_team.code} fallback={waiting}>
+          {children}
+        </OnTeam>
+      </Suspense>
     ) : (
-      <div aria-busy="true" className="grid gap-6">
-        <p role="status" className="sr-only">
-          Checking your sign-in...
-        </p>
-        <div className="h-64 rounded-2xl bg-ink/5 motion-safe:animate-pulse" />
-        <div className="h-24 rounded-2xl bg-ink/5 motion-safe:animate-pulse" />
-      </div>
+      waiting
     );
 
   return (
@@ -295,6 +302,13 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
       </TeamCode.Provider>
     </SessionContext.Provider>
   );
+}
+
+// The page, once the address and the loaded team agree. Read from the address in the same render as the page,
+// so a page never mounts under another team (mid-switch, or Back to another team); it waits for its own.
+function OnTeam({ code, fallback, children }: { code: string; fallback: ReactNode; children: ReactNode }) {
+  const inAddress = splitTeamPath(usePathname())[0];
+  return inAddress === null || inAddress === code ? <div>{children}</div> : fallback;
 }
 
 // Reads the team code from the address. On its own under Suspense: usePathname waits for the request on /t/[team] pages.

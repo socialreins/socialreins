@@ -62,7 +62,7 @@ export const cancelMetaPick = () => api("/v1/connections/meta/pick", "DELETE");
 // navigation cannot send the X-Team header, so the code rides in the query).
 export const connectUrl = (platform: string) => {
   const team = getTabTeam();
-  return `${apiUrl}/connections/${encodeURIComponent(providerKey(platform))}/redirect${team ? `?team=${team}` : ""}`;
+  return `${apiUrl}/connections/${encodeURIComponent(providerKey(platform))}/redirect${team ? `?team=${encodeURIComponent(team)}` : ""}`;
 };
 
 // An OAuth connect leaves the page, and brain's callback doesn't say which account it made. So the
@@ -72,7 +72,7 @@ const STARTED = "connect-started";
 const STARTED_MS = 15 * 60_000;
 export function rememberConnect(set: string, ids: string[]) {
   try {
-    sessionStorage.setItem(STARTED, JSON.stringify({ set, ids, at: Date.now() }));
+    sessionStorage.setItem(STARTED, JSON.stringify({ set, ids, at: Date.now(), team: getTabTeam() }));
   } catch {
     // Storage refused (private window): the account still connects, into Default only.
   }
@@ -81,7 +81,8 @@ export function takeConnect(): { set: string; ids: string[] } | null {
   try {
     const v = JSON.parse(sessionStorage.getItem(STARTED) ?? "null");
     sessionStorage.removeItem(STARTED);
-    return v && typeof v.set === "string" && Array.isArray(v.ids) && Date.now() - v.at < STARTED_MS ? v : null;
+    // The note is about one team's set and accounts: on another team's page (the return can land on the team opened last) it means nothing.
+    return v && typeof v.set === "string" && Array.isArray(v.ids) && Date.now() - v.at < STARTED_MS && v.team === getTabTeam() ? v : null;
   } catch {
     return null;
   }

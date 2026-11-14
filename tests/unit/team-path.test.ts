@@ -24,7 +24,8 @@ describe("team addresses", () => {
     const redirects = legacyRedirects();
     expect(redirects).toContainEqual({ source: "/posts/:path*", destination: "/t/_/posts/:path*", permanent: false });
     expect(redirects).toContainEqual({ source: "/home", destination: "/t/_/home", permanent: false });
-    expect(redirects).toHaveLength(TEAM_PAGES.length * 2);
+    expect(redirects).toContainEqual({ source: "/t/:team", destination: "/t/:team/home", permanent: false });
+    expect(redirects).toHaveLength(TEAM_PAGES.length * 2 + 1);
   });
 
   it("has a page folder for every team page, and no other", () => {

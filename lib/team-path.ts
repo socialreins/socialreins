@@ -23,8 +23,11 @@ export function splitTeamPath(pathname: string): [string | null, string] {
 
 // Old addresses (/home, /posts/12) for next.config.ts: each goes to the current team's address.
 // Next keeps the query string on a redirect.
-export const legacyRedirects = () =>
-  TEAM_PAGES.flatMap((p) => [
+// A team's bare address (/t/k7q2mf) goes to its home.
+export const legacyRedirects = () => [
+  ...TEAM_PAGES.flatMap((p) => [
     { source: `/${p}`, destination: `/t/${MY_TEAM}/${p}`, permanent: false },
     { source: `/${p}/:path*`, destination: `/t/${MY_TEAM}/${p}/:path*`, permanent: false },
-  ]);
+  ]),
+  { source: "/t/:team", destination: "/t/:team/home", permanent: false },
+];

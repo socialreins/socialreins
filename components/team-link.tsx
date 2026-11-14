@@ -23,7 +23,9 @@ export function TeamLink({ href, ...rest }: Omit<ComponentProps<typeof Link>, "h
 export function useTeamRouter() {
   const router = useRouter();
   const to = useTeamPath();
-  return { ...router, push: (path: string) => router.push(to(path)), replace: (path: string) => router.replace(to(path)) };
+  const push: typeof router.push = (path, options) => router.push(to(path), options);
+  const replace: typeof router.replace = (path, options) => router.replace(to(path), options);
+  return { ...router, push, replace };
 }
 
 // The page inside the team ("/posts/12" at /t/k7q2mf/posts/12), for marking the current nav item. Needs a Suspense boundary, like usePathname.

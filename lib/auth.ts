@@ -68,7 +68,10 @@ export async function getMe(): Promise<MeResult> {
 
 export async function signOut(): Promise<boolean> {
   try {
-    return (await fetch(`${apiUrl}/auth/logout`, opts({ method: "POST" }))).ok;
+    const ok = (await fetch(`${apiUrl}/auth/logout`, opts({ method: "POST" }))).ok;
+    // The next person to sign in on this tab starts in their own current team.
+    if (ok) tabTeam = null;
+    return ok;
   } catch {
     return false;
   }

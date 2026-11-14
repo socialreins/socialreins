@@ -38,7 +38,15 @@ async function signedIn(page: Page, role: Role) {
 }
 
 test("app shows the team switcher, switches and creates a team", async ({ page }) => {
-  await page.route("**/auth/me", (route) => route.fulfill({ json: me("owner") }));
+  // Like brain, the answer is the team the call names.
+  const named: Record<string, object> = {
+    beta33: { id: "t2", name: "Beta", code: "beta33", role: "member" },
+    gamma4: { id: "t3", name: "Gamma", code: "gamma4", role: "owner" },
+  };
+  await page.route("**/auth/me", (route) => {
+    const team = named[route.request().headers()["x-team"] ?? ""];
+    return route.fulfill({ json: me("owner", team ? { current_team: team } : {}) });
+  });
   await page.route("**/v1/teams", (route) =>
     route.request().method() === "GET"
       ? route.fulfill({ json: [acme("owner"), { id: "t2", name: "Beta", code: "beta33", role: "member" }] })
