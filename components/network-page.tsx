@@ -56,7 +56,7 @@ export function NetworkPage({ slug }: { slug: string }) {
         </table>
       </div>
 
-      <div className="legal grid gap-4 leading-relaxed">
+      <div className="legal grid max-w-3xl gap-4 leading-relaxed">
         {n.sections.map((s) => (
           <section key={s.heading} className="grid gap-4">
             <h2>{s.heading}</h2>
