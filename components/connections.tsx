@@ -162,7 +162,15 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
   // brain names Facebook and Instagram together as "meta"; their tabs start at Facebook.
   const [tab, setTab] = useState<string | null>(() => (returned?.error === null ? (returned.provider === "meta" ? "facebook" : returned.provider) : null));
 
-  const reload = () => listConnections().then(setList);
+  // Accounts that arrived while this page was open. They show whatever set is picked, so one that could not join it is not lost.
+  const [fresh, setFresh] = useState<string[]>([]);
+  const reload = () => {
+    const known = Array.isArray(list) ? list.map((c) => c.id) : null;
+    return listConnections().then((l) => {
+      if (known && Array.isArray(l)) setFresh((f) => [...f, ...l.filter((c) => !known.includes(c.id)).map((c) => c.id)]);
+      setList(l);
+    });
+  };
   // An account connected on this page: load it and open its network's tab, so it is on screen.
   const connectedTo = (network: string) => {
     setTab(network);
@@ -174,7 +182,9 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
     listConnections().then(async (l) => {
       // Back from a connect that worked: the account that wasn't here before joins the set picked when it started.
       if (before && connectResult(search)?.error === null && Array.isArray(l)) {
-        const joined = await joinSet(before.set, l.filter((c) => !before.ids.includes(c.id)));
+        const added = l.filter((c) => !before.ids.includes(c.id));
+        setFresh(added.map((c) => c.id));
+        const joined = await joinSet(before.set, added);
         if (joined.length) l = await listConnections();
       }
       setList(l);
@@ -196,7 +206,7 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
   const picked = Array.isArray(sets) ? sets.find((s) => s.id === currentSet) : undefined;
   // The default set under the name the team gave it, for the hints on how to see every account.
   const everything = Array.isArray(sets) ? sets.find((s) => s.is_default)?.name : undefined;
-  const shown = Array.isArray(list) ? (picked && !picked.is_default ? list.filter((c) => c.set_ids.includes(picked.id)) : list) : [];
+  const shown = Array.isArray(list) ? (picked && !picked.is_default ? list.filter((c) => c.set_ids.includes(picked.id) || fresh.includes(c.id)) : list) : [];
   const groups = byNetwork(shown);
   const group = groups.find((g) => g.id === tab) ?? groups[0];
   function onTabKey(e: KeyboardEvent<HTMLDivElement>) {
