@@ -95,8 +95,8 @@ export function Avatar({ connection: c, size = "size-10" }: { connection: Connec
   return <Picture url={c.avatar_url} name={accountName(c)} size={size} />;
 }
 
-// A remote picture, else the name's initial: also when it fails to load, as Meta's signed CDN links expire.
-function Picture({ url, name, size, bg = "bg-canvas" }: { url: string | null; name: string; size: string; bg?: string }) {
+// A remote picture, else the name's initial on the neutral fill the badges use (canvas vanished on white paper): also when it fails to load, as Meta's signed CDN links expire.
+function Picture({ url, name, size, bg = "bg-ink/[0.06]" }: { url: string | null; name: string; size: string; bg?: string }) {
   const [broken, setBroken] = useState(false);
   const picture = broken ? null : safeAvatar(url);
   return picture ? (
