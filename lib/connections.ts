@@ -58,9 +58,12 @@ export const pickMeta = (facebook: string[], instagram: string[]) =>
   api<Connection[]>("/v1/connections/meta/pick", "POST", { facebook, instagram });
 export const cancelMetaPick = () => api("/v1/connections/meta/pick", "DELETE");
 
-// brain checks the session and the role, and connects to the current team.
-export const connectUrl = (platform: string) =>
-  `${apiUrl}/connections/${encodeURIComponent(providerKey(platform))}/redirect`;
+// brain checks the session and the role, and connects to the team this tab is on (a page
+// navigation cannot send the X-Team header, so the code rides in the query).
+export const connectUrl = (platform: string) => {
+  const team = getTabTeam();
+  return `${apiUrl}/connections/${encodeURIComponent(providerKey(platform))}/redirect${team ? `?team=${team}` : ""}`;
+};
 
 // An OAuth connect leaves the page, and brain's callback doesn't say which account it made. So the
 // picked set and the accounts already here wait in sessionStorage, to find the new one on the way back.

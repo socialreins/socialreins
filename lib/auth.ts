@@ -1,9 +1,11 @@
 import { apiUrl, captchaError, type Captcha } from "@/lib/waitlist";
+import { MY_TEAM, teamPath } from "@/lib/team-path";
 import { createCredential, getCredential, type CreationOptionsJSON, type RequestOptionsJSON } from "@/lib/webauthn";
 
 export type LinkResult = "sent" | "invalid" | Captcha | "rate_limited" | "timeout" | "error";
 export type Role = "owner" | "admin" | "member";
-export type Team = { id: string; name: string; role: Role };
+// `code` is the team's permanent address: /t/<code>/... (lib/team-path.ts).
+export type Team = { id: string; name: string; code: string; role: Role };
 export type User = {
   id: string;
   email: string;
@@ -13,13 +15,21 @@ export type User = {
   // Site admins see the /admin console; optional until every brain sends it.
   is_admin?: boolean;
 };
-export type MeResult = { user: User } | "signed_out" | "error";
+// "not_found": the address names a team the user is not in, or no team at all; brain answers both the same.
+export type MeResult = { user: User } | "signed_out" | "not_found" | "error";
+
+// The team this tab is on, by code. The app shell sets it from the address, and every call to brain
+// carries it, so two tabs on two teams each act in their own. null: brain uses the account's current team.
+let tabTeam: string | null = null;
+export const setTabTeam = (code: string | null) => void (tabTeam = code);
+export const getTabTeam = () => tabTeam;
 
 const TIMEOUT_MS = 10_000;
 // The session cookie lives on the API host, so every call sends it with credentials.
 const opts = (init: RequestInit = {}): RequestInit => ({
   credentials: "include",
   ...init,
+  headers: { ...init.headers, ...(tabTeam && { "X-Team": tabTeam }) },
   signal: init.signal ?? AbortSignal.timeout(TIMEOUT_MS),
 });
 
@@ -48,6 +58,7 @@ export async function getMe(): Promise<MeResult> {
   try {
     const res = await fetch(`${apiUrl}/auth/me`, opts());
     if (res.status === 401) return "signed_out";
+    if (res.status === 404) return "not_found";
     if (!res.ok) return "error";
     return { user: (await res.json()) as User };
   } catch {
@@ -273,7 +284,7 @@ export async function getProviders(retryMs = 2000): Promise<Providers> {
   return { google: body?.google === true, turnstileSiteKey: typeof key === "string" && key ? key : null };
 }
 
-// A path on this site to return to after sign-in, else /home. Mirrors brain's oauth::safe_next, and
+// A path on this site to return to after sign-in, else the current team's home. Mirrors brain's oauth::safe_next, and
 // also refuses "//" anywhere, so "/a//evil.com" can't turn into another host.
 export function safeNext(raw: string | null | undefined): string {
   const ok =
@@ -283,7 +294,7 @@ export function safeNext(raw: string | null | undefined): string {
     !raw.includes("\\") &&
     raw.length <= 512 &&
     !/[\s\p{Cc}]/u.test(raw);
-  return ok ? raw : "/home";
+  return ok ? raw : teamPath(MY_TEAM, "/home");
 }
 
 // A full-page navigation, not a fetch: brain sends the browser to Google and back to `next`.
