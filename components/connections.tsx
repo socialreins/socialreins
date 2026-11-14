@@ -147,6 +147,15 @@ export function Connections() {
   return <ConnectionsPage canManage={manages(user.current_team.role)} team={user.current_team.name} />;
 }
 
+// The accounts a connect just added: the ones that were not in `known`, the ids listed before it. Without that list
+// (it failed to load, or the browser kept no note of an OAuth connect), the accounts of `network` that brain made in
+// the last 15 minutes. A Meta login adds Facebook Pages and Instagram accounts together.
+function arrived(list: Connection[], network: string, known: string[] | null) {
+  if (known) return list.filter((c) => !known.includes(c.id));
+  const meta = network === "meta" || network === "facebook";
+  return list.filter((c) => (meta ? c.provider === "facebook" || c.provider === "instagram" : c.provider === network) && Date.now() - Date.parse(c.created_at) < 15 * 60_000);
+}
+
 function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string }) {
   const [list, setList] = useState<Connection[] | Failure | null>(null);
   const [sets, setSets] = useState<SocialSet[] | Failure | null>(null);
@@ -164,27 +173,25 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
 
   // Accounts that arrived while this page was open. They show whatever set is picked, so one that could not join it is not lost.
   const [fresh, setFresh] = useState<string[]>([]);
-  const reload = () => {
-    const known = Array.isArray(list) ? list.map((c) => c.id) : null;
-    return listConnections().then((l) => {
-      if (known && Array.isArray(l)) setFresh((f) => [...f, ...l.filter((c) => !known.includes(c.id)).map((c) => c.id)]);
-      setList(l);
-    });
-  };
   // An account connected on this page: load it and open its network's tab, so it is on screen.
   const connectedTo = (network: string) => {
     setTab(network);
-    reload();
+    const known = Array.isArray(list) ? list.map((c) => c.id) : null;
+    listConnections().then((l) => {
+      if (Array.isArray(l)) setFresh((f) => [...f, ...arrived(l, network, known).map((c) => c.id)]);
+      setList(l);
+    });
   };
   useEffect(() => {
     const search = window.location.search;
     const before = takeConnect();
     listConnections().then(async (l) => {
       // Back from a connect that worked: the account that wasn't here before joins the set picked when it started.
-      if (before && connectResult(search)?.error === null && Array.isArray(l)) {
-        const added = l.filter((c) => !before.ids.includes(c.id));
+      const back = connectResult(search);
+      if (back?.error === null && Array.isArray(l)) {
+        const added = arrived(l, back.provider, before?.ids ?? null);
         setFresh(added.map((c) => c.id));
-        const joined = await joinSet(before.set, added);
+        const joined = before ? await joinSet(before.set, added) : [];
         if (joined.length) l = await listConnections();
       }
       setList(l);

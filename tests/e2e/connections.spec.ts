@@ -235,6 +235,22 @@ test("an account that could not join the picked set still shows after it connect
   await expect(page.getByRole("button", { name: "Settings for Alice" })).toHaveCount(0);
 });
 
+test("back from a connect the browser kept no note of, the new account still shows under the picked set", async ({ page }) => {
+  await signedIn(page, "owner");
+  const set = (id: string, name: string) => ({ id, name, is_default: id === "s1", account_ids: [], account_count: 0, created_at: "2026-10-01T10:00:00Z", deleted_at: null });
+  await page.route(/\/v1\/social-sets$/, (route) => route.fulfill({ json: [set("s1", "All sets"), set("s2", "English")] }));
+  // Two Threads accounts in the default set only: one from last month, one brain made a moment ago.
+  const threads = { ...alice, provider: "threads", avatar_url: null };
+  await page.route("**/v1/connections", (route) =>
+    route.fulfill({ json: [alice, { ...threads, id: "t1", handle: "old", display_name: "Old" }, { ...threads, id: "t2", handle: "new", display_name: "New", created_at: new Date().toISOString() }] }),
+  );
+  await page.addInitScript(() => localStorage.setItem("current-set:t1", "s2"));
+  await page.goto("/connections?connected=threads");
+  await expect(page.getByRole("status").filter({ hasText: "Connected your Threads account." })).toBeVisible();
+  await expect(page.getByRole("tabpanel").getByRole("button", { name: /^Settings for / })).toHaveAccessibleName("Settings for New");
+  await expect(page.getByRole("tablist", { name: "Networks" }).getByRole("tab")).toHaveText([/^Threads\s*1$/]);
+});
+
 test("shows the accounts of the set picked in the top bar", async ({ page }) => {
   const fb = { ...alice, id: "f1", provider: "facebook", handle: null, display_name: "Page One", avatar_url: null };
   const bob = { ...alice, id: "c2", handle: "bob.bsky.social", display_name: "Bob", avatar_url: null };
