@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
+import { MY_TEAM, teamPath } from "@/lib/team-path";
 import type { Failure, Role, Team, User } from "@/lib/auth";
 import { useSession } from "@/components/app-shell";
 import {
@@ -121,7 +122,7 @@ function Members({ me, mine, onChanged }: { me: User; mine: Role; onChanged: () 
     // Leaving changes the current team, so the shell loads the new one.
     if (ok && leaving) {
       await refresh();
-      return router.push("/home");
+      return router.push(teamPath(MY_TEAM, "/home"));
     }
     flushSync(() => setConfirming(null));
     if (!ok) removeRefs.current.get(m.id)?.focus();
@@ -331,7 +332,7 @@ function DeleteTeam({ team }: { team: Team }) {
     e.preventDefault();
     if (!(await run("delete", deleteTeam, () => undefined))) return;
     await refresh();
-    router.push("/home");
+    router.push(teamPath(MY_TEAM, "/home"));
   }
 
   return (

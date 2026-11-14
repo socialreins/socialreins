@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import { TeamLink as Link } from "@/components/team-link";
 import { getMe } from "@/lib/auth";
 
 // "Get started" for everyone; switches to "Dashboard" once the

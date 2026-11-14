@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { TeamLink as Link } from "@/components/team-link";
 import { Posts } from "@/components/posts";
 import { Icon, PageHeader } from "@/components/ui";
 

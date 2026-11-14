@@ -5,7 +5,7 @@ const user = {
   email: "someone@example.com",
   name: "someone",
   username: null,
-  current_team: { id: "t1", name: "someone's team", role: "owner" },
+  current_team: { id: "t1", name: "someone's team", code: "acme22", role: "owner" },
 };
 const signedIn = async (page: Page) => {
   await page.route("**/auth/me", (route) => route.fulfill({ json: user }));
@@ -39,7 +39,7 @@ test("welcome goes straight to the app without WebAuthn", async ({ page }) => {
   });
   await signedIn(page);
   await page.goto("/welcome");
-  await expect(page).toHaveURL("/home");
+  await expect(page).toHaveURL("/t/acme22/home");
 });
 
 test("welcome adds a passkey with a virtual authenticator, then opens the app", async ({ page, context }) => {
@@ -59,7 +59,7 @@ test("welcome adds a passkey with a virtual authenticator, then opens the app", 
   await expect(page.getByRole("heading", { name: "Add a passkey to sign in faster" })).toBeVisible();
   await expect(page.getByText(/Face ID, Touch ID or your device PIN/)).toBeVisible();
   await page.getByRole("button", { name: "Add a passkey" }).click();
-  await expect(page).toHaveURL("/home");
+  await expect(page).toHaveURL("/t/acme22/home");
   expect(finished).toBe(true);
 });
 
@@ -73,7 +73,7 @@ test("welcome explains a cancelled prompt and can be skipped", async ({ page }) 
   await page.getByRole("button", { name: "Add a passkey" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "Adding the passkey was cancelled" })).toBeVisible();
   await page.getByRole("link", { name: "Skip for now" }).click();
-  await expect(page).toHaveURL("/home");
+  await expect(page).toHaveURL("/t/acme22/home");
 });
 
 test("welcome goes to a safe next path after skipping, and ignores an unsafe one", async ({ page }) => {
@@ -85,7 +85,7 @@ test("welcome goes to a safe next path after skipping, and ignores an unsafe one
   await expect(page).toHaveURL("/invitations/abc");
   for (const bad of ["%2F%2Fevil.com", "https%3A%2F%2Fevil.com", "%2Fa%5Cb"]) {
     await page.goto(`/welcome?next=${bad}`);
-    await expect(page.getByRole("link", { name: "Skip for now" })).toHaveAttribute("href", "/home");
+    await expect(page.getByRole("link", { name: "Skip for now" })).toHaveAttribute("href", "/t/_/home");
   }
 });
 

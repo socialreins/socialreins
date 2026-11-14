@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 type Role = "owner" | "admin" | "member";
-const acme = (role: Role) => ({ id: "t1", name: "Acme", role });
+const acme = (role: Role) => ({ id: "t1", name: "Acme", code: "acme22", role });
 const me = (role: Role, extra = {}) => ({
   id: "u-me",
   email: "me@example.com",
@@ -41,26 +41,26 @@ test("app shows the team switcher, switches and creates a team", async ({ page }
   await page.route("**/auth/me", (route) => route.fulfill({ json: me("owner") }));
   await page.route("**/v1/teams", (route) =>
     route.request().method() === "GET"
-      ? route.fulfill({ json: [acme("owner"), { id: "t2", name: "Beta", role: "member" }] })
-      : route.fulfill({ status: 201, json: { id: "t3", name: route.request().postDataJSON().name, role: "owner" } }),
+      ? route.fulfill({ json: [acme("owner"), { id: "t2", name: "Beta", code: "beta33", role: "member" }] })
+      : route.fulfill({ status: 201, json: { id: "t3", name: route.request().postDataJSON().name, code: "gamma4", role: "owner" } }),
   );
   let switched: unknown;
   await page.route("**/v1/current-team", (route) => {
     switched = route.request().postDataJSON();
-    return route.fulfill({ json: { id: "t2", name: "Beta", role: "member" } });
+    return route.fulfill({ json: { id: "t2", name: "Beta", code: "beta33", role: "member" } });
   });
   await page.goto("/home");
   // The team switcher is first in the breadcrumb; the sidebar's top holds the logo.
   const side = page.getByRole("navigation", { name: "Breadcrumb" });
   await expect(page.locator("aside").getByRole("button", { name: "Acme" })).toHaveCount(0);
-  await expect(page.locator("aside").getByRole("link", { name: "SocialReins" })).toHaveAttribute("href", "/home");
+  await expect(page.locator("aside").getByRole("link", { name: "SocialReins" })).toHaveAttribute("href", "/t/acme22/home");
   // The plan is at the foot of the team menu, not in the bar.
   await expect(side.getByText("Free plan")).toBeHidden();
   await side.getByRole("button", { name: "Acme", exact: true }).click();
   const team = page.locator("#team-menu");
   await expect(team.getByText("Free plan")).toBeVisible();
   await expect(team.getByRole("button", { name: /Acme/ })).toHaveAttribute("aria-current", "true");
-  await expect(team.getByRole("link", { name: "Manage team" })).toHaveAttribute("href", "/team");
+  await expect(team.getByRole("link", { name: "Manage team" })).toHaveAttribute("href", "/t/acme22/team");
   await team.getByRole("button", { name: /Beta/ }).click();
   await expect(page.getByText("Switched to Beta.")).toBeFocused();
   expect(switched).toEqual({ team_id: "t2" });
@@ -79,10 +79,10 @@ test("app shows the team switcher, switches and creates a team", async ({ page }
 test("long team names stay inside the top bar, and long emails inside the sidebar", async ({ page }) => {
   const long = "Bytech Social Media Marketing Agency International";
   await page.route("**/auth/me", (route) =>
-    route.fulfill({ json: me("owner", { email: "someone.with.a.really.long.address@example-company.com", current_team: { id: "t1", name: long, role: "owner" } }) }),
+    route.fulfill({ json: me("owner", { email: "someone.with.a.really.long.address@example-company.com", current_team: { id: "t1", name: long, code: "acme22", role: "owner" } }) }),
   );
   await page.route("**/v1/teams", (route) =>
-    route.fulfill({ json: [{ id: "t1", name: long, role: "owner" }, { id: "t2", name: `${long} Second Office`, role: "member" }] }),
+    route.fulfill({ json: [{ id: "t1", name: long, code: "acme22", role: "owner" }, { id: "t2", name: `${long} Second Office`, code: "beta33", role: "member" }] }),
   );
   await page.goto("/home");
   const button = page.getByRole("banner").getByRole("button", { name: long });
@@ -179,7 +179,7 @@ test("a member sees no management controls and can leave", async ({ page }) => {
   await expect(page.getByRole("combobox")).toHaveCount(0);
   await page.getByRole("button", { name: "Leave team" }).click();
   await page.getByRole("button", { name: "Yes, leave" }).click();
-  await expect(page).toHaveURL("/home");
+  await expect(page).toHaveURL("/t/acme22/home");
   expect(left).toBe("DELETE /v1/team/members/u-me");
 });
 
@@ -221,7 +221,7 @@ test("an owner deletes the team after typing its name, signing in again when nee
   await del.click();
   await expect(page.getByRole("alert").filter({ hasText: "your only team" })).toBeVisible();
   await del.click();
-  await expect(page).toHaveURL("/home");
+  await expect(page).toHaveURL("/t/acme22/home");
   expect(bodies).toEqual([{}, {}, {}]);
 });
 
@@ -251,7 +251,7 @@ test("invitation accept joins the team", async ({ page }) => {
   await page.goto("/invitations/tok");
   await page.getByRole("button", { name: "Join Acme" }).click();
   await expect(page.getByText("You are in Acme as admin. It is now your current team.")).toBeFocused();
-  await expect(page.getByRole("link", { name: "Open the app" })).toHaveAttribute("href", "/home");
+  await expect(page.getByRole("link", { name: "Open the app" })).toHaveAttribute("href", "/t/_/home");
 });
 
 test("invitation explains a wrong account, an expired link and a used one", async ({ page }) => {

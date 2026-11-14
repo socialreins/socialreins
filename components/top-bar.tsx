@@ -2,8 +2,7 @@
 
 import { Suspense, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { TeamLink as Link, usePagePath } from "@/components/team-link";
 import type { Failure, Team } from "@/lib/auth";
 import { listSets, type SocialSet } from "@/lib/sets";
 import { createTeam, listTeams, switchTeam } from "@/lib/teams";
@@ -227,7 +226,7 @@ function TeamMenu() {
 // Keyed by team, so a team switch starts the set menu fresh instead of checking the new team's set against the old team's sets.
 function TeamSets({ pages }: { pages: NavItem[] }) {
   const team = useSession().user.current_team.id;
-  const path = usePathname();
+  const path = usePagePath();
   const hidden = pages.find((p) => isActive(path, p.href))?.set ? "" : "hidden";
   return (
     <>

@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { TeamLink as Link } from "@/components/team-link";
+import { useTeamPath, useTeamRouter as useRouter } from "@/components/team-link";
 import type { Failure } from "@/lib/auth";
 import { listConnections, needingReconnect, type Connection } from "@/lib/connections";
 import {
@@ -92,6 +92,7 @@ function platformProblem(platform: Platform, failure: Failure): ReactNode {
 export function PostEditor({ id }: { id?: string }) {
   const { user } = useSession();
   const router = useRouter();
+  const to = useTeamPath();
   const [post, setPost] = useState<Post | Failure | null>(null);
   const [sets, setSets] = useState<SocialSet[] | Failure | null>(null);
   const [accounts, setAccounts] = useState<Connection[]>([]);
@@ -287,7 +288,7 @@ export function PostEditor({ id }: { id?: string }) {
         const saved = postId ? await updatePost(postId, input) : await createPost(input);
         if (isFailure(saved)) return saved;
         // Keep this editor mounted on the new post's own address.
-        if (!postId) window.history.replaceState(null, "", `/posts/${saved.id}`);
+        if (!postId) window.history.replaceState(null, "", to(`/posts/${saved.id}`));
         load(saved);
         if (mode !== "publish") return saved;
         // Group posts a failed Publish now left behind go out with this one.
@@ -299,7 +300,7 @@ export function PostEditor({ id }: { id?: string }) {
       const posts = g.posts;
       made = posts.length;
       // The editor carries on as the first post; the others are listed below it.
-      window.history.replaceState(null, "", `/posts/${posts[0]!.id}`);
+      window.history.replaceState(null, "", to(`/posts/${posts[0]!.id}`));
       load(posts[0]!);
       setGroup(posts);
       if (mode !== "publish") return posts[0]!;

@@ -2,9 +2,10 @@
 
 import { createContext, Suspense, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { flushSync } from "react-dom";
-import Link from "next/link";
+import { TeamCode, TeamLink as Link, usePagePath } from "@/components/team-link";
 import { usePathname, useRouter } from "next/navigation";
-import { getMe, type MeResult, type Team, type User } from "@/lib/auth";
+import { getMe, setTabTeam, type MeResult, type Team, type User } from "@/lib/auth";
+import { MY_TEAM, splitTeamPath, teamPath } from "@/lib/team-path";
 import { Account } from "@/components/account";
 import { LogoMark } from "@/components/logo";
 import { TitleSlot } from "@/components/page-title";
@@ -125,21 +126,52 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
   const collapsed = useStored("sidebar-collapsed") === "1";
   useAppMark();
 
+  // The team code in the address: undefined until read, null on a page outside /t/ (profile, /admin).
+  const [urlTeam, setUrlTeam] = useState<string | null | undefined>(undefined);
+  // The code of the team whose session is loaded, for the effect below; kept in step after every render.
+  const loaded = useRef<string | null>(null);
   useEffect(() => {
+    loaded.current = typeof me === "object" && me ? me.user.current_team.code : null;
+  }, [me]);
+
+  useEffect(() => {
+    if (urlTeam === undefined) return;
+    // Same team as loaded, or a page outside /t/, which keeps the team this tab was on.
+    if (loaded.current && (urlTeam === null || urlTeam === loaded.current)) return;
+    let live = true;
+    // The address names the team and every call carries it. "_" and pages outside /t/ name none: brain answers with the account's current team.
+    setTabTeam(urlTeam === MY_TEAM ? null : urlTeam);
     getMe().then((r) => {
-      if (r === "signed_out") router.replace("/login");
+      if (!live) return;
+      if (r === "signed_out") return router.replace("/login");
+      if (typeof r !== "object") return setMe(r);
       // brain refuses admin calls from anyone else; this only spares them a page of errors.
-      else if (admin && typeof r === "object" && !r.user.is_admin) router.replace("/home");
-      else setMe(r);
+      if (admin && !r.user.is_admin) return router.replace(teamPath(MY_TEAM, "/home"));
+      const code = r.user.current_team.code;
+      setTabTeam(code);
+      setMe(r);
+      // An old address (/posts, sent here as /t/_/posts): show the team's real one, keeping the query and the hash.
+      if (urlTeam === MY_TEAM) router.replace(teamPath(code, splitTeamPath(location.pathname)[1]) + location.search + location.hash);
     });
-  }, [router, admin]);
+    return () => {
+      live = false;
+    };
+  }, [urlTeam, router, admin]);
 
   const user = typeof me === "object" && me ? me.user : null;
+  // While the address names another team than the one loaded (mid-switch, or Back to another team), the page waits for that team.
+  const onTeam = user !== null && (urlTeam == null || urlTeam === user.current_team.code);
   const groups = admin ? adminNav : nav;
   const session: Session | null = user && {
     user,
     setUser: (u) => setMe({ user: u }),
-    setTeam: (t) => setMe({ user: { ...user, current_team: t } }),
+    // After a switch, a new team or a rename. A new team's address replaces the old one, on the same section:
+    // the rest of the address (a post id) belongs to the team being left.
+    setTeam: (t) => {
+      setTabTeam(t.code);
+      setMe({ user: { ...user, current_team: t } });
+      if (urlTeam && urlTeam !== t.code) router.push(teamPath(t.code, `/${location.pathname.split("/")[3] ?? "home"}`));
+    },
     refresh: async () => {
       const r = await getMe();
       if (r === "signed_out") router.replace("/login");
@@ -157,7 +189,16 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
       <p role="alert" className="waitlist-error">
         Sign-in couldn&apos;t be checked. Reload to try again.
       </p>
-    ) : session ? (
+    ) : me === "not_found" ? (
+      // A team the user is not in and a code no team has look the same, here and in brain.
+      <div className="grid gap-3">
+        <h1 className="font-display text-3xl font-bold tracking-tight">Page not found</h1>
+        <p className="text-ink-soft">This address doesn&apos;t lead to a team you belong to.</p>
+        <Link href="/home" className="btn btn-primary justify-self-start">
+          Go to your team
+        </Link>
+      </div>
+    ) : session && onTeam ? (
       // A new current team remounts the page, so it loads that team's data.
       <div key={session.user.current_team.id}>{children}</div>
     ) : (
@@ -172,6 +213,10 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
 
   return (
     <SessionContext.Provider value={session}>
+      <TeamCode.Provider value={user?.current_team.code ?? MY_TEAM}>
+      <Suspense fallback={null}>
+        <TeamInAddress onCode={setUrlTeam} />
+      </Suspense>
       <div className={`app-root ${admin ? "admin-root" : ""} min-h-dvh md:grid ${collapsed ? "md:grid-cols-[4rem_minmax(0,1fr)]" : "md:grid-cols-[15rem_minmax(0,1fr)]"}`}>
         <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-20 focus:rounded-full focus:bg-paper focus:px-4 focus:py-2 focus:font-bold">
           Skip to content
@@ -247,12 +292,20 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
           </main>
         </div>
       </div>
+      </TeamCode.Provider>
     </SessionContext.Provider>
   );
 }
 
+// Reads the team code from the address. On its own under Suspense: usePathname waits for the request on /t/[team] pages.
+function TeamInAddress({ onCode }: { onCode: (code: string | null) => void }) {
+  const code = splitTeamPath(usePathname())[0];
+  useEffect(() => onCode(code), [code, onCode]);
+  return null;
+}
+
 function CurrentNavGroups(props: { groups: NavGroup[]; collapsed: boolean }) {
-  return <NavGroups path={usePathname()} {...props} />;
+  return <NavGroups path={usePagePath()} {...props} />;
 }
 
 function NavGroups({ path, groups, collapsed }: { path: string; groups: NavGroup[]; collapsed: boolean }) {

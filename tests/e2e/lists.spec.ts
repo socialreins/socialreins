@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 test.use({ timezoneId: "Europe/Berlin" });
 
-const me = { id: "u-me", email: "me@example.com", name: "Me", username: null, current_team: { id: "t1", name: "Acme", role: "member" } };
+const me = { id: "u-me", email: "me@example.com", name: "Me", username: null, current_team: { id: "t1", name: "Acme", code: "acme22", role: "member" } };
 const sets = [
   { id: "d", name: "All sets", is_default: true, account_ids: [], account_count: 0, created_at: "2026-10-01T10:00:00Z", deleted_at: null },
   { id: "s1", name: "Clients", is_default: false, account_ids: [], account_count: 0, created_at: "2026-10-01T10:00:00Z", deleted_at: null },
@@ -50,7 +50,7 @@ test("app links to lists", async ({ page }) => {
   await page.route(/\/v1\/posts(\?.*)?$/, (route) => route.fulfill({ json: [] }));
   await page.goto("/posts");
   await page.getByRole("link", { name: "Lists", exact: true }).click();
-  await expect(page).toHaveURL("/lists");
+  await expect(page).toHaveURL("/t/acme22/lists");
 });
 
 test("creates, renames and deletes a list", async ({ page }) => {
@@ -76,7 +76,7 @@ test("creates, renames and deletes a list", async ({ page }) => {
   await page.getByRole("button", { name: "Create list" }).click();
   await expect(page.getByText("Created Series.")).toBeVisible();
   expect(sent).toEqual({ name: "Series", social_set_id: "s1" });
-  await expect(page.getByRole("link", { name: "Series" })).toHaveAttribute("href", "/lists/l1");
+  await expect(page.getByRole("link", { name: "Series" })).toHaveAttribute("href", "/t/acme22/lists/l1");
   await expect(page.getByText("Clients", { exact: true }).last()).toBeVisible();
 
   await page.getByRole("button", { name: "Rename Series" }).click();

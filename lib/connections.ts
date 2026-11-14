@@ -1,4 +1,4 @@
-import { api } from "@/lib/auth";
+import { api, getTabTeam } from "@/lib/auth";
 import { apiUrl } from "@/lib/waitlist";
 
 export type ConnectionStatus = "ok" | "expiring" | "reconnect";

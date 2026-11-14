@@ -6,7 +6,7 @@ const me = (role: Role) => ({
   email: "me@example.com",
   name: "Me",
   username: null,
-  current_team: { id: "t1", name: "Acme", role },
+  current_team: { id: "t1", name: "Acme", code: "acme22", role },
 });
 const hook = (url: string) => ({ url, created_at: "2026-10-01T10:00:00Z", updated_at: "2026-10-01T10:00:00Z" });
 const SECRET = "whsec_abcdefghijklmnopqrstuvwxyz0123456789abcdefgh";

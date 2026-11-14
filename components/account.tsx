@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useRef, useState, type PointerEvent } from "react";
-import Link from "next/link";
+import { TeamLink as Link } from "@/components/team-link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "@/lib/auth";
 import { useSession } from "@/components/app-shell";

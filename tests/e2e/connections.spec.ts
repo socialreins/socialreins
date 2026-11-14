@@ -7,7 +7,7 @@ const me = (role: Role) => ({
   name: "Me",
   username: null,
 
-  current_team: { id: "t1", name: "Acme", role },
+  current_team: { id: "t1", name: "Acme", code: "acme22", role },
 });
 const alice = {
   id: "c1",
@@ -83,7 +83,7 @@ test("app links to connected accounts", async ({ page }) => {
   await signedIn(page, "owner");
   await page.goto("/home");
   await page.getByRole("link", { name: "Accounts", exact: true }).click();
-  await expect(page).toHaveURL("/connections");
+  await expect(page).toHaveURL("/t/acme22/connections");
 });
 
 test("connections sends a signed-out visitor to login", async ({ page }) => {
@@ -101,7 +101,7 @@ test("lists accounts and the provider grid", async ({ page }) => {
   const dialog = page.getByRole("dialog");
   // Facebook and Instagram connect together through Meta.
   for (const name of ["Facebook", "Instagram"]) {
-    await expect(dialog.getByRole("link", { name })).toHaveAttribute("href", "http://localhost:8080/connections/meta/redirect");
+    await expect(dialog.getByRole("link", { name })).toHaveAttribute("href", "http://localhost:8080/connections/meta/redirect?team=acme22");
   }
   await expect(dialog.getByRole("listitem").filter({ hasText: "YouTube" })).toContainText("Not set up");
   await expect(dialog.getByRole("link", { name: "YouTube" })).toHaveCount(0);
@@ -167,16 +167,16 @@ test("Connect Threads goes through brain and says how it went", async ({ page })
   await page.goto("/connections");
   // brain sends the browser to Threads and back; here it comes straight back connected.
   const back = new URL("/connections?connected=threads", page.url()).href;
-  await page.route("http://localhost:8080/connections/threads/redirect", (route) =>
+  await page.route("http://localhost:8080/connections/threads/redirect?team=acme22", (route) =>
     route.fulfill({ status: 303, headers: { location: back } }),
   );
   await openAdd(page);
   const link = page.getByRole("dialog").getByRole("link", { name: "Threads", exact: true });
-  await expect(link).toHaveAttribute("href", "http://localhost:8080/connections/threads/redirect");
+  await expect(link).toHaveAttribute("href", "http://localhost:8080/connections/threads/redirect?team=acme22");
   await link.click();
   await expect(page.getByRole("status").filter({ hasText: "Connected your Threads account." })).toBeVisible();
   // The flags are dropped, so a reload doesn't repeat the message.
-  await expect(page).toHaveURL("/connections");
+  await expect(page).toHaveURL("/t/acme22/connections");
 });
 
 test("an account connected while a set is picked joins that set too", async ({ page }) => {
@@ -198,7 +198,7 @@ test("an account connected while a set is picked joins that set too", async ({ p
   await page.addInitScript(() => localStorage.setItem("current-set:t1", "s2"));
   await page.goto("/connections");
   const back = new URL("/connections?connected=threads", page.url()).href;
-  await page.route("http://localhost:8080/connections/threads/redirect", (route) =>
+  await page.route("http://localhost:8080/connections/threads/redirect?team=acme22", (route) =>
     route.fulfill({ status: 303, headers: { location: back } }),
   );
   await openAdd(page);
@@ -306,22 +306,22 @@ test("Connect LinkedIn goes through brain and says how it went", async ({ page }
   await page.route("**/v1/connections/providers", (route) => route.fulfill({ json: on }));
   await page.goto("/connections");
   const back = new URL("/connections?connected=linkedin", page.url()).href;
-  await page.route("http://localhost:8080/connections/linkedin/redirect", (route) =>
+  await page.route("http://localhost:8080/connections/linkedin/redirect?team=acme22", (route) =>
     route.fulfill({ status: 303, headers: { location: back } }),
   );
   await openAdd(page);
   const link = page.getByRole("dialog").getByRole("link", { name: "LinkedIn", exact: true });
-  await expect(link).toHaveAttribute("href", "http://localhost:8080/connections/linkedin/redirect");
+  await expect(link).toHaveAttribute("href", "http://localhost:8080/connections/linkedin/redirect?team=acme22");
   await link.click();
   await expect(page.getByRole("status").filter({ hasText: "Connected your LinkedIn account." })).toBeVisible();
-  await expect(page).toHaveURL("/connections");
+  await expect(page).toHaveURL("/t/acme22/connections");
 });
 
 test("a LinkedIn connect brain refused is explained", async ({ page }) => {
   await signedIn(page, "owner");
   await page.goto("/connections?connect_error=linkedin_failed&provider=linkedin");
   await expect(page.getByRole("alert").filter({ hasText: "LinkedIn didn't let SocialReins connect the account." })).toBeVisible();
-  await expect(page).toHaveURL("/connections");
+  await expect(page).toHaveURL("/t/acme22/connections");
 });
 
 test("Connect YouTube goes through brain and says how it went", async ({ page }) => {
@@ -330,22 +330,22 @@ test("Connect YouTube goes through brain and says how it went", async ({ page })
   await page.route("**/v1/connections/providers", (route) => route.fulfill({ json: on }));
   await page.goto("/connections");
   const back = new URL("/connections?connected=youtube", page.url()).href;
-  await page.route("http://localhost:8080/connections/youtube/redirect", (route) =>
+  await page.route("http://localhost:8080/connections/youtube/redirect?team=acme22", (route) =>
     route.fulfill({ status: 303, headers: { location: back } }),
   );
   await openAdd(page);
   const link = page.getByRole("dialog").getByRole("link", { name: "YouTube", exact: true });
-  await expect(link).toHaveAttribute("href", "http://localhost:8080/connections/youtube/redirect");
+  await expect(link).toHaveAttribute("href", "http://localhost:8080/connections/youtube/redirect?team=acme22");
   await link.click();
   await expect(page.getByRole("status").filter({ hasText: "Connected your YouTube account." })).toBeVisible();
-  await expect(page).toHaveURL("/connections");
+  await expect(page).toHaveURL("/t/acme22/connections");
 });
 
 test("a YouTube connect brain refused is explained", async ({ page }) => {
   await signedIn(page, "owner");
   await page.goto("/connections?connect_error=youtube_failed&provider=youtube");
   await expect(page.getByRole("alert").filter({ hasText: "YouTube didn't let SocialReins connect the account." })).toBeVisible();
-  await expect(page).toHaveURL("/connections");
+  await expect(page).toHaveURL("/t/acme22/connections");
   await page.goto("/connections?connect_error=no_channel&provider=youtube");
   await expect(page.getByRole("alert").filter({ hasText: "That Google account has no YouTube channel." })).toBeVisible();
   await page.goto("/connections?connect_error=missing_scopes&provider=youtube");
@@ -366,22 +366,22 @@ test("Connect X goes through brain and says how it went", async ({ page }) => {
   await page.route("**/v1/connections/providers", (route) => route.fulfill({ json: on }));
   await page.goto("/connections");
   const back = new URL("/connections?connected=x", page.url()).href;
-  await page.route("http://localhost:8080/connections/x/redirect", (route) =>
+  await page.route("http://localhost:8080/connections/x/redirect?team=acme22", (route) =>
     route.fulfill({ status: 303, headers: { location: back } }),
   );
   await openAdd(page);
   const link = page.getByRole("dialog").getByRole("link", { name: "X", exact: true });
-  await expect(link).toHaveAttribute("href", "http://localhost:8080/connections/x/redirect");
+  await expect(link).toHaveAttribute("href", "http://localhost:8080/connections/x/redirect?team=acme22");
   await link.click();
   await expect(page.getByRole("status").filter({ hasText: "Connected your X account." })).toBeVisible();
-  await expect(page).toHaveURL("/connections");
+  await expect(page).toHaveURL("/t/acme22/connections");
 });
 
 test("an X connect brain refused is explained", async ({ page }) => {
   await signedIn(page, "owner");
   await page.goto("/connections?connect_error=x_failed&provider=x");
   await expect(page.getByRole("alert").filter({ hasText: "X didn't let SocialReins connect the account." })).toBeVisible();
-  await expect(page).toHaveURL("/connections");
+  await expect(page).toHaveURL("/t/acme22/connections");
   await page.goto("/connections?connect_error=missing_scopes&provider=x");
   await expect(page.getByRole("alert").filter({ hasText: "Tick every permission when X asks" })).toBeVisible();
 });
@@ -393,7 +393,7 @@ test("a connected X account shows its name and handle, and asks for a reconnect 
   await expect(page.getByText(/X, @ann_lee\. Connected /)).toBeVisible();
   await openSettings(page, "Bob");
   await expect(page.getByText("Reconnect needed.")).toHaveCount(1);
-  await expect(page.getByRole("link", { name: "Reconnect Bob" })).toHaveAttribute("href", "http://localhost:8080/connections/x/redirect");
+  await expect(page.getByRole("link", { name: "Reconnect Bob" })).toHaveAttribute("href", "http://localhost:8080/connections/x/redirect?team=acme22");
 });
 
 test("an account that ends soon or needs a reconnect shows a badge and a Reconnect button", async ({ page }) => {
@@ -413,7 +413,7 @@ test("an account that ends soon or needs a reconnect shows a badge and a Reconne
   await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
   await openSettings(page, "Gone Gia");
   await expect(page.getByRole("dialog").getByText("Reconnect needed.")).toBeVisible();
-  await expect(page.getByRole("dialog").getByRole("link", { name: "Reconnect Gone Gia" })).toHaveAttribute("href", "http://localhost:8080/connections/linkedin/redirect");
+  await expect(page.getByRole("dialog").getByRole("link", { name: "Reconnect Gone Gia" })).toHaveAttribute("href", "http://localhost:8080/connections/linkedin/redirect?team=acme22");
 });
 
 test("a member sees the badge but no Reconnect button, and is not told to reconnect themselves", async ({ page }) => {
@@ -446,12 +446,12 @@ test("Connect TikTok goes through brain and a connected account shows its handle
   await page.goto("/connections");
   await expect(page.getByText(/TikTok, @annlee\. Connected /)).toBeVisible();
   const back = new URL("/connections?connected=tiktok", page.url()).href;
-  await page.route("http://localhost:8080/connections/tiktok/redirect", (route) =>
+  await page.route("http://localhost:8080/connections/tiktok/redirect?team=acme22", (route) =>
     route.fulfill({ status: 303, headers: { location: back } }),
   );
   await openAdd(page);
   const link = page.getByRole("dialog").getByRole("link", { name: "TikTok", exact: true });
-  await expect(link).toHaveAttribute("href", "http://localhost:8080/connections/tiktok/redirect");
+  await expect(link).toHaveAttribute("href", "http://localhost:8080/connections/tiktok/redirect?team=acme22");
   await link.click();
   await expect(page.getByRole("status").filter({ hasText: "Connected your TikTok account." })).toBeVisible();
 });
@@ -460,7 +460,7 @@ test("a refused OAuth connect is explained", async ({ page }) => {
   await signedIn(page, "owner");
   await page.goto("/connections?connect_error=cancelled&provider=threads");
   await expect(page.getByRole("alert").filter({ hasText: "Threads connection was cancelled." })).toBeVisible();
-  await expect(page).toHaveURL("/connections");
+  await expect(page).toHaveURL("/t/acme22/connections");
   await expect(page.getByRole("link", { name: "Connect Threads" })).toHaveCount(0);
 });
 
@@ -550,7 +550,7 @@ test("a Meta login opens the picker and connects the picked accounts", async ({ 
   await expect(picker.getByRole("group", { name: "Facebook Pages" }).getByRole("checkbox")).toHaveCount(2);
   await expect(picker.getByRole("checkbox", { name: "cafe", exact: true })).toBeChecked();
   // The flag is dropped, so a reload doesn't reopen it.
-  await expect(page).toHaveURL("/connections");
+  await expect(page).toHaveURL("/t/acme22/connections");
   await picker.getByRole("checkbox", { name: "Shop" }).uncheck();
   await picker.getByRole("button", { name: "Connect selected" }).click();
   await expect(page.getByText("Connected 2 accounts.")).toBeFocused();

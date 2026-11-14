@@ -7,7 +7,7 @@ const me = (isAdmin: boolean) => ({
   email: "me@example.com",
   name: "Me",
   username: null,
-  current_team: { id: "t1", name: "Acme", role: "owner" },
+  current_team: { id: "t1", name: "Acme", code: "acme22", role: "owner" },
   is_admin: isAdmin,
 });
 const signup = (id: string, email: string, created_at: string, verified_at: string | null = null, approved_at: string | null = null) => ({
@@ -33,7 +33,7 @@ const users = Array.from({ length: 5 }, (_, i) => ({
   is_admin: i === 0,
   created_at: "2026-11-01T10:00:00Z",
   last_sign_in_at: i === 0 ? "2026-11-10T10:00:00Z" : null,
-  teams: i === 0 ? [{ id: "t1", name: "Acme", role: "owner" }, { id: "t2", name: "Globex", role: "member" }] : [],
+  teams: i === 0 ? [{ id: "t1", name: "Acme", code: "acme22", role: "owner" }, { id: "t2", name: "Globex", code: "beta33", role: "member" }] : [],
 }));
 const teams = [
   { id: "t1", name: "Acme", created_at: "2026-10-01T10:00:00Z", members: 3, accounts: 4, posts: 1500, owner_email: "ada@example.com" },
@@ -137,14 +137,14 @@ test("only site admins get the Admin console link, and it opens a separate conso
   await expect(page.getByRole("link", { name: "Posts", exact: true })).toHaveCount(0);
   await page.locator("aside button[data-account]:visible").click();
   await page.getByRole("link", { name: "Back to the app" }).click();
-  await expect(page).toHaveURL("/home");
+  await expect(page).toHaveURL("/t/acme22/home");
 });
 
 test("the admin console sends a non-admin to the app", async ({ page }) => {
   await brain(page, false);
   for (const path of ["/admin", "/admin/users", "/admin/teams", "/admin/waitlist", "/admin/settings"]) {
     await page.goto(path);
-    await expect(page).toHaveURL("/home");
+    await expect(page).toHaveURL("/t/acme22/home");
   }
 });
 
