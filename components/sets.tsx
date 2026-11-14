@@ -5,14 +5,40 @@ import { flushSync } from "react-dom";
 import type { Failure } from "@/lib/auth";
 import { useSession } from "@/components/app-shell";
 import { listConnections, type Connection } from "@/lib/connections";
-import { createSet, deleteSet, listSets, purgeDate, renameSet, restoreSet, type SocialSet } from "@/lib/sets";
+import { createSet, deleteSet, listSets, purgeDate, renameSet, RESTORE_DAYS, restoreSet, type SocialSet } from "@/lib/sets";
 import { manages } from "@/lib/teams";
-import { accountName, Avatar } from "@/components/connections";
-import { isFailure, linkButton, problemText, Status, useAction } from "@/components/team-ui";
+import { accountName, NetworkAvatar } from "@/components/connections";
+import { platformName, platforms } from "@/components/platform-icons";
+import { isFailure, problemText, Status, useAction } from "@/components/team-ui";
+import { Icon } from "@/components/ui";
 
-const heading = "font-display text-xl font-extrabold tracking-tight";
 const date = (d: string | Date) => new Date(d).toLocaleDateString(undefined, { dateStyle: "medium" });
 const count = (n: number) => `${n} ${n === 1 ? "account" : "accounts"}`;
+// A set with more accounts than this shows a row of avatars and opens on request.
+const FOLD = 8;
+// Networks in the order they are listed everywhere else; an unknown one goes last.
+const networkOrder = (c: Connection) => {
+  const i = platforms.findIndex((p) => p.id === c.provider);
+  return i < 0 ? platforms.length : i;
+};
+
+// One account: its picture with the network's mark, its name, and the network in words.
+function Account({ account: a }: { account: Connection }) {
+  return (
+    <li className="flex min-w-0 items-center gap-2.5">
+      <NetworkAvatar connection={a} small />
+      <span className="min-w-0">
+        <span className="block truncate font-medium" title={accountName(a)}>
+          {accountName(a)}
+        </span>
+        <span className="block truncate text-sm text-ink-soft">
+          {platformName(a.provider)}
+          {a.handle && a.display_name ? `, @${a.handle}` : ""}
+        </span>
+      </span>
+    </li>
+  );
+}
 
 export function Sets() {
   const { user } = useSession();
@@ -94,7 +120,7 @@ function SetsPage({ canManage }: { canManage: boolean }) {
     const ok = await main.run("delete", call, () => {
       setDeleting(null);
       reload();
-      return `Deleted ${s.name}. You can restore it for 30 days.`;
+      return `Deleted ${s.name}. You can restore it for ${RESTORE_DAYS} days.`;
     });
     if (gone) {
       // Deleted elsewhere: its confirm and buttons go, so focus the section heading; the alert says why.
@@ -105,29 +131,37 @@ function SetsPage({ canManage }: { canManage: boolean }) {
   }
 
   const byId = new Map(accounts.map((a) => [a.id, a]));
+  const first = Array.isArray(live) ? live.find((s) => s.is_default) : undefined;
 
   return (
     <>
-      <section aria-labelledby="sets-heading" className="grid gap-3">
-        <h2 id="sets-heading" ref={headingRef} tabIndex={-1} className={heading}>
+      <section aria-labelledby="sets-heading" className="grid gap-4">
+        {/* The page title already says Sets; this names the region and takes focus after a set vanishes. */}
+        <h2 id="sets-heading" ref={headingRef} tabIndex={-1} className="sr-only text-lg font-semibold focus:not-sr-only">
           Sets
         </h2>
-        <p className="text-ink-soft">Sets group connected accounts. Every account is always in {(Array.isArray(live) && live.find((s) => s.is_default)?.name) || "All sets"}.</p>
+        <p className="max-w-prose text-ink-soft">
+          Sets group connected accounts.
+          {first && ` Every account is always in ${first.name}.`}
+        </p>
         {canManage ? (
-          <form onSubmit={onCreate} className="waitlist">
-            <label htmlFor="new-set-name">New set name</label>
-            <div className="waitlist-row">
+          <form onSubmit={onCreate} className="grid gap-1.5">
+            <label htmlFor="new-set-name" className="label">
+              New set name
+            </label>
+            <div className="flex gap-2">
               <input
                 id="new-set-name"
                 required
                 maxLength={60}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                className="field min-w-0 sm:max-w-xs"
                 aria-invalid={
                   (main.failedKey === "create" && (main.problem === "name_taken" || main.problem === "invalid_name")) || undefined
                 }
               />
-              <button type="submit" disabled={main.busy !== null}>
+              <button type="submit" className="btn btn-primary" disabled={main.busy !== null}>
                 {main.busy === "create" ? "Creating..." : "Create set"}
               </button>
             </div>
@@ -143,32 +177,24 @@ function SetsPage({ canManage }: { canManage: boolean }) {
             Sets couldn&apos;t be loaded. {problemText(live)}
           </p>
         ) : (
-          <ul className="grid gap-2">
+          <ul className="card divide-y divide-[var(--line)]">
             {live.map((s) => {
-              const members = s.account_ids.flatMap((id) => byId.get(id) ?? []);
+              const members = s.account_ids.flatMap((id) => byId.get(id) ?? []).sort((a, b) => networkOrder(a) - networkOrder(b));
+              const list = (
+                <ul aria-label={`Accounts in ${s.name}`} className="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-x-4 gap-y-3">
+                  {members.map((a) => (
+                    <Account key={a.id} account={a} />
+                  ))}
+                </ul>
+              );
               return (
-                <li key={s.id} className="grid gap-2 border-l-4 border-ink bg-paper px-4 py-3">
-                  <div>
-                    <p className="font-bold">
-                      {s.name}
-                      {s.is_default && <span className="ml-2 text-sm font-normal text-ink-soft">Holds every account, pinned</span>}
-                    </p>
-                    <p className="text-sm text-ink-soft">{count(s.account_count)}</p>
-                  </div>
-                  {members.length > 0 && (
-                    <ul aria-label={`Accounts in ${s.name}`} className="flex flex-wrap gap-2">
-                      {members.map((a) => (
-                        <li key={a.id} className="flex items-center gap-1.5 text-sm">
-                          <Avatar connection={a} size="size-6" />
-                          {accountName(a)}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {canManage && renaming === s.id && (
-                    <form className="flex flex-wrap items-end gap-2" onSubmit={(e) => onRename(e, s)}>
-                      <label htmlFor={`rename-${s.id}`} className="grid gap-1 font-bold">
+                <li key={s.id} className="grid grid-cols-[minmax(0,1fr)] gap-3 p-4">
+                  {canManage && renaming === s.id ? (
+                    <form className="grid gap-1.5" onSubmit={(e) => onRename(e, s)}>
+                      <label htmlFor={`rename-${s.id}`} className="label">
                         New name for {s.name}
+                      </label>
+                      <div className="flex flex-wrap gap-2">
                         <input
                           ref={(el) => {
                             openRef.current = el;
@@ -178,69 +204,101 @@ function SetsPage({ canManage }: { canManage: boolean }) {
                           maxLength={60}
                           value={newName}
                           onChange={(e) => setNewName(e.target.value)}
-                          className="rounded-full border-2 border-ink bg-paper px-4 py-2 font-normal"
+                          className="field min-w-0 flex-1 sm:max-w-xs"
                         />
-                      </label>
-                      <button type="submit" className={linkButton} disabled={main.busy !== null}>
-                        {main.busy === "rename" ? "Saving..." : "Save name"}
-                      </button>
-                      <button type="button" className={linkButton} disabled={main.busy !== null} onClick={() => close(`rename:${s.id}`)}>
-                        Cancel
-                      </button>
+                        <button type="submit" className="btn btn-primary" disabled={main.busy !== null}>
+                          {main.busy === "rename" ? "Saving..." : "Save name"}
+                        </button>
+                        <button type="button" className="btn btn-quiet" disabled={main.busy !== null} onClick={() => close(`rename:${s.id}`)}>
+                          Cancel
+                        </button>
+                      </div>
                     </form>
+                  ) : (
+                    <div className="flex min-h-8 items-center gap-2">
+                      <h3 className="min-w-0 truncate text-lg font-semibold" title={s.name}>
+                        {s.name}
+                      </h3>
+                      {s.is_default && <span className="badge tone shrink-0">Every account</span>}
+                      <p className="shrink-0 text-sm text-ink-soft">{count(s.account_count)}</p>
+                      {canManage && deleting !== s.id && (
+                        <div className="ml-auto flex shrink-0 gap-1.5">
+                          <button
+                            ref={keep(`rename:${s.id}`)}
+                            type="button"
+                            className="icon-btn"
+                            disabled={main.busy !== null}
+                            aria-label={`Rename ${s.name}`}
+                            title="Rename"
+                            onClick={() => open("rename", s)}
+                          >
+                            <Icon name="edit" />
+                          </button>
+                          {!s.is_default && (
+                            <button
+                              ref={keep(`delete:${s.id}`)}
+                              type="button"
+                              className="icon-btn enabled:hover:text-signal-deep"
+                              disabled={main.busy !== null}
+                              aria-label={`Delete ${s.name}`}
+                              title="Delete"
+                              onClick={() => open("delete", s)}
+                            >
+                              <Icon name="trash" />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   )}
                   {canManage && deleting === s.id && (
                     <form
-                      className="grid gap-2"
+                      className="grid gap-2 rounded-md bg-signal-deep/[0.07] p-3"
                       onSubmit={(e) => {
                         e.preventDefault();
                         onDelete(s);
                       }}
                     >
-                      <p id={`delete-q-${s.id}`}>Delete {s.name}? You can restore it for 30 days. This needs a sign-in from the last 10 minutes.</p>
-                      <div className="flex flex-wrap gap-x-4 gap-y-2">
+                      <p id={`delete-q-${s.id}`}>
+                        Delete {s.name}? You can restore it for {RESTORE_DAYS} days. This needs a sign-in from the last 10 minutes.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
                         <button
                           ref={(el) => {
                             openRef.current = el;
                           }}
                           type="submit"
-                          className={linkButton}
+                          className="btn btn-primary btn-sm"
                           aria-describedby={`delete-q-${s.id}`}
                           disabled={main.busy !== null}
                         >
                           {main.busy === "delete" ? "Deleting..." : "Yes, delete"}
                         </button>
-                        <button type="button" className={linkButton} disabled={main.busy !== null} onClick={() => close(`delete:${s.id}`)}>
+                        <button type="button" className="btn btn-secondary btn-sm" disabled={main.busy !== null} onClick={() => close(`delete:${s.id}`)}>
                           Cancel
                         </button>
                       </div>
                     </form>
                   )}
-                  {canManage && renaming !== s.id && deleting !== s.id && (
-                    <div className="flex flex-wrap gap-x-4 gap-y-2">
-                      <button
-                        ref={keep(`rename:${s.id}`)}
-                        type="button"
-                        className={linkButton}
-                        disabled={main.busy !== null}
-                        aria-label={`Rename ${s.name}`}
-                        onClick={() => open("rename", s)}
-                      >
-                        Rename
-                      </button>
-                      {!s.is_default && (
-                        <button
-                          ref={keep(`delete:${s.id}`)}
-                          type="button"
-                          className={linkButton}
-                          disabled={main.busy !== null}
-                          aria-label={`Delete ${s.name}`}
-                          onClick={() => open("delete", s)}
-                        >
-                          Delete
-                        </button>
-                      )}
-                    </div>
+                  {s.account_count === 0 && !s.is_default ? (
+                    <p className="text-sm text-ink-soft">No accounts yet. Add some from an account&apos;s settings on the Accounts page.</p>
+                  ) : members.length === 0 ? null : members.length > FOLD ? (
+                    <details className="group grid gap-3">
+                      <summary className="flex cursor-pointer list-none items-center gap-2 justify-self-start rounded-md text-sm font-medium text-ink-soft hover:text-ink [&::-webkit-details-marker]:hidden">
+                        <span aria-hidden="true" className="flex items-center gap-2 group-open:hidden">
+                          {members.slice(0, 5).map((a) => (
+                            <NetworkAvatar key={a.id} connection={a} small />
+                          ))}
+                        </span>
+                        <span className="group-open:hidden">Show all {members.length}</span>
+                        <span className="hidden group-open:inline">Hide accounts</span>
+                        <span className="sr-only"> in {s.name}</span>
+                        <Icon name="down" className="size-4 group-open:rotate-180" />
+                      </summary>
+                      <div className="mt-3">{list}</div>
+                    </details>
+                  ) : (
+                    list
                   )}
                 </li>
               );
@@ -248,31 +306,36 @@ function SetsPage({ canManage }: { canManage: boolean }) {
           </ul>
         )}
       </section>
-      <section aria-labelledby="deleted-heading" className="grid gap-3">
-        <h2 id="deleted-heading" className={heading}>
+      <section aria-labelledby="deleted-heading" className="grid gap-2">
+        <h2 id="deleted-heading" className="text-sm font-semibold text-ink-soft">
           Recently deleted
         </h2>
+        <p className="hint">A deleted set can be restored for {RESTORE_DAYS} days.</p>
         <Status problem={bin.problem} done={bin.done} />
         {deleted === null ? (
-          <p className="text-ink-soft">Loading deleted sets...</p>
+          <p className="text-sm text-ink-soft">Loading deleted sets...</p>
         ) : isFailure(deleted) ? (
           <p role="alert" className="waitlist-error">
             Deleted sets couldn&apos;t be loaded. {problemText(deleted)}
           </p>
         ) : deleted.length === 0 ? (
-          <p>No recently deleted sets.</p>
+          <p className="text-sm text-ink-soft">No recently deleted sets.</p>
         ) : (
-          <ul className="grid gap-2">
+          <ul className="divide-y divide-[var(--line)] border-y border-[var(--line)]">
             {deleted.map((s) => (
-              <li key={s.id} className="grid gap-1 border-l-4 border-ink/30 bg-paper px-4 py-3">
-                <p className="font-bold">{s.name}</p>
-                <p className="text-sm text-ink-soft">
-                  {count(s.account_count)}. Deleted {date(s.deleted_at!)}. Gone for good on {date(purgeDate(s.deleted_at!))}.
-                </p>
+              <li key={s.id} className="flex items-center gap-3 py-2">
+                <div className="min-w-0 flex-1 sm:flex sm:items-baseline sm:gap-3">
+                  <p className="truncate font-medium" title={s.name}>
+                    {s.name}
+                  </p>
+                  <p className="text-sm text-ink-soft">
+                    {count(s.account_count)}. Gone for good on {date(purgeDate(s.deleted_at!))}.
+                  </p>
+                </div>
                 {canManage && (
                   <button
                     type="button"
-                    className={`justify-self-start ${linkButton}`}
+                    className="btn btn-secondary btn-sm shrink-0"
                     disabled={bin.busy !== null}
                     aria-label={`Restore ${s.name}`}
                     onClick={() =>
