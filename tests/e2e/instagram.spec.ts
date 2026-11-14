@@ -81,10 +81,15 @@ test("a network page has the Socials menu, and choosing a network closes it", as
   await expect(nav.getByRole("link", { name: "TikTok" })).toBeHidden();
 });
 
-test("every public page has the same menu bar", async ({ page }) => {
+test("every public page has the same menu bar, in the same place", async ({ page }) => {
   await page.route("**/auth/me", (route) => route.fulfill({ status: 401, json: { error: "unauthorized" } }));
+  // The bar sits in the same place at the same width on every page.
+  let first: { x: number; width: number } | undefined;
   for (const path of ["/", "/x", "/post-types", "/pricing", "/compare", "/compare/buffer", "/privacy", "/contact"]) {
     await page.goto(path);
+    const box = (await page.locator("header").first().boundingBox())!;
+    first ??= { x: box.x, width: box.width };
+    expect({ x: box.x, width: box.width }, path).toEqual(first);
     const nav = page.getByRole("navigation", { name: "Site" });
     await expect(nav.getByText("Socials", { exact: true }), path).toBeVisible();
     await expect(nav.getByRole("link", { name: "Get started" }), path).toHaveAttribute("href", "/signup");
