@@ -215,6 +215,26 @@ test("an account connected while a set is picked joins that set too", async ({ p
   expect(puts).toHaveLength(1);
 });
 
+test("an account that could not join the picked set still shows after it connects", async ({ page }) => {
+  await signedIn(page, "owner");
+  const set = (id: string, name: string) => ({ id, name, is_default: id === "s1", account_ids: [], account_count: 0, created_at: "2026-10-01T10:00:00Z", deleted_at: null });
+  await page.route(/\/v1\/social-sets$/, (route) => route.fulfill({ json: [set("s1", "All sets"), set("s2", "English")] }));
+  await page.route("**/v1/connections/bluesky", (route) => route.fulfill({ status: 201, json: { ...alice, id: "c2", handle: "bob.bsky.social" } }));
+  // brain refuses to add the new account to English, so it stays in the default set only.
+  await page.route("**/v1/connections/c2/sets", (route) => route.fulfill({ status: 500, json: { error: "internal" } }));
+  await page.addInitScript(() => localStorage.setItem("current-set:t1", "s2"));
+  await page.goto("/connections");
+  await expect(page.getByText("No accounts in the English set yet.")).toBeVisible();
+  await openBluesky(page);
+  await page.getByLabel("Bluesky handle").fill("@bob.bsky.social");
+  await page.getByLabel("App password").fill("abcd-efgh-ijkl-mnop");
+  await page.getByRole("button", { name: "Connect Bluesky" }).click();
+  await expect(page.getByText("Connected @bob.bsky.social.")).toBeFocused();
+  // Its card shows, and its sets say it is not in English.
+  await expect(page.getByRole("list", { name: "Sets for @bob.bsky.social" }).getByRole("listitem")).toHaveText(["All sets"]);
+  await expect(page.getByRole("button", { name: "Settings for Alice" })).toHaveCount(0);
+});
+
 test("shows the accounts of the set picked in the top bar", async ({ page }) => {
   const fb = { ...alice, id: "f1", provider: "facebook", handle: null, display_name: "Page One", avatar_url: null };
   const bob = { ...alice, id: "c2", handle: "bob.bsky.social", display_name: "Bob", avatar_url: null };
