@@ -2,7 +2,7 @@
 
 import { createContext, useContext } from "react";
 import { createPortal } from "react-dom";
-import Link from "next/link";
+import { TeamLink as Link } from "@/components/team-link";
 
 // The last crumb of the top bar, where each page puts its title. null until the bar has rendered.
 export const TitleSlot = createContext<HTMLElement | null>(null);

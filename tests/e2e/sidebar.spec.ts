@@ -378,7 +378,7 @@ test("a page one level down shows its parent as a crumb, and as a link on the pa
   await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
   await expect(main.getByRole("link", { name: "Posts", exact: true })).toBeHidden();
   await crumbs.getByRole("link", { name: "Posts", exact: true }).click();
-  await expect(page).toHaveURL("/posts");
+  await expect(page).toHaveURL("/t/acme22/posts");
   await expect(crumbs.getByRole("heading", { name: "Posts", level: 1 })).toBeVisible();
   await expect(crumbs.getByRole("link", { name: "Posts", exact: true })).toHaveCount(0);
 
