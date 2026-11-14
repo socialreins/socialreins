@@ -95,6 +95,24 @@ export function Avatar({ connection: c, size = "size-10" }: { connection: Connec
   return <Picture url={c.avatar_url} name={accountName(c)} size={size} />;
 }
 
+// The avatar with its network's mark on the corner, so one name on two networks reads as two accounts.
+export function NetworkAvatar({ connection: c, small = false }: { connection: Connection; small?: boolean }) {
+  const platform = platformOf(c.provider);
+  return (
+    <span className="relative shrink-0">
+      <Avatar connection={c} size={small ? "size-8" : "size-12"} />
+      {platform && (
+        <span
+          className={`absolute -right-1 -bottom-1 grid ${small ? "size-4" : "size-5"} place-items-center rounded-full bg-paper ring-2 ring-paper`}
+          style={{ color: platform.color }}
+        >
+          <PlatformIcon platform={platform} className={small ? "size-2.5" : "size-3.5"} />
+        </span>
+      )}
+    </span>
+  );
+}
+
 // A remote picture, else the name's initial on the neutral fill the badges use (canvas vanished on white paper): also when it fails to load, as Meta's signed CDN links expire.
 function Picture({ url, name, size, bg = "bg-ink/[0.06]" }: { url: string | null; name: string; size: string; bg?: string }) {
   const [broken, setBroken] = useState(false);
@@ -271,14 +289,7 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
                 return (
                   <li key={c.id} className="card grid content-start gap-3 p-4">
                     <div className="flex items-center gap-3">
-                      <span className="relative shrink-0">
-                        <Avatar connection={c} size="size-12" />
-                        {platform && (
-                          <span className="absolute -right-1 -bottom-1 grid size-5 place-items-center rounded-full bg-paper ring-2 ring-paper" style={{ color: platform.color }}>
-                            <PlatformIcon platform={platform} className="size-3.5" />
-                          </span>
-                        )}
-                      </span>
+                      <NetworkAvatar connection={c} />
                       <div className="min-w-0 flex-1">
                         <p className="flex items-center gap-2">
                           <span className="min-w-0 truncate font-bold">{name}</span>

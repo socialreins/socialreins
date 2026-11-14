@@ -72,14 +72,47 @@ test("sets sends a signed-out visitor to login", async ({ page }) => {
 test("lists sets with Default pinned and never deletable", async ({ page }) => {
   await brain(page, "owner");
   await page.goto("/sets");
-  const items = page.getByRole("region", { name: "Sets" }).getByRole("listitem").filter({ has: page.locator("p.font-bold") });
-  await expect(items.first()).toContainText("DefaultDefault, pinned");
+  const items = page.getByRole("region", { name: "Sets" }).getByRole("listitem").filter({ has: page.getByRole("heading", { level: 3 }) });
+  await expect(items.first().getByRole("heading")).toHaveText("Default");
+  await expect(items.first()).toContainText("Every account");
   await expect(items.first()).toContainText("2 accounts");
-  await expect(page.getByRole("list", { name: "Accounts in Clients" })).toHaveText("AAlice");
+  // Each account says its network, so one name on two networks reads as two accounts.
+  await expect(page.getByRole("list", { name: "Accounts in Clients" }).getByRole("listitem")).toHaveText(["AAliceBluesky, @alice.bsky.social"]);
   await expect(page.getByRole("button", { name: "Rename Default" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Delete Default" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Delete Clients" })).toBeVisible();
-  await expect(page.getByText(/Old.*\n?.*0 accounts\. Deleted .*\. Gone for good on /)).toBeVisible();
+  const bin = page.getByRole("region", { name: "Recently deleted" });
+  await expect(bin.getByRole("listitem")).toHaveText(/^Old0 accounts\. Gone for good on .*\.Restore$/);
+});
+
+test("a set with many accounts stays folded and the page fits a phone", async ({ page }) => {
+  const state = await brain(page, "owner");
+  const networks = ["facebook", "instagram", "threads", "linkedin", "bluesky", "x", "tiktok", "youtube"];
+  state.accounts = Array.from({ length: 14 }, (_, i) => ({
+    ...account(`m${i}`, i === 0 ? "A very long account name that would never fit on one line of a phone screen" : "Same Name"),
+    provider: networks[i % networks.length]!,
+  }));
+  const ids = state.accounts.map((a) => a.id);
+  state.live = [set("d", "Default", ids), set("s1", "A set with a name as long as the sixty characters brain allows", ids.slice(0, 6))];
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.goto("/sets");
+  const all = page.getByRole("list", { name: "Accounts in Default" });
+  await expect(page.getByText("Show all 14")).toBeVisible();
+  await expect(all).toBeHidden();
+  await expect(page.getByRole("list", { name: /^Accounts in A set/ }).getByRole("listitem")).toHaveCount(6);
+  const fits = () => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
+  expect(await fits()).toBe(true);
+  // The fold is a native disclosure, so the keyboard opens it.
+  await page.locator("summary").press("Enter");
+  await expect(all.getByRole("listitem")).toHaveCount(14);
+  // By network, in the order the networks are listed everywhere else.
+  await expect(all.getByRole("listitem").first()).toContainText("Facebook");
+  await expect(all.getByRole("listitem").last()).toContainText("YouTube");
+  expect(await fits()).toBe(true);
+  // A long set name gives way to its buttons, which stay on screen.
+  const del = page.getByRole("button", { name: /^Delete A set/ });
+  await del.scrollIntoViewIfNeeded();
+  await expect(del).toBeInViewport({ ratio: 1 });
 });
 
 test("create explains a taken name, then creates", async ({ page }) => {
