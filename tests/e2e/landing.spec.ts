@@ -15,6 +15,9 @@ test("landing page renders and the waitlist form joins", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByText("1 person on the waitlist")).toBeVisible();
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  // Cloud is the default; self-hosting is the free way.
+  await expect(page.getByRole("heading", { name: "Let us run it, or run it yourself for free" })).toBeVisible();
+  await expect(page.getByRole("main").getByRole("link", { name: "pricing" })).toHaveAttribute("href", "/pricing");
   await expect(page.getByRole("link", { name: "SocialReins", exact: true })).toHaveAttribute("href", "/");
   await expect(page.getByRole("link", { name: /Star on GitHub/ })).toHaveAttribute(
     "href",

@@ -21,7 +21,7 @@ const us = {
   networks: "8: Facebook Pages, Instagram, Threads, LinkedIn, Bluesky, X, TikTok and YouTube.",
   source: "Open source (AGPL-3.0). You can run it on your own server.",
   api: "REST API, MCP server and signed webhooks.",
-  price: "Free to self-host. A paid hosted version is coming; join the waitlist.",
+  price: "Cloud is in early access, free for now, with no price set yet; join the waitlist. Free to self-host.",
   inbox: "Comments and DMs from Bluesky in one inbox. Facebook Pages and Instagram are in testing.",
   automation: "Comment-to-DM by keyword. Live on Bluesky; Facebook and Instagram are in testing.",
   analytics: "No analytics yet.",
