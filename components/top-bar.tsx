@@ -15,6 +15,7 @@ const crumb = "flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 font-bold 
 const item = "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-ink/[0.045]";
 
 // Above every app page: the sidebar toggle, then where you are as Team / Set / page; the team and the set each open a menu to switch.
+// The set is a filter, so it shows only on the pages it filters; the plan sits at the foot of the team menu.
 export function TopBar({ session, admin, pages, collapsed, onToggle }: { session: boolean; admin: boolean; pages: NavItem[]; collapsed: boolean; onToggle: () => void }) {
   return (
     <header className="flex h-12 items-center gap-1 border-b border-[var(--line)] bg-paper px-3 text-sm sm:px-6 md:sticky md:top-0 md:z-[5]">
@@ -43,20 +44,9 @@ export function TopBar({ session, admin, pages, collapsed, onToggle }: { session
                 <li className="flex min-w-0 items-center">
                   <TeamMenu />
                 </li>
-                {/* Every team is on Free until billing exists. */}
-                <li className="hidden shrink-0 items-center gap-1.5 pr-1 text-xs text-[var(--faint)] md:flex">
-                  Free plan
-                  <span aria-hidden="true">·</span>
-                  <Link href="/billing" className="font-semibold text-signal-deep hover:underline">
-                    Upgrade
-                  </Link>
-                </li>
-                <li aria-hidden="true" className="text-[var(--line)]">/</li>
-                <li className="min-w-0">
-                  <Suspense fallback={null}>
-                    <TeamSets />
-                  </Suspense>
-                </li>
+                <Suspense fallback={null}>
+                  <TeamSets pages={pages} />
+                </Suspense>
               </>
             )}
             <Suspense fallback={null}>
@@ -84,12 +74,12 @@ function PageCrumb({ pages }: { pages: NavItem[] }) {
 }
 
 // A button that opens a small panel under it (a native popover: Escape and clicking outside close it).
-function Menu({ id, trigger, onOpen, children }: { id: string; trigger: ReactNode; onOpen?: () => void; children: ReactNode }) {
+function Menu({ id, label, trigger, onOpen, children }: { id: string; label?: string; trigger: ReactNode; onOpen?: () => void; children: ReactNode }) {
   const button = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   return (
     <>
-      <button ref={button} type="button" popoverTarget={id} className={crumb}>
+      <button ref={button} type="button" popoverTarget={id} aria-label={label} className={crumb}>
         {trigger}
         <Icon name="down" className="size-3.5 text-[var(--faint)]" />
       </button>
@@ -234,13 +224,32 @@ function TeamMenu() {
       <div className="px-2">
         <Status problem={problem} done={done} />
       </div>
+      {/* Every team is on Free until billing exists. */}
+      <p className="mt-1.5 flex items-center gap-1.5 border-t border-[var(--line)] px-2 pt-2 pb-1 text-xs text-ink-soft">
+        Free plan
+        <span aria-hidden="true">·</span>
+        <Link href="/billing" className="font-semibold text-signal-deep hover:underline" onClick={() => hide("team-menu")}>
+          Upgrade
+        </Link>
+      </p>
     </Menu>
   );
 }
 
+// Only on the pages the picked set filters (`set` in the shell's nav).
 // Keyed by team, so a team switch starts the set menu fresh instead of checking the new team's set against the old team's sets.
-function TeamSets() {
-  return <SetMenu key={useSession().user.current_team.id} path={usePathname()} />;
+function TeamSets({ pages }: { pages: NavItem[] }) {
+  const team = useSession().user.current_team.id;
+  const path = usePathname();
+  if (!pages.find((p) => isActive(path, p.href))?.set) return null;
+  return (
+    <>
+      <li aria-hidden="true" className="text-[var(--line)]">/</li>
+      <li className="min-w-0">
+        <SetMenu key={team} path={path} />
+      </li>
+    </>
+  );
 }
 
 function SetMenu({ path }: { path: string }) {
@@ -277,7 +286,7 @@ function SetMenu({ path }: { path: string }) {
   );
 
   return (
-    <Menu id="set-menu" onOpen={() => listSets().then(setSets)} trigger={<span className="truncate">{name}</span>}>
+    <Menu id="set-menu" label={`Set: ${name}`} onOpen={() => listSets().then(setSets)} trigger={<span className="truncate">{name}</span>}>
       <p className="px-2 pt-1 pb-1.5 text-xs text-ink-soft">Work in one set at a time.</p>
       {isFailure(sets) && (
         <p role="alert" className="waitlist-error px-2">

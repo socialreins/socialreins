@@ -128,7 +128,7 @@ test("calendar shows the month's posts, with filter and month steps; posts lists
   await page.reload();
   await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "Clients" })).toBeVisible();
   await page.goto("/posts/new");
-  await expect(page.getByLabel("Set")).toHaveValue("s1");
+  await expect(page.getByLabel("Set", { exact: true })).toHaveValue("s1");
 });
 
 test("on a phone the month is a list of days, not a wide grid", async ({ page }) => {
@@ -203,7 +203,7 @@ test("schedule sends the local time as UTC and moves to the post's address", asy
     return route.fulfill({ status: 201, json: post("p1", { ...sent, status: "scheduled" }) });
   });
   await page.goto("/posts/new");
-  await page.getByLabel("Set").selectOption("s1");
+  await page.getByLabel("Set", { exact: true }).selectOption("s1");
   await page.getByLabel("Post", { exact: true }).fill("Launch day");
   await page.getByRole("button", { name: "Add image" }).click();
   await page.getByLabel("Image 1 link").fill("https://example.com/a.png");

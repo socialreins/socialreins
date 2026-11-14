@@ -54,9 +54,11 @@ test("app shows the team switcher, switches and creates a team", async ({ page }
   const side = page.getByRole("navigation", { name: "Breadcrumb" });
   await expect(page.locator("aside").getByRole("button", { name: "Acme" })).toHaveCount(0);
   await expect(page.locator("aside").getByRole("link", { name: "SocialReins" })).toHaveAttribute("href", "/home");
-  await expect(side.getByText("Free plan")).toBeVisible();
+  // The plan is at the foot of the team menu, not in the bar.
+  await expect(side.getByText("Free plan")).toBeHidden();
   await side.getByRole("button", { name: "Acme", exact: true }).click();
   const team = page.locator("#team-menu");
+  await expect(team.getByText("Free plan")).toBeVisible();
   await expect(team.getByRole("button", { name: /Acme/ })).toHaveAttribute("aria-current", "true");
   await expect(team.getByRole("link", { name: "Manage team" })).toHaveAttribute("href", "/team");
   await team.getByRole("button", { name: /Beta/ }).click();

@@ -289,27 +289,70 @@ test("the account shows the role in the current team under the name", async ({ p
   await expect(accountButton(page)).toContainText("Owner");
 });
 
-test("the top bar holds the team switcher with the plan, the sidebar the logo, and Upgrade opens /billing", async ({ page }) => {
+test("the top bar holds the team switcher, its menu ends with the plan, and Upgrade opens /billing", async ({ page }) => {
   await brain(page);
   await page.goto("/posts");
   const side = page.getByRole("navigation", { name: "Breadcrumb" });
   const logo = page.locator("aside").getByRole("link", { name: "SocialReins" });
-  await expect(side.getByRole("button", { name: "Acme", exact: true })).toBeVisible();
-  await expect(side).toContainText("Free plan");
+  const acme = side.getByRole("button", { name: "Acme", exact: true });
+  await expect(acme).toBeVisible();
+  // Closed, the bar shows neither the plan nor Upgrade.
+  await expect(side.getByText("Free plan")).toBeHidden();
+  await expect(side.getByRole("link", { name: "Upgrade" })).toBeHidden();
   await expect(page.locator("aside").getByRole("button", { name: "Acme", exact: true })).toHaveCount(0);
   await expect(logo.getByText("SocialReins")).toBeInViewport();
-  await side.getByRole("link", { name: "Upgrade" }).click();
+  await acme.click();
+  const menu = page.locator("#team-menu");
+  await expect(menu.locator("> :last-child")).toHaveText("Free plan·Upgrade");
+  await menu.getByRole("link", { name: "Upgrade" }).click();
   await expect(page).toHaveURL("/billing");
+  await expect(menu).toBeHidden();
   await expect(page.getByRole("heading", { name: "Plans", level: 1 })).toBeVisible();
   await expect(page.getByRole("main")).toContainText("Your team is on the Free plan. Paid plans are coming to the hosted version.");
   await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Plans");
 
-  // The icon rail keeps only the logo mark (the name stays for screen readers); the team stays in the top bar.
+  // The icon rail keeps only the logo mark (the name stays for screen readers); the team and its plan stay in the top bar.
   await page.getByRole("button", { name: "Collapse sidebar" }).click();
   await expect(logo).toBeVisible();
   expect((await logo.boundingBox())!.width).toBeLessThan(64);
-  await side.getByRole("button", { name: "Acme", exact: true }).click();
-  await expect(page.locator("#team-menu").getByRole("link", { name: "Manage team" })).toBeVisible();
+  await acme.click();
+  await expect(menu.getByRole("link", { name: "Manage team" })).toBeVisible();
+  await expect(menu.getByRole("link", { name: "Upgrade" })).toHaveAttribute("href", "/billing");
+});
+
+test("the set switcher shows only on the pages the set filters, with no visible label", async ({ page }) => {
+  await brain(page);
+  const sets = [
+    { id: "d", name: "Everything", is_default: true },
+    { id: "s1", name: "Clients", is_default: false },
+  ].map((s) => ({ ...s, account_ids: [], account_count: 0, created_at: "2026-10-01T10:00:00Z", deleted_at: null }));
+  await page.route(/\/v1\/social-sets(\?.*)?$/, (route) => route.fulfill({ json: sets }));
+  const crumbs = page.getByRole("navigation", { name: "Breadcrumb" });
+  const picker = crumbs.getByRole("button", { name: "Set: Everything", exact: true });
+  for (const path of ["/home", "/posts", "/posts/new", "/calendar", "/lists", "/connections"]) {
+    await page.goto(path);
+    await expect(picker, path).toBeVisible();
+  }
+  // The button shows the set's own name and nothing else.
+  await expect(picker).toHaveText("Everything");
+  for (const path of ["/inbox", "/automations", "/sets", "/team", "/api-tokens", "/profile", "/security", "/billing"]) {
+    await page.goto(path);
+    await expect(crumbs.getByRole("button", { name: "Acme", exact: true }), path).toBeVisible();
+    await expect(crumbs.getByRole("button", { name: /^Set: / }), path).toHaveCount(0);
+  }
+});
+
+test("the top bar fits a phone, with the plan in the team menu", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await brain(page);
+  for (const path of ["/posts", "/team"]) {
+    await page.goto(path);
+    await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "Acme", exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), path).toBe(true);
+  }
+  await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "Acme", exact: true }).click();
+  await expect(page.locator("#team-menu").getByRole("link", { name: "Upgrade" })).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
 test("dark theme stays in the app: after signing out the landing page is light", async ({ page }) => {

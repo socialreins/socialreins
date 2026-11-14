@@ -22,16 +22,17 @@ export function useSession() {
   return s;
 }
 
-export type NavItem = { href: string; label: string; icon: IconName };
+// set: the set picked in the top bar changes what this page shows, so the top bar offers the switcher there.
+export type NavItem = { href: string; label: string; icon: IconName; set?: true };
 type NavGroup = { label: string; items: NavItem[] };
 const nav: NavGroup[] = [
-  { label: "", items: [{ href: "/home", label: "Home", icon: "home" }] },
+  { label: "", items: [{ href: "/home", label: "Home", icon: "home", set: true }] },
   {
     label: "Publish",
     items: [
-      { href: "/posts", label: "Posts", icon: "compose" },
-      { href: "/calendar", label: "Calendar", icon: "posts" },
-      { href: "/lists", label: "Lists", icon: "lists" },
+      { href: "/posts", label: "Posts", icon: "compose", set: true },
+      { href: "/calendar", label: "Calendar", icon: "posts", set: true },
+      { href: "/lists", label: "Lists", icon: "lists", set: true },
     ],
   },
   {
@@ -44,7 +45,7 @@ const nav: NavGroup[] = [
   {
     label: "Workspace",
     items: [
-      { href: "/connections", label: "Accounts", icon: "accounts" },
+      { href: "/connections", label: "Accounts", icon: "accounts", set: true },
       { href: "/sets", label: "Sets", icon: "sets" },
       { href: "/team", label: "Team", icon: "team" },
       { href: "/api-tokens", label: "API tokens", icon: "key" },
@@ -190,7 +191,7 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
             <div
               className={`flex items-center justify-between gap-3 px-2.5 py-2 md:min-h-12 md:pt-3 md:pb-1 ${collapsed ? "md:justify-center md:px-0" : ""}`}
             >
-              {/* The logo: mark and name, or only the mark on the icon rail. The team and its plan are in the top bar. */}
+              {/* The logo: mark and name, or only the mark on the icon rail. The team is in the top bar. */}
               <Link
                 href={admin ? "/admin" : "/home"}
                 className="flex items-center gap-2 px-1.5 font-display text-base font-bold tracking-tight"
