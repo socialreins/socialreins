@@ -7,7 +7,7 @@ export const metadata: Metadata = { title: "Terms of Service: SocialReins", ...p
 
 export default function Terms() {
   return (
-    <LegalPage title="Terms of Service">
+    <LegalPage title="Terms of Service" updated="14 November 2026">
       <p>
         These terms cover the hosted SocialReins service at socialreins.com, run by Bytech. By creating an account or
         using the service, you agree to them. If you have a question, <ContactLink />.
@@ -43,8 +43,9 @@ export default function Terms() {
 
       <h2>Plans</h2>
       <p>
-        The hosted service is free for now. A paid hosted plan will come later; we will announce its prices before
-        charging anything, and you can always run SocialReins yourself instead.
+        The hosted service is not open to new accounts yet, and nobody is charged for it today. When it opens it will
+        be a paid subscription; we will announce its prices before charging anything. You can always run SocialReins
+        yourself for free instead.
       </p>
 
       <h2>Changes</h2>
