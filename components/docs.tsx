@@ -87,7 +87,7 @@ function Start({ mode }: { mode: Mode }) {
         <h2>When it opens</h2>
         <ol>
           <li>You get an email from the waitlist with a link to create your account.</li>
-          <li>You sign in with an email link, a passkey or Google. There is no password.</li>
+          <li>You sign in with a link sent to your email. There is no password, and you can add a passkey afterwards.</li>
           <li>
             You connect your social accounts and publish. See <Link href="/docs/cloud/use" className={link}>Connect and publish</Link>.
           </li>
@@ -207,10 +207,10 @@ function Use({ mode }: { mode: Mode }) {
       <p>A set is a group of accounts you post to together, such as one brand or one client. Every team starts with a Default set that holds every account. Open Sets to add more and choose which accounts belong to each.</p>
       <h2>3. Write a post</h2>
       <p>
-        Open Posts and write a post. Under Post to, pick the accounts. Add your text, photos or a video, and a first comment or a thread where the network allows one. Then publish now or pick a time to schedule it. The <Link href="/post-types" className={link}>post types page</Link> lists what each network accepts.
+        Open Posts and write a post. Under Post to, pick the networks. Add your text, photos or a video, and a first comment or a thread where the network allows one. Then publish now or pick a time to schedule it. The <Link href="/post-types" className={link}>post types page</Link> lists what each network accepts.
       </p>
       <h2>4. Check and take down</h2>
-      <p>Calendar shows what is scheduled. A published post shows a result for each account, with the reason when a network refused it. Deleting a published post takes it down from every network it went to.</p>
+      <p>Calendar shows what is scheduled. A published post shows a result for each account, with the reason when a network refused it. Taking a published post down removes it from its network, and a post sent to several networks has Take down all. It stays in SocialReins, marked as taken down.</p>
       <h2>5. Invite your team</h2>
       <p>Open Team to invite people by email as an admin or a member. Lists group posts into an ordered series.</p>
     </>
