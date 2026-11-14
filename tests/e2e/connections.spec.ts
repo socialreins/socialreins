@@ -190,6 +190,11 @@ test("an account connected while a set is picked joins that set too", async ({ p
     puts.push([route.request().url().split("/").at(-2), route.request().postDataJSON()]);
     return route.fulfill({ json: { ...alice, id: "c2", set_ids: ["s1", "s2"] } });
   });
+  // brain lists the new account (c2) from the second load on, in English once the page has put it there.
+  let loads = 0;
+  await page.route("**/v1/connections", (route) =>
+    route.fulfill({ json: loads++ === 0 ? [alice] : [alice, { ...alice, id: "c2", handle: "bob.bsky.social", display_name: null, avatar_url: null, set_ids: puts.length ? ["s1", "s2"] : ["s1"] }] }),
+  );
   await page.addInitScript(() => localStorage.setItem("current-set:t1", "s2"));
   await page.goto("/connections");
   const back = new URL("/connections?connected=threads", page.url()).href;
@@ -201,10 +206,62 @@ test("an account connected while a set is picked joins that set too", async ({ p
   await expect(page.getByRole("status").filter({ hasText: "Connected your Threads account." })).toBeVisible();
   // Only the account that wasn't there before the connect (c2), not the old one (c1).
   await expect.poll(() => puts).toEqual([["c2", { set_ids: ["s1", "s2"] }]]);
+  // English is picked, so only the account that joined it shows.
+  await expect(page.getByRole("button", { name: "Settings for @bob.bsky.social" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Settings for Alice" })).toHaveCount(0);
   // A plain reload is not a connect, so nothing more is added.
   await page.reload();
-  await expect(page.getByText("alice.bsky.social").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Settings for @bob.bsky.social" })).toBeVisible();
   expect(puts).toHaveLength(1);
+});
+
+test("shows the accounts of the set picked in the top bar", async ({ page }) => {
+  const fb = { ...alice, id: "f1", provider: "facebook", handle: null, display_name: "Page One", avatar_url: null };
+  const bob = { ...alice, id: "c2", handle: "bob.bsky.social", display_name: "Bob", avatar_url: null };
+  await signedIn(page, "owner");
+  await page.route("**/v1/connections", (route) => route.fulfill({ json: [{ ...alice, set_ids: ["s1", "s2"] }, bob, { ...fb, set_ids: ["s1", "s2"] }] }));
+  const set = (id: string, name: string) => ({ id, name, is_default: id === "s1", account_ids: [], account_count: 0, created_at: "2026-10-01T10:00:00Z", deleted_at: null });
+  // The default set is told by `is_default`, whatever the team named it.
+  await page.route(/\/v1\/social-sets$/, (route) => route.fulfill({ json: [set("s1", "Everything"), set("s2", "English"), set("s3", "Spanish")] }));
+  await page.route("**/v1/connections/c1/sets", (route) => route.fulfill({ json: { ...alice, set_ids: ["s1"] } }));
+  const pick = async (from: string, to: string) => {
+    await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: from }).click();
+    await page.locator("#set-menu").getByRole("button", { name: to }).click();
+  };
+  await page.goto("/connections");
+  const tabs = page.getByRole("tablist", { name: "Networks" }).getByRole("tab");
+  const cards = page.getByRole("tabpanel").getByRole("button", { name: /^Settings for / });
+  // The default set holds every account.
+  await expect(tabs).toHaveText([/^Facebook\s*1$/, /^Bluesky\s*2$/]);
+  await expect(page.getByText("Accounts connected to Acme.")).toBeVisible();
+  await tabs.nth(1).click();
+  await expect(cards).toHaveCount(2);
+
+  // English holds Alice and the Page, not Bob; the Bluesky tab stays picked.
+  await pick("Everything", "English");
+  await expect(tabs).toHaveText([/^Facebook\s*1$/, /^Bluesky\s*1$/]);
+  await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
+  await expect(cards).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Settings for Alice" })).toBeVisible();
+  await expect(page.getByText("Accounts in the English set. Pick Everything at the top to see every account in Acme.")).toBeVisible();
+
+  // A set with no accounts says so instead of showing tabs.
+  await pick("English", "Spanish");
+  await expect(page.getByText("No accounts in the Spanish set yet. Use Add account to connect one to it, or pick Everything at the top and add an existing account from the account's settings.")).toBeVisible();
+  await expect(page.getByRole("tablist")).toHaveCount(0);
+
+  // Taking an account out of the picked set removes its card and its network's tab, and the page says what was saved.
+  await pick("Spanish", "English");
+  await openSettings(page, "Alice");
+  await page.getByRole("group", { name: "Sets" }).getByRole("checkbox", { name: "English" }).uncheck();
+  await page.getByRole("button", { name: "Save sets" }).click();
+  await expect(page.getByText("Sets saved for Alice.")).toBeFocused();
+  await expect(tabs).toHaveText([/^Facebook\s*1$/]);
+  await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("button", { name: "Settings for Page One" })).toBeVisible();
+
+  await pick("English", "Everything");
+  await expect(tabs).toHaveText([/^Facebook\s*1$/, /^Bluesky\s*2$/]);
 });
 
 test("Connect LinkedIn goes through brain and says how it went", async ({ page }) => {
