@@ -236,16 +236,17 @@ function TeamMenu() {
   );
 }
 
-// Only on the pages the picked set filters (`set` in the shell's nav).
+// Shown only on the pages the picked set filters (`set` in the shell's nav). Elsewhere it stays mounted but hidden,
+// so the loaded sets and the current pick are ready when such a page opens.
 // Keyed by team, so a team switch starts the set menu fresh instead of checking the new team's set against the old team's sets.
 function TeamSets({ pages }: { pages: NavItem[] }) {
   const team = useSession().user.current_team.id;
   const path = usePathname();
-  if (!pages.find((p) => isActive(path, p.href))?.set) return null;
+  const hidden = pages.find((p) => isActive(path, p.href))?.set ? "" : "hidden";
   return (
     <>
-      <li aria-hidden="true" className="text-[var(--line)]">/</li>
-      <li className="min-w-0">
+      <li aria-hidden="true" className={`text-[var(--line)] ${hidden}`}>/</li>
+      <li className={`min-w-0 ${hidden}`}>
         <SetMenu key={team} path={path} />
       </li>
     </>

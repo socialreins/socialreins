@@ -311,7 +311,7 @@ test("the top bar holds the team switcher, its menu ends with the plan, and Upgr
   await expect(page.getByRole("main")).toContainText("Your team is on the Free plan. Paid plans are coming to the hosted version.");
   await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Plans");
 
-  // The icon rail keeps only the logo mark (the name stays for screen readers); the team and its plan stay in the top bar.
+  // The icon rail keeps only the logo mark (the name stays for screen readers); the team, with the plan in its menu, stays in the top bar.
   await page.getByRole("button", { name: "Collapse sidebar" }).click();
   await expect(logo).toBeVisible();
   expect((await logo.boundingBox())!.width).toBeLessThan(64);
@@ -335,7 +335,7 @@ test("the set switcher shows only on the pages the set filters, with no visible 
   }
   // The button shows the set's own name and nothing else.
   await expect(picker).toHaveText("Everything");
-  for (const path of ["/inbox", "/automations", "/sets", "/team", "/api-tokens", "/profile", "/security", "/billing"]) {
+  for (const path of ["/inbox", "/inbox/all", "/automations", "/sets", "/team", "/api-tokens", "/profile", "/security", "/billing"]) {
     await page.goto(path);
     await expect(crumbs.getByRole("button", { name: "Acme", exact: true }), path).toBeVisible();
     await expect(crumbs.getByRole("button", { name: /^Set: / }), path).toHaveCount(0);
