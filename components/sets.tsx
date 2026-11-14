@@ -120,7 +120,7 @@ function SetsPage({ canManage }: { canManage: boolean }) {
     const ok = await main.run("delete", call, () => {
       setDeleting(null);
       reload();
-      return `Deleted ${s.name}. You can restore it for 30 days.`;
+      return `Deleted ${s.name}. You can restore it for ${RESTORE_DAYS} days.`;
     });
     if (gone) {
       // Deleted elsewhere: its confirm and buttons go, so focus the section heading; the alert says why.
@@ -137,7 +137,7 @@ function SetsPage({ canManage }: { canManage: boolean }) {
     <>
       <section aria-labelledby="sets-heading" className="grid gap-4">
         {/* The page title already says Sets; this names the region and takes focus after a set vanishes. */}
-        <h2 id="sets-heading" ref={headingRef} tabIndex={-1} className="sr-only">
+        <h2 id="sets-heading" ref={headingRef} tabIndex={-1} className="sr-only text-lg font-semibold focus:not-sr-only">
           Sets
         </h2>
         <p className="max-w-prose text-ink-soft">
@@ -238,7 +238,7 @@ function SetsPage({ canManage }: { canManage: boolean }) {
                             <button
                               ref={keep(`delete:${s.id}`)}
                               type="button"
-                              className="icon-btn hover:text-signal-deep"
+                              className="icon-btn enabled:hover:text-signal-deep"
                               disabled={main.busy !== null}
                               aria-label={`Delete ${s.name}`}
                               title="Delete"
@@ -280,7 +280,7 @@ function SetsPage({ canManage }: { canManage: boolean }) {
                       </div>
                     </form>
                   )}
-                  {s.account_count === 0 ? (
+                  {s.account_count === 0 && !s.is_default ? (
                     <p className="text-sm text-ink-soft">No accounts yet. Add some from an account&apos;s settings on the Accounts page.</p>
                   ) : members.length === 0 ? null : members.length > FOLD ? (
                     <details className="group grid gap-3">
@@ -292,6 +292,7 @@ function SetsPage({ canManage }: { canManage: boolean }) {
                         </span>
                         <span className="group-open:hidden">Show all {members.length}</span>
                         <span className="hidden group-open:inline">Hide accounts</span>
+                        <span className="sr-only"> in {s.name}</span>
                         <Icon name="down" className="size-4 group-open:rotate-180" />
                       </summary>
                       <div className="mt-3">{list}</div>
