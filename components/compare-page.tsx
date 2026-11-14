@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { SiteHeader } from "@/components/site-header";
+import { SiteHeader, sitePage } from "@/components/site-header";
 import { CHECKED, rival, rivals } from "@/lib/compare";
 import { publicPage } from "@/lib/seo";
 
@@ -16,8 +16,9 @@ const cell = "border-t border-ink/10 px-3 py-2.5 align-top";
 export function ComparePage({ slug }: { slug: string }) {
   const r = rival(slug)!;
   return (
-    <main className="mx-auto grid w-full max-w-4xl gap-8 px-5 py-12">
+    <main className={sitePage}>
       <SiteHeader />
+      <div className="grid w-full gap-8">
       <div className="grid gap-2">
         <h1 className="font-display text-4xl font-extrabold tracking-tight">SocialReins vs {r.name}</h1>
         <p className="text-ink-soft">{r.intro}</p>
@@ -107,6 +108,7 @@ export function ComparePage({ slug }: { slug: string }) {
               ))}
           </ul>
         </nav>
+      </div>
       </div>
     </main>
   );

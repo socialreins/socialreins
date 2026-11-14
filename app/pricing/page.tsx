@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { SiteHeader } from "@/components/site-header";
+import { SiteHeader, sitePage } from "@/components/site-header";
 import { publicPage } from "@/lib/seo";
 
 export const metadata: Metadata = {
@@ -54,8 +54,9 @@ const questions: [string, string][] = [
 
 export default function Pricing() {
   return (
-    <main className="mx-auto grid w-full max-w-4xl gap-10 px-5 py-12">
+    <main className={sitePage}>
       <SiteHeader />
+      <div className="grid w-full gap-10">
       <div className="grid max-w-2xl gap-2">
         <h1 className="font-display text-4xl font-extrabold tracking-tight">Pricing</h1>
         <p className="text-ink-soft">SocialReins Cloud is the standard way to use it: we run everything. If you want it free, run it yourself.</p>
@@ -104,6 +105,7 @@ export default function Pricing() {
           See <Link href="/post-types" className={link}>what you can post where</Link> and{" "}
           <Link href="/compare" className={link}>how SocialReins compares</Link> with other tools.
         </p>
+      </div>
       </div>
     </main>
   );

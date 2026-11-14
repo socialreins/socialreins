@@ -6,6 +6,9 @@ import { SocialsMenu } from "@/components/socials-menu";
 
 const navLink = "whitespace-nowrap font-bold underline-offset-4 hover:text-signal-deep hover:underline";
 
+// Every public page sits in this one column, so the menu bar and the left edge never move between pages.
+export const sitePage = "mx-auto grid w-full max-w-6xl gap-8 px-5 pt-6 pb-12 sm:px-8";
+
 // The one menu bar for every public page. `relative` because an open menu panel spans it on a phone.
 export function SiteHeader({ className = "" }: { className?: string }) {
   return (

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { SiteHeader } from "@/components/site-header";
+import { SiteHeader, sitePage } from "@/components/site-header";
 import { network, networks } from "@/lib/networks";
 import { publicPage } from "@/lib/seo";
 
@@ -19,8 +19,9 @@ const link = "font-bold underline decoration-signal decoration-2 underline-offse
 export function NetworkPage({ slug }: { slug: string }) {
   const n = network(slug)!;
   return (
-    <main className="mx-auto grid w-full max-w-3xl gap-8 px-5 py-12">
+    <main className={sitePage}>
       <SiteHeader />
+      <div className="grid w-full gap-8">
       <div className="grid gap-2">
         <h1 className="font-display text-4xl font-extrabold tracking-tight">What you can post to {n.name}</h1>
         <p className="text-ink-soft">
@@ -89,6 +90,7 @@ export function NetworkPage({ slug }: { slug: string }) {
               ))}
           </ul>
         </nav>
+      </div>
       </div>
     </main>
   );

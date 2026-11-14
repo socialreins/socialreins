@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { SiteHeader } from "@/components/site-header";
+import { SiteHeader, sitePage } from "@/components/site-header";
 import { networks as pages } from "@/lib/networks";
 import { publicPage } from "@/lib/seo";
 
@@ -48,8 +48,9 @@ function Cell({ value }: { value: string }) {
 
 export default function PostTypes() {
   return (
-    <main className="mx-auto grid w-full max-w-6xl gap-8 px-5 py-12">
+    <main className={sitePage}>
       <SiteHeader />
+      <div className="grid w-full gap-8">
       <div className="grid max-w-2xl gap-2">
         <h1 className="font-display text-4xl font-extrabold tracking-tight">What you can post where</h1>
         <p className="text-ink-soft">
@@ -105,6 +106,7 @@ export default function PostTypes() {
             </li>
           ))}
         </ul>
+      </div>
       </div>
     </main>
   );
