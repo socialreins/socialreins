@@ -3,9 +3,8 @@ import Link from "next/link";
 import { GitHubLink } from "@/components/github-link";
 import { LogoMark } from "@/components/logo";
 import { PlatformIcon, platforms } from "@/components/platform-icons";
-import { SocialsMenu } from "@/components/socials-menu";
 import { Reins } from "@/components/reins";
-import { SessionLink } from "@/components/session-link";
+import { SiteHeader } from "@/components/site-header";
 import { WaitlistForm } from "@/components/waitlist-form";
 import { org } from "@/lib/github";
 
@@ -59,22 +58,7 @@ const organization = JSON.stringify({
 export default function Home() {
   return (
     <div className="mx-auto max-w-6xl px-5 sm:px-8">
-      <header className="relative flex items-center justify-between gap-3 py-6">
-        <Link href="/" className="flex items-center gap-2.5 font-display text-xl font-extrabold tracking-tight">
-          <LogoMark className="size-9" />
-          {/* On a phone the mark alone leaves room for Socials and Get started; GitHub is in the footer. */}
-          <span className="max-sm:sr-only">SocialReins</span>
-        </Link>
-        <nav aria-label="Site" className="flex items-center gap-2.5 sm:gap-6">
-          <SocialsMenu className={headerLink} />
-          <GitHubLink
-            label="GitHub"
-            mark
-            className="rounded-full border-2 border-ink px-3.5 py-1.5 font-bold hover:bg-ink hover:text-paper max-sm:hidden"
-          />
-          <SessionLink className={headerLink} />
-        </nav>
-      </header>
+      <SiteHeader className="py-6" />
 
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: organization }} />
       <main>

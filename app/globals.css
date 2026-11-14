@@ -36,6 +36,17 @@ body { margin: 0; font-family: var(--font-body); font-size: 1.0625rem; line-heig
 }
 .waitlist button:hover { background: var(--color-signal-deep); border-color: var(--color-signal-deep); }
 .waitlist button:disabled { opacity: 0.7; cursor: progress; }
+/* The landing form: the field and its button share one pill. */
+.waitlist-pill {
+  display: flex; flex-wrap: wrap; gap: 0.25rem; padding: 0.3rem;
+  background: var(--color-paper); border: 2px solid var(--color-ink); border-radius: 1.9rem;
+  box-shadow: 4px 4px 0 var(--color-signal);
+}
+.waitlist-pill:has(input:focus-visible) { outline: 3px solid var(--color-signal-deep); outline-offset: 3px; }
+.waitlist-pill input { border-color: transparent; background: transparent; padding: 0.65rem 1rem; outline: none; }
+.waitlist-pill input[aria-invalid] { border-color: transparent; }
+.waitlist-pill:has(input[aria-invalid]) { border-color: var(--color-signal-deep); }
+.waitlist-pill button { flex: 1 0 auto; padding: 0.65rem 1.4rem; }
 .waitlist-note { margin: 0; color: var(--color-ink-soft); font-size: 0.95rem; }
 .waitlist-error { margin: 0; color: var(--color-signal-deep); font-weight: 700; font-size: 0.95rem; }
 .waitlist-done {

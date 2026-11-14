@@ -113,7 +113,7 @@ test("the web app manifest lists the home-screen icons", async ({ request }) => 
 
 test("on a phone the header fits and the page never scrolls sideways", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  // Signed out, the header shows the Get started button, its widest form.
+  // Signed out, the header shows the Get started link, its widest form.
   await page.route("**/auth/me", (route) => route.fulfill({ status: 401, json: { error: "unauthorized" } }));
   await page.goto("/");
   const header = page.locator("header").first();
