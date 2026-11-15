@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FeaturesMenu } from "@/components/features-menu";
 import { GitHubMenu } from "@/components/github-link";
 import { LogoMark } from "@/components/logo";
 import { SessionLink } from "@/components/session-link";
@@ -15,11 +16,15 @@ export function SiteHeader({ className = "" }: { className?: string }) {
     <header className={`relative flex items-center justify-between gap-3 ${className}`}>
       <Link href="/" className="flex items-center gap-2.5 font-display text-xl font-extrabold tracking-tight">
         <LogoMark className="size-9" />
-        {/* On a phone the mark alone leaves room for Socials and Get started; the GitHub menu is hidden and the footer links to GitHub. */}
+        {/* On a phone the mark alone leaves room for Features, Docs and Get started; the Socials and GitHub menus are hidden and the footer links to GitHub. */}
         <span className="max-sm:sr-only">SocialReins</span>
       </Link>
       <nav aria-label="Site" className="flex items-center gap-4 max-[359px]:gap-2.5 max-[359px]:text-sm sm:gap-6">
-        <SocialsMenu className={navLink} />
+        <FeaturesMenu className={navLink} />
+        {/* No room on a phone: Features, Social media lists the same networks. */}
+        <div className="max-sm:hidden">
+          <SocialsMenu className={navLink} />
+        </div>
         <Link href="/docs" className={navLink}>
           Docs
         </Link>

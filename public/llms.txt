@@ -8,6 +8,9 @@
 - [Terms of Service](https://socialreins.com/terms)
 - [Data Deletion](https://socialreins.com/data-deletion)
 - [What you can post where](https://socialreins.com/post-types): post types each network supports
+- [Supported social media](https://socialreins.com/socials): every network, each linking to its own page
+- [Automations](https://socialreins.com/features/automations): comment to DM by keyword, and which networks support it
+- [Inboxes](https://socialreins.com/features/inboxes): comments, mentions and DMs in custom inboxes, and which networks support them
 - [What you can post to Bluesky](https://socialreins.com/bluesky): post types and limits on Bluesky
 - [What you can post to Threads](https://socialreins.com/threads): post types and limits on Threads
 - [What you can post to LinkedIn](https://socialreins.com/linkedin): post types and limits on LinkedIn
