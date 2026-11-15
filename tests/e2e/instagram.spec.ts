@@ -61,11 +61,14 @@ test("the home page header has a Socials menu that lists every network and links
 });
 
 test("on a phone the open Features menu stays inside the screen", async ({ page }) => {
-  for (const width of [320, 390]) {
+  for (const width of [320, 390, 640, 768, 1024]) {
     await page.setViewportSize({ width, height: 844 });
     await page.goto("/");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `header fits at ${width}`).toBe(true);
+    // The menu bar itself must not spill out of the page column either.
+    expect(await page.locator("header").first().evaluate((h) => h.scrollWidth <= h.clientWidth), `menu bar fits at ${width}`).toBe(true);
   }
+  await page.setViewportSize({ width: 390, height: 844 });
   const nav = page.getByRole("navigation", { name: "Site" });
   await expect(nav.getByText("Socials", { exact: true })).toBeHidden();
   await nav.getByText("Features", { exact: true }).click();

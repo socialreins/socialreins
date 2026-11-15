@@ -32,7 +32,7 @@ export const features: Feature[] = [
         bullets: [
           "Pick the accounts or the set it runs on, or only the posts you name.",
           "Set keywords, or leave them out to answer every comment.",
-          "Choose what happens: send a DM, reply in public, or both. {name} in the text becomes the commenter's name.",
+          "Write the DM, and add a public reply if you want one. {name} in the text becomes the commenter's name.",
           "Add a public reply to fall back on when the network refuses the DM, for example when the person only takes DMs from accounts they follow.",
           "Answer each person once, or every time they comment.",
         ],
@@ -41,7 +41,7 @@ export const features: Feature[] = [
         heading: "Limits",
         bullets: [
           "A comment is acted on once and never tried again, so nobody gets the same message twice.",
-          "A team can run 500 automated actions a day.",
+          "A team's automations can answer 500 comments a day.",
           "Every run is listed with what was sent and, when something was refused, the reason.",
         ],
       },
@@ -71,9 +71,9 @@ export const features: Feature[] = [
       {
         heading: "Answering",
         bullets: [
-          "Reply in public under a comment, or by DM, without leaving SocialReins.",
+          "Reply under a comment or mention, and answer a DM in its conversation, without leaving SocialReins.",
           "New items are fetched about once a minute, and an open inbox refreshes by itself.",
-          "DMs are read only for accounts where you turn that on.",
+          "On Bluesky, DMs are read only when the app password allows them.",
         ],
       },
       {

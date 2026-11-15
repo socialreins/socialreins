@@ -16,19 +16,19 @@ export function SiteHeader({ className = "" }: { className?: string }) {
     <header className={`relative flex items-center justify-between gap-3 ${className}`}>
       <Link href="/" className="flex items-center gap-2.5 font-display text-xl font-extrabold tracking-tight">
         <LogoMark className="size-9" />
-        {/* On a phone the mark alone leaves room for Features, Docs and Get started; the Socials and GitHub menus are hidden and the footer links to GitHub. */}
+        {/* On a phone the mark alone leaves room for Features, Docs and Get started; the Socials menu (below a laptop) and the GitHub menu (below a tablet) are hidden and the footer links to GitHub. */}
         <span className="max-sm:sr-only">SocialReins</span>
       </Link>
       <nav aria-label="Site" className="flex items-center gap-4 max-[359px]:gap-2.5 max-[359px]:text-sm sm:gap-6">
         <FeaturesMenu className={navLink} />
-        {/* No room on a phone: Features, Social media lists the same networks. */}
-        <div className="max-sm:hidden">
+        {/* No room below a laptop: Features, Social media lists the same networks. */}
+        <div className="max-lg:hidden">
           <SocialsMenu className={navLink} />
         </div>
         <Link href="/docs" className={navLink}>
           Docs
         </Link>
-        <div className="max-sm:hidden">
+        <div className="max-md:hidden">
           <GitHubMenu className="rounded-full border-2 border-ink px-3.5 py-1.5 font-bold hover:bg-ink hover:text-paper" />
         </div>
         <SessionLink className={navLink} />

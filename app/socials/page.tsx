@@ -30,7 +30,7 @@ export default function Socials() {
                 <span className="grid gap-1">
                   <strong className="font-display text-lg font-extrabold">{p.name}</strong>
                   {/* The network's search description without its "What SocialReins posts to X: " lead. */}
-                  <span className="text-[0.95rem] leading-snug text-ink-soft first-letter:uppercase">{network(p.id)?.description.split(": ")[1]}</span>
+                  <span className="text-[0.95rem] leading-snug text-ink-soft first-letter:uppercase">{network(p.id)?.description.replace(/^.*?: /, "")}</span>
                 </span>
               </Link>
             </li>
