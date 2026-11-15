@@ -60,14 +60,19 @@ test("the home page header has a Socials menu that lists every network and links
   await expect(page.getByRole("heading", { name: "What you can post to YouTube", level: 1 })).toBeVisible();
 });
 
-test("on a phone the open Socials menu stays inside the screen", async ({ page }) => {
-  for (const width of [320, 390]) {
+test("on a phone the open Features menu stays inside the screen", async ({ page }) => {
+  for (const width of [320, 390, 640, 768, 1024]) {
     await page.setViewportSize({ width, height: 844 });
     await page.goto("/");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `header fits at ${width}`).toBe(true);
+    // The menu bar itself must not spill out of the page column either.
+    expect(await page.locator("header").first().evaluate((h) => h.scrollWidth <= h.clientWidth), `menu bar fits at ${width}`).toBe(true);
   }
-  await page.getByRole("navigation", { name: "Site" }).getByText("Socials", { exact: true }).click();
-  const box = await page.getByRole("link", { name: "Compare all networks" }).boundingBox();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const nav = page.getByRole("navigation", { name: "Site" });
+  await expect(nav.getByText("Socials", { exact: true })).toBeHidden();
+  await nav.getByText("Features", { exact: true }).click();
+  const box = await nav.getByRole("link", { name: /^Inboxes/ }).boundingBox();
   expect(box && box.x >= 0 && box.x + box.width <= 390).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
@@ -94,5 +99,34 @@ test("every public page has the same menu bar, in the same place", async ({ page
     await expect(nav.getByText("Socials", { exact: true }), path).toBeVisible();
     await expect(nav.getByRole("link", { name: "Get started" }), path).toHaveAttribute("href", "/signup");
     await expect(nav.locator("summary", { hasText: "GitHub" }), path).toBeVisible();
+  }
+});
+
+test("the Features menu links to the networks index, Automations and Inboxes, and each page says which networks work", async ({ page }) => {
+  await page.goto("/");
+  const nav = page.getByRole("navigation", { name: "Site" });
+  await nav.getByText("Features", { exact: true }).click();
+  await expect(nav.getByRole("link", { name: /^Social media/ })).toHaveAttribute("href", "/socials");
+  await expect(nav.getByRole("link", { name: /^Inboxes/ })).toHaveAttribute("href", "/features/inboxes");
+  await nav.getByRole("link", { name: /^Automations/ }).click();
+  await expect(page.getByRole("heading", { name: "Automations", level: 1 })).toBeVisible();
+  await expect(page.getByRole("row", { name: /Bluesky/ })).toContainText("Yes");
+  await expect(page.getByRole("row", { name: /Instagram/ })).toContainText("In testing");
+  await expect(page.getByRole("row", { name: /TikTok/ })).toContainText("Not yet");
+
+  await page.goto("/features/inboxes");
+  await expect(page.getByRole("heading", { name: "Inboxes", level: 1 })).toBeVisible();
+  await expect(page.getByRole("rowgroup").last().getByRole("row")).toHaveCount(Object.keys(pages).length);
+
+  await page.goto("/socials");
+  for (const [slug, name] of Object.entries(pages)) {
+    await expect(page.getByRole("main").getByRole("listitem").getByRole("link", { name: new RegExp(`^${name}`) })).toHaveAttribute("href", `/${slug}`);
+  }
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    for (const path of ["/socials", "/features/automations"]) {
+      await page.goto(path);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `${path} fits at ${width}`).toBe(true);
+    }
   }
 });
