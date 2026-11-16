@@ -495,6 +495,38 @@ export function PostEditor({ id }: { id?: string }) {
     />
   );
 
+  // Every version of a post made for several platforms, so the whole post is one click apart.
+  const versions = others.length > 0 && (
+    <nav aria-label="Versions of this post" className="grid gap-2">
+      <p className="text-sm text-ink-soft">This post has {members.length} versions, one for each platform. Pick one to see or change it.</p>
+      <ul className="flex flex-wrap gap-2">
+        {members.map((g) => {
+          const mark = (
+            <>
+              <PlatformMark platform={g.platform} className="size-4" named />
+              <StatusBadge status={g.status} />
+            </>
+          );
+          const box = "flex items-center gap-2 rounded-xl border-2 px-3 py-2 text-sm font-bold";
+          return (
+            <li key={g.id}>
+              {/* The open version is not a link: following it would reload the page and drop unsaved changes. */}
+              {g.id === postId ? (
+                <span aria-current="page" className={`${box} border-ink`}>
+                  {mark}
+                </span>
+              ) : (
+                <Link href={`/posts/${g.id}`} className={`${box} border-ink/10 hover:bg-ink/5`}>
+                  {mark}
+                </Link>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
+  );
+
   const siblings = others.length > 0 && (
     <section aria-labelledby="group-heading" className="grid gap-3">
       <h2 id="group-heading" className="font-display text-lg font-extrabold tracking-tight">
@@ -636,6 +668,7 @@ export function PostEditor({ id }: { id?: string }) {
     return (
       <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_24rem]">
         <div className="grid gap-5">
+          {versions}
           <div className="card grid gap-2 p-5">
             <div className="flex flex-wrap items-center gap-3">
               <span aria-hidden="true" className="tone size-3 shrink-0 rounded-full bg-current" data-status={post.status} />
@@ -796,6 +829,7 @@ export function PostEditor({ id }: { id?: string }) {
     <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_24rem]">
       <div className="grid gap-5">
         <AccountNote />
+        {versions}
         {status === "scheduled" && post && (
           <p className="flex flex-wrap items-center gap-3 font-bold">
             <StatusBadge status="scheduled" />
