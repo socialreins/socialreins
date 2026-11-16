@@ -885,6 +885,53 @@ test("each platform can have its own text, counted against its own limit", async
   await expect(page.getByRole("region", { name: "Same post on other platforms" }).getByRole("link", { name: "Threads post" })).toBeVisible();
 });
 
+test("each platform can have its own media, or none, in place of the shared images", async ({ page }) => {
+  await brain(page, { accounts: [alice, threadsAcc, instaAcc] });
+  let sent: Record<string, unknown> | undefined;
+  await page.route("**/v1/post-groups", (route) => {
+    sent = route.request().postDataJSON();
+    return route.fulfill({
+      status: 201,
+      json: { group_id: "g1", posts: [post("g-b", { platform: "bluesky", group_id: "g1" }), post("g-t", { platform: "threads", group_id: "g1" }), post("g-i", { platform: "instagram", group_id: "g1" })] },
+    });
+  });
+  await page.goto("/posts/new");
+  await page.getByLabel("Post", { exact: true }).fill("One post, three styles");
+  // Instagram needs media, so with none shared it warns until it has its own.
+  await expect(page.getByText("Instagram needs", { exact: false }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Different media for Instagram" }).click();
+  const insta = page.getByRole("group", { name: "Instagram media" });
+  await expect(insta).toBeFocused();
+  await insta.getByRole("button", { name: "Add image" }).click();
+  await insta.getByLabel("Image 1 link").fill("https://example.com/slide-1.mp4");
+  await insta.getByRole("button", { name: "Add image" }).click();
+  await insta.getByLabel("Image 2 link").fill("https://example.com/slide-2.jpg");
+  await expect(page.getByText("Instagram needs", { exact: false })).toHaveCount(0);
+
+  // The shared image goes to Threads; Bluesky gets its own empty list, so it posts text only.
+  await page.getByRole("button", { name: "Add image" }).first().click();
+  await page.getByLabel("Image 1 link").first().fill("https://example.com/one.png");
+  await page.getByRole("button", { name: "Different media for Bluesky" }).click();
+  const bsky = page.getByRole("group", { name: "Bluesky media" });
+  // It starts as a copy of the shared images.
+  await expect(bsky.getByLabel("Image 1 link")).toHaveValue("https://example.com/one.png");
+  await bsky.getByRole("button", { name: "Remove image 1 for Bluesky" }).click();
+
+  // Closing a box goes back to the shared images.
+  await page.getByRole("button", { name: "Different media for Threads" }).click();
+  await page.getByRole("button", { name: "Use the main images on Threads" }).click();
+  await expect(page.getByRole("button", { name: "Different media for Threads" })).toBeFocused();
+
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page.getByText("Saved 3 drafts, one per platform.")).toBeVisible();
+  expect(sent).toMatchObject({
+    platforms: ["bluesky", "threads", "instagram"],
+    media: ["https://example.com/one.png"],
+    overrides: { bluesky: { media: [] }, instagram: { media: ["https://example.com/slide-1.mp4", "https://example.com/slide-2.jpg"] } },
+  });
+  expect((sent!.overrides as Record<string, unknown>).threads).toBeUndefined();
+});
+
 test("custom text no longer counts once its platform is the only one left", async ({ page }) => {
   await brain(page, { accounts: [alice, threadsAcc] });
   let sent: Record<string, unknown> | undefined;
