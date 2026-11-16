@@ -1251,8 +1251,7 @@ function ImageLinks({ media, max, post, own, platforms, onChange, onClose }: { m
       )}
       {!post && !own && (
         <p className="hint">
-          Up to {max}. Public https links to image, video or PDF files, or Google Drive or Dropbox share links; nothing is uploaded to SocialReins. Bluesky takes JPEG, PNG, WebP or GIF of 1 MB
-          or less, or one MP4 or MOV video; Instagram takes JPEG, PNG or WebP images or MP4 or MOV videos; LinkedIn takes JPEG, PNG or GIF images, or one MP4 video or one PDF (posted as a document, the swipeable carousel) on its own; YouTube takes exactly one MP4 or MOV video. X takes up to 4 JPEG, PNG or WebP images, or one GIF or MP4 or MOV video. TikTok takes one MP4 or MOV video, or up to 35 JPEG, PNG or WebP photos.{platforms && platforms.length > 0 ? ` ${sizeHint(platforms)}` : ""}
+          Up to {max}. Public https links to image, video or PDF files, or Google Drive or Dropbox share links; nothing is uploaded to SocialReins. Bluesky takes JPEG, PNG, WebP or GIF images, or one MP4 or MOV video; Instagram takes JPEG, PNG or WebP images or MP4 or MOV videos; LinkedIn takes JPEG, PNG or GIF images, or one MP4 video or one PDF (posted as a document, the swipeable carousel) on its own; YouTube takes exactly one MP4 or MOV video. X takes up to 4 JPEG, PNG or WebP images, or one GIF or MP4 or MOV video. TikTok takes one MP4 or MOV video, or up to 35 JPEG, PNG or WebP photos.{platforms && platforms.length > 0 ? ` ${sizeHint(platforms)}` : ""}
         </p>
       )}
       {media.length > 0 && (

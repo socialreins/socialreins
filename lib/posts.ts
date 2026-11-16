@@ -187,7 +187,7 @@ export function sizeHint(platforms: Platform[]): string {
   const each = (key: "video" | "gif") => own.map((o) => `${o[key]} MB on ${o.name}`).join(", ");
   // Every platform here has its own video limit only when none falls back to the 1 GB one.
   const video = own.length === platforms.length && own.length > 0 ? each("video") : `1 GB${own.length ? ` (${each("video")})` : ""}`;
-  return `Size limits: a video up to ${video}; an image or PDF up to 100 MB${own.length ? `; a GIF up to ${each("gif")}` : ""}. Sizes are checked when you save.`;
+  return `Size limits: a video up to ${video}; an image or PDF up to 100 MB${own.length ? " (a photo too large for a network is made smaller for you)" : ""}${own.length ? `; a GIF up to ${each("gif")}` : ""}. Sizes are checked when you save.`;
 }
 // What a link's extension says its file is; null when it says nothing (a Drive link, no extension).
 export function linkType(url: string): string | null {
