@@ -12,10 +12,12 @@ const repo = "https://github.com/socialreins/socialreins";
 
 const headerLink = "whitespace-nowrap font-bold underline decoration-signal decoration-2 underline-offset-4 hover:text-signal-deep";
 
-const features = [
+// `href` links a card to its own page; `pill` replaces "Live now" where a feature is not live on every network.
+const features: { title: string; body: string; href?: string; pill?: string }[] = [
   {
     title: "Publish and schedule",
     body: "Write once and send it to every account in a set, now or at a time you pick.",
+    href: "/socials",
   },
   {
     title: "A caption for each platform",
@@ -28,6 +30,18 @@ const features = [
   {
     title: "Sets and lists",
     body: "Group accounts into sets, like one per language or brand, and posts into ordered lists.",
+  },
+  {
+    title: "Inboxes",
+    body: "Comments, mentions and DMs in one place, split into custom inboxes you define.",
+    href: "/features/inboxes",
+    pill: "Live on Bluesky",
+  },
+  {
+    title: "Automations",
+    body: "Comment to DM: someone comments your keyword, and they get your DM.",
+    href: "/features/automations",
+    pill: "Live on Bluesky",
   },
   {
     title: "Teams",
@@ -113,14 +127,21 @@ export default function Home() {
           <h2 id="features-title" className="font-display text-3xl font-extrabold tracking-tight md:text-4xl">
             What it does
           </h2>
-          <dl className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <dl className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {features.map((f) => (
               <div key={f.title} className="rounded-3xl border border-ink/10 bg-paper p-6">
                 <dt className="grid justify-items-start gap-3 font-display text-xl font-bold">
-                  <span className="rounded-full bg-ink px-2.5 py-0.5 font-body text-xs font-bold text-paper">Live now</span>
+                  <span className="rounded-full bg-ink px-2.5 py-0.5 font-body text-xs font-bold text-paper">{f.pill ?? "Live now"}</span>
                   {f.title}
                 </dt>
                 <dd className="mt-2 text-ink-soft">{f.body}</dd>
+                {f.href && (
+                  <dd className="mt-3">
+                    <Link href={f.href} aria-label={`${f.title}: learn more`} className={headerLink}>
+                      Learn more
+                    </Link>
+                  </dd>
+                )}
               </div>
             ))}
           </dl>
