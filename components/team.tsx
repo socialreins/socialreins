@@ -102,8 +102,8 @@ function PublicPages({ team, onChanged }: { team: Team; onChanged: (t: Team) => 
           type="checkbox"
           checked={!!team.public_pages}
           disabled={busy !== null}
-          onChange={(e) =>
-            run("pages", () => setPublicPages(e.target.checked), (t) => {
+          onChange={() =>
+            run("pages", () => setPublicPages(!team.public_pages), (t) => {
               onChanged(t);
               return t.public_pages ? "Public pages are on. Switch one on for a post from its page." : "Public pages are off. No post page can be opened now.";
             })
