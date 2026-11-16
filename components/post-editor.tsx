@@ -118,6 +118,8 @@ export function PostEditor({ id }: { id?: string }) {
   const [chosen, setChosen] = useState<Platform[] | null>(null);
   // Per-platform text that replaces the main post on that platform.
   const [custom, setCustom] = useState<Partial<Record<Platform, string>>>({});
+  // A platform's own files in place of the shared ones; an empty list posts it without any.
+  const [mediaCustom, setMediaCustom] = useState<Partial<Record<Platform, string[]>>>({});
   // Every post of this post's group, this one included; empty for a single post.
   const [group, setGroup] = useState<Post[]>([]);
   // Group posts still to publish after Publish now stopped partway, in order.
@@ -255,7 +257,7 @@ export function PostEditor({ id }: { id?: string }) {
       const e = entry(p);
       const invalid = checkThread(e.body, e.media, e.thread, p);
       if (invalid) return setLocal(<>{invalid.part ? `Post ${invalid.part + 1} of the thread: ` : ""}{platformProblem(p, invalid.failure)}</>);
-      const bad = checkComment(commentText(p), p) ?? checkCover(coverFor(p) ?? "", p, images.length);
+      const bad = checkComment(commentText(p), p) ?? checkCover(coverFor(p) ?? "", p, mediaFor(p).length);
       if (bad) return setLocal(platformProblem(p, bad));
     }
     if (selected.includes("tiktok")) {
@@ -275,12 +277,13 @@ export function PostEditor({ id }: { id?: string }) {
     for (const p of selected) {
       const o = {
         body: customFor(p),
+        media: mediaCustomFor(p) && mediaFor(p),
         thread: limits[p].thread || parts.length === 0 ? undefined : [],
         first_comment: limits[p].comment === null ? (comment.trim() ? "" : undefined) : commentCustomFor(p),
         // The cover goes only to the platforms that take one, so none needs an empty override.
         cover: coverFor(p),
       };
-      if (o.body !== undefined || o.thread || o.first_comment !== undefined || o.cover !== undefined) overrides[p] = o;
+      if (o.body !== undefined || o.media || o.thread || o.first_comment !== undefined || o.cover !== undefined) overrides[p] = o;
     }
     let made = 1;
     await run(mode, async () => {
@@ -401,11 +404,15 @@ export function PostEditor({ id }: { id?: string }) {
   const customFor = (p: Platform) => (selected.length > 1 && selected.includes(p) ? custom[p] : undefined);
   const mainPlatforms = selected.filter((p) => customFor(p) === undefined);
   const images = links(media);
+  // Own files count only while their box shows: two or more platforms, this one ticked.
+  const mediaCustomFor = (p: Platform) => (selected.length > 1 && selected.includes(p) ? mediaCustom[p] : undefined);
+  const mediaFor = (p: Platform) => (mediaCustomFor(p) ? links(mediaCustomFor(p)!) : images);
+  const mediaMain = selected.filter((p) => mediaCustomFor(p) === undefined);
   const parts = thread.map((p) => ({ ...p, media: links(p.media) }));
   // One platform's post: its own text if customized, and the thread only where it can post one.
   const entry = (p: Platform) => ({
     body: customFor(p) ?? body,
-    media: images,
+    media: mediaFor(p),
     thread: limits[p].thread ? parts : [],
     first_comment: commentText(p).trim() ? commentText(p) : undefined,
     cover: coverFor(p),
@@ -416,7 +423,8 @@ export function PostEditor({ id }: { id?: string }) {
   // stitch, and an interaction the creator turned off in TikTok stays off.
   const creator = creatorRead?.key === ttKey && ttKey ? creatorRead.value : null;
   const tt = creator && !isFailure(creator) ? creator : null;
-  const photosOnly = images.length > 0 && images.every((m) => /\.(jpe?g|png|gif|webp)([?#]|$)/i.test(m));
+  const ttMedia = mediaFor("tiktok");
+  const photosOnly = ttMedia.length > 0 && ttMedia.every((m) => /\.(jpe?g|png|gif|webp)([?#]|$)/i.test(m));
   const tiktokOut: TikTokSettings = {
     ...tiktok,
     privacy_level: tt?.privacy_level_options.includes(tiktok.privacy_level ?? "") ? tiktok.privacy_level : null,
@@ -438,8 +446,9 @@ export function PostEditor({ id }: { id?: string }) {
   // plainly an image, and a ticked platform takes one. brain checks the file once it downloads it.
   const coverable = selected.filter((p) => limits[p].cover);
   const noCover = selected.filter((p) => !limits[p].cover);
-  const coverShown = coverable.length > 0 && images.length === 1 && !/\.(jpe?g|png|gif|webp)([?#]|$)/i.test(images[0]!);
-  const coverFor = (p: Platform) => (coverShown && cover.trim() && limits[p].cover ? cover.trim() : undefined);
+  const oneVideo = (list: string[]) => list.length === 1 && !/\.(jpe?g|png|gif|webp)([?#]|$)/i.test(list[0]!);
+  const coverShown = coverable.some((p) => oneVideo(mediaFor(p)));
+  const coverFor = (p: Platform) => (cover.trim() && limits[p].cover && oneVideo(mediaFor(p)) ? cover.trim() : undefined);
   // The first comment goes where the platform can post one; customized text counts only while its box shows.
   const commentable = selected.filter((p) => limits[p].comment !== null);
   const noComment = selected.filter((p) => limits[p].comment === null);
@@ -449,10 +458,11 @@ export function PostEditor({ id }: { id?: string }) {
   // Shared images must fit every chosen platform.
   const cap = (list: Platform[]) => (list.length ? Math.min(...list.map((p) => limits[p].media)) : limits.bluesky.media);
   const mediaProblems = selected.flatMap((p) => {
-    if ((p === "instagram" || p === "youtube") && images.length === 0) return [platformProblem(p, "media_required")];
-    if (images.length > limits[p].media) return [platformProblem(p, "too_many_images")];
+    const files = mediaFor(p);
+    if ((p === "instagram" || p === "youtube") && files.length === 0) return [platformProblem(p, "media_required")];
+    if (files.length > limits[p].media) return [platformProblem(p, "too_many_images")];
     // Hints only: brain reads the files when the post is saved and has the last word.
-    const bad = checkMediaTypes(images, p) ?? (coverFor(p) ? coverTypeHint(coverFor(p)!, p) : null);
+    const bad = checkMediaTypes(files, p) ?? (coverFor(p) ? coverTypeHint(coverFor(p)!, p) : null);
     return bad ? [platformProblem(p, bad)] : [];
   });
   // YouTube's title is the first line of its text, which brain refuses to leave out or to hold < or >.
@@ -474,7 +484,7 @@ export function PostEditor({ id }: { id?: string }) {
 
   const preview = (
     <Preview
-      posts={shown ? [{ body: entry(shown).body, media: images }, ...entry(shown).thread] : [{ body, media: images }]}
+      posts={shown ? [{ body: entry(shown).body, media: entry(shown).media }, ...entry(shown).thread] : [{ body, media: images }]}
       platform={shown ?? "bluesky"}
       account={shown ? inSet(shown)[0] : undefined}
     />
@@ -752,6 +762,16 @@ export function PostEditor({ id }: { id?: string }) {
     document.getElementById(`post-body-${p}`)?.focus();
   }
 
+  function customizeMedia(p: Platform) {
+    flushSync(() => setMediaCustom((c) => ({ ...c, [p]: media })));
+    document.getElementById(`media-${p}`)?.focus();
+  }
+
+  function uncustomizeMedia(p: Platform) {
+    flushSync(() => setMediaCustom((c) => Object.fromEntries(Object.entries(c).filter(([k]) => k !== p))));
+    document.getElementById(`media-customize-${p}`)?.focus();
+  }
+
   function customizeComment(p: Platform) {
     flushSync(() => setCommentCustom((c) => ({ ...c, [p]: comment })));
     document.getElementById(`post-comment-${p}`)?.focus();
@@ -908,7 +928,18 @@ export function PostEditor({ id }: { id?: string }) {
                   </div>
                 ),
               )}
-            <ImageLinks media={media} max={cap(selected)} onChange={setMedia} />
+            <ImageLinks media={media} max={cap(mediaMain)} onChange={setMedia} />
+            {selected.length > 1 &&
+              selected.map((p) =>
+                mediaCustom[p] === undefined ? (
+                  <button key={p} id={`media-customize-${p}`} type="button" className="btn btn-quiet btn-sm justify-self-start" onClick={() => customizeMedia(p)}>
+                    <Icon name="plus" className="size-4" />
+                    Different media for {platformName(p)}
+                  </button>
+                ) : (
+                  <ImageLinks key={p} media={mediaCustom[p]!} max={limits[p].media} own={p} onChange={(m) => setMediaCustom((c) => ({ ...c, [p]: m }))} onClose={() => uncustomizeMedia(p)} />
+                ),
+              )}
             {mediaProblems.length + textProblems.length > 0 && (
               <ul className="grid gap-1">
                 {[...textProblems, ...mediaProblems].map((m, i) => (
@@ -1180,10 +1211,11 @@ function YouTubeNote() {
 }
 
 // The image links of one post. `post` is its number in a thread; the first post leaves it out.
-function ImageLinks({ media, max, post, onChange }: { media: string[]; max: number; post?: number; onChange: (media: string[]) => void }) {
+// `post` is a thread part's number; `own` is the one platform these files go to in place of the shared ones.
+function ImageLinks({ media, max, post, own, onChange, onClose }: { media: string[]; max: number; post?: number; own?: Platform; onChange: (media: string[]) => void; onClose?: () => void }) {
   const addRef = useRef<HTMLButtonElement>(null);
   const imageRefs = useRef<(HTMLInputElement | null)[]>([]);
-  const of = post ? ` of post ${post}` : "";
+  const of = post ? ` of post ${post}` : own ? ` for ${platformName(own)}` : "";
 
   function addImage() {
     flushSync(() => onChange([...media, ""]));
@@ -1196,11 +1228,22 @@ function ImageLinks({ media, max, post, onChange }: { media: string[]; max: numb
   }
 
   return (
-    <fieldset className="grid gap-2">
+    <fieldset id={own && `media-${own}`} tabIndex={own ? -1 : undefined} className="grid gap-2">
       <legend className={post ? "text-sm font-bold" : "label"}>
-        Images<span className="sr-only">{of}</span>
+        {own ? `${platformName(own)} media` : <>Images<span className="sr-only">{of}</span></>}
       </legend>
-      {!post && (
+      {own && (
+        <div className="flex items-start justify-between gap-2">
+          <p className="hint">
+            Only {platformName(own)} gets these, in place of the images above. It takes {mediaTypes[own].text}.
+            {own === "instagram" || own === "youtube" || own === "tiktok" ? "" : " Leave it empty to post without any."}
+          </p>
+          <button type="button" className="icon-btn" aria-label={`Use the main images on ${platformName(own)}`} onClick={onClose}>
+            <Icon name="close" className="size-4" />
+          </button>
+        </div>
+      )}
+      {!post && !own && (
         <p className="hint">
           Up to {max}. Public https links to image, video or PDF files, or Google Drive share links. Bluesky takes JPEG, PNG, WebP or GIF of 1 MB
           or less, or one MP4 or MOV video; Instagram takes JPEG, PNG or WebP images or MP4 or MOV videos; LinkedIn takes JPEG, PNG or GIF images, or one MP4 video or one PDF (posted as a document, the swipeable carousel) on its own; YouTube takes exactly one MP4 or MOV video. X takes up to 4 JPEG, PNG or WebP images, or one GIF or MP4 or MOV video. TikTok takes one MP4 or MOV video, or up to 35 JPEG, PNG or WebP photos.
@@ -1236,7 +1279,7 @@ function ImageLinks({ media, max, post, onChange }: { media: string[]; max: numb
       {media.length < max && (
         <button ref={addRef} type="button" className="btn btn-secondary btn-sm justify-self-start" onClick={addImage}>
           <Icon name="image" className="size-4" />
-          Add image<span className="sr-only">{post ? ` to post ${post}` : ""}</span>
+          Add image<span className="sr-only">{post ? ` to post ${post}` : of}</span>
         </button>
       )}
     </fieldset>
