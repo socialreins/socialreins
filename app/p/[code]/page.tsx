@@ -18,13 +18,21 @@ type Params = { params: Promise<{ code: string }> };
 async function previewPost(code: string) {
   "use cache";
   cacheLife({ stale: 300, revalidate: 300, expire: 3600 });
-  return getPublicPost(code, brainUrl(), 5000);
+  const post = await getPublicPost(code, brainUrl(), 5000);
+  // A timeout, rate limit or outage throws past the cache, so it is not kept for 5 minutes.
+  if (post === "error") throw new Error("brain unavailable");
+  return post;
 }
+
+// Page codes are 10 characters of the team code alphabet; anything else is not asked for.
+const pageCode = /^[2-9a-hjkmnp-z]{10}$/;
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   try {
-    const post = await previewPost((await params).code);
-    return post && post !== "error" ? pageMeta(post) : fallback;
+    const code = (await params).code;
+    if (!pageCode.test(code)) return fallback;
+    const post = await previewPost(code);
+    return post ? pageMeta(post) : fallback;
   } catch {
     return fallback;
   }
