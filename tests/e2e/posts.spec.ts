@@ -994,7 +994,7 @@ test("a group publish that stops partway names what is left and carries on", asy
   await expect(page.getByRole("region", { name: "Same post on other platforms" }).getByText("Publishing")).toHaveCount(2);
 });
 
-test("calendar marks each post with its platform", async ({ page }) => {
+test("calendar shows the versions of one post as one line, marked with each platform", async ({ page }) => {
   await page.clock.setFixedTime(new Date("2026-11-10T12:00:00+01:00"));
   await brain(page);
   await page.route(/\/v1\/posts(\?.*)?$/, (route) =>
@@ -1007,8 +1007,8 @@ test("calendar marks each post with its platform", async ({ page }) => {
   );
   await page.goto("/calendar");
   const table = page.getByRole("table", { name: "Posts in November 2026" });
-  await expect(table.getByRole("link", { name: /^Bluesky: 10:30.*Launch day$/ })).toHaveAttribute("href", "/t/acme22/posts/p-bluesky");
-  await expect(table.getByRole("link", { name: /^Instagram: 10:30.*Launch day$/ })).toHaveAttribute("href", "/t/acme22/posts/p-instagram");
+  await expect(table.getByRole("link", { name: /Launch day$/ })).toHaveCount(1);
+  await expect(table.getByRole("link", { name: /^Bluesky: Instagram: 10:30.*Launch day$/ })).toHaveAttribute("href", "/t/acme22/posts/p-bluesky");
 });
 
 // A group of posts, one per platform, with the given statuses. DELETE takes a published post down, except
@@ -1254,4 +1254,51 @@ test("a saved TikTok post shows its settings and a draft loads them", async ({ p
   await expect(page.getByLabel("Who can view this video")).toHaveValue("FOLLOWER_OF_CREATOR");
   await expect(page.getByLabel("Comment")).toBeChecked();
   await expect(page.getByLabel("Branded content")).toBeChecked();
+});
+
+test("the versions of a saved post that can still change open on one form and are saved together", async ({ page }) => {
+  await brain(page, { accounts: [alice, threadsAcc, instaAcc] });
+  const a = "https://example.com/a.jpg";
+  let state: Post[] = [
+    post("g-b", { platform: "bluesky", group_id: "g1", body: "Hello", media: [a] }),
+    post("g-t", { platform: "threads", group_id: "g1", body: "Hello", media: [a] }),
+    post("g-i", { platform: "instagram", group_id: "g1", body: "Insta words", media: ["https://example.com/b.jpg"] }),
+  ];
+  const sent: Record<string, Record<string, unknown>> = {};
+  await page.route(/\/v1\/posts\?group_id=g1$/, (route) => route.fulfill({ json: state }));
+  await page.route(/\/v1\/posts\/g-.$/, (route) => {
+    const id = route.request().url().split("/").at(-1)!;
+    if (route.request().method() !== "PUT") return route.fulfill({ json: state.find((p) => p.id === id) });
+    sent[id] = route.request().postDataJSON();
+    // Threads is refused the first time, to show the others are kept.
+    if (id === "g-t" && sent[id]!.body === "Too long") return route.fulfill({ status: 422, json: { error: "too_long" } });
+    state = state.map((p) => (p.id === id ? { ...p, ...sent[id] } : p));
+    return route.fulfill({ json: state.find((p) => p.id === id) });
+  });
+  await page.goto("/posts/g-b");
+  // One version at a time to start with.
+  await expect(page.getByRole("textbox", { name: "Instagram text" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Change all 3 versions together" }).click();
+  await expect(page.getByLabel("Post", { exact: true })).toHaveValue("Hello");
+  // Instagram differs from the open version, so it shows as its own text and media; Threads does not.
+  await expect(page.getByRole("textbox", { name: "Instagram text" })).toHaveValue("Insta words");
+  await expect(page.getByRole("group", { name: "Instagram media" })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Threads text" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Delete" })).toHaveCount(0);
+
+  await page.getByLabel("Post", { exact: true }).fill("Too long");
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Saved Bluesky. Threads takes at most 500 characters." })).toBeVisible();
+
+  await page.getByLabel("Post", { exact: true }).fill("Hello again");
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page.getByText("Saved 3 drafts, one per platform.")).toBeVisible();
+  expect(sent["g-b"]).toMatchObject({ platform: "bluesky", body: "Hello again", media: [a] });
+  expect(sent["g-t"]).toMatchObject({ platform: "threads", body: "Hello again", media: [a] });
+  expect(sent["g-i"]).toMatchObject({ platform: "instagram", body: "Insta words", media: ["https://example.com/b.jpg"] });
+  // The form stays on the whole post, and can go back to one version.
+  await expect(page.getByRole("textbox", { name: "Instagram text" })).toHaveValue("Insta words");
+  await page.getByRole("button", { name: "Change only the Bluesky version" }).click();
+  await expect(page.getByRole("textbox", { name: "Instagram text" })).toHaveCount(0);
+  await expect(page.getByLabel("Post", { exact: true })).toHaveValue("Hello again");
 });
