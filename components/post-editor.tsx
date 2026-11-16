@@ -158,6 +158,7 @@ export function PostEditor({ id }: { id?: string }) {
     setTikTok(p.tiktok ?? noTikTok);
     setYtPrivacy(p.youtube?.privacy ?? "private");
     setCustom({});
+    setMediaCustom({});
     setAt(toLocalInput(p.status === "scheduled" ? p.scheduled_at : null));
     setListId("");
   }
@@ -447,7 +448,10 @@ export function PostEditor({ id }: { id?: string }) {
   const coverable = selected.filter((p) => limits[p].cover);
   const noCover = selected.filter((p) => !limits[p].cover);
   const oneVideo = (list: string[]) => list.length === 1 && !/\.(jpe?g|png|gif|webp)([?#]|$)/i.test(list[0]!);
-  const coverShown = coverable.some((p) => oneVideo(mediaFor(p)));
+  // A platform with its own media gets the cover only if that media is one video.
+  const covered = coverable.filter((p) => oneVideo(mediaFor(p)));
+  const noVideo = coverable.filter((p) => !covered.includes(p));
+  const coverShown = covered.length > 0;
   const coverFor = (p: Platform) => (cover.trim() && limits[p].cover && oneVideo(mediaFor(p)) ? cover.trim() : undefined);
   // The first comment goes where the platform can post one; customized text counts only while its box shows.
   const commentable = selected.filter((p) => limits[p].comment !== null);
@@ -953,9 +957,10 @@ export function PostEditor({ id }: { id?: string }) {
               <fieldset className="grid gap-2">
                 <legend className="label">Cover image</legend>
                 <p id="post-cover-note" className="hint">
-                  Optional. A public https link to an image, or a Google Drive share link, for the video: {coverable.map((p) => `${platformName(p)} takes ${coverTypes[p]}`).join("; ")}.
-                  {coverable.some((p) => p !== "instagram") && " Facebook and YouTube set it after the video is live (YouTube needs a verified channel): if that fails, the post stays published and says why."}
+                  Optional. A public https link to an image, or a Google Drive share link, for the video: {covered.map((p) => `${platformName(p)} takes ${coverTypes[p]}`).join("; ")}.
+                  {covered.some((p) => p !== "instagram") && " Facebook and YouTube set it after the video is live (YouTube needs a verified channel): if that fails, the post stays published and says why."}
                   {noCover.length > 0 && ` ${names(noCover)} can't take one${noCover.includes("tiktok") ? " (TikTok can only pick a frame of the video)" : ""}, so ${noCover.length > 1 ? "they get" : "it gets"} none.`}
+                  {noVideo.length > 0 && ` ${names(noVideo)} ${noVideo.length > 1 ? "have" : "has"} no single video here, so ${noVideo.length > 1 ? "they get" : "it gets"} none.`}
                 </p>
                 <label className="grid gap-1 text-sm font-bold">
                   <span>Cover image link</span>
