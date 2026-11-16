@@ -41,7 +41,7 @@ export const postMessages: Partial<Record<Failure, ReactNode>> = {
   invalid_override: "A customized platform isn't one the post goes to.",
   no_accounts: "This set has no connected account to post to.",
   too_many_parts: "A thread can have at most 25 follow-up posts.",
-  invalid_media: "Images must be public https links to JPEG, PNG, WebP or GIF files of 1 MB or less, or Google Drive share links. LinkedIn also takes one PDF.",
+  invalid_media: "Images must be public https links to JPEG, PNG, WebP or GIF files, or Google Drive or Dropbox share links. LinkedIn also takes one PDF.",
   empty_post: "Write something or add an image first. YouTube also needs a title: the first line.",
   invalid_set: "That set no longer exists. Pick another one.",
   unsupported_platform: "That platform can't publish yet.",

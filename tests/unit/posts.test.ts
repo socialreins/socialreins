@@ -452,3 +452,14 @@ describe("dates", () => {
     expect(weeks.every((w) => w.length === 7)).toBe(true);
   });
 });
+
+describe("sizeHint", () => {
+  it("names only the limits of the platforms given", async () => {
+    const { sizeHint } = await import("@/lib/posts");
+    expect(sizeHint(["threads", "instagram"])).toBe("Size limits: a video up to 1 GB; an image or PDF up to 100 MB. Sizes are checked when you save.");
+    expect(sizeHint(["bluesky", "threads", "x"])).toBe(
+      "Size limits: a video up to 1 GB (100 MB on Bluesky, 512 MB on X); an image or PDF up to 100 MB (a photo too large for a network is made smaller for you); a GIF up to 1 MB on Bluesky, 15 MB on X. Sizes are checked when you save.",
+    );
+    expect(sizeHint(["bluesky"])).toBe("Size limits: a video up to 100 MB on Bluesky; an image or PDF up to 100 MB (a photo too large for a network is made smaller for you); a GIF up to 1 MB on Bluesky. Sizes are checked when you save.");
+  });
+});
