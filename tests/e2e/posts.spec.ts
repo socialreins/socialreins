@@ -476,6 +476,11 @@ test("a post for several platforms is one group, published on each", async ({ pa
   });
   expect(published).toEqual(["g-b", "g-t", "g-i"]);
   await expect(page.getByRole("link", { name: "View on Bluesky" })).toHaveAttribute("href", "https://example.com/bluesky/1");
+  // Every version is listed first, with its status; the open one is marked.
+  const versions = page.getByRole("navigation", { name: "Versions of this post" });
+  await expect(versions.getByRole("link")).toHaveText([/Bluesky\s*Published/, /Threads\s*Published/, /Instagram\s*Published/]);
+  await expect(versions.getByRole("link", { name: /Bluesky/ })).toHaveAttribute("aria-current", "page");
+  await expect(versions.getByRole("link", { name: /Threads/ })).toHaveAttribute("href", "/t/acme22/posts/g-t");
   const others = page.getByRole("region", { name: "Same post on other platforms" });
   await expect(others.getByRole("link", { name: "Threads post" })).toHaveAttribute("href", "/t/acme22/posts/g-t");
   await expect(others.getByRole("link", { name: "View on Threads" })).toHaveAttribute("href", "https://example.com/threads/1");
