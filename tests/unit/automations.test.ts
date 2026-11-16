@@ -32,6 +32,8 @@ describe("texts", () => {
   it("counts {name} at its longest and previews it", () => {
     expect(templateLength("Hi {name}")).toBe(3 + 64);
     expect(sample("Hi {name}, {name}")).toBe("Hi Sam, Sam");
+    expect(templateLength("See {page}")).toBe(4 + 100);
+    expect(sample("See {page}")).toBe("See (link to the public page)");
   });
 
   it("summarizes the trigger and reasons", () => {
