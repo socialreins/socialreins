@@ -205,10 +205,10 @@ test("owners create, edit and delete an inbox; All is not editable", async ({ pa
   const dialog = page.getByRole("dialog", { name: "New inbox" });
   await dialog.getByLabel("Name").fill("DMs");
   await dialog.getByLabel("Pick accounts").check();
-  await dialog.getByRole("checkbox", { name: "Alice" }).check();
+  await dialog.getByRole("checkbox", { name: "Alice, Bluesky" }).check();
   await dialog.getByRole("checkbox", { name: "DMs" }).check();
-  await expect(dialog.getByRole("checkbox", { name: "Bluesky" })).toBeChecked();
-  await expect(dialog.getByRole("checkbox", { name: "Instagram" })).toBeDisabled();
+  await expect(dialog.getByRole("checkbox", { name: "Bluesky", exact: true })).toBeChecked();
+  await expect(dialog.getByRole("checkbox", { name: "Instagram", exact: true })).toBeDisabled();
   await dialog.getByLabel("Keywords").fill("price, link");
   await dialog.getByLabel("Keywords").press("Enter");
   await expect(dialog.getByRole("button", { name: "Remove price" })).toBeVisible();

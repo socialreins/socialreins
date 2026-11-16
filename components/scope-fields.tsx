@@ -4,6 +4,8 @@ import { useState, type KeyboardEvent } from "react";
 import type { Connection } from "@/lib/connections";
 import type { SocialSet } from "@/lib/sets";
 import { accountName, Avatar } from "@/components/connections";
+import { platformName } from "@/components/platform-icons";
+import { PlatformMark } from "@/components/posts";
 import { Icon } from "@/components/ui";
 
 // Which accounts an inbox or automation covers: every account, one set, or picked accounts.
@@ -74,6 +76,7 @@ export function ScopeField({
               <label className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-ink/5">
                 <input
                   type="checkbox"
+                  aria-label={`${accountName(a)}, ${platformName(a.provider)}`}
                   checked={value.accountIds.includes(a.id)}
                   onChange={(e) =>
                     onChange({
@@ -84,6 +87,9 @@ export function ScopeField({
                 />
                 <Avatar connection={a} size="size-6" />
                 <span className="truncate">{accountName(a)}</span>
+                <span className="ml-auto inline-flex shrink-0 items-center gap-1 text-sm">
+                  <PlatformMark platform={a.provider} className="size-3.5" named />
+                </span>
               </label>
             </li>
           ))}
