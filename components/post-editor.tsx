@@ -322,7 +322,10 @@ export function PostEditor({ id }: { id?: string }) {
           const r = await updatePost(g.id, { ...shared, platform: g.platform, ...entry(g.platform) });
           setGroup((old) => old.map((x) => saved.find((v) => v.id === x.id) ?? x));
           if (isFailure(r)) {
-            setLocal(<>{saved.length > 0 ? `Saved ${names(saved.map((v) => v.platform))}. ` : ""}{platformProblem(g.platform, r)}</>);
+            // The form keeps what was typed; this page's post is the saved one, so leaving the form shows it.
+            const mine = saved.find((v) => v.id === postId);
+            if (mine) setPost(mine);
+            setLocal(<>{saved.length > 0 ? `Saved ${names(saved.map((v) => v.platform))}. ` : ""}{platformProblem(g.platform, r)} Fix it and save again, so every version is saved the same way.</>);
             return r;
           }
           saved.push(r);
@@ -436,7 +439,9 @@ export function PostEditor({ id }: { id?: string }) {
 
   const inLists = post && !isFailure(post) ? post.lists : [];
   // Lists this set's post can join; one it is already in is left out, since sending it would move the post to the end.
-  const listChoices = lists.filter((l) => fitsList(l, setId) && !inLists.some((x) => x.id === l.id));
+  // With every version open, a list any of them is in is left out too.
+  const listed = whole ? [...inLists, ...group.flatMap((g) => g.lists)] : inLists;
+  const listChoices = lists.filter((l) => fitsList(l, setId) && !listed.some((x) => x.id === l.id));
   const editable = !status || status === "draft" || status === "scheduled";
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const setName = Array.isArray(sets) ? sets.find((s) => s.id === (post as Post | null)?.social_set_id)?.name : undefined;
@@ -544,7 +549,7 @@ export function PostEditor({ id }: { id?: string }) {
     />
   );
 
-  // The versions that can still change fit one form when they are saved for the same time and share
+  // The versions that can still change fit one form when they are in one set, saved for the same time, and share
   // what the form has only one of: the thread and the cover.
   const changeable = members.filter(canEdit);
   const threaded = changeable.filter((g) => limits[g.platform].thread);
@@ -552,7 +557,7 @@ export function PostEditor({ id }: { id?: string }) {
     !!post &&
     canEdit(post) &&
     changeable.length > 1 &&
-    changeable.every((g) => g.status === post.status && g.scheduled_at === post.scheduled_at) &&
+    changeable.every((g) => g.status === post.status && g.scheduled_at === post.scheduled_at && g.social_set_id === post.social_set_id) &&
     threaded.every((g) => same(g.thread ?? [], threaded[0]!.thread ?? [])) &&
     new Set(changeable.filter((g) => limits[g.platform].cover && oneVideo(g.media)).map((g) => g.cover ?? "")).size <= 1;
   // Every version of a post made for several platforms, so the whole post is one click apart.

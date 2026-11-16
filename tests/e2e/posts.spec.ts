@@ -1288,7 +1288,7 @@ test("the versions of a saved post that can still change open on one form and ar
 
   await page.getByLabel("Post", { exact: true }).fill("Too long");
   await page.getByRole("button", { name: "Save draft" }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "Saved Bluesky. Threads takes at most 500 characters." })).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "Saved Bluesky. Threads takes at most 500 characters. Fix it and save again" })).toBeVisible();
 
   await page.getByLabel("Post", { exact: true }).fill("Hello again");
   await page.getByRole("button", { name: "Save draft" }).click();
