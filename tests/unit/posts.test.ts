@@ -472,3 +472,26 @@ describe("rows", () => {
     expect(rows(list, (x) => x.status).map((r) => r.map((x) => x.id))).toEqual([["a", "c"], ["b"], ["d"], ["e"], ["f"]]);
   });
 });
+
+describe("public page text", () => {
+  it("splits text on its links, leaving closing punctuation outside", async () => {
+    const { linked } = await import("@/lib/posts");
+    expect(linked("See https://example.com/a. Then (https://en.wikipedia.org/wiki/Foo_(bar)), HTTPS://X.test/b!")).toEqual([
+      "See ",
+      "https://example.com/a",
+      ". Then (",
+      "https://en.wikipedia.org/wiki/Foo_(bar)",
+      "), ",
+      "HTTPS://X.test/b",
+      "!",
+    ]);
+    expect(linked("no links, javascript:alert(1) data:text/html,x")).toEqual(["no links, javascript:alert(1) data:text/html,x"]);
+    // Every odd entry is a link and starts with http.
+    expect(linked("https://a.test https://b.test").filter((_, i) => i % 2)).toEqual(["https://a.test", "https://b.test"]);
+  });
+
+  it("shows only plain https image links as pictures", async () => {
+    const { pictures } = await import("@/lib/posts");
+    expect(pictures(["https://e.test/a.JPG?x=1", "http://e.test/a.png", "https://drive.google.com/file/d/1/view", "https://e.test/c.mp4", "javascript:alert(1)//.png", "data:image/png;base64,AA.png"])).toEqual(["https://e.test/a.JPG?x=1"]);
+  });
+});

@@ -1,5 +1,6 @@
 import { api, failure, request, type Failure } from "@/lib/auth";
 import { CONNECT_TIMEOUT_MS } from "@/lib/connections";
+import { apiUrl } from "@/lib/waitlist";
 
 export type PostStatus = "draft" | "scheduled" | "queued" | "published" | "failed" | "deleted";
 export type Target = {
@@ -435,3 +436,55 @@ export function rows(posts: Post[], key: (p: Post) => string): Post[][] {
 
 export const sameDay = (a: Date, b: Date) =>
   a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+// A post's public page, one per post or per group. `code` is null before the first save; `live` says
+// whether anyone can open it now (switched on, the team allows pages, a version is published).
+export type PostPage = { enabled: boolean; details: string; code: string | null; live: boolean };
+export const DETAILS_MAX = 5000;
+export const getPostPage = (id: string) => api<PostPage>(`/v1/posts/${enc(id)}/page`);
+export const savePostPage = (id: string, input: { enabled: boolean; details: string }) => api<PostPage>(`/v1/posts/${enc(id)}/page`, "PUT", input);
+
+// What brain shows anyone about a published post with a page.
+export type PublicPost = {
+  team: string;
+  body: string;
+  media: string[];
+  thread: ThreadPart[];
+  details: string;
+  published_at: string;
+  links: { platform: string; url: string }[];
+};
+
+// null: there is no such page (or it is not public now); "error": brain could not be asked.
+export async function getPublicPost(code: string): Promise<PublicPost | null | "error"> {
+  try {
+    const res = await fetch(`${apiUrl}/v1/public/pages/${enc(code)}`, { signal: AbortSignal.timeout(10_000) });
+    if (res.status === 404) return null;
+    return res.ok ? ((await res.json()) as PublicPost) : "error";
+  } catch {
+    return "error";
+  }
+}
+
+// Text split on its links: odd entries are http(s) links, to render as anchors.
+// A link ends before closing punctuation, but keeps a ")" or "]" that closes one of its own.
+const count = (s: string, c: string) => s.split(c).length - 1;
+const trailing = (url: string) => {
+  const last = url.at(-1)!;
+  if (".,;:!?\u3002".includes(last)) return true;
+  return (last === ")" && count(url, ")") > count(url, "(")) || (last === "]" && count(url, "]") > count(url, "["));
+};
+export function linked(text: string): string[] {
+  const out: string[] = [];
+  let at = 0;
+  for (const m of text.matchAll(/https?:\/\/[^\s<>"]+/gi)) {
+    let url = m[0];
+    while (trailing(url)) url = url.slice(0, -1);
+    out.push(text.slice(at, m.index), url);
+    at = m.index + url.length;
+  }
+  out.push(text.slice(at));
+  return out;
+}
+// The media links a browser can show as a picture: a share link (Drive, Dropbox) or a video is left out.
+export const pictures = (media: string[]) => media.filter((m) => /^https:\/\/[^\s]+\.(jpe?g|png|gif|webp)([?#]|$)/i.test(m));

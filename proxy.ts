@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { brainUrl } from "@/lib/brain-url";
 
 const dev = process.env.NODE_ENV === "development";
@@ -7,7 +7,7 @@ const turnstile = "https://challenges.cloudflare.com";
 
 // The CSP is set here, not in next.config headers (fixed at build), because connect-src names brain's origin from BRAIN_URL at run time.
 // shortcut: 'unsafe-inline' scripts because the pages are static (no per-request nonce); move to nonces if pages go dynamic.
-const csp = (api: string) =>
+const csp = (api: string, anyImage: boolean) =>
   [
     "default-src 'self'",
     // Cloudflare Turnstile loads its script and runs its check in a frame (components/turnstile.tsx).
@@ -15,7 +15,8 @@ const csp = (api: string) =>
     `frame-src ${turnstile}`,
     "style-src 'self' 'unsafe-inline'",
     // Bluesky, Facebook, Instagram, YouTube, X and TikTok avatars; safeAvatar in lib/connections.ts keeps to the same sources.
-    "img-src 'self' data: https://cdn.bsky.app/img/ https://*.fbcdn.net https://*.cdninstagram.com https://yt3.ggpht.com https://yt3.googleusercontent.com https://pbs.twimg.com https://*.tiktokcdn.com https://*.tiktokcdn-us.com",
+    // A public post page (/p/<code>) shows the author's own image links, from any https host.
+    anyImage ? "img-src 'self' data: https:" : "img-src 'self' data: https://cdn.bsky.app/img/ https://*.fbcdn.net https://*.cdninstagram.com https://yt3.ggpht.com https://yt3.googleusercontent.com https://pbs.twimg.com https://*.tiktokcdn.com https://*.tiktokcdn-us.com",
     "font-src 'self'",
     `connect-src 'self' ${api}${dev ? " ws:" : ""}`,
     "object-src 'none'",
@@ -24,9 +25,9 @@ const csp = (api: string) =>
     "frame-ancestors 'none'",
   ].join("; ");
 
-export function proxy() {
+export function proxy(req: NextRequest) {
   const res = NextResponse.next();
-  res.headers.set("Content-Security-Policy", csp(new URL(brainUrl()).origin));
+  res.headers.set("Content-Security-Policy", csp(new URL(brainUrl()).origin, req.nextUrl.pathname.startsWith("/p/")));
   return res;
 }
 

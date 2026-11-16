@@ -16,6 +16,7 @@ import {
   mayChange,
   removeMember,
   renameTeam,
+  setPublicPages,
   revokeInvitation,
   setRole,
   type Invitation,
@@ -43,6 +44,7 @@ function TeamPage({ user }: { user: User }) {
         You are {mine === "admin" ? "an" : "a"} {roleName[mine].toLowerCase()} of <strong>{team.name}</strong>.
       </p>
       {manages(mine) && <Rename team={team} onRenamed={setTeam} />}
+      {manages(mine) && <PublicPages team={team} onChanged={setTeam} />}
       <Members me={user} mine={mine} onChanged={() => setVersion((v) => v + 1)} />
       {manages(mine) && <Invitations version={version} />}
       {mine === "owner" && <DeleteTeam team={team} />}
@@ -83,6 +85,33 @@ function Rename({ team, onRenamed }: { team: Team; onRenamed: (t: Team) => void 
           </button>
         </div>
       </form>
+      <Status problem={problem} done={done} />
+    </section>
+  );
+}
+
+function PublicPages({ team, onChanged }: { team: Team; onChanged: (t: Team) => void }) {
+  const { busy, problem, done, run } = useAction();
+  return (
+    <section aria-labelledby="pages-heading" className="grid gap-3">
+      <h2 id="pages-heading" className={heading}>
+        Public pages
+      </h2>
+      <label className="flex cursor-pointer items-center gap-2">
+        <input
+          type="checkbox"
+          checked={!!team.public_pages}
+          disabled={busy !== null}
+          onChange={() =>
+            run("pages", () => setPublicPages(!team.public_pages), (t) => {
+              onChanged(t);
+              return t.public_pages ? "Public pages are on. Switch one on for a post from its page." : "Public pages are off. No post page can be opened now.";
+            })
+          }
+        />
+        Posts can have a public page
+      </label>
+      <p className="hint">A public page shows a published post with extra details and links to anyone who has its link. Each post is switched on by itself.</p>
       <Status problem={problem} done={done} />
     </section>
   );

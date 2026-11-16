@@ -5,7 +5,8 @@ import { createCredential, getCredential, type CreationOptionsJSON, type Request
 export type LinkResult = "sent" | "invalid" | Captcha | "rate_limited" | "timeout" | "error";
 export type Role = "owner" | "admin" | "member";
 // `code` is the team's permanent address: /t/<code>/... (lib/team-path.ts).
-export type Team = { id: string; name: string; code: string; role: Role };
+// `public_pages`: posts of the team may have a public page (`/p/<code>`).
+export type Team = { id: string; name: string; code: string; role: Role; public_pages?: boolean };
 export type User = {
   id: string;
   email: string;
@@ -115,6 +116,8 @@ const codes = [
   "unsupported_platform",
   "too_many_posts",
   "not_editable",
+  "details_too_long",
+  "public_pages_off",
   "not_deletable",
   "publish_quota",
   "media_required",
