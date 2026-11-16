@@ -1,5 +1,7 @@
 "use client";
 
+import { PostPagePanel } from "@/components/post-page-panel";
+
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { TeamLink as Link } from "@/components/team-link";
@@ -848,6 +850,7 @@ export function PostEditor({ id }: { id?: string }) {
             </section>
           )}
           {siblings}
+          <PostPagePanel id={post.id} />
           {post.status === "published" && confirm}
         </div>
         {preview}
@@ -1242,6 +1245,7 @@ export function PostEditor({ id }: { id?: string }) {
           </div>
         </form>
         {siblings}
+        {postId && <PostPagePanel id={postId} />}
         {postId && together.length < 2 && confirm}
       </div>
       {preview}
