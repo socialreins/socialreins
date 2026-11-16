@@ -32,7 +32,7 @@ export const features: Feature[] = [
         bullets: [
           "Pick the accounts or the set it runs on, or only the posts you name.",
           "Set keywords, or leave them out to answer every comment.",
-          "Write the DM, and add a public reply if you want one. {name} in the text becomes the commenter's name.",
+          "Write the DM, and add a public reply if you want one. {name} in the text becomes the commenter's name, and {page} the link to the post's public page.",
           "Add a public reply to fall back on when the network refuses the DM, for example when the person only takes DMs from accounts they follow.",
           "Answer each person once, or every time they comment.",
         ],

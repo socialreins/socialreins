@@ -22,8 +22,8 @@ import { Status, useAction } from "@/components/team-ui";
 export const automationMessages: Partial<Record<Failure, ReactNode>> = {
   invalid_conditions: "One of the accounts, the set or a post link is no longer valid, or a keyword is too long. Check them and try again.",
   invalid_actions: "Add a DM text.",
-  invalid_text: "A text is too long. DMs take 1000 characters and public replies 300, with {name} counted as 64.",
-  invalid_fallback: "The public reply is too long for a fallback: 300 characters, with {name} counted as 64.",
+  invalid_text: "A text is too long. DMs take 1000 characters and public replies 300, with {name} counted as 64 and {page} as 100. {page} also needs a space before it and a space or the end after it.",
+  invalid_fallback: "The public reply does not work as a fallback: at most 300 characters, with {name} counted as 64 and {page} as 100, and {page} needs a space before it and a space or the end after it.",
   invalid_trigger: "That trigger isn't supported.",
   too_many_automations: "This team already has 50 automations, the most allowed. Delete one first.",
   forbidden: "Only team owners and admins can change automations.",
@@ -197,7 +197,7 @@ export function AutomationForm({
             />
             <p className="flex flex-wrap justify-between gap-2">
               <span id="automation-dm-hint" className="hint">
-                Type {"{name}"} for the commenter&apos;s display name (or &quot;there&quot; when it has links or symbols). It counts as 64 characters.
+                Type {"{name}"} for the commenter&apos;s display name (or &quot;there&quot; when it has links or symbols). It counts as 64 characters. Type {"{page}"} with a space before it for the link to the post&apos;s public page (100 characters). The automation then runs only on comments under a post made here whose public page is open.
               </span>
               <Counter id="automation-dm-count" n={dmCount} max={MAX_DM} />
             </p>

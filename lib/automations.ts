@@ -58,11 +58,13 @@ export const switchAutomation = (id: string, on: boolean) =>
 export const listRuns = (id: string, cursor?: string | null) =>
   api<RunPage>(`/v1/automations/${enc(id)}/runs${cursor ? `?cursor=${enc(cursor)}` : ""}`);
 
-// brain checks texts with every {name} at its longest, 64 characters.
+// brain checks texts with every {name} at its longest, 64 characters, and every {page} (the address of
+// the post's public page) as 100.
 const LONGEST_NAME = "n".repeat(64);
-export const templateLength = (text: string) => graphemes(text.replaceAll("{name}", LONGEST_NAME));
+const LONGEST_PAGE = "p".repeat(100);
+export const templateLength = (text: string) => graphemes(text.replaceAll("{name}", LONGEST_NAME).replaceAll("{page}", LONGEST_PAGE));
 // What a commenter called Sam would get, for the preview.
-export const sample = (text: string, name = "Sam") => text.replaceAll("{name}", name);
+export const sample = (text: string, name = "Sam") => text.replaceAll("{name}", name).replaceAll("{page}", "(link to the public page)");
 
 const plain = /^[A-Za-z0-9.\-_~:]+$/;
 
@@ -91,6 +93,7 @@ export const postLink = (uri: string) => {
 
 export const reasonText: Record<string, string> = {
   dm_not_allowed: "They only accept DMs from people they follow",
+  no_public_page: "The post has no open public page for {page}",
   no_dm_access: "Reconnect with an app password that allows DMs",
   daily_cap: "The team reached 500 automation runs today",
   rate_limited: "Bluesky is rate limiting this account",
