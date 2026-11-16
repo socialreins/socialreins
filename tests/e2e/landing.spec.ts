@@ -132,3 +132,13 @@ test("on a phone the header fits and the page never scrolls sideways", async ({ 
   await expect(open).toBeInViewport({ ratio: 1 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
+
+test("the home page lists Inboxes and Automations and links each to its page", async ({ page }) => {
+  await page.goto("/");
+  const section = page.getByRole("region", { name: "What it does" });
+  await expect(section.getByRole("link", { name: "Inboxes: learn more" })).toHaveAttribute("href", "/features/inboxes");
+  await expect(section.getByRole("link", { name: "Automations: learn more" })).toHaveAttribute("href", "/features/automations");
+  await expect(section.getByRole("link", { name: "Publish and schedule: learn more" })).toHaveAttribute("href", "/socials");
+  // Neither is live on every network, so neither card may say "Live now".
+  await expect(section.getByText("Live on Bluesky")).toHaveCount(2);
+});
