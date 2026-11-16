@@ -176,6 +176,19 @@ export const mediaTypes: Record<Platform, { types: string[]; text: string }> = {
   x: { types: [JPEG, PNG, WEBP, GIF, MP4, MOV], text: "JPEG, PNG, WebP or GIF images or an MP4 or MOV video" },
   tiktok: { types: [JPEG, PNG, WEBP, MP4, MOV], text: "one MP4 or MOV video, or JPEG, PNG or WebP photos" },
 };
+// The file sizes brain refuses on save, for the platforms given (crates/core/src/post.rs: VIDEO_LIMITS, size_limit).
+// A still image over a platform's own limit is shrunk at publish, so only brain's 100 MB applies to it.
+const ownSizes: Partial<Record<Platform, { name: string; video: number; gif: number }>> = {
+  bluesky: { name: "Bluesky", video: 100, gif: 1 },
+  x: { name: "X", video: 512, gif: 15 },
+};
+export function sizeHint(platforms: Platform[]): string {
+  const own = platforms.flatMap((p) => ownSizes[p] ?? []);
+  const each = (key: "video" | "gif") => own.map((o) => `${o[key]} MB on ${o.name}`).join(", ");
+  // Every platform here has its own video limit only when none falls back to the 1 GB one.
+  const video = own.length === platforms.length && own.length > 0 ? each("video") : `1 GB${own.length ? ` (${each("video")})` : ""}`;
+  return `Size limits: a video up to ${video}; an image or PDF up to 100 MB${own.length ? `; a GIF up to ${each("gif")}` : ""}. Sizes are checked when you save.`;
+}
 // What a link's extension says its file is; null when it says nothing (a Drive link, no extension).
 export function linkType(url: string): string | null {
   const ext = /\.([a-z0-9]+)(?:[?#]|$)/i.exec(url.split(/[?#]/)[0] ?? "")?.[1]?.toLowerCase();

@@ -13,6 +13,7 @@ import {
   checkMediaTypes,
   coverTypeHint,
   mediaTypes,
+  sizeHint,
   coverTypes,
   checkThread,
   checkTikTok,
@@ -932,7 +933,7 @@ export function PostEditor({ id }: { id?: string }) {
                   </div>
                 ),
               )}
-            <ImageLinks media={media} max={cap(mediaMain)} onChange={setMedia} />
+            <ImageLinks media={media} max={cap(mediaMain)} platforms={mediaMain} onChange={setMedia} />
             {selected.length > 1 &&
               selected.map((p) =>
                 mediaCustom[p] === undefined ? (
@@ -957,7 +958,7 @@ export function PostEditor({ id }: { id?: string }) {
               <fieldset className="grid gap-2">
                 <legend className="label">Cover image</legend>
                 <p id="post-cover-note" className="hint">
-                  Optional. A public https link to an image, or a Google Drive share link, for the video: {covered.map((p) => `${platformName(p)} takes ${coverTypes[p]}`).join("; ")}.
+                  Optional. A public https link to an image, or a Google Drive or Dropbox share link, for the video: {covered.map((p) => `${platformName(p)} takes ${coverTypes[p]}`).join("; ")}.
                   {covered.some((p) => p !== "instagram") && " Facebook and YouTube set it after the video is live (YouTube needs a verified channel): if that fails, the post stays published and says why."}
                   {noCover.length > 0 && ` ${names(noCover)} can't take one${noCover.includes("tiktok") ? " (TikTok can only pick a frame of the video)" : ""}, so ${noCover.length > 1 ? "they get" : "it gets"} none.`}
                   {noVideo.length > 0 && ` ${names(noVideo)} ${noVideo.length > 1 ? "have" : "has"} no single video here, so ${noVideo.length > 1 ? "they get" : "it gets"} none.`}
@@ -1217,7 +1218,7 @@ function YouTubeNote() {
 
 // The image links of one post. `post` is its number in a thread; the first post leaves it out.
 // `post` is a thread part's number; `own` is the one platform these files go to in place of the shared ones.
-function ImageLinks({ media, max, post, own, onChange, onClose }: { media: string[]; max: number; post?: number; own?: Platform; onChange: (media: string[]) => void; onClose?: () => void }) {
+function ImageLinks({ media, max, post, own, platforms, onChange, onClose }: { media: string[]; max: number; post?: number; own?: Platform; platforms?: Platform[]; onChange: (media: string[]) => void; onClose?: () => void }) {
   const addRef = useRef<HTMLButtonElement>(null);
   const imageRefs = useRef<(HTMLInputElement | null)[]>([]);
   const of = post ? ` of post ${post}` : own ? ` for ${platformName(own)}` : "";
@@ -1241,7 +1242,7 @@ function ImageLinks({ media, max, post, own, onChange, onClose }: { media: strin
         <div className="flex items-start justify-between gap-2">
           <p className="hint">
             Only {platformName(own)} gets these, in place of the images above. It takes {mediaTypes[own].text}.
-            {own === "instagram" || own === "youtube" || own === "tiktok" ? "" : " Leave it empty to post without any."}
+            {own === "instagram" || own === "youtube" || own === "tiktok" ? "" : " Leave it empty to post without any."} {sizeHint([own])}
           </p>
           <button type="button" className="icon-btn" aria-label={`Use the main images on ${platformName(own)}`} onClick={onClose}>
             <Icon name="close" className="size-4" />
@@ -1250,8 +1251,8 @@ function ImageLinks({ media, max, post, own, onChange, onClose }: { media: strin
       )}
       {!post && !own && (
         <p className="hint">
-          Up to {max}. Public https links to image, video or PDF files, or Google Drive share links. Bluesky takes JPEG, PNG, WebP or GIF of 1 MB
-          or less, or one MP4 or MOV video; Instagram takes JPEG, PNG or WebP images or MP4 or MOV videos; LinkedIn takes JPEG, PNG or GIF images, or one MP4 video or one PDF (posted as a document, the swipeable carousel) on its own; YouTube takes exactly one MP4 or MOV video. X takes up to 4 JPEG, PNG or WebP images, or one GIF or MP4 or MOV video. TikTok takes one MP4 or MOV video, or up to 35 JPEG, PNG or WebP photos.
+          Up to {max}. Public https links to image, video or PDF files, or Google Drive or Dropbox share links; nothing is uploaded to SocialReins. Bluesky takes JPEG, PNG, WebP or GIF of 1 MB
+          or less, or one MP4 or MOV video; Instagram takes JPEG, PNG or WebP images or MP4 or MOV videos; LinkedIn takes JPEG, PNG or GIF images, or one MP4 video or one PDF (posted as a document, the swipeable carousel) on its own; YouTube takes exactly one MP4 or MOV video. X takes up to 4 JPEG, PNG or WebP images, or one GIF or MP4 or MOV video. TikTok takes one MP4 or MOV video, or up to 35 JPEG, PNG or WebP photos.{platforms && platforms.length > 0 ? ` ${sizeHint(platforms)}` : ""}
         </p>
       )}
       {media.length > 0 && (
