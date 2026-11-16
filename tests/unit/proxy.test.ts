@@ -9,4 +9,10 @@ describe("proxy CSP", () => {
     expect(csp).toMatch(/frame-src https:\/\/challenges\.cloudflare\.com/);
     expect(csp).toMatch(/connect-src 'self' https?:\/\//);
   });
+
+  it("lets only a public post page load images from any https host", () => {
+    const img = (path: string) => proxy(new NextRequest(`https://socialreins.com${path}`)).headers.get("Content-Security-Policy")!.match(/img-src [^;]*/)![0];
+    expect(img("/p/abcdefghjk")).toBe("img-src 'self' data: https:");
+    for (const path of ["/", "/pricing", "/post-types", "/privacy"]) expect(img(path)).not.toMatch(/https:($| )/);
+  });
 });

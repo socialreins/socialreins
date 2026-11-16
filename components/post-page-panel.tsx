@@ -19,6 +19,7 @@ const messages = {
 export function PostPagePanel({ id }: { id: string }) {
   const on = useSession().user.current_team.public_pages;
   const [page, setPage] = useState<PostPage | null>(null);
+  const [failed, setFailed] = useState(false);
   const [enabled, setEnabled] = useState(false);
   const [details, setDetails] = useState("");
   const { busy, problem, done, run } = useAction();
@@ -26,7 +27,7 @@ export function PostPagePanel({ id }: { id: string }) {
   useEffect(() => {
     if (!on) return;
     getPostPage(id).then((r) => {
-      if (isFailure(r)) return;
+      if (isFailure(r)) return setFailed(true);
       setPage(r);
       setEnabled(r.enabled);
       setDetails(r.details);
@@ -43,6 +44,7 @@ export function PostPagePanel({ id }: { id: string }) {
         .
       </p>
     );
+  if (failed) return <p className="hint">The public page of this post couldn&apos;t be loaded. Reload to try again.</p>;
   if (!page) return null;
   const url = page.code ? `${window.location.origin}/p/${page.code}` : "";
   return (

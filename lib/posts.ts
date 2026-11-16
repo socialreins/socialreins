@@ -467,6 +467,24 @@ export async function getPublicPost(code: string): Promise<PublicPost | null | "
 }
 
 // Text split on its links: odd entries are http(s) links, to render as anchors.
-export const linked = (text: string) => text.split(/(https?:\/\/[^\s<>"]+[^\s<>".,;:!?)\]])/g);
+// A link ends before closing punctuation, but keeps a ")" or "]" that closes one of its own.
+const count = (s: string, c: string) => s.split(c).length - 1;
+const trailing = (url: string) => {
+  const last = url.at(-1)!;
+  if (".,;:!?\u3002".includes(last)) return true;
+  return (last === ")" && count(url, ")") > count(url, "(")) || (last === "]" && count(url, "]") > count(url, "["));
+};
+export function linked(text: string): string[] {
+  const out: string[] = [];
+  let at = 0;
+  for (const m of text.matchAll(/https?:\/\/[^\s<>"]+/gi)) {
+    let url = m[0];
+    while (trailing(url)) url = url.slice(0, -1);
+    out.push(text.slice(at, m.index), url);
+    at = m.index + url.length;
+  }
+  out.push(text.slice(at));
+  return out;
+}
 // The media links a browser can show as a picture: a share link (Drive, Dropbox) or a video is left out.
 export const pictures = (media: string[]) => media.filter((m) => /^https:\/\/[^\s]+\.(jpe?g|png|gif|webp)([?#]|$)/i.test(m));

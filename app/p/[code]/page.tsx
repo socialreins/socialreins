@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { Suspense } from "react";
 import { PublicPostView } from "@/components/public-post";
 import { LogoMark } from "@/components/logo";
@@ -16,10 +15,12 @@ export default function PublicPostPage({ params }: Params) {
         <Code params={params} />
       </Suspense>
       <footer className="border-t border-ink/10 pt-6 text-sm text-ink-soft">
-        <Link href="/" className="inline-flex items-center gap-2 font-bold text-ink">
+        {/* A full page load, so the next page gets its own stricter image policy (proxy.ts). */}
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+        <a href="/" className="inline-flex items-center gap-2 font-bold text-ink">
           <LogoMark className="size-6" />
           Shared with SocialReins
-        </Link>
+        </a>
       </footer>
     </main>
   );

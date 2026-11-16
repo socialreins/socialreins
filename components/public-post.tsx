@@ -27,9 +27,9 @@ function Part({ body, media }: { body: string; media: string[] }) {
   return (
     <div className="grid gap-3">
       {body.trim() && <Text text={body} className="text-lg" />}
-      {pictures(media).map((m) => (
+      {pictures(media).map((m, i) => (
         // eslint-disable-next-line @next/next/no-img-element -- the author's own link, any host
-        <img key={m} src={m} alt="" loading="lazy" referrerPolicy="no-referrer" className="max-h-[32rem] w-full rounded-2xl object-contain" />
+        <img key={i} src={m} alt="" loading="lazy" referrerPolicy="no-referrer" className="max-h-[32rem] w-full rounded-2xl object-contain" />
       ))}
     </div>
   );
@@ -68,8 +68,10 @@ export function PublicPostView({ code }: { code: string }) {
       )}
       {post.links.length > 0 && (
         <ul aria-label="Where this was posted" className="flex flex-wrap gap-2">
-          {post.links.map((l) => (
-            <li key={l.url}>
+          {post.links
+            .filter((l) => l.url.startsWith("https://"))
+            .map((l, i) => (
+            <li key={i}>
               <a href={l.url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm">
                 <PlatformMark platform={l.platform} className="size-4" />
                 See it on {platformName(l.platform)}
