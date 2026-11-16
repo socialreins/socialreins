@@ -500,18 +500,29 @@ export function PostEditor({ id }: { id?: string }) {
     <nav aria-label="Versions of this post" className="grid gap-2">
       <p className="text-sm text-ink-soft">This post has {members.length} versions, one for each platform. Pick one to see or change it.</p>
       <ul className="flex flex-wrap gap-2">
-        {members.map((g) => (
-          <li key={g.id}>
-            <Link
-              href={`/posts/${g.id}`}
-              aria-current={g.id === postId ? "page" : undefined}
-              className={`flex items-center gap-2 rounded-xl border-2 px-3 py-2 text-sm font-bold ${g.id === postId ? "border-ink" : "border-ink/10 hover:bg-ink/5"}`}
-            >
+        {members.map((g) => {
+          const mark = (
+            <>
               <PlatformMark platform={g.platform} className="size-4" named />
               <StatusBadge status={g.status} />
-            </Link>
-          </li>
-        ))}
+            </>
+          );
+          const box = "flex items-center gap-2 rounded-xl border-2 px-3 py-2 text-sm font-bold";
+          return (
+            <li key={g.id}>
+              {/* The open version is not a link: following it would reload the page and drop unsaved changes. */}
+              {g.id === postId ? (
+                <span aria-current="page" className={`${box} border-ink`}>
+                  {mark}
+                </span>
+              ) : (
+                <Link href={`/posts/${g.id}`} className={`${box} border-ink/10 hover:bg-ink/5`}>
+                  {mark}
+                </Link>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </nav>
   );
