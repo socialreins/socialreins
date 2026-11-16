@@ -422,5 +422,16 @@ export const postDay = (p: Post) => {
   return when ? new Date(when) : null;
 };
 
+// One row per post: the versions of a group that share `key` (what the row shows once, such as the status
+// and time) become one row, in the order they first appear. A post outside a group is its own row.
+export function rows(posts: Post[], key: (p: Post) => string): Post[][] {
+  const out = new Map<string, Post[]>();
+  for (const p of posts) {
+    const k = p.group_id ? `${p.group_id} ${key(p)}` : p.id;
+    out.set(k, [...(out.get(k) ?? []), p]);
+  }
+  return [...out.values()];
+}
+
 export const sameDay = (a: Date, b: Date) =>
   a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();

@@ -5,7 +5,7 @@ import { TeamLink as Link } from "@/components/team-link";
 import type { Failure } from "@/lib/auth";
 import { listConnections } from "@/lib/connections";
 import { partLabel } from "@/lib/lists";
-import { isPlatform, listPosts, monthRange, monthWeeks, postDay, sameDay, type Post, type PostStatus } from "@/lib/posts";
+import { isPlatform, listPosts, monthRange, monthWeeks, postDay, rows, sameDay, type Post, type PostStatus } from "@/lib/posts";
 import { listSets, type SocialSet } from "@/lib/sets";
 import { PlatformIcon, platformName, platformOf } from "@/components/platform-icons";
 import { isFailure, problemText } from "@/components/team-ui";
@@ -111,14 +111,21 @@ export function PlatformMark({ platform, className = "size-3.5", named }: { plat
   );
 }
 
-function PostChip({ post: p }: { post: Post }) {
-  const remote = p.targets.filter((t) => t.remote_url && t.status === "published");
+// The versions of one post on a day's line: the same status and time, so both show once.
+const chips = (posts: Post[]) => rows(posts, (p) => `${p.status} ${postDay(p)?.toDateString()} ${postDay(p) && time(postDay(p)!)}`);
+
+function PostChip({ posts }: { posts: Post[] }) {
+  const p = posts[0]!;
+  const remote = posts.flatMap((v) => v.targets.filter((t) => t.remote_url && t.status === "published").map((t) => ({ ...t, platform: v.platform })));
   return (
     <li className="flex min-w-0 items-center rounded text-xs hover:bg-ink/[0.045]">
       <span aria-hidden="true" className="dot ml-1.5 shrink-0" data-status={p.status} />
       <Link href={`/posts/${p.id}`} className="min-w-0 flex-1 truncate px-1.5 py-1 hover:underline">
         {p.lists.length > 0 && <span className="block truncate font-bold">{p.lists.map(partLabel).join(", ")}</span>}
-        <PlatformMark platform={p.platform} /> <span className="text-ink-soft tabular-nums">{time(postDay(p)!)}</span> {snippet(p)}
+        {posts.map((v) => (
+          <PlatformMark key={v.id} platform={v.platform} />
+        ))}{" "}
+        <span className="text-ink-soft tabular-nums">{time(postDay(p)!)}</span> {snippet(p)}
       </Link>
       <span className="sr-only">{statusName[p.status]}</span>
       {remote.map((t) => (
@@ -127,7 +134,7 @@ function PostChip({ post: p }: { post: Post }) {
           href={t.remote_url!}
           target="_blank"
           rel="noopener noreferrer"
-          aria-label={`View on ${platformName(p.platform)}`}
+          aria-label={`View on ${platformName(t.platform)}`}
           className="shrink-0 rounded-md p-1 hover:bg-ink/10"
         >
           <Icon name="external" className="size-3.5" />
@@ -153,8 +160,8 @@ function MonthList({ posts, y, m, title }: { posts: Post[]; y: number; m: number
             {new Date(y, m, date).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}
           </p>
           <ul className="grid gap-1">
-            {list.map((p) => (
-              <PostChip key={p.id} post={p} />
+            {chips(list).map((v) => (
+              <PostChip key={v[0]!.id} posts={v} />
             ))}
           </ul>
         </li>
@@ -272,8 +279,8 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
                               </p>
                               {items.length > 0 && (
                                 <ul className="grid gap-1">
-                                  {items.map((p) => (
-                                    <PostChip key={p.id} post={p} />
+                                  {chips(items).map((v) => (
+                                    <PostChip key={v[0]!.id} posts={v} />
                                   ))}
                                 </ul>
                               )}
@@ -313,10 +320,15 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
           <p className="text-ink-soft">No drafts. Posts you save without scheduling show up here.</p>
         ) : (
           <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {drafts.map((p) => (
+            {rows(drafts, () => "").map((v) => {
+              const p = v[0]!;
+              return (
               <li key={p.id} className="tone relative grid content-start gap-2 rounded-2xl bg-paper p-4 hover:bg-ink/[0.02]" data-status="draft">
                 <Link href={`/posts/${p.id}`} className="font-bold text-ink after:absolute after:inset-0 after:rounded-2xl">
-                  <PlatformMark platform={p.platform} className="size-4" /> {snippet(p)}
+                  {v.map((v) => (
+                    <PlatformMark key={v.id} platform={v.platform} className="size-4" />
+                  ))}{" "}
+                  {snippet(p)}
                 </Link>
                 {p.lists.length > 0 && <p className="text-sm font-bold">{p.lists.map(partLabel).join(", ")}</p>}
                 <p className="text-sm text-ink-soft">
@@ -324,7 +336,8 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
                   {new Date(p.updated_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}.
                 </p>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </section>

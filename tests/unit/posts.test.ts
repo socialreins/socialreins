@@ -463,3 +463,12 @@ describe("sizeHint", () => {
     expect(sizeHint(["bluesky"])).toBe("Size limits: a video up to 100 MB on Bluesky; an image or PDF up to 100 MB (a photo too large for a network is made smaller for you); a GIF up to 1 MB on Bluesky. Sizes are checked when you save.");
   });
 });
+
+describe("rows", () => {
+  it("puts the versions of one group that share the key in one row and leaves the rest alone", async () => {
+    const { rows } = await import("@/lib/posts");
+    const p = (id: string, group_id: string | null, status = "draft") => ({ id, group_id, status }) as Parameters<typeof rows>[0][number];
+    const list = [p("a", "g1"), p("b", null), p("c", "g1"), p("d", "g1", "published"), p("e", "g2"), p("f", null)];
+    expect(rows(list, (x) => x.status).map((r) => r.map((x) => x.id))).toEqual([["a", "c"], ["b"], ["d"], ["e"], ["f"]]);
+  });
+});

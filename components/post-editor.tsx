@@ -65,6 +65,8 @@ import { Icon } from "@/components/ui";
 const POLL_MS = 2000;
 const POLL_FOR_MS = 60_000;
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+const canEdit = (p: Post) => p.status === "draft" || p.status === "scheduled";
 const names = (list: string[]) => new Intl.ListFormat("en", { type: "conjunction" }).format(list.map(platformName));
 
 // What a check failure means for one platform, naming its own limit.
@@ -123,6 +125,8 @@ export function PostEditor({ id }: { id?: string }) {
   const [mediaCustom, setMediaCustom] = useState<Partial<Record<Platform, string[]>>>({});
   // Every post of this post's group, this one included; empty for a single post.
   const [group, setGroup] = useState<Post[]>([]);
+  // The form holds every version of the group that can still change, not only this page's post.
+  const [whole, setWhole] = useState(false);
   // Group posts still to publish after Publish now stopped partway, in order.
   const [unsent, setUnsent] = useState<string[]>([]);
   const [at, setAt] = useState("");
@@ -162,6 +166,27 @@ export function PostEditor({ id }: { id?: string }) {
     setMediaCustom({});
     setAt(toLocalInput(p.status === "scheduled" ? p.scheduled_at : null));
     setListId("");
+    setWhole(false);
+  }
+
+  // Fills the form with every version in `all`: this page's post is the shared one, and a version that
+  // differs from it gets its own text, media or first comment.
+  function loadTogether(mine: Post, all: Post[]) {
+    load(mine);
+    const rest = all.filter((g) => g.id !== mine.id);
+    setCustom(Object.fromEntries(rest.filter((g) => g.body !== mine.body).map((g) => [g.platform, g.body])));
+    setMediaCustom(Object.fromEntries(rest.filter((g) => !same(g.media, mine.media)).map((g) => [g.platform, g.media])));
+    const commented = all.filter((g) => limits[g.platform].comment !== null);
+    const base = commented[0]?.first_comment ?? "";
+    setComment(base);
+    setCommentCustom(Object.fromEntries(commented.filter((g) => (g.first_comment ?? "") !== base).map((g) => [g.platform, g.first_comment ?? ""])));
+    setThread(all.find((g) => limits[g.platform].thread)?.thread ?? []);
+    setCover(all.find((g) => g.cover)?.cover ?? "");
+    const tk = all.find((g) => g.platform === "tiktok");
+    if (tk) setTikTok(tk.tiktok ?? noTikTok);
+    const yt = all.find((g) => g.platform === "youtube");
+    if (yt) setYtPrivacy(yt.youtube?.privacy ?? "private");
+    setWhole(true);
   }
 
   useEffect(() => {
@@ -187,7 +212,7 @@ export function PostEditor({ id }: { id?: string }) {
   const status = post && !isFailure(post) ? post.status : undefined;
   // TikTok's guidelines have the editor show the account's live creator info while a TikTok post is edited.
   const ttIds = accounts.filter((a) => a.provider === "tiktok" && a.set_ids.includes(setId)).map((a) => a.id).join(",");
-  const ttPlatform = post && !isFailure(post) ? post.platform === "tiktok" : chosen === null || chosen.includes("tiktok");
+  const ttPlatform = post && !isFailure(post) ? post.platform === "tiktok" || (whole && group.some((g) => g.platform === "tiktok")) : chosen === null || chosen.includes("tiktok");
   const ttEditable = !status || status === "draft" || status === "scheduled";
   const ttKey = ttIds && ttPlatform && ttEditable ? `${ttIds}:${creatorTry}` : "";
   const groupId = post && !isFailure(post) ? post.group_id : null;
@@ -288,7 +313,30 @@ export function PostEditor({ id }: { id?: string }) {
       if (o.body !== undefined || o.media || o.thread || o.first_comment !== undefined || o.cover !== undefined) overrides[p] = o;
     }
     let made = 1;
+    let all: Post[] | null = null;
     await run(mode, async () => {
+      if (together.length > 1) {
+        // Each version is saved on its own; one that is refused is named and the rest wait for the next save.
+        const saved: Post[] = [];
+        for (const g of together) {
+          const r = await updatePost(g.id, { ...shared, platform: g.platform, ...entry(g.platform) });
+          setGroup((old) => old.map((x) => saved.find((v) => v.id === x.id) ?? x));
+          if (isFailure(r)) {
+            // The form keeps what was typed; this page's post is the saved one, so leaving the form shows it.
+            const mine = saved.find((v) => v.id === postId);
+            if (mine) setPost(mine);
+            setLocal(<>{saved.length > 0 ? `Saved ${names(saved.map((v) => v.platform))}. ` : ""}{platformProblem(g.platform, r)} Fix it and save again, so every version is saved the same way.</>);
+            return r;
+          }
+          saved.push(r);
+        }
+        setGroup((old) => old.map((x) => saved.find((v) => v.id === x.id) ?? x));
+        all = saved;
+        made = saved.length;
+        if (mode !== "publish") return saved[0]!;
+        const r = await publishAll(saved.map((v) => v.id));
+        return isFailure(r) ? r : r[0]!;
+      }
       if (postId || selected.length === 1) {
         const saved = postId ? await updatePost(postId, input) : await createPost(input);
         if (isFailure(saved)) return saved;
@@ -312,7 +360,8 @@ export function PostEditor({ id }: { id?: string }) {
       const r = await publishAll(posts.map((p) => p.id));
       return isFailure(r) ? r : r[0]!;
     }, (p) => {
-      load(p);
+      if (all && mode !== "publish") loadTogether(p, all);
+      else load(p);
       // The status line says Publishing and updates itself; a separate message would go stale.
       if (mode === "publish") return void setSent((n) => n + 1);
       if (p.status === "scheduled") return `${made > 1 ? `Scheduled ${made} posts, one per platform, for` : "Scheduled for"} ${when(p.scheduled_at!)}.`;
@@ -390,7 +439,9 @@ export function PostEditor({ id }: { id?: string }) {
 
   const inLists = post && !isFailure(post) ? post.lists : [];
   // Lists this set's post can join; one it is already in is left out, since sending it would move the post to the end.
-  const listChoices = lists.filter((l) => fitsList(l, setId) && !inLists.some((x) => x.id === l.id));
+  // With every version open, a list any of them is in is left out too.
+  const listed = whole ? [...inLists, ...group.flatMap((g) => g.lists)] : inLists;
+  const listChoices = lists.filter((l) => fitsList(l, setId) && !listed.some((x) => x.id === l.id));
   const editable = !status || status === "draft" || status === "scheduled";
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const setName = Array.isArray(sets) ? sets.find((s) => s.id === (post as Post | null)?.social_set_id)?.name : undefined;
@@ -398,7 +449,10 @@ export function PostEditor({ id }: { id?: string }) {
   const shownProblem = local ? null : problem;
   const inSet = (p: Platform) => accounts.filter((a) => a.provider === p && a.set_ids.includes(setId));
   // A saved post keeps its platform; a new one offers each platform with an account in the set.
-  const available: Platform[] = post ? [post.platform] : publishing.filter((p) => inSet(p).length > 0);
+  // The versions the form changes together, this page's post first; fewer than two means only this post.
+  const open = whole && post ? [post, ...group.filter((g) => g.id !== post.id && canEdit(g))] : [];
+  const together = open.length > 1 && canEdit(open[0]!) ? open : [];
+  const available: Platform[] = together.length > 1 ? together.map((g) => g.platform) : post ? [post.platform] : publishing.filter((p) => inSet(p).length > 0);
   const selected = post ? available : (chosen ?? available).filter((p) => available.includes(p));
   const threadable = selected.filter((p) => limits[p].thread);
   const noThread = selected.filter((p) => !limits[p].thread);
@@ -495,6 +549,17 @@ export function PostEditor({ id }: { id?: string }) {
     />
   );
 
+  // The versions that can still change fit one form when they are in one set, saved for the same time, and share
+  // what the form has only one of: the thread and the cover.
+  const changeable = members.filter(canEdit);
+  const threaded = changeable.filter((g) => limits[g.platform].thread);
+  const fits =
+    !!post &&
+    canEdit(post) &&
+    changeable.length > 1 &&
+    changeable.every((g) => g.status === post.status && g.scheduled_at === post.scheduled_at && g.social_set_id === post.social_set_id) &&
+    threaded.every((g) => same(g.thread ?? [], threaded[0]!.thread ?? [])) &&
+    new Set(changeable.filter((g) => limits[g.platform].cover && oneVideo(g.media)).map((g) => g.cover ?? "")).size <= 1;
   // Every version of a post made for several platforms, so the whole post is one click apart.
   const versions = others.length > 0 && (
     <nav aria-label="Versions of this post" className="grid gap-2">
@@ -524,6 +589,17 @@ export function PostEditor({ id }: { id?: string }) {
           );
         })}
       </ul>
+      {together.length > 1 ? (
+        <button type="button" className="btn btn-secondary btn-sm justify-self-start" disabled={busy !== null} onClick={() => load(post!)}>
+          Change only the {platformName(post!.platform)} version
+        </button>
+      ) : (
+        fits && (
+          <button type="button" className="btn btn-secondary btn-sm justify-self-start" disabled={busy !== null} onClick={() => loadTogether(post!, changeable)}>
+            Change all {changeable.length} versions together
+          </button>
+        )
+      )}
     </nav>
   );
 
@@ -862,7 +938,7 @@ export function PostEditor({ id }: { id?: string }) {
                   ))}
               </select>
               <p id="post-set-note" className="hint">
-                {post ? `The post goes to every ${platformName(post.platform)} account in this set.` : "Each platform gets its own post, sent to every account of that platform in this set."}
+                {post && together.length < 2 ? `The post goes to every ${platformName(post.platform)} account in this set.` : "Each platform gets its own post, sent to every account of that platform in this set."}
               </p>
             </div>
             {!post && (
@@ -1166,7 +1242,7 @@ export function PostEditor({ id }: { id?: string }) {
           </div>
         </form>
         {siblings}
-        {postId && confirm}
+        {postId && together.length < 2 && confirm}
       </div>
       {preview}
     </div>
