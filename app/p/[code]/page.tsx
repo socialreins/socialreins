@@ -1,12 +1,42 @@
 import type { Metadata } from "next";
+import { cacheLife } from "next/cache";
 import { Suspense } from "react";
+import { brainUrl } from "@/lib/brain-url";
+import { getPublicPost, pageMeta } from "@/lib/posts";
 import { PublicPostView } from "@/components/public-post";
 import { LogoMark } from "@/components/logo";
 
 // A team's own words, not SocialReins copy: kept out of search results.
-export const metadata: Metadata = { title: "A post on SocialReins", robots: { index: false } };
+const fallback: Metadata = { title: "A post on SocialReins", robots: { index: false } };
 
 type Params = { params: Promise<{ code: string }> };
+
+// The post for link previews, read on the server; the page body still reads it in the browser.
+// shortcut: brain limits its public route to 120 requests a minute per IP and every server fetch comes from
+// the web server's IP, so this 5 minute cache per code is what keeps previews under it; add a shared cache
+// (or exempt the web server in brain) if many different pages get shared at once.
+async function previewPost(code: string) {
+  "use cache";
+  cacheLife({ stale: 300, revalidate: 300, expire: 3600 });
+  const post = await getPublicPost(code, brainUrl(), 5000);
+  // A timeout, rate limit or outage throws past the cache, so it is not kept for 5 minutes.
+  if (post === "error") throw new Error("brain unavailable");
+  return post;
+}
+
+// Page codes are 10 characters of the team code alphabet; anything else is not asked for.
+const pageCode = /^[2-9a-hjkmnp-z]{10}$/;
+
+export async function generateMetadata({ params }: Params): Promise<Metadata> {
+  try {
+    const code = (await params).code;
+    if (!pageCode.test(code)) return fallback;
+    const post = await previewPost(code);
+    return post ? pageMeta(post) : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 export default function PublicPostPage({ params }: Params) {
   return (

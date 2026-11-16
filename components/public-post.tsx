@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getPublicPost, linked, pictures, type PublicPost } from "@/lib/posts";
+import { getPublicPost, linked, pageMedia, type PublicPost } from "@/lib/posts";
 import { platformName } from "@/components/platform-icons";
 import { PlatformMark } from "@/components/posts";
 import { Icon } from "@/components/ui";
@@ -27,10 +27,24 @@ function Part({ body, media }: { body: string; media: string[] }) {
   return (
     <div className="grid gap-3">
       {body.trim() && <Text text={body} className="text-lg" />}
-      {pictures(media).map((m, i) => (
+      {pageMedia(media).map((m, i) => {
+        if (m.kind === "link")
+          return (
+            <a key={i} href={m.href} target="_blank" rel="nofollow ugc noopener noreferrer" className="btn btn-secondary btn-sm justify-self-start">
+              {m.label}
+              <Icon name="external" className="size-4" />
+            </a>
+          );
         // eslint-disable-next-line @next/next/no-img-element -- the author's own link, any host
-        <img key={i} src={m} alt="" loading="lazy" referrerPolicy="no-referrer" className="max-h-[32rem] w-full rounded-2xl object-contain" />
-      ))}
+        const img = <img src={m.src} alt="" loading="lazy" referrerPolicy="no-referrer" className="max-h-[32rem] w-full rounded-2xl object-contain" />;
+        return m.href ? (
+          <a key={i} href={m.href} target="_blank" rel="nofollow ugc noopener noreferrer" aria-label="Open the picture">
+            {img}
+          </a>
+        ) : (
+          <span key={i}>{img}</span>
+        );
+      })}
     </div>
   );
 }

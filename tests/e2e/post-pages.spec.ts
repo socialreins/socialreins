@@ -96,9 +96,15 @@ test("the public page shows the post, its details and where it is live, without 
   // A link's closing full stop is not part of it.
   await expect(page.getByRole("link", { name: "https://example.com/launch", exact: true })).toHaveAttribute("rel", "nofollow ugc noopener noreferrer");
   await expect(page.getByText("Part two")).toBeVisible();
-  // Only the plain image shows: a share link and a video are left out.
-  await expect(page.locator("article img")).toHaveCount(1);
-  await expect(page.locator("article img")).toHaveAttribute("src", "https://example.com/a.jpg");
+  // The plain image shows as it is, a Drive share link as its thumbnail linked to the share, and a video as a link.
+  await expect(page.locator("article img")).toHaveCount(2);
+  await expect(page.locator("article img").first()).toHaveAttribute("src", "https://example.com/a.jpg");
+  await expect(page.getByRole("link", { name: "Open the picture" }).locator("img")).toHaveAttribute("src", "https://drive.google.com/thumbnail?id=1&sz=w1600");
+  await expect(page.getByRole("link", { name: "Open the picture" })).toHaveAttribute("href", "https://drive.google.com/file/d/1/view");
+  const video = page.getByRole("link", { name: "Open the video" });
+  await expect(video).toHaveAttribute("href", "https://example.com/clip.mp4");
+  await expect(video).toHaveAttribute("rel", "nofollow ugc noopener noreferrer");
+  await expect(video).toHaveAttribute("target", "_blank");
   const details = page.getByRole("region", { name: "Details" });
   await expect(details.getByRole("link", { name: "https://example.com/slides" })).toBeVisible();
   await expect(page.getByRole("link", { name: /See it on Bluesky/ })).toHaveAttribute("href", "https://bsky.app/profile/a/post/1");

@@ -490,8 +490,69 @@ describe("public page text", () => {
     expect(linked("https://a.test https://b.test").filter((_, i) => i % 2)).toEqual(["https://a.test", "https://b.test"]);
   });
 
-  it("shows only plain https image links as pictures", async () => {
-    const { pictures } = await import("@/lib/posts");
-    expect(pictures(["https://e.test/a.JPG?x=1", "http://e.test/a.png", "https://drive.google.com/file/d/1/view", "https://e.test/c.mp4", "javascript:alert(1)//.png", "data:image/png;base64,AA.png"])).toEqual(["https://e.test/a.JPG?x=1"]);
+  it("turns media links into pictures or link buttons for the public page", async () => {
+    const { pageMedia } = await import("@/lib/posts");
+    const thumb = (id: string) => `https://drive.google.com/thumbnail?id=${id}&sz=w1600`;
+    expect(
+      pageMedia([
+        "https://e.test/a.JPG?x=1",
+        "https://drive.google.com/file/d/abc_D-1/view?usp=sharing",
+        "https://drive.google.com/open?id=xyz",
+        "https://drive.google.com/uc?id=uc1&export=download",
+        "https://www.dropbox.com/scl/fi/k1/photo.png?rlkey=r&dl=0",
+        "https://dropbox.com/s/k2/pic.webp?dl=1",
+        "https://www.dropbox.com/scl/fi/k3/clip.mp4?dl=0",
+        "https://e.test/c.MOV",
+        "https://e.test/doc.pdf",
+        "https://e.test/c.webm#t=1",
+      ]),
+    ).toEqual([
+      { kind: "image", src: "https://e.test/a.JPG?x=1" },
+      { kind: "image", src: thumb("abc_D-1"), href: "https://drive.google.com/file/d/abc_D-1/view?usp=sharing" },
+      { kind: "image", src: thumb("xyz"), href: "https://drive.google.com/open?id=xyz" },
+      { kind: "image", src: thumb("uc1"), href: "https://drive.google.com/uc?id=uc1&export=download" },
+      { kind: "image", src: "https://www.dropbox.com/scl/fi/k1/photo.png?rlkey=r&raw=1", href: "https://www.dropbox.com/scl/fi/k1/photo.png?rlkey=r&dl=0" },
+      { kind: "image", src: "https://dropbox.com/s/k2/pic.webp?raw=1", href: "https://dropbox.com/s/k2/pic.webp?dl=1" },
+      { kind: "link", href: "https://www.dropbox.com/scl/fi/k3/clip.mp4?dl=0", label: "Open the video" },
+      { kind: "link", href: "https://e.test/c.MOV", label: "Open the video" },
+      { kind: "link", href: "https://e.test/doc.pdf", label: "Open the file" },
+      { kind: "link", href: "https://e.test/c.webm#t=1", label: "Open the video" },
+    ]);
+  });
+
+  it("drops hostile and non-https media and never builds a thumbnail without a clean Drive id", async () => {
+    const { pageMedia } = await import("@/lib/posts");
+    expect(pageMedia(["javascript:alert(1)//.png", "data:image/png;base64,AA.png", "http://e.test/a.png", "not a url", ""])).toEqual([]);
+    expect(pageMedia(["https://drive.google.com/file/d/", "https://drive.google.com/open", "https://drive.google.com/open?id=a%22b", "https://drive.google.com/drive/folders/f.png"])).toEqual([
+      { kind: "link", href: "https://drive.google.com/file/d/", label: "Open the file" },
+      { kind: "link", href: "https://drive.google.com/open", label: "Open the file" },
+      { kind: "link", href: "https://drive.google.com/open?id=a%22b", label: "Open the file" },
+      { kind: "link", href: "https://drive.google.com/drive/folders/f.png", label: "Open the file" },
+    ]);
+    // A look-alike host is no Drive link, and a Dropbox page that is not a share stays a link.
+    expect(pageMedia(["https://drive.google.com.evil.test/file/d/x/view", "https://www.dropbox.com/home/a.png"])).toEqual([
+      { kind: "link", href: "https://drive.google.com.evil.test/file/d/x/view", label: "Open the file" },
+      { kind: "link", href: "https://www.dropbox.com/home/a.png", label: "Open the file" },
+    ]);
+  });
+
+  it("builds a public page's link preview", async () => {
+    const { pageMeta } = await import("@/lib/posts");
+    const post = { team: "Acme", body: "", media: [], thread: [], details: "", published_at: "2026-11-03T08:00:00Z", links: [] };
+    expect(pageMeta(post)).toEqual({
+      title: "A post by Acme",
+      description: undefined,
+      robots: { index: false },
+      openGraph: { title: "A post by Acme", description: undefined, type: "article", images: undefined },
+      twitter: { card: "summary", title: "A post by Acme", description: undefined, images: undefined },
+    });
+    const long = pageMeta({ ...post, body: `${"a".repeat(80)}\n${"b ".repeat(150)}`, media: ["https://e.test/c.mp4"], thread: [{ body: "", media: ["https://drive.google.com/file/d/id1/view"] }] });
+    expect([...String(long.title)]).toHaveLength(70);
+    expect(String(long.title).endsWith("\u2026")).toBe(true);
+    expect([...String(long.description)]).toHaveLength(200);
+    expect(long.openGraph).toMatchObject({ images: ["https://drive.google.com/thumbnail?id=id1&sz=w1600"] });
+    expect(long.twitter).toMatchObject({ card: "summary_large_image", images: ["https://drive.google.com/thumbnail?id=id1&sz=w1600"] });
+    // One line: the details describe it.
+    expect(pageMeta({ ...post, body: "Launch day", details: "Slides:\nhttps://e.test/s" })).toMatchObject({ title: "Launch day", description: "Slides: https://e.test/s" });
   });
 });
