@@ -235,12 +235,12 @@ test("a member sees sets read-only", async ({ page }) => {
   await expect(page.getByLabel("New set name")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^(Rename|Delete|Restore)/ })).toHaveCount(0);
   await page.goto("/connections");
-  await expect(page.getByRole("list", { name: "Sets for Alice" }).getByRole("listitem")).toHaveText(["All sets", "Clients"]);
+  await expect(page.getByRole("list", { name: "Sets for Alice" }).getByRole("listitem")).toHaveText(["Clients"]);
   await page.getByRole("button", { name: "Settings for Alice" }).click();
   await expect(page.getByRole("button", { name: "Save sets" })).toHaveCount(0);
 });
 
-test("connections edits an account's sets with All sets locked", async ({ page }) => {
+test("connections edits an account's sets and never lists the default set", async ({ page }) => {
   const state = await brain(page, "owner");
   const bodies: unknown[] = [];
   let setLoads = 0;
@@ -254,12 +254,11 @@ test("connections edits an account's sets with All sets locked", async ({ page }
     return route.fulfill({ json: { ...state.accounts[1], set_ids: ["d", "s1"] } });
   });
   await page.goto("/connections");
-  await expect(page.getByRole("list", { name: "Sets for Alice" }).getByRole("listitem")).toHaveText(["All sets", "Clients"]);
-  await expect(page.getByRole("list", { name: "Sets for Bob" }).getByRole("listitem")).toHaveText(["All sets"]);
+  await expect(page.getByRole("list", { name: "Sets for Alice" }).getByRole("listitem")).toHaveText(["Clients"]);
+  await expect(page.getByRole("list", { name: "Sets for Bob" })).toHaveCount(0);
   await page.getByRole("button", { name: "Settings for Bob" }).click();
   const group = page.getByRole("group", { name: "Sets" });
-  await expect(group.getByRole("checkbox", { name: /All sets/ })).toBeChecked();
-  await expect(group.getByRole("checkbox", { name: /All sets/ })).toBeDisabled();
+  await expect(group.getByRole("checkbox", { name: /All sets/ })).toHaveCount(0);
   await group.getByRole("checkbox", { name: "Clients" }).check();
   // The top bar loads sets too; the page reloads them once after the error.
   const before = setLoads;
@@ -268,6 +267,6 @@ test("connections edits an account's sets with All sets locked", async ({ page }
   await expect.poll(() => setLoads).toBe(before + 1);
   await page.getByRole("button", { name: "Save sets" }).click();
   await expect(page.getByText("Sets saved for Bob.")).toBeFocused();
-  await expect(page.getByRole("list", { name: "Sets for Bob" }).getByRole("listitem")).toHaveText(["All sets", "Clients"]);
+  await expect(page.getByRole("list", { name: "Sets for Bob" }).getByRole("listitem")).toHaveText(["Clients"]);
   expect(bodies).toEqual([{ set_ids: ["d", "s1"] }, { set_ids: ["d", "s1"] }]);
 });

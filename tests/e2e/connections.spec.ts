@@ -230,8 +230,9 @@ test("an account that could not join the picked set still shows after it connect
   await page.getByLabel("App password").fill("abcd-efgh-ijkl-mnop");
   await page.getByRole("button", { name: "Connect Bluesky" }).click();
   await expect(page.getByText("Connected @bob.bsky.social.")).toBeFocused();
-  // Its card shows, and its sets say it is not in English.
-  await expect(page.getByRole("list", { name: "Sets for @bob.bsky.social" }).getByRole("listitem")).toHaveText(["All sets"]);
+  // Its card shows, and lists no set: the default set holds every account on its own, so it is never listed.
+  await expect(page.getByRole("button", { name: "Settings for @bob.bsky.social" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Sets for @bob.bsky.social" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Settings for Alice" })).toHaveCount(0);
 });
 

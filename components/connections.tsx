@@ -56,6 +56,9 @@ const connectMessages: Partial<Record<Failure, string>> = {
   not_found: "That account was already disconnected.",
 };
 
+// The sets an account was put in. The default set holds every account on its own, so it is never listed.
+const own = (setIds: string[], sets: SocialSet[]) => setNames(setIds, sets.filter((s) => !s.is_default));
+
 export const accountName = (c: Connection) => c.display_name || (c.handle ? `@${c.handle}` : c.external_id);
 
 // Accounts that need reconnecting or soon will, each with what is wrong and a Reconnect link for owners and admins. Used on Home and in the post editor.
@@ -337,9 +340,9 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
                         <Icon name="settings" />
                       </button>
                     </div>
-                    {Array.isArray(sets) && (
+                    {Array.isArray(sets) && own(c.set_ids, sets).length > 0 && (
                       <ul aria-label={`Sets for ${name}`} className="flex flex-wrap gap-1.5">
-                        {setNames(c.set_ids, sets).map((n) => (
+                        {own(c.set_ids, sets).map((n) => (
                           <li key={n} className="badge tone">
                             {n}
                           </li>
@@ -556,16 +559,15 @@ function AccountSettings({
       <form onSubmit={onSave} className="grid gap-3">
         <fieldset className="grid gap-1.5">
           <legend className="mb-1 font-bold">Sets</legend>
-          {sets.map((s) => (
+          {sets.filter((s) => !s.is_default).map((s) => (
             <label key={s.id} className="flex items-center gap-2">
               <input
                 type="checkbox"
-                checked={s.is_default || checked.includes(s.id)}
-                disabled={s.is_default || !canManage}
+                checked={checked.includes(s.id)}
+                disabled={!canManage}
                 onChange={(e) => setChecked((ids) => (e.target.checked ? [...ids, s.id] : ids.filter((id) => id !== s.id)))}
               />
               {s.name}
-              {s.is_default && <span className="text-sm text-ink-soft">(every account stays here)</span>}
             </label>
           ))}
           <Link href="/sets" className="justify-self-start text-sm underline decoration-2 underline-offset-4">
