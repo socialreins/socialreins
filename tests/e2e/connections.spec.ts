@@ -707,14 +707,16 @@ test("a member sees the X plan but cannot change it", async ({ page }) => {
 });
 
 test("back from connecting X, the settings open on the plan question unless X reported a paid plan", async ({ page }) => {
-  await signedIn(page, "owner", [xAccount]);
+  // Connected a moment ago, so it is the account that just arrived.
+  await signedIn(page, "owner", [{ ...xAccount, created_at: new Date().toISOString() }]);
   await page.goto("/connections?connected=x");
   await expect(page.getByRole("dialog").getByText("Which X plan is this account on?")).toBeVisible();
 });
 
 test("back from connecting X with a paid plan reported, no question opens", async ({ page }) => {
-  await signedIn(page, "owner", [{ ...xAccount, long_posts: true, detected_long_posts: true }]);
+  await signedIn(page, "owner", [{ ...xAccount, long_posts: true, detected_long_posts: true, created_at: new Date().toISOString() }]);
   await page.goto("/connections?connected=x");
   await expect(page.getByText("Connected your X account.")).toBeVisible();
+  await expect(page.getByRole("tabpanel")).toContainText("Ann Lee");
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });

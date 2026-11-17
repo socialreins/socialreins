@@ -14,6 +14,7 @@ import {
   providerState,
   safeAvatar,
   setXPlan,
+  xLongPosts,
   xPlanAsk,
   xPlanSource,
 } from "@/lib/connections";
@@ -240,6 +241,7 @@ describe("the X plan setting", () => {
     expect(xPlanSource({ ...x, plan: "free", detected_long_posts: true })).toBe("you");
     expect(xPlanSource({ ...x, plan: "paid" })).toBe("you");
     expect(xPlanSource({ ...x, long_posts: true, detected_long_posts: true })).toBe("x");
+    expect(xPlanSource({ ...x, detected_long_posts: false })).toBe("x");
     expect(xPlanSource(x)).toBe("unknown");
   });
 
@@ -248,6 +250,15 @@ describe("the X plan setting", () => {
     expect(xPlanAsk({ ...x, long_posts: true })).toBe(false);
     expect(xPlanAsk({ ...x, plan: "free" })).toBe(true);
     expect(xPlanAsk({ provider: "bluesky" } as Connection)).toBe(false);
+  });
+
+  it("allows long X posts only when every X account of the set takes them", () => {
+    const acc = (id: string, long: boolean, sets: string[] = ["s1"]) => ({ provider: "x", id, long_posts: long, set_ids: sets }) as Connection;
+    expect(xLongPosts([acc("a", true)], "s1")).toBe(true);
+    expect(xLongPosts([acc("a", true), acc("b", false)], "s1")).toBe(false);
+    expect(xLongPosts([acc("a", true), acc("b", false, ["s2"])], "s1")).toBe(true);
+    expect(xLongPosts([], "s1")).toBe(false);
+    expect(xLongPosts([{ provider: "bluesky", set_ids: ["s1"] } as Connection], "s1")).toBe(false);
   });
 
   it("saves the plan with PUT, null for detect", async () => {

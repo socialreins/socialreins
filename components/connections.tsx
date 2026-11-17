@@ -202,7 +202,8 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
       // Back from X: its plan decides how long a post can be, so an account not on a paid plan is asked which plan it is on.
       if (back?.error === null && back.provider === "x" && Array.isArray(l)) {
         const ask = l.filter((c) => c.provider === "x" && xPlanAsk(c));
-        const target = ask.find((c) => added.some((a) => a.id === c.id)) ?? ask[0];
+        // Only an account that just arrived: a reconnect keeps the plan its owner chose.
+        const target = ask.find((c) => added.some((a) => a.id === c.id));
         if (target) setSettingsId(target.id);
       }
       setList(l);
@@ -363,7 +364,7 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
           onStale={() => listSets().then(setSets)}
           onSaved={(updated, what) => {
             setList((l) => (Array.isArray(l) ? l.map((x) => (x.id === updated.id ? updated : x)) : l));
-            if (what === "plan") return;
+            if (what === "plan") return announce(`X plan saved for ${accountName(updated)}.`);
             // Its sets were chosen by hand now, so it follows the picked set like any other account.
             setFresh((f) => f.filter((id) => id !== updated.id));
             announce(`Sets saved for ${accountName(updated)}.`);
@@ -539,7 +540,9 @@ function AccountSettings({
               {xPlanSource(c) === "you"
                 ? `Using your setting: ${c.long_posts ? "25,000" : "280"} characters.`
                 : xPlanSource(c) === "x"
-                  ? "Detected from X: 25,000 characters."
+                  ? c.detected_long_posts
+                    ? "Detected from X: 25,000 characters."
+                    : "X reports a free account, so 280 characters apply."
                   : "X did not say, so 280 characters apply."}
             </p>
           </fieldset>

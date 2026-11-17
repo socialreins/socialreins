@@ -5,7 +5,9 @@ import {
   checkCover,
   checkMediaTypes,
   checkPost,
+  overLimit,
   coverTypeHint,
+  charLimit,
   checkThread,
   checkTikTok,
   createPost,
@@ -554,5 +556,24 @@ describe("public page text", () => {
     expect(long.twitter).toMatchObject({ card: "summary_large_image", images: ["https://drive.google.com/thumbnail?id=id1&sz=w1600"] });
     // One line: the details describe it.
     expect(pageMeta({ ...post, body: "Launch day", details: "Slides:\nhttps://e.test/s" })).toMatchObject({ title: "Launch day", description: "Slides: https://e.test/s" });
+  });
+});
+
+describe("X post length by plan", () => {
+  it("holds X to 280 unless the accounts take long posts", () => {
+    expect(charLimit("x")).toBe(280);
+    expect(charLimit("x", true)).toBe(25_000);
+    expect(charLimit("bluesky", true)).toBe(300);
+    expect(checkPost("a".repeat(281), [], "x")).toBe("too_long");
+    expect(checkPost("a".repeat(281), [], "x", true)).toBeNull();
+    expect(checkPost("a".repeat(25_001), [], "x", true)).toBe("too_long");
+    expect(overLimit("x", "a".repeat(300), true)).toBe(false);
+    expect(overLimit("x", "a".repeat(300))).toBe(true);
+  });
+
+  it("applies the long limit to every thread part", () => {
+    const parts = [{ body: "a".repeat(400), media: [] }];
+    expect(checkThread("one", [], parts, "x")).toEqual({ failure: "too_long", part: 1 });
+    expect(checkThread("one", [], parts, "x", true)).toBeNull();
   });
 });

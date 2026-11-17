@@ -22,7 +22,7 @@ export type Connection = {
   created_at: string;
   // X: the account may post 25,000 characters instead of 280. The user's `plan` when set, else what X reported. Absent when false.
   long_posts?: boolean;
-  // X: what X itself reported about a paid plan. Absent when it did not.
+  // X: whether X itself reported a paid plan (true or false). Absent when X said nothing.
   detected_long_posts?: boolean;
   // X: the user's setting, which beats what X reported. Absent when unset.
   plan?: XPlan;
@@ -169,8 +169,13 @@ export function safeAvatar(url: string | null) {
 }
 
 // X: who decided the account's post length. `unknown`: the user set nothing and X did not report a paid plan, so 280 applies.
-export const xPlanSource = (c: Connection): "you" | "x" | "unknown" => (c.plan ? "you" : c.detected_long_posts ? "x" : "unknown");
+export const xPlanSource = (c: Connection): "you" | "x" | "unknown" => (c.plan ? "you" : c.detected_long_posts !== undefined ? "x" : "unknown");
 // After connecting X, an account not on a paid plan is asked which plan it is on, in case X's answer was missing or wrong.
 export const xPlanAsk = (c: Connection) => c.provider === "x" && !c.long_posts;
 // `null` goes back to what X reported.
 export const setXPlan = (id: string, plan: XPlan | null) => api<Connection>(`/v1/connections/${encodeURIComponent(id)}/plan`, "PUT", { plan });
+// Whether a post for `setId` may take X's long limit: the set has X accounts and every one of them takes long posts.
+export const xLongPosts = (accounts: Connection[], setId: string) => {
+  const xs = accounts.filter((a) => a.provider === "x" && a.set_ids.includes(setId));
+  return xs.length > 0 && xs.every((a) => a.long_posts === true);
+};
