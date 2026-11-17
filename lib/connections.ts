@@ -1,6 +1,7 @@
 import { api, getTabTeam } from "@/lib/auth";
 import { apiUrl } from "@/lib/waitlist";
 
+export type XPlan = "free" | "paid";
 export type ConnectionStatus = "ok" | "expiring" | "reconnect";
 
 export type Connection = {
@@ -19,6 +20,12 @@ export type Connection = {
   // ok; expiring: the token ends within 7 days (token_expires_at) and nothing renews it; reconnect: it expired or was refused.
   status?: ConnectionStatus;
   created_at: string;
+  // X: the account may post 25,000 characters instead of 280. The user's `plan` when set, else what X reported. Absent when false.
+  long_posts?: boolean;
+  // X: what X itself reported about a paid plan. Absent when it did not.
+  detected_long_posts?: boolean;
+  // X: the user's setting, which beats what X reported. Absent when unset.
+  plan?: XPlan;
 };
 export type Provider = { provider: string; configured: boolean };
 
@@ -160,3 +167,10 @@ export function safeAvatar(url: string | null) {
     return null;
   }
 }
+
+// X: who decided the account's post length. `unknown`: the user set nothing and X did not report a paid plan, so 280 applies.
+export const xPlanSource = (c: Connection): "you" | "x" | "unknown" => (c.plan ? "you" : c.detected_long_posts ? "x" : "unknown");
+// After connecting X, an account not on a paid plan is asked which plan it is on, in case X's answer was missing or wrong.
+export const xPlanAsk = (c: Connection) => c.provider === "x" && !c.long_posts;
+// `null` goes back to what X reported.
+export const setXPlan = (id: string, plan: XPlan | null) => api<Connection>(`/v1/connections/${encodeURIComponent(id)}/plan`, "PUT", { plan });

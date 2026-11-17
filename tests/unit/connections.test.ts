@@ -13,8 +13,12 @@ import {
   needingReconnect,
   providerState,
   safeAvatar,
+  setXPlan,
+  xPlanAsk,
+  xPlanSource,
 } from "@/lib/connections";
 import { apiUrl } from "@/lib/waitlist";
+import type { Connection } from "@/lib/connections";
 
 const reply = (status: number, body?: unknown) =>
   vi.fn(async () => (body === undefined ? new Response(null, { status }) : Response.json(body, { status })));
@@ -227,5 +231,37 @@ describe("accounts that need attention", () => {
   it("formats the end date, or nothing without one", () => {
     expect(endDate(base)).toMatch(/2026/);
     expect(endDate({ ...base, token_expires_at: null })).toBe("");
+  });
+});
+
+describe("the X plan setting", () => {
+  const x = { provider: "x" } as Connection;
+  it("says where the answer came from", () => {
+    expect(xPlanSource({ ...x, plan: "free", detected_long_posts: true })).toBe("you");
+    expect(xPlanSource({ ...x, plan: "paid" })).toBe("you");
+    expect(xPlanSource({ ...x, long_posts: true, detected_long_posts: true })).toBe("x");
+    expect(xPlanSource(x)).toBe("unknown");
+  });
+
+  it("asks only for an X account that is not on a paid plan", () => {
+    expect(xPlanAsk(x)).toBe(true);
+    expect(xPlanAsk({ ...x, long_posts: true })).toBe(false);
+    expect(xPlanAsk({ ...x, plan: "free" })).toBe(true);
+    expect(xPlanAsk({ provider: "bluesky" } as Connection)).toBe(false);
+  });
+
+  it("saves the plan with PUT, null for detect", async () => {
+    let fetch = reply(200, { id: "c/1" });
+    vi.stubGlobal("fetch", fetch);
+    await setXPlan("c/1", "paid");
+    expect(call(fetch)[0]).toBe(`${apiUrl}/v1/connections/c%2F1/plan`);
+    expect(call(fetch)[1]).toMatchObject({ method: "PUT", credentials: "include", body: JSON.stringify({ plan: "paid" }) });
+    fetch = reply(200, { id: "c1" });
+    vi.stubGlobal("fetch", fetch);
+    await setXPlan("c1", null);
+    expect(call(fetch)[1]).toMatchObject({ body: JSON.stringify({ plan: null }) });
+    fetch = reply(404, { error: "not_found" });
+    vi.stubGlobal("fetch", fetch);
+    expect(await setXPlan("c1", "free")).toBe("not_found");
   });
 });
