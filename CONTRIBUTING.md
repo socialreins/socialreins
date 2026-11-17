@@ -52,7 +52,20 @@ With both running, open http://localhost:3000 and sign in with an email link; wi
 
 ## Making a change
 
-1. **Fork** the repo you're changing and create a branch from `main`. Name it after the change: `fix/calendar-timezone`, `feat/threads-polls`, `docs/self-host-proxy`.
+1. **Fork** the repo you're changing on GitHub, add your fork as a remote and create a branch from `main`. Name the branch after the change: `fix/calendar-timezone`, `feat/threads-polls`, `docs/self-host-proxy`.
+
+   ```sh
+   # web: from the socialreins folder
+   git remote add fork https://github.com/<you>/socialreins
+   git switch -c fix/calendar-timezone
+
+   # brain: the submodule starts on a bare commit, so start from main
+   cd brain
+   git remote add fork https://github.com/<you>/brain
+   git switch main && git pull && git switch -c fix/post-retry
+   ```
+
+   Push with `git push -u fork <branch>`.
 2. **Keep it to one change.** Two unrelated fixes are two pull requests.
 3. **Add tests** for new behaviour and for the bug you fixed.
    - web: unit tests in `tests/unit` (Vitest), browser tests in `tests/e2e` (Playwright).
@@ -104,7 +117,7 @@ These are checked in review, and some by CI:
 - **No new dependency** without a reason in the pull request description.
 - **Copy states facts.** No made-up prices, user counts, testimonials or dates.
 - web: this is Next.js 16 (App Router). APIs differ from older versions; check `node_modules/next/dist/docs/` before you write code.
-- brain: log with `tracing` only. Clippy denies `println!`, `dbg!`, `todo!` and `unimplemented!`.
+- brain: log with `tracing` only. Clippy denies `println!`, `eprintln!`, `dbg!`, `todo!` and `unimplemented!`.
 - Each repo's `AGENTS.md` has the full rules and a map of the code. Read it if you use an AI coding assistant, and point the assistant at it.
 
 ## Review and merge

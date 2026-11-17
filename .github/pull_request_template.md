@@ -9,6 +9,7 @@
 ## Checklist
 
 - [ ] `npm run lint`, `npm run typecheck` and `npm test` pass
+- [ ] `npm run build && npm run test:e2e` pass
 - [ ] Tests cover the new behaviour or the fixed bug
 - [ ] No secrets, no em dashes
 - [ ] Needs a brain change? Link its pull request and bump the `brain` submodule
