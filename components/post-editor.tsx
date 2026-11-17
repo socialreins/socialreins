@@ -7,7 +7,7 @@ import { flushSync } from "react-dom";
 import { TeamLink as Link } from "@/components/team-link";
 import { useTeamPath, useTeamRouter as useRouter } from "@/components/team-link";
 import type { Failure } from "@/lib/auth";
-import { listConnections, needingReconnect, type Connection } from "@/lib/connections";
+import { listConnections, needingReconnect, xLongPosts, type Connection } from "@/lib/connections";
 import {
   charCount,
   checkComment,
@@ -17,6 +17,7 @@ import {
   mediaTypes,
   sizeHint,
   coverTypes,
+  charLimit,
   checkThread,
   checkTikTok,
   createPost,
@@ -72,11 +73,11 @@ const canEdit = (p: Post) => p.status === "draft" || p.status === "scheduled";
 const names = (list: string[]) => new Intl.ListFormat("en", { type: "conjunction" }).format(list.map(platformName));
 
 // What a check failure means for one platform, naming its own limit.
-function platformProblem(platform: Platform, failure: Failure): ReactNode {
+function platformProblem(platform: Platform, failure: Failure, xLong = false): ReactNode {
   const name = platformName(platform);
   if (failure === "too_long" && platform === "youtube")
     return `YouTube takes a title (the first line) of at most ${limits.youtube.chars} characters and a description (the rest) of at most ${YOUTUBE_DESCRIPTION_BYTES.toLocaleString("en")} bytes.`;
-  if (failure === "too_long" && platform === "x") return `X takes at most ${limits.x.chars} characters, where a link counts as 23 and an emoji or a Chinese, Japanese or Korean character as 2.`;
+  if (failure === "too_long" && platform === "x") return `X takes at most ${charLimit("x", xLong).toLocaleString("en")} characters, where a link counts as 23 and an emoji or a Chinese, Japanese or Korean character as 2.`;
   if (failure === "too_many_images" && platform === "tiktok") return "TikTok takes one video, or up to 35 photos.";
   if (failure === "too_long") return `${name} takes at most ${limits[platform].chars.toLocaleString("en")} characters.`;
   if (failure === "too_many_images" && platform === "x") return "X takes at most 4 images, or one GIF or video.";
@@ -213,6 +214,8 @@ export function PostEditor({ id }: { id?: string }) {
   const postId = post && !isFailure(post) ? post.id : undefined;
   const status = post && !isFailure(post) ? post.status : undefined;
   // TikTok's guidelines have the editor show the account's live creator info while a TikTok post is edited.
+  // X takes 25,000 characters when every X account of the picked set is on a paid plan, else 280.
+  const xLong = xLongPosts(accounts, setId);
   const ttIds = accounts.filter((a) => a.provider === "tiktok" && a.set_ids.includes(setId)).map((a) => a.id).join(",");
   const ttPlatform = post && !isFailure(post) ? post.platform === "tiktok" || (whole && group.some((g) => g.platform === "tiktok")) : chosen === null || chosen.includes("tiktok");
   const ttEditable = !status || status === "draft" || status === "scheduled";
@@ -284,8 +287,8 @@ export function PostEditor({ id }: { id?: string }) {
     if (selected.length === 0) return setLocal("Pick at least one platform to post to.");
     for (const p of selected) {
       const e = entry(p);
-      const invalid = checkThread(e.body, e.media, e.thread, p);
-      if (invalid) return setLocal(<>{invalid.part ? `Post ${invalid.part + 1} of the thread: ` : ""}{platformProblem(p, invalid.failure)}</>);
+      const invalid = checkThread(e.body, e.media, e.thread, p, xLong);
+      if (invalid) return setLocal(<>{invalid.part ? `Post ${invalid.part + 1} of the thread: ` : ""}{platformProblem(p, invalid.failure, xLong)}</>);
       const bad = checkComment(commentText(p), p) ?? checkCover(coverFor(p) ?? "", p, mediaFor(p).length);
       if (bad) return setLocal(platformProblem(p, bad));
     }
@@ -1009,10 +1012,10 @@ export function PostEditor({ id }: { id?: string }) {
                 placeholder="What do you want to say?"
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
-                aria-invalid={mainPlatforms.some((p) => overLimit(p, body)) || undefined}
+                aria-invalid={mainPlatforms.some((p) => overLimit(p, body, xLong)) || undefined}
                 aria-describedby="post-count"
               />
-              <Counts id="post-count" text={body} platforms={mainPlatforms} alerts />
+              <Counts id="post-count" text={body} platforms={mainPlatforms} xLong={xLong} alerts />
               {selected.includes("youtube") && <YouTubeNote />}
             </div>
             {selected.length > 1 &&
@@ -1038,10 +1041,10 @@ export function PostEditor({ id }: { id?: string }) {
                       className="field resize-y"
                       value={custom[p]}
                       onChange={(e) => setCustom((c) => ({ ...c, [p]: e.target.value }))}
-                      aria-invalid={overLimit(p, custom[p]!) || undefined}
+                      aria-invalid={overLimit(p, custom[p]!, xLong) || undefined}
                       aria-describedby={`post-body-${p}-count`}
                     />
-                    <Counts id={`post-body-${p}-count`} text={custom[p]!} platforms={[p]} alerts />
+                    <Counts id={`post-body-${p}-count`} text={custom[p]!} platforms={[p]} xLong={xLong} alerts />
                     {p === "youtube" && <YouTubeNote />}
                   </div>
                 ),
@@ -1152,7 +1155,7 @@ export function PostEditor({ id }: { id?: string }) {
               {thread.length > 0 && (
                 <ol className="grid gap-3">
                   {thread.map((p, i) => {
-                    const over = threadable.some((x) => charCount(x, p.body) > limits[x].chars);
+                    const over = threadable.some((x) => charCount(x, p.body) > charLimit(x, xLong));
                     return (
                       <li key={i} className="grid gap-1">
                         <div className="flex items-center justify-between gap-2">
@@ -1175,7 +1178,7 @@ export function PostEditor({ id }: { id?: string }) {
                           aria-invalid={over || undefined}
                           aria-describedby={`post-part-${i}-count`}
                         />
-                        <Counts id={`post-part-${i}-count`} text={p.body} platforms={threadable} />
+                        <Counts id={`post-part-${i}-count`} text={p.body} platforms={threadable} xLong={xLong} />
                         <ImageLinks media={p.media} max={cap(threadable)} post={i + 2} onChange={(m) => setThread((list) => list.map((v, j) => (j === i ? { ...v, media: m } : v)))} />
                       </li>
                     );
@@ -1264,7 +1267,7 @@ function commentStatus(t: Target): string {
 const links = (media: string[]) => media.map((m) => m.trim()).filter(Boolean);
 
 // "N of M characters" for each platform; `alerts` also says how far over a limit the text is.
-function Counts({ id, text, platforms, alerts }: { id: string; text: string; platforms: Platform[]; alerts?: boolean }) {
+function Counts({ id, text, platforms, xLong = false, alerts }: { id: string; text: string; platforms: Platform[]; xLong?: boolean; alerts?: boolean }) {
   // YouTube counts its title (the first line) in characters and its description (the rest) in bytes.
   const counts = platforms.flatMap((p) =>
     p === "youtube"
@@ -1272,7 +1275,7 @@ function Counts({ id, text, platforms, alerts }: { id: string; text: string; pla
           { key: p, name: "YouTube title", n: charCount(p, text), max: limits[p].chars, unit: "characters" },
           { key: `${p}-description`, name: "YouTube description", n: utf8Bytes(youtubeText(text).description), max: YOUTUBE_DESCRIPTION_BYTES, unit: "bytes" },
         ]
-      : [{ key: p, name: platformName(p), n: charCount(p, text), max: limits[p].chars, unit: "characters" }],
+      : [{ key: p, name: platformName(p), n: charCount(p, text), max: charLimit(p, xLong), unit: "characters" }],
   );
   return (
     <>

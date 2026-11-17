@@ -13,8 +13,13 @@ import {
   needingReconnect,
   providerState,
   safeAvatar,
+  setXPlan,
+  xLongPosts,
+  xPlanAsk,
+  xPlanSource,
 } from "@/lib/connections";
 import { apiUrl } from "@/lib/waitlist";
+import type { Connection } from "@/lib/connections";
 
 const reply = (status: number, body?: unknown) =>
   vi.fn(async () => (body === undefined ? new Response(null, { status }) : Response.json(body, { status })));
@@ -227,5 +232,47 @@ describe("accounts that need attention", () => {
   it("formats the end date, or nothing without one", () => {
     expect(endDate(base)).toMatch(/2026/);
     expect(endDate({ ...base, token_expires_at: null })).toBe("");
+  });
+});
+
+describe("the X plan setting", () => {
+  const x = { provider: "x" } as Connection;
+  it("says where the answer came from", () => {
+    expect(xPlanSource({ ...x, plan: "free", detected_long_posts: true })).toBe("you");
+    expect(xPlanSource({ ...x, plan: "paid" })).toBe("you");
+    expect(xPlanSource({ ...x, long_posts: true, detected_long_posts: true })).toBe("x");
+    expect(xPlanSource({ ...x, detected_long_posts: false })).toBe("x");
+    expect(xPlanSource(x)).toBe("unknown");
+  });
+
+  it("asks only for an X account that is not on a paid plan", () => {
+    expect(xPlanAsk(x)).toBe(true);
+    expect(xPlanAsk({ ...x, long_posts: true })).toBe(false);
+    expect(xPlanAsk({ ...x, plan: "free" })).toBe(true);
+    expect(xPlanAsk({ provider: "bluesky" } as Connection)).toBe(false);
+  });
+
+  it("allows long X posts only when every X account of the set takes them", () => {
+    const acc = (id: string, long: boolean, sets: string[] = ["s1"]) => ({ provider: "x", id, long_posts: long, set_ids: sets }) as Connection;
+    expect(xLongPosts([acc("a", true)], "s1")).toBe(true);
+    expect(xLongPosts([acc("a", true), acc("b", false)], "s1")).toBe(false);
+    expect(xLongPosts([acc("a", true), acc("b", false, ["s2"])], "s1")).toBe(true);
+    expect(xLongPosts([], "s1")).toBe(false);
+    expect(xLongPosts([{ provider: "bluesky", set_ids: ["s1"] } as Connection], "s1")).toBe(false);
+  });
+
+  it("saves the plan with PUT, null for detect", async () => {
+    let fetch = reply(200, { id: "c/1" });
+    vi.stubGlobal("fetch", fetch);
+    await setXPlan("c/1", "paid");
+    expect(call(fetch)[0]).toBe(`${apiUrl}/v1/connections/c%2F1/plan`);
+    expect(call(fetch)[1]).toMatchObject({ method: "PUT", credentials: "include", body: JSON.stringify({ plan: "paid" }) });
+    fetch = reply(200, { id: "c1" });
+    vi.stubGlobal("fetch", fetch);
+    await setXPlan("c1", null);
+    expect(call(fetch)[1]).toMatchObject({ body: JSON.stringify({ plan: null }) });
+    fetch = reply(404, { error: "not_found" });
+    vi.stubGlobal("fetch", fetch);
+    expect(await setXPlan("c1", "free")).toBe("not_found");
   });
 });

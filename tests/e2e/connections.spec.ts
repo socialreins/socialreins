@@ -677,3 +677,46 @@ test("flags a Bluesky account whose app password has no DM access", async ({ pag
   await openBluesky(page);
   await expect(page.locator("#bluesky-app-password-note")).toContainText("Allow access to your direct messages");
 });
+
+const xAccount = { ...alice, id: "x1", provider: "x", external_id: "2244994945", handle: "ann_lee", display_name: "Ann Lee", avatar_url: null };
+
+test("an owner picks the X plan in the account's settings, and it says whose answer is used", async ({ page }) => {
+  await signedIn(page, "owner", [xAccount]);
+  const saved: unknown[] = [];
+  await page.route("**/v1/connections/x1/plan", async (route) => {
+    saved.push(route.request().postDataJSON());
+    await route.fulfill({ json: { ...xAccount, plan: "paid", long_posts: true } });
+  });
+  await page.goto("/connections");
+  await openSettings(page, "Ann Lee");
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("X did not say, so 280 characters apply.")).toBeVisible();
+  await dialog.getByLabel(/Paid plan/).check();
+  await dialog.getByRole("button", { name: "Save plan" }).click();
+  await expect.poll(() => saved).toEqual([{ plan: "paid" }]);
+  await expect(dialog.getByText("Using your setting: 25,000 characters.")).toBeVisible();
+});
+
+test("a member sees the X plan but cannot change it", async ({ page }) => {
+  await signedIn(page, "member", [{ ...xAccount, long_posts: true, detected_long_posts: true }]);
+  await page.goto("/connections");
+  await openSettings(page, "Ann Lee");
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("Detected from X: 25,000 characters.")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Save plan" })).toHaveCount(0);
+});
+
+test("back from connecting X, the settings open on the plan question unless X reported a paid plan", async ({ page }) => {
+  // Connected a moment ago, so it is the account that just arrived.
+  await signedIn(page, "owner", [{ ...xAccount, created_at: new Date().toISOString() }]);
+  await page.goto("/connections?connected=x");
+  await expect(page.getByRole("dialog").getByText("Which X plan is this account on?")).toBeVisible();
+});
+
+test("back from connecting X with a paid plan reported, no question opens", async ({ page }) => {
+  await signedIn(page, "owner", [{ ...xAccount, long_posts: true, detected_long_posts: true, created_at: new Date().toISOString() }]);
+  await page.goto("/connections?connected=x");
+  await expect(page.getByText("Connected your X account.")).toBeVisible();
+  await expect(page.getByRole("tabpanel")).toContainText("Ann Lee");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});

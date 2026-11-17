@@ -29,6 +29,10 @@ import {
   type MetaChoice,
   type MetaChoices,
   type Provider,
+  setXPlan,
+  xPlanAsk,
+  xPlanSource,
+  type XPlan,
 } from "@/lib/connections";
 import { joinSet, listSets, setAccountSets, setNames, type SocialSet } from "@/lib/sets";
 import { manages } from "@/lib/teams";
@@ -188,11 +192,19 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
     listConnections().then(async (l) => {
       // Back from a connect that worked: the account that wasn't here before joins the set picked when it started.
       const back = connectResult(search);
+      let added: Connection[] = [];
       if (back?.error === null && Array.isArray(l)) {
-        const added = arrived(l, back.provider, before?.ids ?? null);
+        added = arrived(l, back.provider, before?.ids ?? null);
         setFresh(added.map((c) => c.id));
         const joined = before ? await joinSet(before.set, added) : [];
         if (joined.length) l = await listConnections();
+      }
+      // Back from X: its plan decides how long a post can be, so an account not on a paid plan is asked which plan it is on.
+      if (back?.error === null && back.provider === "x" && Array.isArray(l)) {
+        const ask = l.filter((c) => c.provider === "x" && xPlanAsk(c));
+        // Only an account that just arrived: a reconnect keeps the plan its owner chose.
+        const target = ask.find((c) => added.some((a) => a.id === c.id));
+        if (target) setSettingsId(target.id);
       }
       setList(l);
     });
@@ -350,8 +362,9 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
           canManage={canManage}
           onClose={() => setSettingsId(null)}
           onStale={() => listSets().then(setSets)}
-          onSaved={(updated) => {
+          onSaved={(updated, what) => {
             setList((l) => (Array.isArray(l) ? l.map((x) => (x.id === updated.id ? updated : x)) : l));
+            if (what === "plan") return announce(`X plan saved for ${accountName(updated)}.`);
             // Its sets were chosen by hand now, so it follows the picked set like any other account.
             setFresh((f) => f.filter((id) => id !== updated.id));
             announce(`Sets saved for ${accountName(updated)}.`);
@@ -435,12 +448,13 @@ function AccountSettings({
   canManage: boolean;
   onClose: () => void;
   onStale: () => void;
-  onSaved: (c: Connection) => void;
+  onSaved: (c: Connection, what?: "plan") => void;
   onGone: (c: Connection, already: boolean) => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [checked, setChecked] = useState<string[]>(c.set_ids);
   const [confirming, setConfirming] = useState(false);
+  const [plan, setPlan] = useState<XPlan | "detect">(c.plan ?? "detect");
   const disconnectRef = useRef<HTMLButtonElement>(null);
   const { busy, problem, done, run } = useAction();
   const name = accountName(c);
@@ -466,6 +480,11 @@ function AccountSettings({
       onSaved(updated);
       ref.current?.close();
     });
+  }
+
+  async function onSavePlan(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    await run("plan", () => setXPlan(c.id, plan === "detect" ? null : plan), (updated) => onSaved(updated, "plan"));
   }
 
   async function onDisconnect() {
@@ -499,6 +518,40 @@ function AccountSettings({
             access to your direct messages&quot; ticked, then connect @{c.handle ?? name} again with Add account.
           </span>
         </p>
+      )}
+      {c.provider === "x" && (
+        <form onSubmit={onSavePlan} className="grid gap-3">
+          <fieldset className="grid gap-1.5" disabled={!canManage}>
+            <legend className="mb-1 font-bold">X plan</legend>
+            <p className="text-sm text-ink-soft">Which X plan is this account on? It decides how long a post can be.</p>
+            {(
+              [
+                ["detect", "Detect from X"],
+                ["free", "Free (280 characters)"],
+                ["paid", "Paid plan: Premium, Premium+ or Basic (25,000 characters)"],
+              ] as const
+            ).map(([value, label]) => (
+              <label key={value} className="flex items-center gap-2">
+                <input type="radio" name="x-plan" checked={plan === value} onChange={() => setPlan(value)} />
+                {label}
+              </label>
+            ))}
+            <p className="text-sm" aria-live="polite">
+              {xPlanSource(c) === "you"
+                ? `Using your setting: ${c.long_posts ? "25,000" : "280"} characters.`
+                : xPlanSource(c) === "x"
+                  ? c.detected_long_posts
+                    ? "Detected from X: 25,000 characters."
+                    : "X reports a free account, so 280 characters apply."
+                  : "X did not say, so 280 characters apply."}
+            </p>
+          </fieldset>
+          {canManage && (
+            <button type="submit" className="btn btn-primary btn-sm justify-self-start" disabled={busy !== null}>
+              {busy === "plan" ? "Saving..." : "Save plan"}
+            </button>
+          )}
+        </form>
       )}
       <form onSubmit={onSave} className="grid gap-3">
         <fieldset className="grid gap-1.5">

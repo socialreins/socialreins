@@ -308,6 +308,11 @@ export function xWeight(text: string) {
   return total;
 }
 
+// What X takes when every X account of the post's set is on a paid plan (brain's X_MAX_LONG_WEIGHT).
+export const X_LONG_CHARS = 25_000;
+// The most characters a post may have on `platform`; `xLong`: every X account of the set takes long posts.
+export const charLimit = (platform: Platform, xLong = false) => (platform === "x" && xLong ? X_LONG_CHARS : limits[platform].chars);
+
 // The length brain checks against limits[platform].chars.
 export const charCount = (platform: Platform, text: string) =>
   platform === "bluesky"
@@ -319,18 +324,18 @@ export const charCount = (platform: Platform, text: string) =>
         : [...(platform === "youtube" ? youtubeText(text).title : text)].length;
 
 // Whether the text is over the platform's limit; YouTube also limits its description's bytes.
-export const overLimit = (platform: Platform, text: string) =>
-  charCount(platform, text) > limits[platform].chars ||
+export const overLimit = (platform: Platform, text: string, xLong = false) =>
+  charCount(platform, text) > charLimit(platform, xLong) ||
   (platform === "youtube" && utf8Bytes(youtubeText(text).description) > YOUTUBE_DESCRIPTION_BYTES);
 
 // Mirrors brain's checks, in brain's order, so most mistakes show before a request. brain stays the judge.
-export function checkPost(body: string, media: string[], platform: Platform = "bluesky"): Failure | null {
+export function checkPost(body: string, media: string[], platform: Platform = "bluesky", xLong = false): Failure | null {
   const max = limits[platform];
   // A YouTube video needs a title, so it needs a body even with its video.
   if (!body.trim() && (media.length === 0 || platform === "youtube")) return "empty_post";
   if ((platform === "instagram" || platform === "youtube" || platform === "tiktok") && media.length === 0) return "media_required";
   if (platform === "youtube" && /[<>]/.test(body)) return "invalid_text";
-  if (overLimit(platform, body) || (platform === "bluesky" && utf8Bytes(body) > MAX_BYTES)) return "too_long";
+  if (overLimit(platform, body, xLong) || (platform === "bluesky" && utf8Bytes(body) > MAX_BYTES)) return "too_long";
   if (media.length > max.media) return "too_many_images";
   if (media.some((m) => !/^https:\/\/[^\s/]+\/?\S*$/.test(m))) return "invalid_media";
   return null;
@@ -378,13 +383,14 @@ export function checkThread(
   media: string[],
   thread: ThreadPart[],
   platform: Platform = "bluesky",
+  xLong = false,
 ): { failure: Failure; part?: number } | null {
-  const first = checkPost(body, media, platform);
+  const first = checkPost(body, media, platform, xLong);
   if (first) return { failure: first };
   if (thread.length > 0 && !limits[platform].thread) return { failure: "thread_not_supported" };
   if (thread.length > MAX_PARTS) return { failure: "too_many_parts" };
   for (const [i, p] of thread.entries()) {
-    const failure = checkPost(p.body, p.media, platform);
+    const failure = checkPost(p.body, p.media, platform, xLong);
     if (failure) return { failure, part: i + 1 };
   }
   return null;
