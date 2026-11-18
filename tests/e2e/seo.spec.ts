@@ -47,6 +47,7 @@ for (const path of publicPages) {
     expect(html).not.toMatch(noindex);
     expect(html).toMatch(new RegExp(`<link rel="canonical" href="${url}/?"`));
     expect(html).toMatch(new RegExp(`<meta property="og:url" content="${url}/?"`));
+    expect(html).toContain('<meta property="og:type" content="website"');
     expect(html).toContain('<meta property="og:title"');
     expect(html).toContain('<meta property="og:description"');
     expect(html).toMatch(/<meta property="og:image" content="https:\/\/socialreins\.com\/opengraph-image\.png/);
