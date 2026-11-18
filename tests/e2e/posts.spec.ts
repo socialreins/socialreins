@@ -108,9 +108,10 @@ test("calendar shows the month's posts, with filter and month steps; posts lists
   await expect(page).toHaveURL("/t/acme22/calendar");
   await expect(page.getByRole("heading", { name: "Calendar", level: 1 })).toBeVisible();
   const table = page.getByRole("table", { name: "Posts in November 2026" });
-  await expect(table.getByRole("link", { name: /10:30.*Launch day$/ })).toHaveAttribute("href", "/t/acme22/posts/p-sched");
-  await expect(table.getByRole("link", { name: /0?9:00.*Hello Bluesky$/ })).toHaveAttribute("href", "/t/acme22/posts/p-pub");
-  await expect(table.getByRole("link", { name: "View on Bluesky" })).toHaveAttribute("href", "https://bsky.app/profile/alice.bsky.social/post/1");
+  await expect(table.getByRole("link", { name: /^Scheduled: 10:30.*Launch day$/ })).toHaveAttribute("href", "/t/acme22/posts/p-sched");
+  await expect(table.getByRole("link", { name: /^Published: 0?9:00.*Hello Bluesky$/ })).toHaveAttribute("href", "/t/acme22/posts/p-pub");
+  // The links out live in a busy day's "+N more" list, not on the chips.
+  await expect(table.getByRole("link", { name: "View on Bluesky" })).toHaveCount(0);
   await expect(page.getByRole("region", { name: "Drafts" })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Next month" }).click();
@@ -1154,7 +1155,7 @@ test("calendar shows the versions of one post as one line, marked with each plat
   await page.goto("/calendar");
   const table = page.getByRole("table", { name: "Posts in November 2026" });
   await expect(table.getByRole("link", { name: /Launch day$/ })).toHaveCount(1);
-  await expect(table.getByRole("link", { name: /^Bluesky: Instagram: 10:30.*Launch day$/ })).toHaveAttribute("href", "/t/acme22/posts/p-bluesky");
+  await expect(table.getByRole("link", { name: /^Scheduled: 10:30.*Bluesky: Instagram: Launch day$/ })).toHaveAttribute("href", "/t/acme22/posts/p-bluesky");
 });
 
 // A group of posts, one per platform, with the given statuses. DELETE takes a published post down, except
@@ -1452,4 +1453,48 @@ test("the versions of a saved post that can still change open on one form and ar
   await page.getByRole("button", { name: "Change only the Bluesky version" }).click();
   await expect(page.getByRole("textbox", { name: "Instagram text" })).toHaveCount(0);
   await expect(page.getByLabel("Post", { exact: true })).toHaveValue("Hello again");
+});
+
+test("a busy calendar day shows 3 posts and +N more with the whole day, and weeks keep one height", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-11-10T12:00:00+01:00"));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await brain(page);
+  const busy = Array.from({ length: 8 }, (_, i) =>
+    post(`p-${i}`, {
+      status: "published",
+      scheduled_at: `2026-11-12T0${i + 1}:00:00Z`,
+      published_at: `2026-11-12T0${i + 1}:00:00Z`,
+      body: `Busy post ${i}`,
+      targets: [target({ id: `tg-${i}`, remote_url: `https://bsky.app/post/${i}` })],
+    }),
+  );
+  await page.route(/\/v1\/posts(\?.*)?$/, (route) =>
+    route.fulfill({
+      json:
+        new URL(route.request().url()).searchParams.get("status") === "draft"
+          ? []
+          : [...busy, post("p-quiet", { status: "scheduled", scheduled_at: "2026-11-20T09:00:00Z", body: "Quiet day" })],
+    }),
+  );
+  await page.goto("/calendar");
+  const table = page.getByRole("table", { name: "Posts in November 2026" });
+  await expect(table.getByRole("link", { name: /Busy post/ })).toHaveCount(3);
+  await expect(table.getByRole("link", { name: /^Published: .*Busy post 0$/ })).toHaveAttribute("href", "/t/acme22/posts/p-0");
+  const more = table.getByRole("button", { name: "Show all 8 posts on Thursday, November 12" });
+  await expect(more).toHaveText("+5 more");
+
+  const heights = await table.locator("tbody tr").evaluateAll((rows) => rows.map((r) => r.getBoundingClientRect().height));
+  expect(heights.length).toBeGreaterThan(3);
+  // Within the one pixel the table's collapsed borders add or take away.
+  expect(Math.max(...heights) - Math.min(...heights)).toBeLessThanOrEqual(1);
+
+  await more.click();
+  const day = page.getByRole("dialog", { name: /Thursday, November 12/ });
+  await expect(day.getByRole("link", { name: /Busy post/ })).toHaveCount(8);
+  await expect(day.getByRole("link", { name: "View on Bluesky" })).toHaveCount(8);
+  await expect(day.getByRole("link", { name: "View on Bluesky" }).last()).toHaveAttribute("href", "https://bsky.app/post/7");
+  await expect(day.getByText("Published", { exact: true })).toHaveCount(8);
+  await page.keyboard.press("Escape");
+  await expect(day).toBeHidden();
+  await expect(more).toBeFocused();
 });

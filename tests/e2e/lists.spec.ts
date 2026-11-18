@@ -171,7 +171,7 @@ test("the calendar and phone list show Part N of a list", async ({ page }) => {
   );
   await page.goto("/calendar");
   const table = page.getByRole("table", { name: "Posts in November 2026" });
-  await expect(table.getByRole("link", { name: /^Part 2 · Series.*Launch day$/ })).toBeVisible();
+  await expect(table.getByRole("link", { name: /Part 2 · Series ?Launch day$/ })).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole("list", { name: "Posts in November 2026" }).getByRole("link", { name: /^Part 2 · Series/ })).toBeVisible();
