@@ -2,7 +2,7 @@
 
 import { PostPagePanel } from "@/components/post-page-panel";
 
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { TeamLink as Link } from "@/components/team-link";
 import { useTeamPath, useTeamRouter as useRouter } from "@/components/team-link";
@@ -70,6 +70,11 @@ const POLL_FOR_MS = 60_000;
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const canEdit = (p: Post) => p.status === "draft" || p.status === "scheduled";
+// Where the editor's tab strip stands: the shared post, or one platform's own version and settings.
+type Tab = "all" | Platform;
+// A problem the editor sees before saving, and where to fix it: `tab` and `field` (an element id). `inline`
+// problems also show beside their field; the rest already have their own message there (a count, a TikTok alert).
+type Issue = { platform: Platform; text: ReactNode; tab: Tab; field: string; inline: boolean };
 const names = (list: string[]) => new Intl.ListFormat("en", { type: "conjunction" }).format(list.map(platformName));
 
 // What a check failure means for one platform, naming its own limit.
@@ -120,6 +125,11 @@ export function PostEditor({ id }: { id?: string }) {
   const [creatorTry, setCreatorTry] = useState(0);
   // The YouTube video's visibility: private unless chosen.
   const [ytPrivacy, setYtPrivacy] = useState<YouTubePrivacy>("private");
+  // The open tab, and whether the action bar lists the issues.
+  const [tab, setTab] = useState<Tab>("all");
+  const [issuesOpen, setIssuesOpen] = useState(false);
+  // On phones the Publish at row hides behind a Schedule button until asked for.
+  const [scheduleOpen, setScheduleOpen] = useState(false);
   // The platforms ticked for a new post; null means every platform with an account in the set.
   const [chosen, setChosen] = useState<Platform[] | null>(null);
   // Per-platform text that replaces the main post on that platform.
@@ -521,24 +531,40 @@ export function PostEditor({ id }: { id?: string }) {
   const commentMain = commentable.filter((p) => commentCustomFor(p) === undefined);
   // Shared images must fit every chosen platform.
   const cap = (list: Platform[]) => (list.length ? Math.min(...list.map((p) => limits[p].media)) : limits.bluesky.media);
-  const mediaProblems = selected.flatMap((p) => {
+  // Tabs show with two or more platforms; with one, its settings sit on the one form.
+  const tabbed = selected.length > 1;
+  const active: Tab = tabbed && tab !== "all" && selected.includes(tab) ? tab : "all";
+  const place = (p: Platform, own: boolean, ownField: string, sharedField: string) => (own ? { tab: p, field: ownField } : { tab: "all" as const, field: sharedField });
+  const mediaProblems: Issue[] = selected.flatMap((p) => {
     const files = mediaFor(p);
-    if ((p === "instagram" || p === "youtube") && files.length === 0) return [platformProblem(p, "media_required")];
-    if (files.length > limits[p].media) return [platformProblem(p, "too_many_images")];
+    const where = { platform: p, inline: true, ...place(p, mediaCustomFor(p) !== undefined, `media-${p}`, "media-shared") };
+    if ((p === "instagram" || p === "youtube") && files.length === 0) return [{ ...where, text: platformProblem(p, "media_required") }];
+    if (files.length > limits[p].media) return [{ ...where, text: platformProblem(p, "too_many_images") }];
     // Hints only: brain reads the files when the post is saved and has the last word.
     const bad = checkMediaTypes(files, p) ?? (coverFor(p) ? coverTypeHint(coverFor(p)!, p) : null);
-    return bad ? [platformProblem(p, bad)] : [];
+    return bad ? [{ ...where, text: platformProblem(p, bad) }] : [];
   });
   // YouTube's title is the first line of its text, which brain refuses to leave out or to hold < or >.
   const ytBody = selected.includes("youtube") ? (customFor("youtube") ?? body) : null;
-  const textProblems =
+  const ytWhere = { platform: "youtube" as const, inline: true, ...place("youtube", customFor("youtube") !== undefined, "post-body-youtube", "post-body") };
+  const textProblems: Issue[] =
     ytBody === null
       ? []
       : [
-          ...(youtubeText(ytBody).title ? [] : ["YouTube needs a title: write it as the first line of the post."]),
-          ...(/[<>]/.test(ytBody) ? [platformProblem("youtube", "invalid_text")] : []),
+          ...(youtubeText(ytBody).title ? [] : [{ ...ytWhere, text: "YouTube needs a title: write it as the first line of the post." }]),
+          ...(/[<>]/.test(ytBody) ? [{ ...ytWhere, text: platformProblem("youtube", "invalid_text") }] : []),
         ];
-  const shown = selected[0];
+  const tooLong: Issue[] = selected.flatMap((p) =>
+    overLimit(p, customFor(p) ?? body, xLong) ? [{ platform: p, inline: false, text: platformProblem(p, "too_long", xLong), ...place(p, customFor(p) !== undefined, `post-body-${p}`, "post-body") }] : [],
+  );
+  const commentLong: Issue[] = commentable.flatMap((p) =>
+    commentOver(p, commentText(p)) ? [{ platform: p, inline: false, text: platformProblem(p, "first_comment_too_long"), ...place(p, commentCustomFor(p) !== undefined, `post-comment-${p}`, "post-comment") }] : [],
+  );
+  // TikTok's own blockers, once its account is read (tiktokProblem says the same on save).
+  const ttBad = !selected.includes("tiktok") || creator === null ? null : !tt ? "The TikTok account couldn't be read." : !tt.can_post ? `${tt.reason ?? "TikTok does not let this account post right now."} Try again later.` : checkTikTok(tiktokOut) && platformProblem("tiktok", checkTikTok(tiktokOut)!);
+  const ttIssues: Issue[] = ttBad ? [{ platform: "tiktok", inline: false, text: ttBad, tab: tabbed ? "tiktok" : "all", field: "tiktok-privacy" }] : [];
+  const issues = [...textProblems, ...mediaProblems, ...tooLong, ...commentLong, ...ttIssues];
+  const shown = active !== "all" ? active : selected[0];
   const others = group.filter((g) => g.id !== postId);
   // The group with this page's own post as it now stands, and the posts still up.
   const members = group.map((g) => (post && g.id === post.id ? post : g));
@@ -747,8 +773,8 @@ export function PostEditor({ id }: { id?: string }) {
 
   if (!editable && post) {
     return (
-      <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_24rem]">
-        <div className="grid gap-5">
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_26rem]">
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5">
           {versions}
           <div className="card grid gap-2 p-5">
             <div className="flex flex-wrap items-center gap-3">
@@ -907,9 +933,296 @@ export function PostEditor({ id }: { id?: string }) {
     document.getElementById(`customize-${p}`)?.focus();
   }
 
+  // Opens a tab and moves focus to it (or to `focus`), for the arrow keys and the notes that link to a tab.
+  function openTab(to: Tab, focus = `tab-${to}`) {
+    flushSync(() => setTab(to));
+    document.getElementById(`tab-${to}`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    document.getElementById(focus)?.focus();
+  }
+
+  // The ARIA tabs pattern: Left and Right move along the strip, Home and End go to its ends.
+  function onTabKey(e: KeyboardEvent<HTMLDivElement>) {
+    const keys: Tab[] = ["all", ...selected];
+    const i = keys.indexOf(active);
+    const j = e.key === "ArrowRight" ? (i + 1) % keys.length : e.key === "ArrowLeft" ? (i - 1 + keys.length) % keys.length : e.key === "Home" ? 0 : e.key === "End" ? keys.length - 1 : -1;
+    if (j < 0) return;
+    e.preventDefault();
+    openTab(keys[j]!);
+  }
+
+  function goToIssue(i: Issue) {
+    flushSync(() => {
+      setTab(i.tab);
+      setIssuesOpen(false);
+    });
+    (document.getElementById(i.field) ?? document.getElementById(`tab-${i.tab}`))?.focus();
+  }
+
+  const issueList = (list: Issue[]) =>
+    list.length > 0 && (
+      <ul className="grid gap-1">
+        {list.map((m, i) => (
+          <li key={i} className="waitlist-error">
+            {m.text}
+          </li>
+        ))}
+      </ul>
+    );
+
+  // On the All tab, a platform with its own text, media or first comment says so and links to its tab.
+  const customized = tabbed
+    ? selected.flatMap((p) => {
+        const what = [customFor(p) !== undefined && "text", mediaCustomFor(p) !== undefined && "media", commentCustomFor(p) !== undefined && "first comment"].filter((w): w is string => !!w);
+        return what.length ? [{ p, what }] : [];
+      })
+    : [];
+  const ownRow = "flex flex-wrap items-center justify-between gap-x-3 gap-y-1";
+
+  const shared = (
+    <>
+      <div className="grid gap-1.5">
+        <label htmlFor="post-body" className="label">
+          Post
+        </label>
+        <textarea
+          id="post-body"
+          rows={6}
+          className="field resize-y"
+          placeholder="What do you want to say?"
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          aria-invalid={mainPlatforms.some((p) => overLimit(p, body, xLong)) || undefined}
+          aria-describedby="post-count"
+        />
+        <Counts id="post-count" text={body} platforms={mainPlatforms} xLong={xLong} alerts />
+        {!tabbed && selected[0] === "youtube" && <YouTubeNote />}
+        {customized.length > 0 && (
+          <ul className="flex flex-wrap gap-1.5">
+            {customized.map(({ p, what }) => (
+              <li key={p}>
+                <button type="button" className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-ink-soft ring-1 ring-[var(--line)] hover:bg-ink/5 hover:text-ink" onClick={() => openTab(p)}>
+                  <Icon name="edit" className="size-3" />
+                  Custom {new Intl.ListFormat("en", { type: "conjunction" }).format(what)} on {platformName(p)}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <ImageLinks media={media} max={cap(mediaMain)} platforms={mediaMain} rule={tabbed ? undefined : selected[0]} onChange={setMedia} />
+      {issueList(issues.filter((i) => i.inline && i.tab === "all"))}
+      {coverShown && (
+        <fieldset className="grid gap-2">
+          <legend className="sr-only">Cover image</legend>
+          <label className="grid gap-1 text-sm font-bold">
+            <span>Cover image link</span>
+            <input type="url" inputMode="url" placeholder="https://" className="field font-normal" value={cover} onChange={(e) => setCover(e.target.value)} aria-describedby="post-cover-note" />
+          </label>
+          <p id="post-cover-note" className="hint">
+            Optional: an image for the video.
+          </p>
+          <details className="hint">
+            <summary className="cursor-pointer select-none font-bold">Where the cover goes</summary>
+            {covered.map((p) => `${platformName(p)} takes ${coverTypes[p]}`).join("; ")}.
+            {covered.some((p) => p !== "instagram") && " Facebook and YouTube set it after the video is live (YouTube needs a verified channel); if that fails, the post stays up and says why."}
+            {noCover.length > 0 && ` ${names(noCover)} can't take one${noCover.includes("tiktok") ? " (TikTok can only pick a frame of the video)" : ""}, so ${noCover.length > 1 ? "they get" : "it gets"} none.`}
+            {noVideo.length > 0 && ` ${names(noVideo)} ${noVideo.length > 1 ? "have" : "has"} no single video here, so ${noVideo.length > 1 ? "they get" : "it gets"} none.`}
+          </details>
+        </fieldset>
+      )}
+      {commentable.length > 0 && (
+        <div className="grid gap-1.5">
+          <label htmlFor="post-comment" className="label">
+            First comment
+          </label>
+          <textarea
+            id="post-comment"
+            rows={2}
+            className="field resize-y"
+            placeholder="Optional: sources, caveats, a link"
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            aria-invalid={commentMain.some((p) => commentOver(p, comment)) || undefined}
+            aria-describedby="post-comment-note post-comment-count"
+          />
+          <CommentCounts id="post-comment-count" text={comment} platforms={commentMain} />
+          <p id="post-comment-note" className="hint">
+            Posted once, right after the post goes live.
+            {noComment.length > 0 && ` ${names(noComment)} can't post one, so ${noComment.length > 1 ? "they get" : "it gets"} none.`}
+          </p>
+        </div>
+      )}
+      {threadable.length > 0 && (
+        <fieldset className="grid gap-2">
+          <legend className="label">Thread</legend>
+          <p className="hint">
+            Follow-up posts go out as replies.
+            {noThread.length > 0 && ` ${names(noThread)} can't post threads, so ${noThread.length > 1 ? "they get" : "it gets"} only the first post.`}
+          </p>
+          {thread.length > 0 && (
+            <ol className="grid gap-3">
+              {thread.map((p, i) => {
+                const over = threadable.some((x) => charCount(x, p.body) > charLimit(x, xLong));
+                return (
+                  <li key={i} className="grid gap-1 border-l-2 border-[var(--line)] pl-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <label htmlFor={`post-part-${i}`} className="text-sm font-bold">
+                        Post {i + 2}
+                      </label>
+                      <button type="button" className="icon-btn" aria-label={`Remove post ${i + 2}`} onClick={() => removePart(i)}>
+                        <Icon name="close" className="size-4" />
+                      </button>
+                    </div>
+                    <textarea
+                      id={`post-part-${i}`}
+                      ref={(el) => {
+                        partRefs.current[i] = el;
+                      }}
+                      rows={3}
+                      className="field resize-y"
+                      value={p.body}
+                      onChange={(e) => setThread((list) => list.map((v, j) => (j === i ? { ...v, body: e.target.value } : v)))}
+                      aria-invalid={over || undefined}
+                      aria-describedby={`post-part-${i}-count`}
+                    />
+                    <Counts id={`post-part-${i}-count`} text={p.body} platforms={threadable} xLong={xLong} />
+                    <ImageLinks media={p.media} max={cap(threadable)} post={i + 2} onChange={(m) => setThread((list) => list.map((v, j) => (j === i ? { ...v, media: m } : v)))} />
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+          {thread.length < MAX_PARTS && (
+            <button ref={addPartRef} type="button" className="btn btn-secondary btn-sm justify-self-start" onClick={addPart}>
+              <Icon name="plus" className="size-4" />
+              Add to thread
+            </button>
+          )}
+        </fieldset>
+      )}
+    </>
+  );
+
+  // A platform's own settings: on its tab, or on the one form when it is the only platform.
+  const settings = (p: Platform) => (
+    <>
+      {p === "youtube" && (
+        <div className="grid gap-1.5">
+          <label htmlFor="youtube-privacy" className="label">
+            YouTube visibility
+          </label>
+          <select id="youtube-privacy" className="field justify-self-start" value={ytPrivacy} onChange={(e) => setYtPrivacy(e.target.value as YouTubePrivacy)} aria-describedby="youtube-privacy-note">
+            {(Object.keys(youtubePrivacyName) as YouTubePrivacy[]).map((v) => (
+              <option key={v} value={v}>
+                {youtubePrivacyName[v]}
+              </option>
+            ))}
+          </select>
+          <p id="youtube-privacy-note" className="hint">
+            Until Google has audited the YouTube API project behind this server, YouTube keeps new uploads private.
+          </p>
+        </div>
+      )}
+      {p === "tiktok" && <TikTokPanel creator={creator} settings={tiktokOut} onChange={setTikTok} photosOnly={photosOnly} onRetry={() => setCreatorTry((n) => n + 1)} />}
+    </>
+  );
+
+  // One platform's tab: its own text, media and first comment in place of the shared ones, and its settings.
+  const own = (p: Platform) => {
+    const name = platformName(p);
+    return (
+      <>
+        {custom[p] === undefined ? (
+          <div className="grid gap-1.5">
+            <div className={ownRow}>
+              <p className="hint">Text: the shared post.</p>
+              <button id={`customize-${p}`} type="button" className="btn btn-secondary btn-sm" onClick={() => customize(p)}>
+                <Icon name="edit" className="size-4" />
+                Customize for {name}
+              </button>
+            </div>
+            <Counts id={`post-count-${p}`} text={body} platforms={[p]} xLong={xLong} alerts />
+          </div>
+        ) : (
+          <div className="grid gap-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <label htmlFor={`post-body-${p}`} className="label">
+                {name} text
+              </label>
+              <button type="button" className="icon-btn" aria-label={`Use the main post on ${name}`} onClick={() => uncustomize(p)}>
+                <Icon name="close" className="size-4" />
+              </button>
+            </div>
+            <textarea
+              id={`post-body-${p}`}
+              rows={6}
+              className="field resize-y"
+              value={custom[p]}
+              onChange={(e) => setCustom((c) => ({ ...c, [p]: e.target.value }))}
+              aria-invalid={overLimit(p, custom[p]!, xLong) || undefined}
+              aria-describedby={`post-body-${p}-count`}
+            />
+            <Counts id={`post-body-${p}-count`} text={custom[p]!} platforms={[p]} xLong={xLong} alerts />
+          </div>
+        )}
+        {p === "youtube" && <YouTubeNote />}
+        {mediaCustom[p] === undefined ? (
+          <div className="grid gap-1">
+            <div className={ownRow}>
+              <p className="hint">Media: the shared {images.length === 1 ? "file" : `${images.length || "no"} files`}.</p>
+              <button id={`media-customize-${p}`} type="button" className="btn btn-secondary btn-sm" onClick={() => customizeMedia(p)}>
+                <Icon name="image" className="size-4" />
+                Different media for {name}
+              </button>
+            </div>
+            <p className="hint">{mediaRule(p)}</p>
+          </div>
+        ) : (
+          <ImageLinks media={mediaCustom[p]!} max={limits[p].media} own={p} onChange={(m) => setMediaCustom((c) => ({ ...c, [p]: m }))} onClose={() => uncustomizeMedia(p)} />
+        )}
+        {issueList(issues.filter((i) => i.inline && i.platform === p))}
+        {limits[p].comment === null ? (
+          comment.trim() && <p className="hint">{name} can&apos;t post a first comment, so it gets none.</p>
+        ) : commentable.length < 2 ? null : commentCustom[p] === undefined ? (
+          <div className="grid gap-1.5">
+            <div className={ownRow}>
+              <p className="hint">First comment: the shared one.</p>
+              <button id={`comment-customize-${p}`} type="button" className="btn btn-secondary btn-sm" onClick={() => customizeComment(p)}>
+                <Icon name="edit" className="size-4" />
+                Customize the first comment for {name}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="grid gap-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <label htmlFor={`post-comment-${p}`} className="label">
+                {name} first comment
+              </label>
+              <button type="button" className="icon-btn" aria-label={`Use the main first comment on ${name}`} onClick={() => uncustomizeComment(p)}>
+                <Icon name="close" className="size-4" />
+              </button>
+            </div>
+            <textarea
+              id={`post-comment-${p}`}
+              rows={2}
+              className="field resize-y"
+              value={commentCustom[p]}
+              onChange={(e) => setCommentCustom((c) => ({ ...c, [p]: e.target.value }))}
+              aria-invalid={commentOver(p, commentCustom[p]!) || undefined}
+              aria-describedby={`post-comment-${p}-count`}
+            />
+            <CommentCounts id={`post-comment-${p}-count`} text={commentCustom[p]!} platforms={[p]} />
+          </div>
+        )}
+        {settings(p)}
+      </>
+    );
+  };
+
   return (
-    <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_24rem]">
-      <div className="grid gap-5">
+    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_26rem]">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
         <AccountNote />
         {versions}
         {status === "scheduled" && post && (
@@ -919,37 +1232,55 @@ export function PostEditor({ id }: { id?: string }) {
           </p>
         )}
         {/* Save draft is the first submit button, so Enter in a field saves rather than publishes. */}
-        <form onSubmit={onSubmit} className="grid gap-5">
-          <div className="card grid gap-5 p-5">
-            <div className="grid gap-1.5">
-              <label htmlFor="post-set" className="label">
-                Set
-              </label>
-              <select
-                id="post-set"
-                className="field"
-                value={setId}
-                onChange={(e) => {
-                  setSetId(e.target.value);
-                  setChosen(null);
-                }}
-                required
-                aria-describedby="post-set-note"
-              >
-                {Array.isArray(sets) &&
-                  sets.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
+        <form onSubmit={onSubmit} className="grid grid-cols-[minmax(0,1fr)] gap-4">
+          <div className="card grid gap-4 p-4 sm:p-5">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid content-start gap-1.5">
+                <label htmlFor="post-set" className="label">
+                  Set
+                </label>
+                <select
+                  id="post-set"
+                  className="field"
+                  value={setId}
+                  onChange={(e) => {
+                    setSetId(e.target.value);
+                    setChosen(null);
+                  }}
+                  required
+                  aria-describedby="post-set-note"
+                >
+                  {Array.isArray(sets) &&
+                    sets.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                </select>
+                <p id="post-set-note" className="hint">
+                  {post && together.length < 2 ? `Goes to every ${platformName(post.platform)} account in this set.` : "One post per platform, to every account of it in this set."}
+                </p>
+              </div>
+              <div className="grid content-start gap-1.5">
+                <label htmlFor="post-list" className="label">
+                  List
+                </label>
+                <select id="post-list" className="field" value={listChoices.some((l) => l.id === listId) ? listId : ""} onChange={(e) => setListId(e.target.value)} aria-describedby="post-list-note">
+                  <option value="">No list</option>
+                  {listChoices.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
                     </option>
                   ))}
-              </select>
-              <p id="post-set-note" className="hint">
-                {post && together.length < 2 ? `The post goes to every ${platformName(post.platform)} account in this set.` : "Each platform gets its own post, sent to every account of that platform in this set."}
-              </p>
+                </select>
+                <p id="post-list-note" className="hint">
+                  {inLists.length > 0 ? `Now ${inLists.map(partLabel).join(", ")}. ` : ""}A list you pick adds the post as its last part.
+                </p>
+              </div>
             </div>
             {!post && (
               <fieldset className="grid gap-2">
-                <legend className="label">Post to</legend>
+                <legend className="label mb-1.5">Post to</legend>
                 {available.length === 0 && !accountsLoaded ? (
                   <p className="hint">Loading accounts...</p>
                 ) : available.length === 0 ? (
@@ -961,20 +1292,33 @@ export function PostEditor({ id }: { id?: string }) {
                     .
                   </p>
                 ) : (
-                  <ul className="flex flex-wrap gap-2">
-                    {available.map((p) => (
-                      <li key={p}>
-                        <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={selected.includes(p)}
-                            onChange={() => setChosen(publishing.filter((x) => (x === p ? !selected.includes(p) : selected.includes(x))))}
-                          />
-                          <PlatformMark platform={p} className="size-4" named />
-                          <span className="text-ink-soft">{inSet(p).map(accountName).join(", ")}</span>
-                        </label>
-                      </li>
-                    ))}
+                  <ul className="flex flex-wrap gap-1.5">
+                    {available.map((p) => {
+                      const accs = inSet(p).map(accountName);
+                      return (
+                        <li key={p}>
+                          <label
+                            title={accs.join(", ")}
+                            className="flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm ring-1 ring-[var(--line)] hover:ring-[var(--edge)] has-checked:bg-ink/[0.04] has-checked:ring-[var(--color-ink)]/40"
+                          >
+                            <input
+                              type="checkbox"
+                              className="size-3.5 accent-[var(--color-signal-deep)]"
+                              checked={selected.includes(p)}
+                              onChange={() => setChosen(publishing.filter((x) => (x === p ? !selected.includes(p) : selected.includes(x))))}
+                              aria-describedby={`post-to-${p}`}
+                            />
+                            <PlatformMark platform={p} className="size-4" named />
+                            <span aria-hidden="true" className="rounded bg-ink/[0.07] px-1 text-xs tabular-nums text-ink-soft">
+                              {accs.length}
+                            </span>
+                          </label>
+                          <span id={`post-to-${p}`} className="sr-only">
+                            {accs.length} {accs.length === 1 ? "account" : "accounts"}: {accs.join(", ")}
+                          </span>
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </fieldset>
@@ -985,263 +1329,103 @@ export function PostEditor({ id }: { id?: string }) {
               title="An account needs reconnecting"
               lead="Posts to these accounts fail while their sign-in has ended, and may fail soon if it ends within a week."
             />
-            <div className="grid gap-1.5">
-              <label htmlFor="post-list" className="label">
-                List
-              </label>
-              <select id="post-list" className="field" value={listChoices.some((l) => l.id === listId) ? listId : ""} onChange={(e) => setListId(e.target.value)} aria-describedby="post-list-note">
-                <option value="">No list</option>
-                {listChoices.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name}
-                  </option>
-                ))}
-              </select>
-              <p id="post-list-note" className="hint">
-                {inLists.length > 0 ? `Now ${inLists.map(partLabel).join(", ")}. ` : ""}A list you pick adds the post as its last part.
-              </p>
+          </div>
+          <div className="card">
+            {tabbed && (
+              <div role="tablist" aria-label="Post versions" onKeyDown={onTabKey} className="sticky top-[3.0625rem] z-[4] flex gap-1 overflow-x-auto rounded-t-lg border-b border-[var(--line)] bg-paper p-2 md:top-12">
+                {(["all", ...selected] as Tab[]).map((k) => {
+                  const bad = k === "all" ? 0 : issues.filter((i) => i.platform === k).length;
+                  return (
+                    <button
+                      key={k}
+                      id={`tab-${k}`}
+                      type="button"
+                      role="tab"
+                      aria-selected={active === k}
+                      aria-controls="post-panel"
+                      tabIndex={active === k ? 0 : -1}
+                      onClick={() => openTab(k)}
+                      className="flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 focus-visible:outline-offset-[-3px] text-sm text-ink-soft hover:bg-ink/[0.04] hover:text-ink aria-selected:bg-ink/[0.07] aria-selected:text-ink aria-selected:shadow-[inset_0_-2px_0_var(--color-signal-deep)]"
+                    >
+                      {k === "all" ? <span className="font-bold">All networks</span> : <PlatformMark platform={k} className="size-4" named />}
+                      {bad > 0 && (
+                        <>
+                          <span aria-hidden="true" className="size-1.5 rounded-full bg-signal-deep" />
+                          <span className="sr-only">({bad === 1 ? "1 issue" : `${bad} issues`})</span>
+                        </>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <div id="post-panel" role={tabbed ? "tabpanel" : undefined} aria-labelledby={tabbed ? `tab-${active}` : undefined} className="grid grid-cols-[minmax(0,1fr)] gap-5 p-4 sm:p-5">
+              {active === "all" ? shared : own(active)}
+              {!tabbed && selected[0] && settings(selected[0])}
             </div>
-            <div className="grid gap-1.5">
-              <label htmlFor="post-body" className="label">
-                Post
-              </label>
-              <textarea
-                id="post-body"
-                rows={7}
-                className="field resize-y"
-                placeholder="What do you want to say?"
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                aria-invalid={mainPlatforms.some((p) => overLimit(p, body, xLong)) || undefined}
-                aria-describedby="post-count"
-              />
-              <Counts id="post-count" text={body} platforms={mainPlatforms} xLong={xLong} alerts />
-              {selected.includes("youtube") && <YouTubeNote />}
-            </div>
-            {selected.length > 1 &&
-              selected.map((p) =>
-                custom[p] === undefined ? (
-                  <button key={p} id={`customize-${p}`} type="button" className="btn btn-quiet btn-sm justify-self-start" onClick={() => customize(p)}>
-                    <Icon name="plus" className="size-4" />
-                    Customize for {platformName(p)}
-                  </button>
-                ) : (
-                  <div key={p} className="grid gap-1.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <label htmlFor={`post-body-${p}`} className="label">
-                        {platformName(p)} text
-                      </label>
-                      <button type="button" className="icon-btn" aria-label={`Use the main post on ${platformName(p)}`} onClick={() => uncustomize(p)}>
-                        <Icon name="close" className="size-4" />
-                      </button>
-                    </div>
-                    <textarea
-                      id={`post-body-${p}`}
-                      rows={4}
-                      className="field resize-y"
-                      value={custom[p]}
-                      onChange={(e) => setCustom((c) => ({ ...c, [p]: e.target.value }))}
-                      aria-invalid={overLimit(p, custom[p]!, xLong) || undefined}
-                      aria-describedby={`post-body-${p}-count`}
-                    />
-                    <Counts id={`post-body-${p}-count`} text={custom[p]!} platforms={[p]} xLong={xLong} alerts />
-                    {p === "youtube" && <YouTubeNote />}
-                  </div>
-                ),
-              )}
-            <ImageLinks media={media} max={cap(mediaMain)} platforms={mediaMain} onChange={setMedia} />
-            {selected.length > 1 &&
-              selected.map((p) =>
-                mediaCustom[p] === undefined ? (
-                  <button key={p} id={`media-customize-${p}`} type="button" className="btn btn-quiet btn-sm justify-self-start" onClick={() => customizeMedia(p)}>
-                    <Icon name="plus" className="size-4" />
-                    Different media for {platformName(p)}
-                  </button>
-                ) : (
-                  <ImageLinks key={p} media={mediaCustom[p]!} max={limits[p].media} own={p} onChange={(m) => setMediaCustom((c) => ({ ...c, [p]: m }))} onClose={() => uncustomizeMedia(p)} />
-                ),
-              )}
-            {mediaProblems.length + textProblems.length > 0 && (
-              <ul className="grid gap-1">
-                {[...textProblems, ...mediaProblems].map((m, i) => (
-                  <li key={i} className="waitlist-error">
-                    {m}
+          </div>
+          <div className="sticky bottom-3 z-10 grid gap-2 rounded-lg bg-paper/95 p-3 shadow-[0_0_0_1px_var(--line),0_-6px_20px_rgb(0_0_0/0.07)] backdrop-blur sm:px-4">
+            {messages}
+            {issuesOpen && issues.length > 0 && (
+              <ul id="post-issues" className="grid gap-1 text-sm">
+                {issues.map((i, n) => (
+                  <li key={n}>
+                    <button type="button" className="text-left font-bold text-signal-deep hover:underline" onClick={() => goToIssue(i)}>
+                      {i.text}
+                    </button>
                   </li>
                 ))}
               </ul>
             )}
-            {coverShown && (
-              <fieldset className="grid gap-2">
-                <legend className="label">Cover image</legend>
-                <p id="post-cover-note" className="hint">
-                  Optional. A public https link to an image, or a Google Drive or Dropbox share link, for the video: {covered.map((p) => `${platformName(p)} takes ${coverTypes[p]}`).join("; ")}.
-                  {covered.some((p) => p !== "instagram") && " Facebook and YouTube set it after the video is live (YouTube needs a verified channel): if that fails, the post stays published and says why."}
-                  {noCover.length > 0 && ` ${names(noCover)} can't take one${noCover.includes("tiktok") ? " (TikTok can only pick a frame of the video)" : ""}, so ${noCover.length > 1 ? "they get" : "it gets"} none.`}
-                  {noVideo.length > 0 && ` ${names(noVideo)} ${noVideo.length > 1 ? "have" : "has"} no single video here, so ${noVideo.length > 1 ? "they get" : "it gets"} none.`}
-                </p>
-                <label className="grid gap-1 text-sm font-bold">
-                  <span>Cover image link</span>
-                  <input
-                    type="url"
-                    inputMode="url"
-                    placeholder="https://"
-                    className="field font-normal"
-                    value={cover}
-                    onChange={(e) => setCover(e.target.value)}
-                    aria-describedby="post-cover-note"
-                  />
-                </label>
-              </fieldset>
-            )}
-            {commentable.length > 0 && (
-              <div className="grid gap-1.5">
-                <label htmlFor="post-comment" className="label">
-                  First comment
-                </label>
-                <textarea
-                  id="post-comment"
-                  rows={3}
-                  className="field resize-y"
-                  placeholder="Optional: sources, caveats, a link"
-                  value={comment}
-                  onChange={(e) => setComment(e.target.value)}
-                  aria-invalid={commentMain.some((p) => commentOver(p, comment)) || undefined}
-                  aria-describedby="post-comment-note post-comment-count"
-                />
-                <CommentCounts id="post-comment-count" text={comment} platforms={commentMain} />
-                <p id="post-comment-note" className="hint">
-                  Posted by the same account right after the post goes live, on {names(commentable)}.
-                  {noComment.length > 0 && ` ${names(noComment)} can't post one, so ${noComment.length > 1 ? "they get" : "it gets"} none.`} It is tried once: if it fails, the post stays published and says why.
-                </p>
-              </div>
-            )}
-            {commentable.length > 1 &&
-              commentable.map((p) =>
-                commentCustom[p] === undefined ? (
-                  <button key={p} id={`comment-customize-${p}`} type="button" className="btn btn-quiet btn-sm justify-self-start" onClick={() => customizeComment(p)}>
-                    <Icon name="plus" className="size-4" />
-                    Customize the first comment for {platformName(p)}
-                  </button>
-                ) : (
-                  <div key={p} className="grid gap-1.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <label htmlFor={`post-comment-${p}`} className="label">
-                        {platformName(p)} first comment
-                      </label>
-                      <button type="button" className="icon-btn" aria-label={`Use the main first comment on ${platformName(p)}`} onClick={() => uncustomizeComment(p)}>
-                        <Icon name="close" className="size-4" />
-                      </button>
-                    </div>
-                    <textarea
-                      id={`post-comment-${p}`}
-                      rows={3}
-                      className="field resize-y"
-                      value={commentCustom[p]}
-                      onChange={(e) => setCommentCustom((c) => ({ ...c, [p]: e.target.value }))}
-                      aria-invalid={commentOver(p, commentCustom[p]!) || undefined}
-                      aria-describedby={`post-comment-${p}-count`}
-                    />
-                    <CommentCounts id={`post-comment-${p}-count`} text={commentCustom[p]!} platforms={[p]} />
-                  </div>
-                ),
-              )}
-            {threadable.length > 0 && (
-            <fieldset className="grid gap-2">
-              <legend className="label">Thread</legend>
-              <p className="hint">
-                Follow-up posts go out as replies, each to the one before, on every account.
-                {noThread.length > 0 && ` ${names(noThread)} can't post threads, so ${noThread.length > 1 ? "they get" : "it gets"} only the first post.`}
-              </p>
-              {thread.length > 0 && (
-                <ol className="grid gap-3">
-                  {thread.map((p, i) => {
-                    const over = threadable.some((x) => charCount(x, p.body) > charLimit(x, xLong));
-                    return (
-                      <li key={i} className="grid gap-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <label htmlFor={`post-part-${i}`} className="text-sm font-bold">
-                            Post {i + 2}
-                          </label>
-                          <button type="button" className="icon-btn" aria-label={`Remove post ${i + 2}`} onClick={() => removePart(i)}>
-                            <Icon name="close" className="size-4" />
-                          </button>
-                        </div>
-                        <textarea
-                          id={`post-part-${i}`}
-                          ref={(el) => {
-                            partRefs.current[i] = el;
-                          }}
-                          rows={3}
-                          className="field resize-y"
-                          value={p.body}
-                          onChange={(e) => setThread((list) => list.map((v, j) => (j === i ? { ...v, body: e.target.value } : v)))}
-                          aria-invalid={over || undefined}
-                          aria-describedby={`post-part-${i}-count`}
-                        />
-                        <Counts id={`post-part-${i}-count`} text={p.body} platforms={threadable} xLong={xLong} />
-                        <ImageLinks media={p.media} max={cap(threadable)} post={i + 2} onChange={(m) => setThread((list) => list.map((v, j) => (j === i ? { ...v, media: m } : v)))} />
-                      </li>
-                    );
-                  })}
-                </ol>
-              )}
-              {thread.length < MAX_PARTS && (
-                <button ref={addPartRef} type="button" className="btn btn-secondary btn-sm justify-self-start" onClick={addPart}>
-                  <Icon name="plus" className="size-4" />
-                  Add to thread
+            {selected.includes("tiktok") && <TikTokConsent settings={tiktokOut} />}
+            <div className="flex flex-wrap items-center gap-2">
+              {issues.length > 0 && (
+                <button
+                  type="button"
+                  className="btn btn-quiet btn-sm text-signal-deep"
+                  aria-expanded={issuesOpen}
+                  aria-controls={issuesOpen ? "post-issues" : undefined}
+                  onClick={() => setIssuesOpen((o) => !o)}
+                >
+                  <span aria-hidden="true" className="size-1.5 rounded-full bg-current" />
+                  {issues.length} {issues.length === 1 ? "issue" : "issues"}
                 </button>
               )}
-            </fieldset>
-            )}
-            {selected.includes("youtube") && (
-              <div className="grid gap-1.5">
-                <label htmlFor="youtube-privacy" className="label">
-                  YouTube visibility
-                </label>
-                <select id="youtube-privacy" className="field justify-self-start" value={ytPrivacy} onChange={(e) => setYtPrivacy(e.target.value as YouTubePrivacy)}>
-                  {(Object.keys(youtubePrivacyName) as YouTubePrivacy[]).map((v) => (
-                    <option key={v} value={v}>
-                      {youtubePrivacyName[v]}
-                    </option>
-                  ))}
-                </select>
+              {!scheduleOpen && !at && (
+                <button
+                  type="button"
+                  className="icon-btn sm:hidden"
+                  aria-label="Schedule"
+                  title="Schedule"
+                  aria-expanded={false}
+                  onClick={() => {
+                    flushSync(() => setScheduleOpen(true));
+                    document.getElementById("post-at")?.focus();
+                  }}
+                >
+                  <Icon name="clock" className="size-4" />
+                </button>
+              )}
+              <div className="ml-auto flex gap-2">
+                <button type="submit" name="mode" value="draft" className="btn btn-secondary" disabled={busy !== null}>
+                  {busy === "draft" ? "Saving..." : "Save draft"}
+                </button>
+                <button type="submit" name="mode" value="publish" className="btn btn-primary" disabled={busy !== null}>
+                  <Icon name="send" className="size-4" />
+                  {busy === "publish" ? "Publishing..." : "Publish now"}
+                </button>
               </div>
-            )}
-            {selected.includes("tiktok") && (
-              <TikTokPanel creator={creator} settings={tiktokOut} onChange={setTikTok} photosOnly={photosOnly} onRetry={() => setCreatorTry((n) => n + 1)} />
-            )}
-          </div>
-          {messages}
-          <div className="card grid gap-4 p-5">
-            {selected.includes("tiktok") && <TikTokConsent settings={tiktokOut} />}
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <button type="submit" name="mode" value="draft" className="btn btn-secondary" disabled={busy !== null}>
-                {busy === "draft" ? "Saving..." : "Save draft"}
-              </button>
-              <button type="submit" name="mode" value="publish" className="btn btn-primary" disabled={busy !== null}>
-                <Icon name="send" className="size-4" />
-                {busy === "publish" ? "Publishing..." : "Publish now"}
-              </button>
             </div>
-            <div className="grid gap-1.5 border-t border-ink/10 pt-4">
-              <label htmlFor="post-at" className="label">
+            <div className={`${scheduleOpen || at ? "flex" : "hidden"} flex-wrap items-center gap-x-2 gap-y-1 border-t border-[var(--line)] pt-2 sm:flex`}>
+              <label htmlFor="post-at" className="text-xs font-bold whitespace-nowrap">
                 Publish at
               </label>
-              <div className="flex flex-wrap gap-2">
-                <input
-                  id="post-at"
-                  type="datetime-local"
-                  className="field w-auto min-w-0 flex-1"
-                  value={at}
-                  onChange={(e) => setAt(e.target.value)}
-                  aria-describedby="post-at-note"
-                />
-                <button type="submit" name="mode" value="schedule" className="btn btn-secondary" disabled={busy !== null}>
-                  <Icon name="clock" className="size-4" />
-                  {busy === "schedule" ? "Scheduling..." : "Schedule"}
-                </button>
-              </div>
-              <p id="post-at-note" className="hint">
+              <input id="post-at" type="datetime-local" className="field w-auto min-w-0 max-w-full flex-1 sm:flex-none" value={at} onChange={(e) => setAt(e.target.value)} aria-describedby="post-at-note" />
+              <button type="submit" name="mode" value="schedule" className="btn btn-secondary" disabled={busy !== null}>
+                <Icon name="clock" className="size-4" />
+                {busy === "schedule" ? "Scheduling..." : "Schedule"}
+              </button>
+              <p id="post-at-note" className="hint text-xs sm:ml-auto">
                 In your time zone, {zone}.
               </p>
             </div>
@@ -1266,7 +1450,7 @@ function commentStatus(t: Target): string {
 
 const links = (media: string[]) => media.map((m) => m.trim()).filter(Boolean);
 
-// "N of M characters" for each platform; `alerts` also says how far over a limit the text is.
+// "N/M" chips for each platform, red when over; `alerts` also says how far over a limit the text is.
 function Counts({ id, text, platforms, xLong = false, alerts }: { id: string; text: string; platforms: Platform[]; xLong?: boolean; alerts?: boolean }) {
   // YouTube counts its title (the first line) in characters and its description (the rest) in bytes.
   const counts = platforms.flatMap((p) =>
@@ -1279,13 +1463,7 @@ function Counts({ id, text, platforms, xLong = false, alerts }: { id: string; te
   );
   return (
     <>
-      <ul id={id} className="flex flex-wrap justify-end gap-x-4 text-sm">
-        {counts.map(({ key, name, n, max, unit }) => (
-          <li key={key} className={n > max ? "font-bold text-signal-deep" : n > max - 20 ? "text-signal-deep" : "text-ink-soft"}>
-            {name}: {n.toLocaleString("en")} of {max.toLocaleString("en")} {unit}
-          </li>
-        ))}
-      </ul>
+      <CountChips id={id} counts={counts} />
       {alerts &&
         counts
           .filter(({ n, max }) => n > max)
@@ -1298,20 +1476,32 @@ function Counts({ id, text, platforms, xLong = false, alerts }: { id: string; te
   );
 }
 
+// One scrolling line of small count chips, e.g. "Bluesky 9/300", those near or over a limit first so they always show.
+function CountChips({ id, counts }: { id: string; counts: { key: string; name: string; n: number; max: number; unit: string }[] }) {
+  return (
+    <ul id={id} className="flex gap-1 overflow-x-auto text-xs whitespace-nowrap tabular-nums">
+      {[...counts].sort((a, b) => Number(b.n > b.max - 20) - Number(a.n > a.max - 20) || Number(b.n > b.max) - Number(a.n > a.max)).map(({ key, name, n, max, unit }) => (
+        <li
+          key={key}
+          title={`${name}: ${n.toLocaleString("en")} of ${max.toLocaleString("en")} ${unit}`}
+          className={`rounded px-1.5 py-0.5 ${n > max ? "bg-signal-deep/10 font-bold text-signal-deep" : n > max - 20 ? "bg-ink/[0.05] text-signal-deep" : "bg-ink/[0.05] text-ink-soft"}`}
+        >
+          {name} {n.toLocaleString("en")}/{max.toLocaleString("en")}
+          {unit === "bytes" ? " bytes" : ""}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 const commentOver = (p: Platform, text: string) => [...text].length > (limits[p].comment ?? Infinity);
 
-// "N of M characters" of the first comment for each platform that takes one; over a limit it also says by how much.
+// The first comment's count for each platform that takes one; over a limit it also says by how much.
 function CommentCounts({ id, text, platforms }: { id: string; text: string; platforms: Platform[] }) {
   const n = [...text].length;
   return (
     <>
-      <ul id={id} className="flex flex-wrap justify-end gap-x-4 text-sm">
-        {platforms.map((p) => (
-          <li key={p} className={commentOver(p, text) ? "font-bold text-signal-deep" : "text-ink-soft"}>
-            {platformName(p)}: {n.toLocaleString("en")} of {limits[p].comment!.toLocaleString("en")} characters
-          </li>
-        ))}
-      </ul>
+      <CountChips id={id} counts={platforms.map((p) => ({ key: p, name: platformName(p), n, max: limits[p].comment!, unit: "characters" }))} />
       {platforms
         .filter((p) => commentOver(p, text))
         .map((p) => (
@@ -1323,19 +1513,26 @@ function CommentCounts({ id, text, platforms }: { id: string; text: string; plat
   );
 }
 
-// What the first line and the rest of a YouTube post become, and what YouTube does with the video.
+// What the first line and the rest of a YouTube post become.
 function YouTubeNote() {
-  return (
-    <p className="hint">
-      On YouTube the first line is the video&apos;s title and the rest its description. The video goes up with the visibility chosen below (Private
-      unless you pick another), but until Google has audited the YouTube API project behind this server, YouTube keeps new uploads private.
-    </p>
-  );
+  return <p className="hint">On YouTube the first line is the video&apos;s title and the rest its description.</p>;
 }
+
+// What each platform takes as media, said once per platform on its tab (or the one form).
+const mediaRules: Partial<Record<Platform, string>> = {
+  bluesky: "Bluesky takes JPEG, PNG, WebP or GIF images, or one MP4 or MOV video.",
+  instagram: "Instagram takes JPEG, PNG or WebP images or MP4 or MOV videos.",
+  linkedin: "LinkedIn takes JPEG, PNG or GIF images, or one MP4 video or one PDF (posted as a document, the swipeable carousel) on its own.",
+  youtube: "YouTube takes exactly one MP4 or MOV video.",
+  x: "X takes up to 4 JPEG, PNG or WebP images, or one GIF or MP4 or MOV video.",
+  tiktok: "TikTok takes one MP4 or MOV video, or up to 35 JPEG, PNG or WebP photos.",
+};
+const mediaRule = (p: Platform) => `${mediaRules[p] ?? `${platformName(p)} takes ${mediaTypes[p].text}.`} ${sizeHint([p])}`;
 
 // The image links of one post. `post` is its number in a thread; the first post leaves it out.
 // `post` is a thread part's number; `own` is the one platform these files go to in place of the shared ones.
-function ImageLinks({ media, max, post, own, platforms, onChange, onClose }: { media: string[]; max: number; post?: number; own?: Platform; platforms?: Platform[]; onChange: (media: string[]) => void; onClose?: () => void }) {
+// `rule` is the one platform of a post for one platform, whose media rule the shared hint then says.
+function ImageLinks({ media, max, post, own, platforms, rule, onChange, onClose }: { media: string[]; max: number; post?: number; own?: Platform; platforms?: Platform[]; rule?: Platform; onChange: (media: string[]) => void; onClose?: () => void }) {
   const addRef = useRef<HTMLButtonElement>(null);
   const imageRefs = useRef<(HTMLInputElement | null)[]>([]);
   const of = post ? ` of post ${post}` : own ? ` for ${platformName(own)}` : "";
@@ -1351,15 +1548,15 @@ function ImageLinks({ media, max, post, own, platforms, onChange, onClose }: { m
   }
 
   return (
-    <fieldset id={own && `media-${own}`} tabIndex={own ? -1 : undefined} className="grid gap-2">
+    <fieldset id={own ? `media-${own}` : post ? undefined : "media-shared"} tabIndex={post ? undefined : -1} className="grid gap-2">
       <legend className={post ? "text-sm font-bold" : "label"}>
         {own ? `${platformName(own)} media` : <>Images<span className="sr-only">{of}</span></>}
       </legend>
       {own && (
         <div className="flex items-start justify-between gap-2">
           <p className="hint">
-            Only {platformName(own)} gets these, in place of the images above. It takes {mediaTypes[own].text}.
-            {own === "instagram" || own === "youtube" || own === "tiktok" ? "" : " Leave it empty to post without any."} {sizeHint([own])}
+            Only {platformName(own)} gets these, in place of the shared media.
+            {own === "instagram" || own === "youtube" || own === "tiktok" ? "" : " Leave it empty to post without any."} {mediaRule(own)}
           </p>
           <button type="button" className="icon-btn" aria-label={`Use the main images on ${platformName(own)}`} onClick={onClose}>
             <Icon name="close" className="size-4" />
@@ -1367,9 +1564,22 @@ function ImageLinks({ media, max, post, own, platforms, onChange, onClose }: { m
         </div>
       )}
       {!post && !own && (
-        <p className="hint">
-          Up to {max}. Public https links to image, video or PDF files, or Google Drive or Dropbox share links; nothing is uploaded to SocialReins. Bluesky takes JPEG, PNG, WebP or GIF images, or one MP4 or MOV video; Instagram takes JPEG, PNG or WebP images or MP4 or MOV videos; LinkedIn takes JPEG, PNG or GIF images, or one MP4 video or one PDF (posted as a document, the swipeable carousel) on its own; YouTube takes exactly one MP4 or MOV video. X takes up to 4 JPEG, PNG or WebP images, or one GIF or MP4 or MOV video. TikTok takes one MP4 or MOV video, or up to 35 JPEG, PNG or WebP photos.{platforms && platforms.length > 0 ? ` ${sizeHint(platforms)}` : ""}
-        </p>
+        <div className="grid gap-1">
+          <p className="hint">
+            Up to {max}. Public https links, or Google Drive or Dropbox share links; nothing is uploaded to SocialReins.{rule ? ` ${mediaRule(rule)}` : ""}
+          </p>
+          {!rule && platforms && platforms.length > 0 && (
+            <details className="hint">
+              <summary className="cursor-pointer select-none font-bold">What each network takes</summary>
+              <ul className="mt-1 grid list-disc gap-0.5 pl-5">
+                {platforms.map((p) => (
+                  <li key={p}>{mediaRules[p] ?? `${platformName(p)} takes ${mediaTypes[p].text}.`}</li>
+                ))}
+                <li>{sizeHint(platforms)}</li>
+              </ul>
+            </details>
+          )}
+        </div>
       )}
       {media.length > 0 && (
         <ul className="grid gap-2">
@@ -1422,9 +1632,13 @@ const fileName = (url: string) => {
 // Roughly how the post looks on its first platform. Images show as tiles: the CSP only allows Bluesky's own image CDN.
 function Preview({ posts, platform, account }: { posts: ThreadPart[]; platform: Platform; account?: Connection }) {
   return (
-    <section aria-labelledby="preview-heading" className="grid gap-3 lg:sticky lg:top-10">
-      <h2 id="preview-heading" className="font-display text-lg font-extrabold tracking-tight">
+    <section aria-labelledby="preview-heading" className="grid gap-3 rounded-lg bg-[var(--line-soft)] p-3 sm:p-4 lg:sticky lg:top-16 lg:max-h-[calc(100dvh-5rem)] lg:overflow-y-auto">
+      <h2 id="preview-heading" className="flex items-baseline justify-between gap-2 font-display text-lg font-extrabold tracking-tight">
         Preview
+        <span className="text-xs font-normal text-ink-soft">
+          <span className="sr-only">as on </span>
+          <PlatformMark platform={platform} className="size-3.5" named />
+        </span>
       </h2>
       {posts.map((p, i) => (
         <PreviewPost key={i} body={p.body} media={p.media} platform={platform} account={account} />
