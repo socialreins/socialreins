@@ -238,6 +238,11 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
     flushSync(() => setTab(next.id));
     document.getElementById(`network-tab-${next.id}`)?.focus();
   }
+  // On a narrow screen the tabs scroll in one row: keep the picked one in view.
+  const groupId = group?.id;
+  useEffect(() => {
+    if (groupId) document.getElementById(`network-tab-${groupId}`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [groupId]);
 
   return (
     <section aria-labelledby="accounts-heading" className="grid gap-4">
@@ -314,41 +319,45 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
             })}
           </div>
           <div id="network-panel" role="tabpanel" aria-labelledby={`network-tab-${group.id}`}>
-            <ul className="grid gap-3 sm:grid-cols-2">
+            <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {group.items.map((c) => {
                 const platform = platformOf(c.provider);
                 const name = accountName(c);
                 return (
-                  <li key={c.id} className="card grid content-start gap-3 p-4">
-                    <div className="flex items-center gap-3">
-                      <NetworkAvatar connection={c} />
-                      <div className="min-w-0 flex-1">
-                        <p className="flex items-center gap-2">
-                          <span className="min-w-0 truncate font-bold">{name}</span>
-                          {attention(c) && (
-                            <span className="badge tone shrink-0" data-status={attention(c) === "reconnect" ? "failed" : "scheduled"}>
-                              {attention(c) === "reconnect" ? "Reconnect needed" : `Ends ${endDate(c)}`}
-                            </span>
-                          )}
-                        </p>
-                        <p className="text-sm text-ink-soft">
+                  <li key={c.id} className="card relative flex items-start gap-3 p-4">
+                    <NetworkAvatar connection={c} />
+                    <div className="grid min-w-0 flex-1 gap-1.5 pr-8">
+                      <p className="truncate font-bold">{name}</p>
+                      <p className="text-sm text-ink-soft">
+                        <span className="block truncate">
                           {platform?.name ?? c.provider}
-                          {c.handle && c.display_name ? `, @${c.handle}` : ""}. Connected {date(c.created_at)}.
-                        </p>
-                      </div>
-                      <button type="button" className="icon-btn shrink-0" aria-label={`Settings for ${name}`} onClick={() => setSettingsId(c.id)}>
-                        <Icon name="settings" />
-                      </button>
+                          {c.handle && c.display_name ? `, @${c.handle}` : ""}.
+                        </span>{" "}
+                        <span className="block">Connected {date(c.created_at)}.</span>
+                      </p>
+                      {attention(c) && (
+                        <span className="badge tone justify-self-start" data-status={attention(c) === "reconnect" ? "failed" : "scheduled"}>
+                          {attention(c) === "reconnect" ? "Reconnect needed" : `Ends ${endDate(c)}`}
+                        </span>
+                      )}
+                      {Array.isArray(sets) && own(c.set_ids, sets).length > 0 && (
+                        <ul aria-label={`Sets for ${name}`} className="flex flex-wrap gap-1">
+                          {own(c.set_ids, sets).map((n) => (
+                            <li key={n} className="badge tone">
+                              {n}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
-                    {Array.isArray(sets) && own(c.set_ids, sets).length > 0 && (
-                      <ul aria-label={`Sets for ${name}`} className="flex flex-wrap gap-1.5">
-                        {own(c.set_ids, sets).map((n) => (
-                          <li key={n} className="badge tone">
-                            {n}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                    <button
+                      type="button"
+                      className="icon-btn absolute top-3 right-3 size-7 text-ink-soft hover:text-ink"
+                      aria-label={`Settings for ${name}`}
+                      onClick={() => setSettingsId(c.id)}
+                    >
+                      <Icon name="settings" className="size-4" />
+                    </button>
                   </li>
                 );
               })}

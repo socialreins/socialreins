@@ -6,7 +6,7 @@ export const metadata: Metadata = { title: "SocialReins accounts" };
 
 export default function Page() {
   return (
-    <div className="max-w-4xl">
+    <div className="max-w-6xl">
       <PageHeader title="Accounts" />
       <div className="grid gap-10">
         <Connections />

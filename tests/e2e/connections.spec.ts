@@ -724,3 +724,26 @@ test("back from connecting X with a paid plan reported, no question opens", asyn
   await expect(page.getByRole("tabpanel")).toContainText("Ann Lee");
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
+
+test("every network tab fits at 1440 wide, and on a phone the tabs scroll instead of the page", async ({ page }) => {
+  const nets = ["facebook", "instagram", "threads", "linkedin", "bluesky", "x", "tiktok", "youtube"];
+  await signedIn(page, "owner", nets.map((provider, i) => ({ ...alice, id: `n${i}`, provider, avatar_url: null })));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/connections");
+  const tablist = page.getByRole("tablist", { name: "Networks" });
+  await expect(tablist.getByRole("tab")).toHaveCount(8);
+  const box = (await tablist.boundingBox())!;
+  for (const tab of await tablist.getByRole("tab").all()) {
+    const b = (await tab.boundingBox())!;
+    expect(b.x).toBeGreaterThanOrEqual(box.x);
+    expect(b.x + b.width).toBeLessThanOrEqual(box.x + box.width);
+  }
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => tablist.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  // The picked tab scrolls into view.
+  await tablist.getByRole("tab", { name: /YouTube/ }).click();
+  const last = (await tablist.getByRole("tab", { name: /YouTube/ }).boundingBox())!;
+  expect(last.x + last.width).toBeLessThanOrEqual(390);
+});
