@@ -124,6 +124,7 @@ function PublicPages({ team, onChanged }: { team: Team; onChanged: (t: Team) => 
 
 function Newsletter({ team, onChanged }: { team: Team; onChanged: (t: Team) => void }) {
   const [list, setList] = useState<Subscriber[] | Failure | null>(null);
+  const [confirming, setConfirming] = useState<string | null>(null);
   const { busy, problem, done, run } = useAction();
 
   useEffect(() => {
@@ -184,20 +185,32 @@ function Newsletter({ team, onChanged }: { team: Team; onChanged: (t: Team) => v
                 <p className="text-sm text-ink-soft">
                   {s.confirmed ? "Confirmed" : "Not confirmed yet"}. Signed up {date(s.subscribed_at)}.
                 </p>
-                <button
-                  type="button"
-                  className={`justify-self-start ${linkButton}`}
-                  disabled={busy !== null}
-                  aria-label={`Remove ${s.email}`}
-                  onClick={() =>
-                    run(`remove:${s.id}`, () => removeSubscriber(s.id), () => {
-                      setList((l) => (Array.isArray(l) ? l.filter((x) => x.id !== s.id) : l));
-                      return `${s.email} was removed.`;
-                    })
-                  }
-                >
-                  {busy === `remove:${s.id}` ? "Removing..." : "Remove"}
-                </button>
+                {confirming === s.id ? (
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span>Remove {s.email}? They can sign up again.</span>
+                    <button
+                      type="button"
+                      className={linkButton}
+                      disabled={busy !== null}
+                      onClick={() =>
+                        run(`remove:${s.id}`, () => removeSubscriber(s.id), () => {
+                          setConfirming(null);
+                          setList((l) => (Array.isArray(l) ? l.filter((x) => x.id !== s.id) : l));
+                          return `${s.email} was removed.`;
+                        })
+                      }
+                    >
+                      {busy === `remove:${s.id}` ? "Removing..." : "Yes, remove"}
+                    </button>
+                    <button type="button" className={linkButton} disabled={busy !== null} onClick={() => setConfirming(null)}>
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button type="button" className={`justify-self-start ${linkButton}`} disabled={busy !== null} aria-label={`Remove ${s.email}`} onClick={() => setConfirming(s.id)}>
+                    Remove
+                  </button>
+                )}
               </li>
             ))}
           </ul>

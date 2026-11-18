@@ -73,7 +73,7 @@ function Newsletter({ code, team }: { code: string; team: string }) {
 
   if (status === "ok")
     return (
-      <p role="status" className="card p-5">
+      <p role="status" tabIndex={-1} ref={(el) => el?.focus()} className="card p-5 outline-none">
         Check your email: we sent a link to confirm your subscription.
       </p>
     );

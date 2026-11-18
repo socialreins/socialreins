@@ -14,6 +14,7 @@ describe("subscribersCsv", () => {
   it("quotes commas and quotes, and defuses a value a spreadsheet would run as a formula", () => {
     const csv = subscribersCsv([row("=cmd@b.co"), row('a"b,c@d.co')]);
     expect(csv).toContain("'=cmd@b.co,");
+    expect(subscribersCsv([row("-news@b.co"), row("+tag@b.co")])).toContain("\r\n-news@b.co,");
     expect(csv).toContain('"a""b,c@d.co",');
   });
 

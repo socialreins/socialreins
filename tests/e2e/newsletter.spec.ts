@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
 
 const team = { id: "t1", name: "Acme", code: "acme22", role: "owner", public_pages: true, newsletter: false };
@@ -39,9 +40,16 @@ test("an owner switches the newsletter on, reads the list, downloads the confirm
   await expect(page.getByText("1 confirmed, 1 waiting for the email link.")).toBeVisible();
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download the confirmed ones (CSV)" }).click();
-  expect((await download).suggestedFilename()).toBe("subscribers.csv");
+  const file = await download;
+  expect(file.suggestedFilename()).toBe("subscribers.csv");
+  const csv = readFileSync((await file.path())!, "utf8");
+  expect(csv).toBe("email,subscribed_at\r\nann@example.com,2026-11-18T10:00:00Z\r\n");
 
   await page.getByRole("button", { name: "Remove bob@example.com" }).click();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByText("bob@example.com", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Remove bob@example.com" }).click();
+  await page.getByRole("button", { name: "Yes, remove" }).click();
   await expect(page.getByText("bob@example.com was removed.")).toBeVisible();
   await expect(page.getByText("Not confirmed yet")).toHaveCount(0);
 });

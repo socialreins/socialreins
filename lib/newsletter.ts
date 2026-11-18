@@ -54,10 +54,11 @@ export async function verifyNewsletter(token: string): Promise<NewsletterVerifyR
 export type Subscriber = { id: string; email: string; confirmed: boolean; subscribed_at: string };
 
 // The confirmed emails as a CSV for a mailing tool. Unconfirmed ones never leave: nobody agreed to mail them.
-// A value a spreadsheet would run as a formula starts with a quote.
+// A value a spreadsheet would run as a formula (a leading = or @) starts with a quote. A leading + or - stays: both
+// are valid in an address, and a quote there would make a mailing tool refuse it.
 export function subscribersCsv(list: Subscriber[]): string {
   const cell = (v: string) => {
-    const safe = /^[=+\-@\t\r]/.test(v) ? `'${v}` : v;
+    const safe = /^[=@\t\r]/.test(v) ? `'${v}` : v;
     return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
   };
   const rows = list.filter((s) => s.confirmed).map((s) => `${cell(s.email)},${cell(s.subscribed_at)}`);
