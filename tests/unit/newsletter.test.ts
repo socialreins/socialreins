@@ -15,6 +15,7 @@ describe("subscribersCsv", () => {
     const csv = subscribersCsv([row("=cmd@b.co"), row('a"b,c@d.co')]);
     expect(csv).toContain("'=cmd@b.co,");
     expect(subscribersCsv([row("-news@b.co"), row("+tag@b.co")])).toContain("\r\n-news@b.co,");
+    expect(subscribersCsv([row("-1+1|cmd@b.co")])).toContain("'-1+1|cmd@b.co,");
     expect(csv).toContain('"a""b,c@d.co",');
   });
 
