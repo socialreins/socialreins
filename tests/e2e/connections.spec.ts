@@ -248,8 +248,11 @@ test("back from a connect the browser kept no note of, the new account still sho
   await page.addInitScript(() => localStorage.setItem("current-set:t1", "s2"));
   await page.goto("/connections?connected=threads");
   await expect(page.getByRole("status").filter({ hasText: "Connected your Threads account." })).toBeVisible();
-  await expect(page.getByRole("tabpanel").getByRole("button", { name: /^Settings for / })).toHaveAccessibleName("Settings for New");
+  // Wait for the picked set: a slow first render can still show the default set, with both accounts.
   await expect(page.getByRole("tablist", { name: "Networks" }).getByRole("tab")).toHaveText([/^Threads\s*1$/]);
+  const cards = page.getByRole("tabpanel").getByRole("button", { name: /^Settings for / });
+  await expect(cards).toHaveCount(1);
+  await expect(cards).toHaveAccessibleName("Settings for New");
 });
 
 test("shows the accounts of the set picked in the top bar", async ({ page }) => {
