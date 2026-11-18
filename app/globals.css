@@ -7,6 +7,7 @@
   --color-ink-soft: #57534e;
   --color-signal-deep: #c2330a;
   --color-signal: #ff5b22;
+  --color-danger: #b42318;
   --font-display: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
   --font-body: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
 }
@@ -90,6 +91,12 @@ body { margin: 0; font-family: var(--font-body); font-size: 1.0625rem; line-heig
 .btn-quiet:hover:not(:disabled) { background: color-mix(in srgb, var(--color-ink) 6%, transparent); color: var(--color-ink); }
 .btn-danger { color: var(--color-signal-deep); }
 .btn-danger:hover:not(:disabled) { color: var(--color-signal-deep); background: color-mix(in srgb, var(--color-signal-deep) 10%, transparent); }
+/* Destructive actions: an outline until the final confirm, which is solid. Red, so it never reads as the orange primary. */
+.btn-danger-outline { background: var(--color-paper); color: var(--color-danger); border-color: color-mix(in srgb, var(--color-danger) 45%, transparent); }
+.btn-danger-outline:hover:not(:disabled) { background: color-mix(in srgb, var(--color-danger) 8%, var(--color-paper)); border-color: var(--color-danger); }
+.btn-danger-solid { background: var(--color-danger); color: var(--color-paper); border-color: var(--color-danger); }
+.btn-danger-solid:hover:not(:disabled) { background: color-mix(in srgb, var(--color-danger) 86%, var(--color-ink)); }
+.card-danger { border-color: color-mix(in srgb, var(--color-danger) 40%, transparent); }
 .btn-sm { font-size: 0.875rem; padding: 0.35rem 0.8rem; }
 .icon-btn {
   display: inline-grid; place-items: center; width: 2.25rem; height: 2.25rem; border-radius: 999px;
@@ -153,7 +160,7 @@ body { margin: 0; font-family: var(--font-body); font-size: 1.0625rem; line-heig
    The orange turns lighter so it reads as text on dark, and filled orange takes dark text (text-paper). */
 :root[data-theme="dark"] .app-root {
   --color-canvas: #0d0c0b; --color-paper: #171615; --color-ink: #edebe8; --color-ink-soft: #aaa49e;
-  --color-signal: #ff6a33; --color-signal-deep: #ff8a5e;
+  --color-signal: #ff6a33; --color-signal-deep: #ff8a5e; --color-danger: #ff7b72;
   --line: #2c2a27; --line-soft: #22201e; --side: #121110; --faint: #8f8883; --nav: #d3cec9; --edge: #3d3a36;
   color-scheme: dark;
 }
@@ -181,6 +188,10 @@ body { margin: 0; font-family: var(--font-body); font-size: 1.0625rem; line-heig
 .app-root .label { font-size: 0.8125rem; }
 .app-root .hint { font-size: 0.8125rem; }
 .app-root .card { border: 0; border-radius: 0.5rem; box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgb(0 0 0 / 0.04); }
+.app-root .btn-danger-outline { box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-danger) 45%, transparent), 0 1px 1px rgb(0 0 0 / 0.05); }
+.app-root .btn-danger-outline:hover:not(:disabled) { box-shadow: 0 0 0 1px var(--color-danger); }
+.app-root .btn-danger-solid { box-shadow: 0 1px 1px rgb(0 0 0 / 0.12), inset 0 -1px 0 rgb(0 0 0 / 0.15); }
+.app-root .card-danger { box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-danger) 40%, transparent), 0 1px 2px rgb(0 0 0 / 0.04); }
 .app-root .badge { font-size: 0.75rem; padding: 0.05rem 0.5rem; border-radius: 0.25rem; }
 .app-nav-link[aria-current="page"] { color: var(--color-ink); font-weight: 600; background: color-mix(in srgb, var(--color-ink) 7%, transparent); }
 .app-nav-link[aria-current="page"] svg { color: var(--color-signal-deep); }

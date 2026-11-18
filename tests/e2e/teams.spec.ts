@@ -136,8 +136,10 @@ test("an admin manages members and invitations but can't touch owners or delete 
   await page.route("**/v1/team/invitations/i1", (route) => route.fulfill({ status: 204 }));
   await page.goto("/team");
 
+  await expect(page.getByText("You are an admin of Acme.")).toBeVisible();
   await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Acme");
   await expect(page.getByRole("heading", { name: "Delete team" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Danger zone" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Remove Olive" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Leave team" })).toBeVisible();
   const role = page.getByLabel("Role for Max");
@@ -180,7 +182,7 @@ test("a member sees no management controls and can leave", async ({ page }) => {
   await page.route("**/v1/teams", (route) => route.fulfill({ json: [acme("member")] }));
   await page.goto("/team");
   await expect(page.getByText("You are a member of Acme.")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Team name" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "General" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Invitations" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Remove/ })).toHaveCount(0);
   await expect(page.getByRole("combobox")).toHaveCount(0);
@@ -214,11 +216,20 @@ test("an owner deletes the team after typing its name, signing in again when nee
   });
   await page.route("**/v1/teams", (route) => route.fulfill({ json: [acme("owner")] }));
   await page.goto("/team");
-  const del = page.getByRole("button", { name: "Delete team" });
+  await expect(page.getByText("You are an owner of Acme.")).toBeVisible();
+  // Save name turns primary only once the name changes.
+  const save = page.getByRole("button", { name: "Save name" });
+  await expect(save).toHaveClass(/btn-secondary/);
+  await page.getByLabel("Name", { exact: true }).fill("Acme Two");
+  await expect(save).toHaveClass(/btn-primary/);
+  const danger = page.getByRole("region", { name: "Danger zone" });
+  const del = danger.getByRole("button", { name: "Delete team" });
+  await expect(del).toHaveClass(/btn-danger-outline/);
   await expect(del).toBeDisabled();
   await page.getByLabel("Type Acme to confirm").fill("Acm");
   await expect(del).toBeDisabled();
   await page.getByLabel("Type Acme to confirm").fill("Acme");
+  await expect(del).toHaveClass(/btn-danger-solid/);
   await del.click();
   const reauth = page.getByRole("alert").filter({ hasText: "needs a fresh sign-in" });
   await expect(reauth).toBeVisible();

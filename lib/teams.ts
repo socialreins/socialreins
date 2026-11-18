@@ -43,6 +43,9 @@ export const acceptInvitation = (token: string) => api<Team>(`/v1/invitations/${
 
 export const manages = (role: Role) => role !== "member";
 
+// "an owner", "an admin", "a member".
+export const roleArticle = (role: Role) => (role === "member" ? "a" : "an");
+
 // Mirrors brain's Role::may_change: only an owner touches the owner role, on either side.
 export const mayChange = (mine: Role, theirs: Role) => mine === "owner" || (mine === "admin" && theirs !== "owner");
 

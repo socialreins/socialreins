@@ -10,6 +10,7 @@ import {
   previewInvitation,
   removeMember,
   renameTeam,
+  roleArticle,
   revokeInvitation,
   setRole,
   switchTeam,
@@ -103,5 +104,9 @@ describe("role rules", () => {
     expect(grantable("owner")).toEqual(["owner", "admin", "member"]);
     expect(grantable("admin")).toEqual(["admin", "member"]);
     expect(grantable("member")).toEqual([]);
+  });
+
+  it("picks the article from the role", () => {
+    expect(["owner", "admin", "member"].map((r) => `${roleArticle(r as "owner")} ${r}`)).toEqual(["an owner", "an admin", "a member"]);
   });
 });
