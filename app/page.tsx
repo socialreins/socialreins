@@ -58,7 +58,7 @@ cd socialreins && cp .env.example .env
 # edit .env: POSTGRES_PASSWORD, BRAIN_URL, WEB_URL
 docker compose up -d`;
 
-export const metadata: Metadata = { alternates: { canonical: "/" }, openGraph: { url: "/" } };
+export const metadata: Metadata = { alternates: { canonical: "/" }, openGraph: { type: "website", url: "/" } };
 
 const organization = JSON.stringify({
   "@context": "https://schema.org",

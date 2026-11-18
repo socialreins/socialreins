@@ -5,7 +5,7 @@ import { SiteHeader, sitePage } from "@/components/site-header";
 import { publicPage } from "@/lib/seo";
 
 export const metadata: Metadata = {
-  title: "Docs",
+  title: "Docs: SocialReins",
   description: "SocialReins docs: install it on your own server, connect accounts and publish, and connect an AI assistant. For self-hosted and cloud.",
   ...publicPage("/docs"),
 };

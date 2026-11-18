@@ -5,6 +5,7 @@ export function publicPage(path: string): Pick<Metadata, "alternates" | "openGra
   return {
     alternates: { canonical: path },
     openGraph: {
+      type: "website",
       url: path,
       images: {
         url: "/opengraph-image.png",
