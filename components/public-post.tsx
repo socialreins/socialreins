@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import { flushSync } from "react-dom";
+import { subscribe, type SubscribeResult } from "@/lib/newsletter";
 import { getPublicPost, linked, pageMedia, type PublicPost } from "@/lib/posts";
 import { platformName } from "@/components/platform-icons";
 import { PlatformMark } from "@/components/posts";
@@ -46,6 +48,54 @@ function Part({ body, media }: { body: string; media: string[] }) {
         );
       })}
     </div>
+  );
+}
+
+const subscribeProblems: Record<Exclude<SubscribeResult, "ok">, string> = {
+  invalid: "That doesn't look like an email address.",
+  gone: "This newsletter is not open any more.",
+  rate_limited: "Too many attempts from this connection. Wait a minute, then try again.",
+  timeout: "That took too long. Try again in a moment.",
+  error: "Signing up didn't work. Try again in a moment.",
+};
+
+// Brain answers the same for a new email and a known one, so this never says whether it was subscribed before.
+function Newsletter({ code, team }: { code: string; team: string }) {
+  const [email, setEmail] = useState("");
+  const [status, setStatus] = useState<SubscribeResult | "idle" | "sending">("idle");
+
+  async function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    // Commit the empty message first so a repeated identical error is announced again.
+    flushSync(() => setStatus("sending"));
+    setStatus(await subscribe(code, email.trim()));
+  }
+
+  if (status === "ok")
+    return (
+      <p role="status" className="card p-5">
+        Check your email: we sent a link to confirm your subscription.
+      </p>
+    );
+  const failed = status !== "idle" && status !== "sending";
+  return (
+    <section aria-labelledby="newsletter-heading" className="card grid gap-3 p-5">
+      <h2 id="newsletter-heading" className="font-display text-lg font-extrabold tracking-tight">
+        Get the newsletter
+      </h2>
+      <form onSubmit={onSubmit} className="waitlist">
+        <label htmlFor="newsletter-email">Your email, to get the newsletter of {team}</label>
+        <div className="waitlist-row">
+          <input id="newsletter-email" type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} aria-invalid={status === "invalid" || undefined} />
+          <button type="submit" disabled={status === "sending"}>
+            {status === "sending" ? "Sending..." : "Subscribe"}
+          </button>
+        </div>
+        <p role="status" aria-live="polite" className={failed ? "waitlist-error" : "waitlist-empty"}>
+          {failed ? subscribeProblems[status] : ""}
+        </p>
+      </form>
+    </section>
   );
 }
 
@@ -95,6 +145,7 @@ export function PublicPostView({ code }: { code: string }) {
           ))}
         </ul>
       )}
+      {post.newsletter && <Newsletter code={code} team={post.team} />}
     </article>
   );
 }

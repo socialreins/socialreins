@@ -458,6 +458,8 @@ export type PublicPost = {
   media: string[];
   thread: ThreadPart[];
   details: string;
+  // The team offers a newsletter sign-up on its pages.
+  newsletter?: boolean;
   published_at: string;
   links: { platform: string; url: string }[];
 };

@@ -1,4 +1,5 @@
 import { api, type Role, type Team } from "@/lib/auth";
+import type { Subscriber } from "@/lib/newsletter";
 
 export type Member = { id: string; name: string; email: string; role: Role; joined_at: string };
 export type Invitation = {
@@ -23,6 +24,9 @@ export const listTeams = () => api<Team[]>("/v1/teams");
 export const createTeam = (name: string) => api<Team>("/v1/teams", "POST", { name });
 export const switchTeam = (teamId: string) => api<Team>("/v1/current-team", "PUT", { team_id: teamId });
 export const setPublicPages = (on: boolean) => api<Team>("/v1/team", "PATCH", { public_pages: on });
+export const setNewsletter = (on: boolean) => api<Team>("/v1/team", "PATCH", { newsletter: on });
+export const listSubscribers = () => api<{ subscribers: Subscriber[] }>("/v1/subscribers");
+export const removeSubscriber = (id: string) => api(`/v1/subscribers/${enc(id)}`, "DELETE");
 export const renameTeam = (name: string) => api<Team>("/v1/team", "PATCH", { name });
 // Needs a sign-in from the last 10 minutes, else brain answers reauth_required.
 export const deleteTeam = () => api("/v1/team", "DELETE", {});
