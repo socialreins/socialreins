@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { TeamLink as Link, useTeamPath } from "@/components/team-link";
 import type { Failure } from "@/lib/auth";
@@ -157,6 +157,75 @@ function PostChip({ posts }: { posts: Post[] }) {
         </a>
       ))}
     </li>
+  );
+}
+
+// A post in a calendar cell: time and networks on the first line, the text on the second; the "+N more" list has the links out.
+function GridChip({ posts }: { posts: Post[] }) {
+  const p = posts[0]!;
+  return (
+    <li className="min-w-0 rounded text-xs hover:bg-ink/[0.045]">
+      <Link href={`/posts/${p.id}`} className="grid min-w-0 px-1.5 py-0.5 leading-4 hover:underline">
+        <span className="flex min-w-0 items-center gap-1 whitespace-nowrap text-ink-soft">
+          <span aria-hidden="true" className="dot shrink-0" data-status={p.status} />
+          <span className="sr-only">{statusName[p.status]}: </span>
+          <span className="tabular-nums">{time(postDay(p)!)}</span>
+          {posts.map((v) => (
+            <PlatformMark key={v.id} platform={v.platform} className="size-3" />
+          ))}
+          {p.lists.length > 0 && <span className="min-w-0 truncate font-bold text-ink">{p.lists.map(partLabel).join(", ")}</span>}
+        </span>
+        <span className="truncate">{p.body.trim().slice(0, 200) || "(images only)"}</span>
+      </Link>
+    </li>
+  );
+}
+
+// "+N more" in a calendar cell: a dialog next to the button with every post of the day as a full row.
+function DayMore({ day, list, hidden }: { day: Date; list: Post[][]; hidden: number }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const id = useId();
+  const date = day.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
+  const open = (e: MouseEvent<HTMLButtonElement>) => {
+    const d = ref.current!;
+    d.showModal();
+    const b = e.currentTarget.getBoundingClientRect();
+    const { width, height } = d.getBoundingClientRect();
+    d.style.left = `${Math.max(8, Math.min(b.left, innerWidth - width - 8))}px`;
+    d.style.top = `${b.bottom + height + 12 < innerHeight ? b.bottom + 4 : Math.max(8, b.top - height - 4)}px`;
+  };
+  return (
+    <>
+      <button
+        type="button"
+        aria-label={`Show all ${list.length} posts on ${date}`}
+        aria-haspopup="dialog"
+        onClick={open}
+        className="rounded px-1.5 text-left text-xs font-bold leading-5 text-ink-soft hover:bg-ink/[0.045] hover:text-ink"
+      >
+        +{hidden} more
+      </button>
+      <dialog
+        ref={ref}
+        aria-labelledby={id}
+        onClick={(e) => e.target === ref.current && ref.current.close()}
+        className="fixed m-0 max-h-[calc(100vh-1rem)] w-[min(30rem,calc(100vw-1rem))] overflow-auto rounded-lg bg-paper p-0 text-ink shadow-2xl backdrop:bg-transparent"
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-[var(--line-soft)] bg-[var(--side)] py-1.5 pl-3 pr-1.5 sm:pl-4">
+          <h3 id={id} className="text-xs font-bold">
+            {date} <span className="font-normal text-ink-soft">{list.length} posts</span>
+          </h3>
+          <button type="button" className="icon-btn" aria-label="Close" onClick={() => ref.current?.close()}>
+            <Icon name="close" />
+          </button>
+        </div>
+        <ul className="divide-y divide-[var(--line-soft)]">
+          {list.map((v) => (
+            <PostRow key={v[0]!.id} posts={v} />
+          ))}
+        </ul>
+      </dialog>
+    </>
   );
 }
 
@@ -477,34 +546,38 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
                 {monthWeeks(month.y, month.m).map((week, i) => (
                   <tr key={i}>
                     {week.map((day, j) => {
-                      const items = day ? calendarPosts.filter((p) => sameDay(postDay(p) ?? new Date(0), day)) : [];
+                      const list = day ? monthRows.filter((r) => sameDay(postDay(r[0]!)!, day)) : [];
                       const today = day && sameDay(day, now);
                       return (
                         <td
                           key={j}
                           aria-current={today ? "date" : undefined}
-                          className={`h-28 border-[var(--line-soft)] p-1.5 align-top [&:not(:last-child)]:border-r ${i > 0 ? "border-t" : ""} ${
-                            day ? (today ? "bg-signal/[0.04]" : "") : "bg-[var(--side)]"
+                          className={`border-[var(--line-soft)] p-0 align-top [&:not(:last-child)]:border-r ${i > 0 ? "border-t" : ""} ${
+                            day ? (today ? "bg-signal/[0.05] shadow-[inset_0_2px_0_var(--color-signal-deep)]" : "") : "bg-[var(--side)]"
                           }`}
                         >
-                          {day && (
-                            <>
-                              <p
-                                className={`mb-1 inline-grid h-5 min-w-5 place-items-center rounded px-1 text-xs tabular-nums ${
-                                  today ? "bg-signal-deep font-bold text-paper" : "text-ink-soft"
-                                }`}
-                              >
-                                {day.getDate()}
-                              </p>
-                              {items.length > 0 && (
-                                <ul className="grid gap-1">
-                                  {chips(items).map((v) => (
-                                    <PostChip key={v[0]!.id} posts={v} />
-                                  ))}
-                                </ul>
-                              )}
-                            </>
-                          )}
+                          {/* Every week is as tall as three two-line chips and "+N more", however busy the days. */}
+                          <div className="flex h-[10.5rem] flex-col gap-0.5 overflow-hidden p-1">
+                            {day && (
+                              <>
+                                <p
+                                  className={`ml-0.5 inline-grid h-5 min-w-5 place-items-center self-start rounded px-1 text-xs tabular-nums ${
+                                    today ? "bg-signal-deep font-bold text-paper" : "text-ink-soft"
+                                  }`}
+                                >
+                                  {day.getDate()}
+                                </p>
+                                {list.length > 0 && (
+                                  <ul className="grid gap-0.5">
+                                    {list.slice(0, 3).map((v) => (
+                                      <GridChip key={v[0]!.id} posts={v} />
+                                    ))}
+                                  </ul>
+                                )}
+                                {list.length > 3 && <DayMore day={day} list={list} hidden={list.length - 3} />}
+                              </>
+                            )}
+                          </div>
                         </td>
                       );
                     })}
