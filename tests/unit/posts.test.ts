@@ -577,3 +577,29 @@ describe("X post length by plan", () => {
     expect(checkThread("one", [], parts, "x", true)).toBeNull();
   });
 });
+
+describe("post list filters", () => {
+  it("reads the URL, dropping values brain doesn't know, and writes back only what is set", async () => {
+    const { parseFilters, filterQuery } = await import("@/lib/posts");
+    const f = parseFilters(new URLSearchParams("q=%20Launch%20&status=failed&network=x"));
+    expect(f).toEqual({ q: "Launch", status: "failed", network: "x" });
+    expect(filterQuery(f)).toBe("?q=Launch&status=failed&network=x");
+    expect(parseFilters(new URLSearchParams("status=nope&network=myspace"))).toEqual({ q: "", status: "all", network: "all" });
+    expect(filterQuery({ q: "", status: "all", network: "all" })).toBe("");
+  });
+
+  it("matches a row on its text, status and any version's network, skipping one filter for counts", async () => {
+    const { matchesFilters } = await import("@/lib/posts");
+    type Row = Parameters<typeof matchesFilters>[0];
+    const row = [
+      { body: "Launch DAY", status: "failed", platform: "bluesky" },
+      { body: "Launch DAY", status: "failed", platform: "x" },
+    ] as Row;
+    expect(matchesFilters(row, { q: "launch day", status: "failed", network: "x" })).toBe(true);
+    expect(matchesFilters(row, { q: "other", status: "all", network: "all" })).toBe(false);
+    expect(matchesFilters(row, { q: "", status: "published", network: "all" })).toBe(false);
+    expect(matchesFilters(row, { q: "", status: "published", network: "all" }, "status")).toBe(true);
+    expect(matchesFilters(row, { q: "", status: "all", network: "threads" })).toBe(false);
+    expect(matchesFilters(row, { q: "", status: "all", network: "threads" }, "network")).toBe(true);
+  });
+});

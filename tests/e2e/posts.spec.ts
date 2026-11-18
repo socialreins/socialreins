@@ -147,6 +147,104 @@ test("on a phone the month is a list of days, not a wide grid", async ({ page })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
+// A month of posts for the list's filters: today is 10 November.
+async function listMonth(page: Page) {
+  await page.clock.setFixedTime(new Date("2026-11-10T12:00:00+01:00"));
+  await brain(page);
+  await page.route(/\/v1\/posts(\?.*)?$/, (route) =>
+    route.fulfill({
+      json:
+        new URL(route.request().url()).searchParams.get("status") === "draft"
+          ? [post("p-draft", { body: "An unfinished launch note" })]
+          : [
+              post("p-old", { status: "published", scheduled_at: "2026-11-03T08:00:00Z", published_at: "2026-11-03T08:00:00Z", body: "Hello Bluesky", targets: [target()] }),
+              post("p-fail", { status: "failed", scheduled_at: "2026-11-05T08:00:00Z", error: "Bluesky refused the image", body: "Broken upload" }),
+              post("p-today", { status: "scheduled", scheduled_at: "2026-11-10T15:00:00Z", body: "Launch day" }),
+              post("p-x", { platform: "x", status: "scheduled", scheduled_at: "2026-11-20T15:00:00Z", body: "Follow-up on X" }),
+            ],
+    }),
+  );
+}
+
+test("posts shows today and later first and folds the earlier days of the month", async ({ page }) => {
+  await listMonth(page);
+  await page.goto("/posts");
+  const upcoming = page.getByRole("list", { name: "Posts in November 2026" });
+  await expect(upcoming.getByRole("link", { name: /Launch day$/ })).toHaveAttribute("href", "/t/acme22/posts/p-today");
+  await expect(upcoming.getByText("Today")).toBeVisible();
+  await expect(upcoming.getByText("Scheduled")).toHaveCount(2);
+  const earlier = page.getByRole("list", { name: "Earlier posts in November 2026" });
+  await expect(earlier.getByRole("link", { name: /Hello Bluesky$/ })).toBeHidden();
+  await page.getByText("Earlier this month (2 posts)").click();
+  await expect(earlier.getByRole("link", { name: /Hello Bluesky$/ })).toHaveAttribute("href", "/t/acme22/posts/p-old");
+  await expect(earlier.getByRole("link", { name: "View on Bluesky" })).toBeVisible();
+  await expect(earlier.getByText("Failed", { exact: true })).toBeVisible();
+  await expect(earlier.getByText("Bluesky refused the image")).toBeVisible();
+
+  // Another month shows every day, with nothing folded.
+  await page.getByRole("button", { name: "Previous month" }).click();
+  await expect(page.getByRole("heading", { name: "October 2026" })).toBeVisible();
+  await expect(page.getByText(/Earlier this month/)).toHaveCount(0);
+});
+
+test("posts search matches the text of posts and drafts, in the URL", async ({ page }) => {
+  await listMonth(page);
+  await page.goto("/posts");
+  await page.getByRole("searchbox", { name: "Search posts" }).fill("LAUNCH");
+  await expect(page).toHaveURL("/t/acme22/posts?q=LAUNCH");
+  await expect(page.getByRole("list", { name: "Posts in November 2026" }).getByRole("link")).toHaveCount(1);
+  await expect(page.getByRole("link", { name: /Follow-up on X/ })).toHaveCount(0);
+  await expect(page.getByText(/Earlier this month/)).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Drafts" }).getByRole("link", { name: "An unfinished launch note" })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("searchbox", { name: "Search posts" })).toHaveValue("LAUNCH");
+  await expect(page.getByRole("link", { name: /Follow-up on X/ })).toHaveCount(0);
+});
+
+test("posts status and network filters count, narrow the list and survive a reload", async ({ page }) => {
+  await listMonth(page);
+  await page.goto("/posts");
+  const status = page.getByRole("list", { name: "Status" });
+  await expect(status.getByRole("button", { name: "All 5" })).toHaveAttribute("aria-pressed", "true");
+  await expect(status.getByRole("button", { name: "Scheduled 2" })).toBeVisible();
+  await expect(status.getByRole("button", { name: "Draft 1" })).toBeVisible();
+  await status.getByRole("button", { name: /^Scheduled/ }).click();
+  await expect(page).toHaveURL("/t/acme22/posts?status=scheduled");
+  await expect(page.getByRole("list", { name: "Posts in November 2026" }).getByRole("link")).toHaveCount(2);
+  await expect(page.getByText(/Earlier this month/)).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Drafts" }).getByText("No drafts match these filters.")).toBeVisible();
+
+  const network = page.getByRole("list", { name: "Network" });
+  await network.getByRole("button", { name: /^X/ }).click();
+  await expect(page).toHaveURL("/t/acme22/posts?status=scheduled&network=x");
+  await page.reload();
+  await expect(page.getByRole("list", { name: "Status" }).getByRole("button", { name: /^Scheduled/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("list", { name: "Network" }).getByRole("button", { name: /^X/ })).toHaveAttribute("aria-pressed", "true");
+  const shown = page.getByRole("list", { name: "Posts in November 2026" }).getByRole("link");
+  await expect(shown).toHaveCount(1);
+  await expect(shown).toHaveAttribute("href", "/t/acme22/posts/p-x");
+});
+
+test("posts says when the filters hide everything and clears them", async ({ page }) => {
+  await listMonth(page);
+  await page.goto("/posts?q=nothing%20like%20this");
+  await expect(page.getByText("No posts in November 2026 match these filters.")).toBeVisible();
+  await expect(page.getByText("No drafts match these filters.")).toBeVisible();
+  await page.getByRole("button", { name: "Clear filters" }).first().click();
+  await expect(page).toHaveURL("/t/acme22/posts");
+  await expect(page.getByRole("searchbox", { name: "Search posts" })).toHaveValue("");
+  await expect(page.getByRole("link", { name: /Launch day$/ })).toBeVisible();
+});
+
+test("on a phone the posts list fits the screen", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await listMonth(page);
+  await page.goto("/posts");
+  await expect(page.getByRole("link", { name: /Launch day$/ })).toBeVisible();
+  await page.getByText(/Earlier this month/).click();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
 test("a team without Bluesky sees a note linking to connections", async ({ page }) => {
   await brain(page, { accounts: [] });
   await page.goto("/posts/new");

@@ -1,11 +1,27 @@
 "use client";
 
-import { useEffect, useId, useState, type ReactNode } from "react";
-import { TeamLink as Link } from "@/components/team-link";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useSearchParams } from "next/navigation";
+import { TeamLink as Link, useTeamPath } from "@/components/team-link";
 import type { Failure } from "@/lib/auth";
 import { listConnections } from "@/lib/connections";
 import { partLabel } from "@/lib/lists";
-import { isPlatform, listPosts, monthRange, monthWeeks, postDay, rows, sameDay, type Post, type PostStatus } from "@/lib/posts";
+import {
+  filterQuery,
+  isPlatform,
+  listPosts,
+  matchesFilters,
+  monthRange,
+  monthWeeks,
+  parseFilters,
+  postDay,
+  rows,
+  sameDay,
+  type Platform,
+  type Post,
+  type PostFilters,
+  type PostStatus,
+} from "@/lib/posts";
 import { listSets, type SocialSet } from "@/lib/sets";
 import { PlatformIcon, platformName, platformOf } from "@/components/platform-icons";
 import { isFailure, problemText } from "@/components/team-ui";
@@ -170,6 +186,142 @@ function MonthList({ posts, y, m, title }: { posts: Post[]; y: number; m: number
   );
 }
 
+// The Posts list's choices, in the order the chips show them.
+const statusChips: PostStatus[] = ["scheduled", "queued", "published", "failed", "deleted", "draft"];
+const noFilters: PostFilters = { q: "", status: "all", network: "all" };
+const failText = (posts: Post[]) => posts.map((p) => p.error ?? p.targets.find((t) => t.error)?.error).find(Boolean);
+
+// One line of the Posts list: time, networks, text and status; the whole line opens the post.
+function PostRow({ posts }: { posts: Post[] }) {
+  const p = posts[0]!;
+  const remote = posts.flatMap((v) => v.targets.filter((t) => t.remote_url && t.status === "published").map((t) => ({ ...t, platform: v.platform })));
+  const error = p.status === "failed" ? failText(posts) : undefined;
+  return (
+    <li className="relative flex flex-wrap items-start gap-x-3 gap-y-0.5 px-3 py-2.5 hover:bg-ink/[0.03] sm:items-center sm:px-4">
+      <Link href={`/posts/${p.id}`} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-sm after:absolute after:inset-0 sm:flex-nowrap">
+        <span className="w-[4.5rem] shrink-0 text-ink-soft tabular-nums">{time(postDay(p)!)}</span>
+        <span className="flex min-w-9 shrink-0 items-center gap-1">
+          {posts.map((v) => (
+            <PlatformMark key={v.id} platform={v.platform} className="size-4" />
+          ))}
+        </span>
+        <span className="min-w-0 basis-full truncate sm:flex-1 sm:basis-auto">
+          {p.lists.length > 0 && <span className="font-bold">{p.lists.map(partLabel).join(", ")}: </span>}
+          {p.body.trim().slice(0, 200) || "(images only)"}
+        </span>
+      </Link>
+      <StatusBadge status={p.status} />
+      {remote.map((t) => (
+        <a
+          key={t.id}
+          href={t.remote_url!}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`View on ${platformName(t.platform)}`}
+          className="relative z-10 shrink-0 rounded-md p-1 text-ink-soft hover:bg-ink/10 hover:text-ink"
+        >
+          <Icon name="external" className="size-3.5" />
+        </a>
+      ))}
+      {error && (
+        <p className="basis-full truncate text-xs sm:pl-[5.25rem] text-signal-deep" title={error}>
+          {error}
+        </p>
+      )}
+    </li>
+  );
+}
+
+function DayGroup({ date, list, today }: { date: Date; list: Post[][]; today: boolean }) {
+  return (
+    <li aria-current={today ? "date" : undefined}>
+      <h3 className={`flex items-baseline gap-2 border-b border-[var(--line-soft)] bg-[var(--side)] px-3 py-1.5 text-xs sm:px-4 ${today ? "text-ink" : "text-ink-soft"}`}>
+        {today && <span className="font-bold text-signal-deep">Today</span>}
+        <span className="font-bold">{date.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}</span>
+        <span className="ml-auto tabular-nums">{list.length === 1 ? "1 post" : `${list.length} posts`}</span>
+      </h3>
+      <ul className="divide-y divide-[var(--line-soft)]">
+        {list.map((v) => (
+          <PostRow key={v[0]!.id} posts={v} />
+        ))}
+      </ul>
+    </li>
+  );
+}
+
+// A row of toggle chips; `counts` is filled once the posts are in.
+function Chips<T extends string>({ label, value, options, onPick }: { label: string; value: T; options: { id: T; name: ReactNode; count?: number }[]; onPick: (v: T) => void }) {
+  return (
+    <ul aria-label={label} className="flex flex-wrap gap-1.5">
+      {options.map((o) => (
+        <li key={o.id}>
+          <button
+            type="button"
+            aria-pressed={value === o.id}
+            onClick={() => onPick(o.id)}
+            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-bold ${
+              value === o.id ? "border-ink bg-ink text-paper" : "border-ink/15 text-ink-soft hover:border-ink hover:text-ink"
+            }`}
+          >
+            {o.name}
+            {o.count !== undefined && <span className={`tabular-nums ${value === o.id ? "opacity-75" : "font-normal"}`}>{o.count}</span>}
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// The month's posts by day under the filters: from today on first, earlier days of the current month folded.
+function PostList({ rows: all, y, m, title, filters, onClear }: { rows: Post[][]; y: number; m: number; title: string; filters: PostFilters; onClear: () => void }) {
+  const now = new Date();
+  const days = new Map<number, Post[][]>();
+  for (const r of all.filter((r) => matchesFilters(r, filters))) {
+    const d = postDay(r[0]!)!;
+    days.set(d.getDate(), [...(days.get(d.getDate()) ?? []), r]);
+  }
+  if (all.length === 0) return <p className="card p-5 text-ink-soft">Nothing scheduled or published in {title}.</p>;
+  if (days.size === 0)
+    return (
+      <div className="card grid justify-items-start gap-3 p-5">
+        <p className="text-ink-soft">
+          {filters.status === "draft" ? "Drafts have no day, so they are listed under Drafts." : `No posts in ${title} match these filters.`}
+        </p>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={onClear}>
+          Clear filters
+        </button>
+      </div>
+    );
+  const thisMonth = now.getFullYear() === y && now.getMonth() === m;
+  const entries = [...days].sort(([a], [b]) => a - b);
+  const earlier = thisMonth ? entries.filter(([d]) => d < now.getDate()) : [];
+  const upcoming = thisMonth ? entries.filter(([d]) => d >= now.getDate()) : entries;
+  const group = ([d, list]: [number, Post[][]]) => <DayGroup key={d} date={new Date(y, m, d)} list={list} today={thisMonth && d === now.getDate()} />;
+  const count = earlier.reduce((n, [, l]) => n + l.length, 0);
+  return (
+    <div className="grid gap-4">
+      {upcoming.length > 0 ? (
+        <ol aria-label={`Posts in ${title}`} className="card overflow-hidden">
+          {upcoming.map(group)}
+        </ol>
+      ) : (
+        <p className="card p-5 text-ink-soft">Nothing else planned in {title}.</p>
+      )}
+      {earlier.length > 0 && (
+        <details className="card group overflow-hidden">
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-sm font-bold sm:px-4 [&::-webkit-details-marker]:hidden">
+            <Icon name="right" className="size-4 transition-transform group-open:rotate-90" />
+            Earlier this month ({count === 1 ? "1 post" : `${count} posts`})
+          </summary>
+          <ol aria-label={`Earlier posts in ${title}`} className="border-t border-[var(--line-soft)]">
+            {earlier.map(group)}
+          </ol>
+        </details>
+      )}
+    </div>
+  );
+}
+
 // /posts lists the month's posts by day with the drafts below; /calendar shows the month as a grid (a list of days on narrow screens).
 export function Posts({ view }: { view: "list" | "calendar" }) {
   const now = new Date();
@@ -210,6 +362,30 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
   const calendarPosts = Array.isArray(posts) ? posts.filter((p) => p.status !== "draft") : [];
   const setName = (id: string) => (Array.isArray(sets) ? sets.find((s) => s.id === id)?.name : undefined);
 
+  // The list's filters live in the URL, written with replaceState so typing doesn't add history or reload.
+  const filters = parseFilters(useSearchParams());
+  const teamPath = useTeamPath();
+  const search = useRef<HTMLInputElement>(null);
+  const setFilters = (f: PostFilters) => window.history.replaceState(null, "", teamPath(`/posts${filterQuery(f)}`));
+  const clear = () => {
+    if (search.current) search.current.value = "";
+    setFilters(noFilters);
+  };
+  const monthRows = chips(
+    calendarPosts
+      .filter((p) => postDay(p)?.getFullYear() === month.y && postDay(p)?.getMonth() === month.m)
+      .sort((a, b) => postDay(a)!.getTime() - postDay(b)!.getTime()),
+  );
+  const draftRows = Array.isArray(drafts) ? rows(drafts, () => "") : [];
+  const shownDrafts = draftRows.filter((r) => matchesFilters(r, filters));
+  const loaded = Array.isArray(posts);
+  const counted = (skip: "status" | "network") => [...monthRows, ...draftRows].filter((r) => matchesFilters(r, filters, skip));
+  const byStatus = counted("status");
+  const byNetwork = counted("network");
+  const networks = [...new Set([...monthRows, ...draftRows].flat().map((p) => p.platform))];
+  if (filters.network !== "all" && !networks.includes(filters.network)) networks.push(filters.network);
+  const filtered = filters.q !== "" || filters.status !== "all" || filters.network !== "all";
+
   return (
     <div className="grid gap-10">
       <AccountNote />
@@ -227,6 +403,46 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
             </h2>
           </div>
         </div>
+        {view === "list" && (
+          <div className="grid gap-3">
+            <div role="search" className="flex w-full max-w-md items-center gap-2">
+              <input
+                ref={search}
+                type="search"
+                aria-label="Search posts"
+                placeholder="Search posts"
+                defaultValue={filters.q}
+                maxLength={200}
+                className="field min-w-0 flex-1"
+                onChange={(e) => setFilters({ ...filters, q: e.target.value.trim() })}
+              />
+            </div>
+            <Chips
+              label="Status"
+              value={filters.status}
+              onPick={(status) => setFilters({ ...filters, status })}
+              options={[
+                { id: "all" as const, name: "All", count: loaded ? byStatus.length : undefined },
+                ...statusChips.map((s) => ({ id: s, name: statusName[s], count: loaded ? byStatus.filter((r) => r[0]!.status === s).length : undefined })),
+              ]}
+            />
+            {networks.length > 1 || filters.network !== "all" ? (
+              <Chips
+                label="Network"
+                value={filters.network}
+                onPick={(network) => setFilters({ ...filters, network })}
+                options={[
+                  { id: "all" as Platform | "all", name: "All networks", count: loaded ? byNetwork.length : undefined },
+                  ...networks.map((n) => ({
+                    id: n,
+                    name: <PlatformMark platform={n} named className="size-3.5" />,
+                    count: loaded ? byNetwork.filter((r) => r.some((p) => p.platform === n)).length : undefined,
+                  })),
+                ]}
+              />
+            ) : null}
+          </div>
+        )}
         {posts === null ? (
           <div className="h-96 rounded-2xl bg-ink/5 motion-safe:animate-pulse" role="status">
             <span className="sr-only">Loading posts...</span>
@@ -237,10 +453,13 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
           </p>
         ) : (
           <>
+            {view === "list" && <PostList rows={monthRows} y={month.y} m={month.m} title={title} filters={filters} onClear={clear} />}
             {/* Narrow screens get the month as a list of days; the grid needs about 46rem. */}
-            <div className={view === "calendar" ? "lg:hidden" : ""}>
+            {view === "calendar" && (
+            <div className="lg:hidden">
               <MonthList posts={calendarPosts} y={month.y} m={month.m} title={title} />
             </div>
+            )}
             {view === "calendar" && (
             <div className="card hidden overflow-x-auto lg:block">
             <table className="w-full min-w-[46rem] table-fixed border-collapse text-sm">
@@ -297,6 +516,8 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
             )}
           </>
         )}
+        {/* The list names each post's status; the calendar's dots need the key. */}
+        {view === "calendar" && (
         <ul aria-label="Colors" className="flex flex-wrap gap-2">
           {legend.map((s) => (
             <li key={s}>
@@ -304,6 +525,7 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
             </li>
           ))}
         </ul>
+        )}
       </section>
       {view === "list" && (
       <section aria-labelledby={`${ids}-drafts`} className="grid gap-4">
@@ -318,9 +540,18 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
           </p>
         ) : drafts.length === 0 ? (
           <p className="text-ink-soft">No drafts. Posts you save without scheduling show up here.</p>
+        ) : shownDrafts.length === 0 ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-ink-soft">No drafts match these filters.</p>
+            {filtered && (
+              <button type="button" className="btn btn-secondary btn-sm" onClick={clear}>
+                Clear filters
+              </button>
+            )}
+          </div>
         ) : (
           <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {rows(drafts, () => "").map((v) => {
+            {shownDrafts.map((v) => {
               const p = v[0]!;
               return (
               <li key={p.id} className="tone relative grid content-start gap-2 rounded-2xl bg-paper p-4 hover:bg-ink/[0.02]" data-status="draft">

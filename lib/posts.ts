@@ -441,6 +441,35 @@ export function rows(posts: Post[], key: (p: Post) => string): Post[][] {
   return [...out.values()];
 }
 
+// The Posts list's filters, kept in the URL as ?q=&status=&network= (a value brain doesn't know means all).
+export type PostFilters = { q: string; status: PostStatus | "all"; network: Platform | "all" };
+const statuses: PostStatus[] = ["draft", "scheduled", "queued", "published", "failed", "deleted"];
+export function parseFilters(params: { get: (k: string) => string | null }): PostFilters {
+  const status = params.get("status") ?? "";
+  const network = params.get("network") ?? "";
+  return {
+    q: (params.get("q") ?? "").trim(),
+    status: statuses.includes(status as PostStatus) ? (status as PostStatus) : "all",
+    network: isPlatform(network) ? network : "all",
+  };
+}
+export function filterQuery(f: PostFilters): string {
+  const q = new URLSearchParams();
+  if (f.q) q.set("q", f.q);
+  if (f.status !== "all") q.set("status", f.status);
+  if (f.network !== "all") q.set("network", f.network);
+  return q.size ? `?${q}` : "";
+}
+// Whether a row (the versions of one post) passes the filters, leaving out `skip` to count that filter's choices.
+export function matchesFilters(row: Post[], f: PostFilters, skip?: "status" | "network"): boolean {
+  const q = f.q.toLowerCase();
+  return (
+    (!q || row.some((p) => p.body.toLowerCase().includes(q))) &&
+    (skip === "status" || f.status === "all" || row[0]!.status === f.status) &&
+    (skip === "network" || f.network === "all" || row.some((p) => p.platform === f.network))
+  );
+}
+
 export const sameDay = (a: Date, b: Date) =>
   a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 
