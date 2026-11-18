@@ -655,8 +655,8 @@ test("a cover image is offered for exactly one video, checked and sent with the 
   await expect(cover).toHaveCount(0);
   await page.getByLabel("Image 1 link").fill("https://example.com/clip.mp4");
   await expect(cover).toBeVisible();
-  await expect(page.getByText("YouTube takes a JPEG or PNG")).toBeVisible();
   await page.getByText("Where the cover goes").click();
+  await expect(page.getByText("YouTube takes a JPEG or PNG")).toBeVisible();
   await expect(page.getByText("YouTube needs a verified channel")).toBeVisible();
 
   await cover.fill("http://example.com/cover.jpg");

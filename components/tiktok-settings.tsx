@@ -19,7 +19,7 @@ const External = ({ href, children }: { href: string; children: string }) => (
 // Content Policy joins the Music Usage Confirmation when Branded content is ticked.
 export function TikTokConsent({ settings }: { settings: TikTokSettings }) {
   return (
-    <p id="tiktok-consent" className="text-sm">
+    <p id="tiktok-consent" className="text-xs">
       By posting, you agree to TikTok&apos;s{" "}
       {settings.commercial_content && settings.branded_content && (
         <>

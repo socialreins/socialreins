@@ -128,6 +128,8 @@ export function PostEditor({ id }: { id?: string }) {
   // The open tab, and whether the action bar lists the issues.
   const [tab, setTab] = useState<Tab>("all");
   const [issuesOpen, setIssuesOpen] = useState(false);
+  // On phones the Publish at row hides behind a Schedule button until asked for.
+  const [scheduleOpen, setScheduleOpen] = useState(false);
   // The platforms ticked for a new post; null means every platform with an account in the set.
   const [chosen, setChosen] = useState<Platform[] | null>(null);
   // Per-platform text that replaces the main post on that platform.
@@ -934,6 +936,7 @@ export function PostEditor({ id }: { id?: string }) {
   // Opens a tab and moves focus to it (or to `focus`), for the arrow keys and the notes that link to a tab.
   function openTab(to: Tab, focus = `tab-${to}`) {
     flushSync(() => setTab(to));
+    document.getElementById(`tab-${to}`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
     document.getElementById(focus)?.focus();
   }
 
@@ -1016,10 +1019,11 @@ export function PostEditor({ id }: { id?: string }) {
             <input type="url" inputMode="url" placeholder="https://" className="field font-normal" value={cover} onChange={(e) => setCover(e.target.value)} aria-describedby="post-cover-note" />
           </label>
           <p id="post-cover-note" className="hint">
-            Optional, for the video: {covered.map((p) => `${platformName(p)} takes ${coverTypes[p]}`).join("; ")}.
+            Optional: an image for the video.
           </p>
           <details className="hint">
             <summary className="cursor-pointer select-none font-bold">Where the cover goes</summary>
+            {covered.map((p) => `${platformName(p)} takes ${coverTypes[p]}`).join("; ")}.
             {covered.some((p) => p !== "instagram") && " Facebook and YouTube set it after the video is live (YouTube needs a verified channel); if that fails, the post stays up and says why."}
             {noCover.length > 0 && ` ${names(noCover)} can't take one${noCover.includes("tiktok") ? " (TikTok can only pick a frame of the video)" : ""}, so ${noCover.length > 1 ? "they get" : "it gets"} none.`}
             {noVideo.length > 0 && ` ${names(noVideo)} ${noVideo.length > 1 ? "have" : "has"} no single video here, so ${noVideo.length > 1 ? "they get" : "it gets"} none.`}
@@ -1328,7 +1332,7 @@ export function PostEditor({ id }: { id?: string }) {
           </div>
           <div className="card">
             {tabbed && (
-              <div role="tablist" aria-label="Post versions" onKeyDown={onTabKey} className="flex flex-wrap gap-1 border-b border-[var(--line)] p-2">
+              <div role="tablist" aria-label="Post versions" onKeyDown={onTabKey} className="sticky top-[3.0625rem] z-[4] flex gap-1 overflow-x-auto rounded-t-lg border-b border-[var(--line)] bg-paper p-2 md:top-12">
                 {(["all", ...selected] as Tab[]).map((k) => {
                   const bad = k === "all" ? 0 : issues.filter((i) => i.platform === k).length;
                   return (
@@ -1340,8 +1344,8 @@ export function PostEditor({ id }: { id?: string }) {
                       aria-selected={active === k}
                       aria-controls="post-panel"
                       tabIndex={active === k ? 0 : -1}
-                      onClick={() => setTab(k)}
-                      className="flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-ink-soft hover:bg-ink/[0.04] hover:text-ink aria-selected:bg-ink/[0.07] aria-selected:text-ink aria-selected:shadow-[inset_0_-2px_0_var(--color-signal-deep)]"
+                      onClick={() => openTab(k)}
+                      className="flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 focus-visible:outline-offset-[-3px] text-sm text-ink-soft hover:bg-ink/[0.04] hover:text-ink aria-selected:bg-ink/[0.07] aria-selected:text-ink aria-selected:shadow-[inset_0_-2px_0_var(--color-signal-deep)]"
                     >
                       {k === "all" ? <span className="font-bold">All networks</span> : <PlatformMark platform={k} className="size-4" named />}
                       {bad > 0 && (
@@ -1387,7 +1391,22 @@ export function PostEditor({ id }: { id?: string }) {
                   {issues.length} {issues.length === 1 ? "issue" : "issues"}
                 </button>
               )}
-              <div className="ml-auto flex flex-wrap gap-2">
+              {!scheduleOpen && !at && (
+                <button
+                  type="button"
+                  className="icon-btn sm:hidden"
+                  aria-label="Schedule"
+                  title="Schedule"
+                  aria-expanded={false}
+                  onClick={() => {
+                    flushSync(() => setScheduleOpen(true));
+                    document.getElementById("post-at")?.focus();
+                  }}
+                >
+                  <Icon name="clock" className="size-4" />
+                </button>
+              )}
+              <div className="ml-auto flex gap-2">
                 <button type="submit" name="mode" value="draft" className="btn btn-secondary" disabled={busy !== null}>
                   {busy === "draft" ? "Saving..." : "Save draft"}
                 </button>
@@ -1397,7 +1416,7 @@ export function PostEditor({ id }: { id?: string }) {
                 </button>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-[var(--line)] pt-2">
+            <div className={`${scheduleOpen || at ? "flex" : "hidden"} flex-wrap items-center gap-x-2 gap-y-1 border-t border-[var(--line)] pt-2 sm:flex`}>
               <label htmlFor="post-at" className="text-xs font-bold whitespace-nowrap">
                 Publish at
               </label>
@@ -1457,11 +1476,11 @@ function Counts({ id, text, platforms, xLong = false, alerts }: { id: string; te
   );
 }
 
-// One line of small count chips, e.g. "Bluesky 9/300"; bytes say so, characters are the default.
+// One scrolling line of small count chips, e.g. "Bluesky 9/300", those near or over a limit first so they always show.
 function CountChips({ id, counts }: { id: string; counts: { key: string; name: string; n: number; max: number; unit: string }[] }) {
   return (
-    <ul id={id} className="flex flex-wrap justify-end gap-1 text-xs tabular-nums">
-      {counts.map(({ key, name, n, max, unit }) => (
+    <ul id={id} className="flex gap-1 overflow-x-auto text-xs whitespace-nowrap tabular-nums">
+      {[...counts].sort((a, b) => Number(b.n > b.max - 20) - Number(a.n > a.max - 20) || Number(b.n > b.max) - Number(a.n > a.max)).map(({ key, name, n, max, unit }) => (
         <li
           key={key}
           title={`${name}: ${n.toLocaleString("en")} of ${max.toLocaleString("en")} ${unit}`}
