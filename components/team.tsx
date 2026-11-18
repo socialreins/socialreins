@@ -16,12 +16,16 @@ import {
   mayChange,
   removeMember,
   renameTeam,
+  setNewsletter,
   setPublicPages,
+  listSubscribers,
+  removeSubscriber,
   revokeInvitation,
   setRole,
   type Invitation,
   type Member,
 } from "@/lib/teams";
+import { subscribersCsv, type Subscriber } from "@/lib/newsletter";
 import { isFailure, linkButton, problemText, roleName, Status, useAction } from "@/components/team-ui";
 
 const heading = "font-display text-xl font-extrabold tracking-tight";
@@ -45,6 +49,7 @@ function TeamPage({ user }: { user: User }) {
       </p>
       {manages(mine) && <Rename team={team} onRenamed={setTeam} />}
       {manages(mine) && <PublicPages team={team} onChanged={setTeam} />}
+      {manages(mine) && team.public_pages && <Newsletter team={team} onChanged={setTeam} />}
       <Members me={user} mine={mine} onChanged={() => setVersion((v) => v + 1)} />
       {manages(mine) && <Invitations version={version} />}
       {mine === "owner" && <DeleteTeam team={team} />}
@@ -113,6 +118,104 @@ function PublicPages({ team, onChanged }: { team: Team; onChanged: (t: Team) => 
       </label>
       <p className="hint">A public page shows a published post with extra details and links to anyone who has its link. Each post is switched on by itself.</p>
       <Status problem={problem} done={done} />
+    </section>
+  );
+}
+
+function Newsletter({ team, onChanged }: { team: Team; onChanged: (t: Team) => void }) {
+  const [list, setList] = useState<Subscriber[] | Failure | null>(null);
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const { busy, problem, done, run } = useAction();
+
+  useEffect(() => {
+    listSubscribers().then((r) => setList(isFailure(r) ? r : r.subscribers));
+  }, []);
+
+  const confirmed = Array.isArray(list) ? list.filter((s) => s.confirmed).length : 0;
+
+  function download() {
+    if (!Array.isArray(list)) return;
+    const url = URL.createObjectURL(new Blob([subscribersCsv(list)], { type: "text/csv" }));
+    const a = Object.assign(document.createElement("a"), { href: url, download: "subscribers.csv" });
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <section aria-labelledby="newsletter-heading" className="grid gap-3">
+      <h2 id="newsletter-heading" className={heading}>
+        Newsletter
+      </h2>
+      <label className="flex cursor-pointer items-center gap-2">
+        <input
+          type="checkbox"
+          checked={!!team.newsletter}
+          disabled={busy !== null}
+          onChange={() =>
+            run("newsletter", () => setNewsletter(!team.newsletter), (t) => {
+              onChanged(t);
+              return t.newsletter ? "Public pages now offer a newsletter sign-up." : "Public pages no longer offer a newsletter sign-up.";
+            })
+          }
+        />
+        Public pages offer a newsletter sign-up
+      </label>
+      <p className="hint">Visitors give their email and confirm it with a link we send. Nothing is sent to them yet: you get the list to use in your own mailing tool.</p>
+      <Status problem={problem} done={done} />
+      {list === null ? (
+        <p className="text-ink-soft">Loading subscribers...</p>
+      ) : isFailure(list) ? (
+        <p role="alert" className="waitlist-error">
+          Subscribers couldn&apos;t be loaded. {problemText(list)}
+        </p>
+      ) : list.length === 0 ? (
+        <p>No subscribers yet.</p>
+      ) : (
+        <>
+          <p>
+            {confirmed} confirmed, {list.length - confirmed} waiting for the email link.
+          </p>
+          <button type="button" className={`justify-self-start ${linkButton}`} disabled={confirmed === 0} onClick={download}>
+            Download the confirmed ones (CSV)
+          </button>
+          <ul className="grid gap-2">
+            {list.map((s) => (
+              <li key={s.id} className="grid gap-1 border-l-4 border-ink bg-paper px-4 py-3">
+                <p className="font-bold">{s.email}</p>
+                <p className="text-sm text-ink-soft">
+                  {s.confirmed ? "Confirmed" : "Not confirmed yet"}. Signed up {date(s.subscribed_at)}.
+                </p>
+                {confirming === s.id ? (
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span>Remove {s.email}? They can sign up again.</span>
+                    <button
+                      type="button"
+                      className={linkButton}
+                      disabled={busy !== null}
+                      onClick={() =>
+                        run(`remove:${s.id}`, () => removeSubscriber(s.id), () => {
+                          setConfirming(null);
+                          setList((l) => (Array.isArray(l) ? l.filter((x) => x.id !== s.id) : l));
+                          return `${s.email} was removed.`;
+                        })
+                      }
+                    >
+                      {busy === `remove:${s.id}` ? "Removing..." : "Yes, remove"}
+                    </button>
+                    <button type="button" className={linkButton} disabled={busy !== null} onClick={() => setConfirming(null)}>
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button type="button" className={`justify-self-start ${linkButton}`} disabled={busy !== null} aria-label={`Remove ${s.email}`} onClick={() => setConfirming(s.id)}>
+                    Remove
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </section>
   );
 }
