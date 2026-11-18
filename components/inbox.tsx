@@ -213,9 +213,10 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
     (pane === "detail" ? itemId : pane === "items" ? inboxId && !itemId : !inboxId && !itemId) ? "block" : "hidden";
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[12rem_minmax(0,1fr)_minmax(0,1.25fr)] xl:items-start">
-      <nav aria-labelledby="inboxes-heading" className={`${show("inboxes")} grid content-start gap-3 xl:block`}>
-        <div className="flex items-center justify-between gap-2 xl:mb-3">
+    // From lg up the inbox fills the window under the top bar (3rem) and main's padding (2rem twice); each pane scrolls on its own.
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:h-[calc(100dvh-7rem)] lg:grid-cols-[11rem_minmax(0,1fr)_minmax(0,1.25fr)] lg:grid-rows-[minmax(0,1fr)] lg:gap-4 xl:grid-cols-[12rem_minmax(0,1fr)_minmax(0,1.25fr)] xl:gap-6">
+      <nav aria-labelledby="inboxes-heading" className={`${show("inboxes")} grid content-start gap-3 lg:block lg:overflow-y-auto lg:overscroll-contain`}>
+        <div className="flex items-center justify-between gap-2 lg:mb-3">
           <h2 id="inboxes-heading" className="font-display text-lg font-extrabold tracking-tight">
             Inboxes
           </h2>
@@ -237,7 +238,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
                   <Link
                     href={`/inbox/${encodeURIComponent(i.id)}`}
                     aria-current={active ? "page" : undefined}
-                    className={`flex min-w-0 flex-1 items-center gap-2 rounded-xl px-3 py-2 font-bold ${
+                    className={`flex min-w-0 flex-1 items-center gap-2 rounded-xl px-3 py-2 font-bold focus-visible:outline-offset-[-3px] ${
                       active ? "bg-ink text-paper" : "text-ink-soft hover:bg-ink/5 hover:text-ink"
                     }`}
                   >
@@ -247,7 +248,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
                   {canManage && !i.is_all && (
                     <button
                       type="button"
-                      className="grid size-8 shrink-0 place-items-center rounded-lg text-ink-soft hover:bg-ink/5 hover:text-ink"
+                      className="grid size-8 shrink-0 place-items-center rounded-lg text-ink-soft hover:bg-ink/5 hover:text-ink focus-visible:outline-offset-[-3px]"
                       aria-label={`Edit ${i.name}`}
                       onClick={() => setEditing(i)}
                     >
@@ -267,15 +268,15 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
         )}
       </nav>
 
-      <section aria-labelledby="items-heading" className={`${show("items")} grid content-start gap-3 xl:block`}>
-        <Link href="/inbox" className="flex items-center gap-1 text-sm font-bold text-ink-soft hover:text-ink xl:hidden">
+      <section aria-labelledby="items-heading" className={`${show("items")} grid content-start gap-3 lg:flex lg:flex-col lg:gap-0`}>
+        <Link href="/inbox" className="flex items-center gap-1 text-sm font-bold text-ink-soft hover:text-ink lg:hidden">
           <Icon name="left" className="size-4" />
           Inboxes
         </Link>
-        <h2 id="items-heading" className="font-display text-lg font-extrabold tracking-tight xl:mb-3">
+        <h2 id="items-heading" className="font-display text-lg font-extrabold tracking-tight lg:mb-3">
           {current?.name ?? "Inbox"}
         </h2>
-        <div className="grid gap-3 xl:mb-3">
+        <div className="grid gap-3 lg:mb-3">
           <nav aria-label="State" className="flex gap-1 rounded-full bg-ink/5 p-1">
             {(["open", "done"] as const).map((s) => (
               <Link
@@ -305,89 +306,103 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
             ))}
           </ul>
         </div>
-        {noAccounts ? (
-          <div className="card grid gap-3 p-5">
-            <p>
-              <strong className="block">No accounts connected</strong>
-              <span className="text-ink-soft">Connect a Bluesky account and its comments, mentions and DMs land here.</span>
+        {/* p-px keeps the card's 1px ring inside the scroller. */}
+        <div className="grid content-start gap-3 lg:block lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain lg:p-px">
+          {noAccounts ? (
+            <div className="card grid gap-3 p-5">
+              <p>
+                <strong className="block">No accounts connected</strong>
+                <span className="text-ink-soft">Connect a Bluesky account and its comments, mentions and DMs land here.</span>
+              </p>
+              <Link href="/connections" className="btn btn-primary justify-self-start">
+                Connect an account
+              </Link>
+            </div>
+          ) : page === null ? (
+            <div role="status" className="h-64 rounded-2xl bg-ink/5 motion-safe:animate-pulse">
+              <span className="sr-only">Loading items...</span>
+            </div>
+          ) : isFailure(page) ? (
+            <p role="alert" className="waitlist-error">
+              Items couldn&apos;t be loaded. {problemText(page)}
             </p>
-            <Link href="/connections" className="btn btn-primary justify-self-start">
-              Connect an account
-            </Link>
-          </div>
-        ) : page === null ? (
-          <div role="status" className="h-64 rounded-2xl bg-ink/5 motion-safe:animate-pulse">
-            <span className="sr-only">Loading items...</span>
-          </div>
-        ) : isFailure(page) ? (
-          <p role="alert" className="waitlist-error">
-            Items couldn&apos;t be loaded. {problemText(page)}
-          </p>
-        ) : items.length === 0 ? (
-          <>
-          <p className="card p-5 text-ink-soft">
-            {state === "done"
-              ? "Nothing marked done yet."
-              : kind !== "all"
-                ? "No items of this kind here."
-                : "Nothing here yet. New comments, mentions and DMs show up here within a minute."}
-          </p>
-          {loadMoreButton}
-          </>
-        ) : (
-          <>
-            <ul aria-label="Items" className="card divide-y divide-ink/10 overflow-hidden">
-              {items.map((i) => {
-                const selected = i.id === itemId;
-                return (
-                  <li key={i.id} className="relative">
-                    <Link
-                      href={href({ item: i.id })}
-                      scroll={false}
-                      onClick={() => setOpened(i.id)}
-                      aria-current={selected ? "true" : undefined}
-                      className={`flex gap-3 px-4 py-3 ${selected ? "bg-signal/[0.07] shadow-[inset_3px_0_0_var(--color-signal)]" : "hover:bg-ink/[0.03]"}`}
-                    >
-                      <AuthorAvatar author={i.author} />
-                      <span className="grid min-w-0 flex-1 gap-0.5">
-                        <span className="flex min-w-0 items-center gap-2">
-                          {!i.replied_at && (
-                            <>
-                              <span aria-hidden="true" className="size-2 shrink-0 rounded-full bg-signal" title="Unanswered" />
-                              <span className="sr-only">Unanswered:</span>
-                            </>
-                          )}
-                          <strong className="min-w-0 truncate">{authorName(i.author)}</strong>
-                          {/* The handle gives way first when the row is narrow. */}
-                          {i.author.handle && i.author.name && <span className="min-w-0 shrink-[4] truncate text-sm text-ink-soft">@{i.author.handle}</span>}
-                          <time dateTime={i.received_at} className="ml-auto shrink-0 text-xs text-ink-soft">
-                            {relativeTime(i.received_at)}
-                          </time>
-                        </span>
-                        <span className="line-clamp-2 text-sm text-ink-soft">{i.text || "(no text)"}</span>
-                        <span className="mt-1">
-                          <KindBadge kind={i.kind} />
-                        </span>
-                      </span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
+          ) : items.length === 0 ? (
+            <>
+            <p className="card p-5 text-ink-soft">
+              {state === "done"
+                ? "Nothing marked done yet."
+                : kind !== "all"
+                  ? "No items of this kind here."
+                  : "Nothing here yet. New comments, mentions and DMs show up here within a minute."}
+            </p>
             {loadMoreButton}
-          </>
-        )}
+            </>
+          ) : (
+            <>
+              <ul
+                aria-label="Items"
+                className="card divide-y divide-ink/10 overflow-hidden"
+                // Up and Down move between rows; Enter opens one, as any link.
+                onKeyDown={(e) => {
+                  const step = e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0;
+                  if (!step) return;
+                  const links = [...e.currentTarget.querySelectorAll("a")];
+                  const next = links[links.indexOf(document.activeElement as HTMLAnchorElement) + step];
+                  if (!next) return;
+                  e.preventDefault();
+                  next.focus();
+                }}
+              >
+                {items.map((i) => {
+                  const selected = i.id === itemId;
+                  return (
+                    <li key={i.id} className="relative">
+                      <Link
+                        href={href({ item: i.id })}
+                        scroll={false}
+                        onClick={() => setOpened(i.id)}
+                        aria-current={selected ? "true" : undefined}
+                        className={`flex gap-2.5 px-3 py-2.5 focus-visible:outline-offset-[-3px] ${selected ? "bg-signal/[0.07] shadow-[inset_3px_0_0_var(--color-signal)]" : "hover:bg-ink/[0.03]"}`}
+                      >
+                        <AuthorAvatar author={i.author} size="size-9" />
+                        <span className="grid min-w-0 flex-1 gap-0.5">
+                          <span className="flex min-w-0 items-center gap-2">
+                            {!i.replied_at && (
+                              <>
+                                <span aria-hidden="true" className="size-2 shrink-0 rounded-full bg-signal" title="Unanswered" />
+                                <span className="sr-only">Unanswered:</span>
+                              </>
+                            )}
+                            <strong className="min-w-0 truncate">{authorName(i.author)}</strong>
+                            {/* The handle gives way first when the row is narrow. */}
+                            {i.author.handle && i.author.name && <span className="min-w-0 shrink-[4] truncate text-sm text-ink-soft">@{i.author.handle}</span>}
+                            <time dateTime={i.received_at} className="ml-auto shrink-0 text-xs text-ink-soft">
+                              {relativeTime(i.received_at)}
+                            </time>
+                          </span>
+                          <span className="line-clamp-2 text-sm text-ink-soft">{i.text || "(no text)"}</span>
+                          <span className="mt-0.5">
+                            <KindBadge kind={i.kind} />
+                          </span>
+                        </span>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+              {loadMoreButton}
+            </>
+          )}
+        </div>
       </section>
 
-      <section aria-label="Item" className={`${show("detail")} xl:sticky xl:top-10 xl:block`}>
-        <Link href={href({ item: null })} scroll={false} className="mb-3 flex items-center gap-1 text-sm font-bold text-ink-soft hover:text-ink xl:hidden">
+      <section aria-label="Item" className={`${show("detail")} lg:block lg:overflow-y-auto lg:overscroll-contain lg:p-px`}>
+        <Link href={href({ item: null })} scroll={false} className="mb-3 flex items-center gap-1 text-sm font-bold text-ink-soft hover:text-ink lg:hidden">
           <Icon name="left" className="size-4" />
           Back to {current?.name ?? "the inbox"}
         </Link>
         {!itemId ? (
-          <div className="hidden rounded-2xl border border-dashed border-ink/15 p-8 text-center text-ink-soft xl:block">
-            Pick an item to read it and reply.
-          </div>
+          <p className="hidden h-full place-items-center p-8 text-center text-sm text-ink-soft lg:grid">Pick an item to read it and reply.</p>
         ) : detail === null ? (
           <div role="status" className="h-80 rounded-2xl bg-ink/5 motion-safe:animate-pulse">
             <span className="sr-only">Loading the item...</span>
@@ -471,7 +486,8 @@ function Detail({ item, account, focus, onChange }: { item: Item; account?: Conn
     });
 
   return (
-    <article className="card grid grid-cols-[minmax(0,1fr)] gap-5 p-5">
+    // From lg up the card fills the reader: the thread scrolls and the reply box stays at the bottom.
+    <article className="card grid grid-cols-[minmax(0,1fr)] gap-5 p-5 lg:h-full lg:grid-rows-[auto_minmax(6rem,1fr)] lg:gap-4">
       <header className="flex items-start gap-3">
         <AuthorAvatar author={item.author} size="size-12" />
         <div className="min-w-0 flex-1">
@@ -486,7 +502,7 @@ function Detail({ item, account, focus, onChange }: { item: Item; account?: Conn
         <KindBadge kind={item.kind} />
       </header>
 
-      <ol className="grid grid-cols-[minmax(0,1fr)] gap-3" aria-label="Thread">
+      <ol className="grid grid-cols-[minmax(0,1fr)] content-start gap-3 lg:-m-1 lg:overflow-y-auto lg:overscroll-contain lg:p-1" aria-label="Thread">
         <li className="grid justify-items-start gap-1">
           <p className="max-w-[90%] whitespace-pre-wrap break-words rounded-2xl rounded-tl-md bg-canvas px-4 py-3">{item.text || "(no text)"}</p>
           <p className="flex flex-wrap items-center gap-x-3 text-xs text-ink-soft">

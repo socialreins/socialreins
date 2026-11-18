@@ -283,3 +283,49 @@ test("the open list picks up new items without a reload", async ({ page }) => {
   await expect(rows.first()).toContainText("Brand new comment");
   await expect(rows).toHaveCount(2);
 });
+
+test.describe("on a wide screen", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+  test("the panes scroll on their own, not the page, and the reply box stays in view", async ({ page }) => {
+    const kinds = ["comment", "mention", "dm"] as const;
+    await brain(page, "owner", { items: Array.from({ length: 40 }, (_, n) => item(`q${n}`, kinds[n % 3], `Message number ${n}`, { received_at: ago(n * 7) })) });
+    await page.goto("/inbox");
+    const items = page.getByRole("list", { name: "Items" });
+    await expect(items.getByRole("listitem")).toHaveCount(40);
+    const sizes = await items.evaluate((ul) => {
+      const pane = ul.parentElement!;
+      return { doc: document.scrollingElement!.scrollHeight, view: innerHeight, pane: pane.scrollHeight, paneView: pane.clientHeight };
+    });
+    expect(sizes.doc).toBeLessThanOrEqual(sizes.view + 1);
+    expect(sizes.pane).toBeGreaterThan(sizes.paneView);
+    await expect(page.getByText("Pick an item to read it and reply.")).toBeVisible();
+
+    const last = items.getByRole("link", { name: /Message number 39/ });
+    await last.scrollIntoViewIfNeeded();
+    const before = await items.evaluate((ul) => ul.parentElement!.scrollTop);
+    expect(before).toBeGreaterThan(0);
+    await last.click();
+    await expect(page).toHaveURL("/t/acme22/inbox?item=q39");
+    const detail = page.getByRole("region", { name: "Item" });
+    await expect(detail.getByRole("heading", { name: "Bob" })).toBeFocused();
+    await expect(detail.getByLabel("Reply publicly")).toBeInViewport();
+    expect(await items.evaluate((ul) => ul.parentElement!.scrollTop)).toBe(before);
+    expect(await page.evaluate(() => document.scrollingElement!.scrollHeight <= innerHeight + 1)).toBe(true);
+  });
+
+  test("Up and Down move between items, Enter opens one", async ({ page }) => {
+    await brain(page, "owner");
+    await page.goto("/inbox");
+    const items = page.getByRole("list", { name: "Items" });
+    await items.getByRole("link", { name: /What is the price/ }).focus();
+    await page.keyboard.press("ArrowDown");
+    await expect(items.getByRole("link", { name: /Loving @alice/ })).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("ArrowDown");
+    await expect(items.getByRole("link", { name: /Hi, can we talk/ })).toBeFocused();
+    await page.keyboard.press("ArrowUp");
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL("/t/acme22/inbox?item=p2");
+    await expect(page.getByRole("region", { name: "Item" }).getByRole("heading", { name: "Bob" })).toBeFocused();
+  });
+});
