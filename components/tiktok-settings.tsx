@@ -78,7 +78,7 @@ export function TikTokPanel({
   const label = photosOnly ? "photo" : "video";
   const minutes = creator.max_video_post_duration_sec ? Math.floor(creator.max_video_post_duration_sec / 60) : 0;
   return (
-    <section aria-labelledby="tiktok-heading" className="grid gap-4">
+    <section aria-labelledby="tiktok-heading" className="grid gap-4 border-t border-[var(--line)] pt-4">
       {heading}
       <p className="text-sm">
         Posting to <strong data-tiktok-account>{creator.nickname}</strong>.
@@ -105,8 +105,8 @@ export function TikTokPanel({
           {branded ? "Branded content visibility cannot be set to private." : "Only the options TikTok offers this account are listed."}
         </p>
       </div>
-      <fieldset className="grid gap-2">
-        <legend className="label">Allow users to</legend>
+      <fieldset className="flex flex-wrap gap-x-5 gap-y-2">
+        <legend className="label mb-2">Allow users to</legend>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={settings.allow_comment && !creator.comment_disabled} disabled={creator.comment_disabled} onChange={(e) => set({ allow_comment: e.target.checked })} />
           Comment{creator.comment_disabled ? " (turned off in your TikTok settings)" : ""}

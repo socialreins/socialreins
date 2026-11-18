@@ -165,9 +165,9 @@ test("compose checks length, images and schedule before asking brain", async ({ 
   await page.goto("/posts/new");
   const body = page.getByLabel("Post", { exact: true });
   await body.fill("👨‍👩‍👧");
-  await expect(page.getByText("1 of 300 characters")).toBeVisible();
+  await expect(page.getByText("Bluesky 1/300")).toBeVisible();
   await body.fill("a".repeat(301));
-  await expect(page.getByText("301 of 300 characters")).toBeVisible();
+  await expect(page.getByText("Bluesky 301/300")).toBeVisible();
   await expect(body).toHaveAttribute("aria-invalid", "true");
   await expect(page.getByRole("alert").filter({ hasText: "1 over Bluesky's limit" })).toBeVisible();
   await page.getByRole("button", { name: "Save draft" }).click();
@@ -453,9 +453,9 @@ test("a post for several platforms is one group, published on each", async ({ pa
   // Every platform with an account in the set is ticked to start with.
   for (const name of [/Bluesky/, /Threads/, /Instagram/]) await expect(to.getByRole("checkbox", { name })).toBeChecked();
   await page.getByLabel("Post", { exact: true }).fill("Hello all");
-  await expect(page.getByText("Bluesky: 9 of 300 characters")).toBeVisible();
-  await expect(page.getByText("Threads: 9 of 500 characters")).toBeVisible();
-  await expect(page.getByText("Instagram: 9 of 2,200 characters")).toBeVisible();
+  await expect(page.getByText("Bluesky 9/300")).toBeVisible();
+  await expect(page.getByText("Threads 9/500")).toBeVisible();
+  await expect(page.getByText("Instagram 9/2,200")).toBeVisible();
   await page.getByRole("button", { name: "Add image" }).click();
   await page.getByLabel("Image 1 link").fill("https://example.com/a.jpg");
   await page.getByRole("button", { name: "Add to thread" }).click();
@@ -511,6 +511,34 @@ test("Instagram without an image is flagged before brain is asked", async ({ pag
   expect(sent).toMatchObject({ platform: "bluesky", body: "Words only" });
 });
 
+test("the network tabs follow the arrow keys and the issues summary goes to the field to fix", async ({ page }) => {
+  await brain(page, { accounts: [alice, instaAcc] });
+  await page.goto("/posts/new");
+  await page.getByLabel("Post", { exact: true }).fill("Words only");
+  const all = page.getByRole("tab", { name: "All networks" });
+  await expect(all).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: "Instagram" })).toHaveAccessibleName("Instagram (1 issue)");
+  await all.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("tab", { name: "Bluesky" })).toBeFocused();
+  await expect(page.getByRole("tab", { name: "Bluesky" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("region", { name: "Preview" })).toContainText("Alice");
+  await page.keyboard.press("End");
+  await expect(page.getByRole("tab", { name: "Instagram" })).toBeFocused();
+  await expect(page.getByRole("listitem").filter({ hasText: "Instagram needs at least one image or video." })).toBeVisible();
+  await page.keyboard.press("Home");
+  await expect(all).toBeFocused();
+
+  const summary = page.getByRole("button", { name: "1 issue" });
+  await page.getByRole("tab", { name: "Instagram" }).click();
+  await summary.click();
+  await expect(summary).toHaveAttribute("aria-expanded", "true");
+  // The shared images are where Instagram's media comes from, so the link goes to the All tab's images.
+  await page.getByRole("button", { name: "Instagram needs at least one image or video." }).click();
+  await expect(all).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("#media-shared")).toBeFocused();
+});
+
 const linkedinAcc = account("c4", "linkedin", "Alice on LinkedIn");
 
 test("LinkedIn takes 3000 characters and no thread", async ({ page }) => {
@@ -526,7 +554,7 @@ test("LinkedIn takes 3000 characters and no thread", async ({ page }) => {
   await expect(page.getByRole("alert").filter({ hasText: "1 over LinkedIn's limit of 3,000" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Add to thread" })).toHaveCount(0);
   await body.fill("a".repeat(3000));
-  await expect(page.getByText("LinkedIn: 3,000 of 3,000 characters")).toBeVisible();
+  await expect(page.getByText("LinkedIn 3,000/3,000")).toBeVisible();
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page).toHaveURL("/t/acme22/posts/p1");
   expect(sent).toMatchObject({ platform: "linkedin", body: "a".repeat(3000) });
@@ -548,7 +576,7 @@ test("a first comment is offered on LinkedIn, counted and sent with the post", a
   await expect(page.getByRole("alert").filter({ hasText: "LinkedIn takes a first comment of at most 1,250 characters." })).toBeVisible();
   expect(sent).toBeUndefined();
   await comment.fill("Sources: example.org");
-  await expect(page.getByText("LinkedIn: 20 of 1,250 characters")).toBeVisible();
+  await expect(page.getByText("LinkedIn 20/1,250")).toBeVisible();
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page).toHaveURL("/t/acme22/posts/p1");
   expect(sent).toMatchObject({ platform: "linkedin", body: "A claim", first_comment: "Sources: example.org" });
@@ -628,6 +656,7 @@ test("a cover image is offered for exactly one video, checked and sent with the 
   await page.getByLabel("Image 1 link").fill("https://example.com/clip.mp4");
   await expect(cover).toBeVisible();
   await expect(page.getByText("YouTube takes a JPEG or PNG")).toBeVisible();
+  await page.getByText("Where the cover goes").click();
   await expect(page.getByText("YouTube needs a verified channel")).toBeVisible();
 
   await cover.fill("http://example.com/cover.jpg");
@@ -653,7 +682,10 @@ test("a group sends the cover only to the platforms that take one and says so fo
   await page.getByRole("button", { name: "Add image" }).click();
   await page.getByLabel("Image 1 link").fill("https://example.com/clip.mp4");
   await page.getByLabel("Cover image link").fill("https://example.com/cover.png");
+  await page.getByText("Where the cover goes").click();
   await expect(page.getByText("TikTok can't take one (TikTok can only pick a frame of the video), so it gets none.")).toBeVisible();
+  // TikTok's settings live on its tab.
+  await page.getByRole("tab", { name: "TikTok" }).click();
   await page.getByLabel("Who can view this video").selectOption("SELF_ONLY");
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page).toHaveURL("/t/acme22/posts/g-f");
@@ -731,6 +763,7 @@ test("a group gives the YouTube visibility to its YouTube post", async ({ page }
   await page.getByLabel("Post", { exact: true }).fill("My title");
   await page.getByRole("button", { name: "Add image" }).click();
   await page.getByLabel("Image 1 link").fill("https://example.com/clip.mp4");
+  await page.getByRole("tab", { name: "YouTube" }).click();
   await page.getByLabel("YouTube visibility").selectOption("unlisted");
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page).toHaveURL("/t/acme22/posts/g-y");
@@ -771,13 +804,13 @@ test("X counts its own way, takes four images and a thread", async ({ page }) =>
 
   // A link counts 23 however long it is, a Japanese character 2.
   await body.fill(`${"a".repeat(256)} https://example.com/${"b".repeat(80)}`);
-  await expect(page.getByText("X: 280 of 280 characters")).toBeVisible();
+  await expect(page.getByText("X 280/280")).toBeVisible();
   await body.fill(`${"a".repeat(257)} https://example.com/${"b".repeat(80)}`);
   await expect(over("1 over X's limit of 280")).toBeVisible();
   await body.fill("日".repeat(141));
-  await expect(page.getByText("X: 282 of 280 characters")).toBeVisible();
+  await expect(page.getByText("X 282/280")).toBeVisible();
   await body.fill("日".repeat(140));
-  await expect(page.getByText("X: 280 of 280 characters")).toBeVisible();
+  await expect(page.getByText("X 280/280")).toBeVisible();
   await expect(page.getByText(/X takes up to 4 JPEG, PNG or WebP images, or one GIF or MP4 or MOV video\./)).toBeVisible();
 
   // Four images at most.
@@ -824,16 +857,16 @@ test("YouTube needs one video and takes its title from the first line", async ({
 
   // The first line is counted as the title in characters, the rest as the description in bytes.
   await body.fill(`${"a".repeat(101)}\nAbout it`);
-  await expect(page.getByText("YouTube title: 101 of 100 characters")).toBeVisible();
+  await expect(page.getByText("YouTube title 101/100")).toBeVisible();
   await expect(over("1 over YouTube title's limit of 100 characters")).toBeVisible();
   await body.fill(`My title\n${"é".repeat(2501)}`);
-  await expect(page.getByText("YouTube description: 5,002 of 5,000 bytes")).toBeVisible();
+  await expect(page.getByText("YouTube description 5,002/5,000 bytes")).toBeVisible();
   await expect(over("2 over YouTube description's limit of 5,000 bytes")).toBeVisible();
   await body.fill("a <b> c");
   await expect(warning("YouTube doesn't allow < or > in a title or description.")).toBeVisible();
   await body.fill("My title\nSecond line");
-  await expect(page.getByText("YouTube title: 8 of 100 characters")).toBeVisible();
-  await expect(page.getByText("YouTube description: 11 of 5,000 bytes")).toBeVisible();
+  await expect(page.getByText("YouTube title 8/100")).toBeVisible();
+  await expect(page.getByText("YouTube description 11/5,000 bytes")).toBeVisible();
   await expect(warning("YouTube needs a title")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Preview" }).locator("xpath=..").getByText("My title", { exact: true })).toBeVisible();
 
@@ -868,15 +901,25 @@ test("each platform can have its own text, counted against its own limit", async
   await expect(page.getByRole("alert").filter({ hasText: "1 over Bluesky's limit of 300" })).toBeVisible();
   await expect(body).toHaveAttribute("aria-invalid", "true");
 
+  // The Bluesky tab holds its own text; it has an issue while the shared text is too long for it.
+  const bskyTab = page.getByRole("tab", { name: "Bluesky" });
+  await expect(bskyTab).toHaveAccessibleName("Bluesky (1 issue)");
+  await bskyTab.click();
   await page.getByRole("button", { name: "Customize for Bluesky" }).click();
   const own = page.getByRole("textbox", { name: "Bluesky text" });
   await expect(own).toBeFocused();
   await expect(own).toHaveValue("a".repeat(301));
   await own.fill("Short");
-  await expect(page.getByText("Bluesky: 5 of 300 characters")).toBeVisible();
-  await expect(page.getByText("Threads: 301 of 500 characters")).toBeVisible();
+  await expect(page.getByText("Bluesky 5/300")).toBeVisible();
+  await expect(bskyTab).toHaveAccessibleName("Bluesky");
+  await page.getByRole("tab", { name: "All networks" }).click();
+  await expect(page.getByText("Threads 301/500")).toBeVisible();
   await expect(page.getByRole("alert").filter({ hasText: "over" })).toHaveCount(0);
   await expect(body).not.toHaveAttribute("aria-invalid", "true");
+  // The All tab notes the custom text and links to its tab.
+  await page.getByRole("button", { name: "Custom text on Bluesky" }).click();
+  await expect(bskyTab).toBeFocused();
+  await expect(bskyTab).toHaveAttribute("aria-selected", "true");
 
   await page.getByRole("button", { name: "Use the main post on Bluesky" }).click();
   await expect(page.getByRole("button", { name: "Customize for Bluesky" })).toBeFocused();
@@ -905,6 +948,7 @@ test("each platform can have its own media, or none, in place of the shared imag
   await page.getByLabel("Post", { exact: true }).fill("One post, three styles");
   // Instagram needs media, so with none shared it warns until it has its own.
   await expect(page.getByText("Instagram needs", { exact: false }).first()).toBeVisible();
+  await page.getByRole("tab", { name: "Instagram" }).click();
   await page.getByRole("button", { name: "Different media for Instagram" }).click();
   const insta = page.getByRole("group", { name: "Instagram media" });
   await expect(insta).toBeFocused();
@@ -915,8 +959,10 @@ test("each platform can have its own media, or none, in place of the shared imag
   await expect(page.getByText("Instagram needs", { exact: false })).toHaveCount(0);
 
   // The shared image goes to Threads; Bluesky gets its own empty list, so it posts text only.
-  await page.getByRole("button", { name: "Add image" }).first().click();
-  await page.getByLabel("Image 1 link").first().fill("https://example.com/one.png");
+  await page.getByRole("tab", { name: "All networks" }).click();
+  await page.getByRole("button", { name: "Add image" }).click();
+  await page.getByLabel("Image 1 link").fill("https://example.com/one.png");
+  await page.getByRole("tab", { name: "Bluesky" }).click();
   await page.getByRole("button", { name: "Different media for Bluesky" }).click();
   const bsky = page.getByRole("group", { name: "Bluesky media" });
   // It starts as a copy of the shared images.
@@ -924,6 +970,7 @@ test("each platform can have its own media, or none, in place of the shared imag
   await bsky.getByRole("button", { name: "Remove image 1 for Bluesky" }).click();
 
   // Closing a box goes back to the shared images.
+  await page.getByRole("tab", { name: "Threads" }).click();
   await page.getByRole("button", { name: "Different media for Threads" }).click();
   await page.getByRole("button", { name: "Use the main images on Threads" }).click();
   await expect(page.getByRole("button", { name: "Different media for Threads" })).toBeFocused();
@@ -947,11 +994,12 @@ test("custom text no longer counts once its platform is the only one left", asyn
   });
   await page.goto("/posts/new");
   await page.getByLabel("Post", { exact: true }).fill("Main words");
+  await page.getByRole("tab", { name: "Bluesky" }).click();
   await page.getByRole("button", { name: "Customize for Bluesky" }).click();
   await page.getByRole("textbox", { name: "Bluesky text" }).fill("Own words");
   await page.getByRole("group", { name: "Post to" }).getByRole("checkbox", { name: /Threads/ }).uncheck();
   await expect(page.getByRole("textbox", { name: "Bluesky text" })).toHaveCount(0);
-  await expect(page.getByText("Bluesky: 10 of 300 characters")).toBeVisible();
+  await expect(page.getByText("Bluesky 10/300")).toBeVisible();
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page).toHaveURL("/t/acme22/posts/p1");
   expect(sent).toMatchObject({ platform: "bluesky", body: "Main words" });
@@ -1280,10 +1328,14 @@ test("the versions of a saved post that can still change open on one form and ar
   await expect(page.getByRole("textbox", { name: "Instagram text" })).toHaveCount(0);
   await page.getByRole("button", { name: "Change all 3 versions together" }).click();
   await expect(page.getByLabel("Post", { exact: true })).toHaveValue("Hello");
-  // Instagram differs from the open version, so it shows as its own text and media; Threads does not.
+  // Instagram differs from the open version, so its tab shows its own text and media; Threads does not.
+  await expect(page.getByRole("button", { name: "Custom text and media on Instagram" })).toBeVisible();
+  await page.getByRole("tab", { name: "Instagram" }).click();
   await expect(page.getByRole("textbox", { name: "Instagram text" })).toHaveValue("Insta words");
   await expect(page.getByRole("group", { name: "Instagram media" })).toBeVisible();
+  await page.getByRole("tab", { name: "Threads" }).click();
   await expect(page.getByRole("textbox", { name: "Threads text" })).toHaveCount(0);
+  await page.getByRole("tab", { name: "All networks" }).click();
   await expect(page.getByRole("button", { name: "Delete" })).toHaveCount(0);
 
   await page.getByLabel("Post", { exact: true }).fill("Too long");
@@ -1297,6 +1349,7 @@ test("the versions of a saved post that can still change open on one form and ar
   expect(sent["g-t"]).toMatchObject({ platform: "threads", body: "Hello again", media: [a] });
   expect(sent["g-i"]).toMatchObject({ platform: "instagram", body: "Insta words", media: ["https://example.com/b.jpg"] });
   // The form stays on the whole post, and can go back to one version.
+  await page.getByRole("tab", { name: "Instagram" }).click();
   await expect(page.getByRole("textbox", { name: "Instagram text" })).toHaveValue("Insta words");
   await page.getByRole("button", { name: "Change only the Bluesky version" }).click();
   await expect(page.getByRole("textbox", { name: "Instagram text" })).toHaveCount(0);
