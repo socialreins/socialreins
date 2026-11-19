@@ -9,6 +9,10 @@ export default function PostsPage() {
   return (
     <>
       <PageHeader title="Posts">
+        <Link href="/posts/bulk" className="btn btn-secondary">
+          <Icon name="upload" className="size-4" />
+          Upload CSV
+        </Link>
         <Link href="/posts/new" className="btn btn-primary">
           <Icon name="plus" className="size-4" />
           New post
