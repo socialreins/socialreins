@@ -171,13 +171,13 @@ test("posts shows today and later first and folds the earlier days of the month"
   await listMonth(page);
   await page.goto("/posts");
   const upcoming = page.getByRole("list", { name: "Posts in November 2026" });
-  await expect(upcoming.getByRole("link", { name: /Launch day$/ })).toHaveAttribute("href", "/t/acme22/posts/p-today");
+  await expect(upcoming.getByRole("link", { name: /^(?!Duplicate).*Launch day$/ })).toHaveAttribute("href", "/t/acme22/posts/p-today");
   await expect(upcoming.getByText("Today")).toBeVisible();
   await expect(upcoming.getByText("Scheduled")).toHaveCount(2);
   const earlier = page.getByRole("list", { name: "Earlier posts in November 2026" });
-  await expect(earlier.getByRole("link", { name: /Hello Bluesky$/ })).toBeHidden();
+  await expect(earlier.getByRole("link", { name: /^(?!Duplicate).*Hello Bluesky$/ })).toBeHidden();
   await page.getByText("Earlier this month (2 posts)").click();
-  await expect(earlier.getByRole("link", { name: /Hello Bluesky$/ })).toHaveAttribute("href", "/t/acme22/posts/p-old");
+  await expect(earlier.getByRole("link", { name: /^(?!Duplicate).*Hello Bluesky$/ })).toHaveAttribute("href", "/t/acme22/posts/p-old");
   await expect(earlier.getByRole("link", { name: "View on Bluesky" })).toBeVisible();
   await expect(earlier.getByText("Failed", { exact: true })).toBeVisible();
   await expect(earlier.getByText("Bluesky refused the image")).toBeVisible();
@@ -193,7 +193,7 @@ test("posts search matches the text of posts and drafts, in the URL", async ({ p
   await page.goto("/posts");
   await page.getByRole("searchbox", { name: "Search posts" }).fill("LAUNCH");
   await expect(page).toHaveURL("/t/acme22/posts?q=LAUNCH");
-  await expect(page.getByRole("list", { name: "Posts in November 2026" }).getByRole("link")).toHaveCount(1);
+  await expect(page.getByRole("list", { name: "Posts in November 2026" }).getByRole("link", { name: /^(?!Duplicate)/ })).toHaveCount(1);
   await expect(page.getByRole("link", { name: /Follow-up on X/ })).toHaveCount(0);
   await expect(page.getByText(/Earlier this month/)).toHaveCount(0);
   await expect(page.getByRole("region", { name: "Drafts" }).getByRole("link", { name: "An unfinished launch note" })).toBeVisible();
@@ -211,7 +211,7 @@ test("posts status and network filters count, narrow the list and survive a relo
   await expect(status.getByRole("button", { name: "Draft 1" })).toBeVisible();
   await status.getByRole("button", { name: /^Scheduled/ }).click();
   await expect(page).toHaveURL("/t/acme22/posts?status=scheduled");
-  await expect(page.getByRole("list", { name: "Posts in November 2026" }).getByRole("link")).toHaveCount(2);
+  await expect(page.getByRole("list", { name: "Posts in November 2026" }).getByRole("link", { name: /^(?!Duplicate)/ })).toHaveCount(2);
   await expect(page.getByText(/Earlier this month/)).toHaveCount(0);
   await expect(page.getByRole("region", { name: "Drafts" }).getByText("No drafts match these filters.")).toBeVisible();
 
@@ -221,7 +221,7 @@ test("posts status and network filters count, narrow the list and survive a relo
   await page.reload();
   await expect(page.getByRole("list", { name: "Status" }).getByRole("button", { name: /^Scheduled/ })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("list", { name: "Network" }).getByRole("button", { name: /^X/ })).toHaveAttribute("aria-pressed", "true");
-  const shown = page.getByRole("list", { name: "Posts in November 2026" }).getByRole("link");
+  const shown = page.getByRole("list", { name: "Posts in November 2026" }).getByRole("link", { name: /^(?!Duplicate)/ });
   await expect(shown).toHaveCount(1);
   await expect(shown).toHaveAttribute("href", "/t/acme22/posts/p-x");
 });
@@ -234,14 +234,14 @@ test("posts says when the filters hide everything and clears them", async ({ pag
   await page.getByRole("button", { name: "Clear filters" }).first().click();
   await expect(page).toHaveURL("/t/acme22/posts");
   await expect(page.getByRole("searchbox", { name: "Search posts" })).toHaveValue("");
-  await expect(page.getByRole("link", { name: /Launch day$/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /^(?!Duplicate).*Launch day$/ })).toBeVisible();
 });
 
 test("on a phone the posts list fits the screen", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await listMonth(page);
   await page.goto("/posts");
-  await expect(page.getByRole("link", { name: /Launch day$/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /^(?!Duplicate).*Launch day$/ })).toBeVisible();
   await page.getByText(/Earlier this month/).click();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
@@ -1490,7 +1490,7 @@ test("a busy calendar day shows 3 posts and +N more with the whole day, and week
 
   await more.click();
   const day = page.getByRole("dialog", { name: /Thursday, November 12/ });
-  await expect(day.getByRole("link", { name: /Busy post/ })).toHaveCount(8);
+  await expect(day.getByRole("link", { name: /^(?!Duplicate).*Busy post/ })).toHaveCount(8);
   await expect(day.getByRole("link", { name: "View on Bluesky" })).toHaveCount(8);
   await expect(day.getByRole("link", { name: "View on Bluesky" }).last()).toHaveAttribute("href", "https://bsky.app/post/7");
   await expect(day.getByText("Published", { exact: true })).toHaveCount(8);

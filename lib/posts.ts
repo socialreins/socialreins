@@ -475,6 +475,30 @@ export function matchesFilters(row: Post[], f: PostFilters, skip?: "status" | "n
 export const sameDay = (a: Date, b: Date) =>
   a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 
+// `when` moved to the local day `day` at the same local time of day (the calendar's zone, the browser's);
+// null when that moment is not in the future. A time a DST change skips moves on by the gap, as Date does.
+export function moveToDay(when: Date, day: Date, now = new Date()): Date | null {
+  const to = new Date(day.getFullYear(), day.getMonth(), day.getDate(), when.getHours(), when.getMinutes(), when.getSeconds(), when.getMilliseconds());
+  return to.getTime() > now.getTime() ? to : null;
+}
+
+// A saved post as PUT /v1/posts/{id} takes it back, the way the editor sends an edit of an unchanged post,
+// with only `scheduled_at` new. PUT replaces the post, so everything else must go back as it was.
+export function editInput(p: Post, scheduled_at: string | null): PostInput {
+  return {
+    social_set_id: p.social_set_id,
+    platform: p.platform,
+    body: p.body,
+    media: p.media,
+    thread: limits[p.platform].thread ? (p.thread ?? []) : [],
+    first_comment: p.first_comment?.trim() ? p.first_comment : undefined,
+    cover: p.cover?.trim() || undefined,
+    tiktok: p.platform === "tiktok" ? (p.tiktok ?? undefined) : undefined,
+    youtube: p.platform === "youtube" ? { privacy: p.youtube?.privacy ?? "private" } : undefined,
+    scheduled_at,
+  };
+}
+
 // A post's public page, one per post or per group. `code` is null before the first save; `live` says
 // whether anyone can open it now (switched on, the team allows pages, a version is published).
 export type PostPage = { enabled: boolean; details: string; code: string | null; live: boolean };
