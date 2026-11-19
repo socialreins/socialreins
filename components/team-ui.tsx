@@ -112,6 +112,22 @@ export const linkButton =
 export const isFailure = (r: unknown): r is Failure => typeof r === "string" && r !== "ok";
 
 // One status line per section: a pending key, the last failure, or a success message that takes focus.
+// A search box's text goes into ?q= a moment after the typing stops, with replaceState so it adds no history.
+// `q` is what the address holds now.
+export function useSearchInUrl(search: string, q: string) {
+  useEffect(() => {
+    const next = search.trim();
+    if (next === q) return;
+    const timer = setTimeout(() => {
+      const url = new URL(window.location.href);
+      if (next) url.searchParams.set("q", next);
+      else url.searchParams.delete("q");
+      window.history.replaceState(null, "", url);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search, q]);
+}
+
 export function useAction() {
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<Failure | null>(null);

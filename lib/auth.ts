@@ -193,6 +193,8 @@ const codes = [
   "invalid_slug",
   "slug_taken",
   "slug_changed_too_often",
+  "invalid_contact",
+  "invalid_assignee",
 ] as const;
 export type Failure = (typeof codes)[number] | "rate_limited" | "signed_out" | "timeout" | "error";
 export type Passkey = { id: string; name: string; created_at: string; last_used_at: string | null };

@@ -7,6 +7,7 @@ import {
   MAX_LABEL,
   MAX_STEPS,
   WAIT_UNITS,
+  isSend,
   newStep,
   numbered,
   payloadOk,
@@ -25,6 +26,7 @@ import {
   type Trigger,
   type WaitUnit,
 } from "@/lib/automations";
+import { cleanTag, MAX_TAG } from "@/lib/contacts";
 import { MAX_DM, MAX_PUBLIC } from "@/lib/inbox";
 import { TeamLink as Link } from "@/components/team-link";
 import { Icon } from "@/components/ui";
@@ -203,6 +205,16 @@ export function FlowEditor({
                     1 minute to 7 days. The next step goes out when the time is up.
                   </p>
                 </div>
+              ) : s.type === "tag_contact" ? (
+                <div className="grid gap-1.5">
+                  <label htmlFor={field} className="label">
+                    Tag
+                  </label>
+                  <input id={field} className="field" maxLength={MAX_TAG} placeholder="vip" value={s.tag} onChange={(e) => patch(i, { tag: e.target.value })} aria-describedby={`${field}-hint`} />
+                  <p id={`${field}-hint`} className="hint">
+                    Put on the contact when the flow gets here. Saved in lower case. It sends nothing.
+                  </p>
+                </div>
               ) : (
                 <TextField
                   id={field}
@@ -302,7 +314,7 @@ export function FlowEditor({
         <span id="automation-flow-add-label" className="label">
           Add step
         </span>
-        {(["send_dm", ...(t.publicReply ? (["reply_publicly"] as const) : []), "wait"] as const).map((type, at) => (
+        {(["send_dm", ...(t.publicReply ? (["reply_publicly"] as const) : []), "wait", "tag_contact"] as const).map((type, at) => (
           <button key={type} id={at === 0 ? "automation-flow-add" : undefined} type="button" className="btn btn-secondary btn-sm" disabled={full} onClick={() => add(type)}>
             <Icon name="plus" className="size-4" />
             {stepName[type]}
@@ -335,10 +347,13 @@ export function FlowEditor({
   );
 }
 
+// The preview's system line for a tag: nothing Sam sees.
+export const TagLine = ({ tags }: { tags: string[] }) => <p className="text-center text-xs font-bold text-ink-soft">Sam gets the tag {tags.join(", ")}</p>;
+
 // The flow as a chat for someone called Sam: bubbles, buttons as chips and a divider at each wait.
 export function FlowPreview({ steps }: { steps: StepDraft[] }) {
-  const shown = steps.filter((s) => s.type === "wait" || s.text.trim());
-  if (!shown.some((s) => s.type !== "wait")) return <p className="text-sm text-ink-soft">Your flow shows here as you write, for someone called Sam.</p>;
+  const shown = steps.filter((s) => s.type === "wait" || (s.type === "tag_contact" ? cleanTag(s.tag) : s.text.trim()));
+  if (!shown.some(isSend)) return <p className="text-sm text-ink-soft">Your flow shows here as you write, for someone called Sam.</p>;
   return (
     <>
       {shown.map((s) => {
@@ -351,6 +366,7 @@ export function FlowPreview({ steps }: { steps: StepDraft[] }) {
             </p>
           );
         }
+        if (s.type === "tag_contact") return <TagLine key={s.id} tags={[cleanTag(s.tag)]} />;
         const buttons = s.type === "send_dm" ? s.buttons.filter((b) => b.label.trim()) : [];
         return (
           <div key={s.id} className="grid justify-items-end gap-1">

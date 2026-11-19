@@ -725,3 +725,33 @@ test("run history shows a waiting run with its time and step, and a stopped one 
   await expect(rows.nth(2)).toContainText("Stopped: the automation was changed or switched off before the flow finished");
   await expect(rows.nth(3)).toContainText("Step 4 of 4");
 });
+
+test("run history says in plain words what happened to a tag", async ({ page }) => {
+  const state = await brain(page, "owner");
+  state.list.push(guideFlow());
+  const sent = { type: "send_dm", status: "sent", reason: null, remote_id: "m1" };
+  const tag = (status: string, why: string | null) => ({ type: "tag_contact", status, reason: why, remote_id: null });
+  await page.route(/\/v1\/automations\/flow\/runs/, (route) =>
+    route.fulfill({
+      json: {
+        runs: [
+          run("t1", "sent", null, [sent, tag("done", null)]),
+          run("t2", "sent", null, [sent, tag("skipped", "already_tagged")]),
+          run("t3", "sent", null, [sent, tag("skipped", "tag_limit")]),
+          run("t4", "sent", null, [sent, tag("skipped", "no_contact")]),
+        ],
+        next_cursor: null,
+      },
+    }),
+  );
+  await page.goto("/automations/flow");
+  const history = page.getByRole("region", { name: "Run history" });
+  await expect(history.getByRole("row")).toHaveCount(5);
+  for (const said of [
+    "Tag: done",
+    "Tag: skipped (They already had this tag)",
+    "Tag: skipped (The contact already has 20 tags, the most allowed)",
+    "Tag: skipped (There is no contact behind this item to tag)",
+  ])
+    await expect(history.getByRole("listitem").filter({ hasText: said })).toHaveCount(1);
+});

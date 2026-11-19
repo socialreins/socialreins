@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { TeamLink as Link } from "@/components/team-link";
 import { useSearchParams } from "next/navigation";
 import { useTeamRouter as useRouter } from "@/components/team-link";
 import type { Failure } from "@/lib/auth";
 import { listConnections, safeAvatar, type Connection } from "@/lib/connections";
+import { listContactTags, updateContact } from "@/lib/contacts";
 import {
+  assignItem,
   authorName,
   getItem,
   kindName,
@@ -25,14 +28,17 @@ import {
   type Page,
   type SendError,
 } from "@/lib/inbox";
+import { createSnippet, isProblem, libraryText, type Problem } from "@/lib/library";
 import { graphemes } from "@/lib/posts";
 import { listSets, type SocialSet } from "@/lib/sets";
-import { manages } from "@/lib/teams";
+import { listMembers, manages } from "@/lib/teams";
 import { useSession } from "@/components/app-shell";
 import { accountName } from "@/components/connections";
 import { InboxEditor, inboxMessages } from "@/components/inbox-editor";
+import { SnippetMenu } from "@/components/library";
 import { platformName } from "@/components/platform-icons";
-import { isFailure, problemText, Status, useAction } from "@/components/team-ui";
+import { TagEditor } from "@/components/tag-editor";
+import { isFailure, problemText, Status, useAction, useSearchInUrl } from "@/components/team-ui";
 import { Icon } from "@/components/ui";
 
 // New comments arrive on brain's per-minute tick; the open list checks twice a minute.
@@ -64,7 +70,20 @@ const filters: { kind: Kind | "all"; label: string }[] = [
   { kind: "dm", label: "DMs" },
 ];
 
-function AuthorAvatar({ author, size = "size-10" }: { author: Author; size?: string }) {
+// Who the list shows: everyone's items, mine, or the ones nobody has. In the address as ?assigned=.
+const assignedChips = [
+  { value: "", label: "Anyone" },
+  { value: "me", label: "Me" },
+  { value: "none", label: "Unassigned" },
+];
+const metaMessages: Partial<Record<Failure, ReactNode>> = {
+  invalid_assignee: "That person is no longer in this team. Reload, then pick someone else.",
+  invalid_contact: "That tag wasn't saved: a tag takes 1 to 30 characters and no commas, and a contact 20 tags.",
+  not_found: "This is no longer there. Reload to see the latest.",
+};
+type Person = { id: string; name: string };
+
+export function AuthorAvatar({ author, size = "size-10" }: { author: Author; size?: string }) {
   const src = safeAvatar(author.avatar_url);
   return src ? (
     // eslint-disable-next-line @next/next/no-img-element -- a remote avatar, no Next image loader configured
@@ -76,7 +95,7 @@ function AuthorAvatar({ author, size = "size-10" }: { author: Author; size?: str
   );
 }
 
-function KindBadge({ kind }: { kind: Item["kind"] }) {
+export function KindBadge({ kind }: { kind: Item["kind"] }) {
   return (
     <span className="badge tone" data-kind={kind}>
       {kindName[kind]}
@@ -92,7 +111,11 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   const itemId = params.get("item");
   const state: ItemState = params.get("state") === "done" ? "done" : "open";
   const q = (params.get("q") ?? "").trim().slice(0, 100);
+  const assigned = params.get("assigned") ?? "";
+  const tag = params.get("tag") ?? "";
   const [search, setSearch] = useState(q);
+  const [members, setMembers] = useState<Person[]>([]);
+  const [tagOptions, setTagOptions] = useState<string[]>([]);
 
   const [inboxes, setInboxes] = useState<InboxT[] | Failure | null>(null);
   const [accounts, setAccounts] = useState<Connection[] | Failure | null>(null);
@@ -110,22 +133,28 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
     listInboxes().then(setInboxes);
     listConnections().then(setAccounts);
     listSets().then((r) => Array.isArray(r) && setSets(r));
+    listMembers().then((r) => Array.isArray(r) && setMembers(r));
+    listContactTags().then((r) => Array.isArray(r) && setTagOptions(r.map((t) => t.tag)));
   }, []);
 
   const list = Array.isArray(inboxes) ? inboxes : [];
   const current = inboxId ? list.find((i) => i.id === inboxId) : list[0];
   const currentId = current?.id ?? inboxId;
   const base = inboxId ? `/inbox/${encodeURIComponent(inboxId)}` : "/inbox";
-  const href = (to: { item?: string | null; state?: ItemState }) => {
+  const href = (to: { item?: string | null; state?: ItemState; assigned?: string; tag?: string }) => {
     const s = new URLSearchParams();
     if ((to.state ?? state) === "done") s.set("state", "done");
     if (to.item) s.set("item", to.item);
     if (search.trim()) s.set("q", search.trim());
+    if (to.assigned ?? assigned) s.set("assigned", to.assigned ?? assigned);
+    if (to.tag ?? tag) s.set("tag", to.tag ?? tag);
     return s.size ? `${base}?${s}` : base;
   };
 
   const kindQ = kind === "all" ? null : kind;
-  const key = `${currentId}:${state}:${kind}:${q}`;
+  const key = JSON.stringify([currentId, state, kind, q, assigned, tag]);
+  // Every list call, the poll and Load more included, carries the same filters.
+  const fetchItems = (id: string, cursor?: string | null) => listItems(id, state, cursor, kindQ, q, { assigned, tag });
   const page = loaded?.key === key ? loaded.page : null;
   const setPage = (f: (p: Page | Failure | null) => Page | Failure | null) =>
     // A late answer for another inbox or tab leaves the newer page alone.
@@ -140,26 +169,14 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   useEffect(() => {
     if (!currentId) return;
     let live = true;
-    listItems(currentId, state, null, kindQ, q).then(
-      (r) => live && setLoaded({ key, page: isFailure(r) ? r : { items: r.items, next: r.next_cursor } }),
-    );
+    fetchItems(currentId).then((r) => live && setLoaded({ key, page: isFailure(r) ? r : { items: r.items, next: r.next_cursor } }));
     return () => {
       live = false;
     };
-  }, [currentId, state, kindQ, q, key, reloads]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` holds every filter fetchItems reads
+  }, [currentId, key, reloads]);
 
-  // The search goes into ?q= a moment after the typing stops, with replaceState so it adds no history.
-  useEffect(() => {
-    const next = search.trim();
-    if (next === q) return;
-    const timer = setTimeout(() => {
-      const url = new URL(window.location.href);
-      if (next) url.searchParams.set("q", next);
-      else url.searchParams.delete("q");
-      window.history.replaceState(null, "", url);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [search, q]);
+  useSearchInUrl(search, q);
 
   // While the tab shows, fold the newest page into the list and refresh the open counts; a failed check waits for the next.
   useEffect(() => {
@@ -168,7 +185,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
     const check = async () => {
       if (document.visibilityState !== "visible") return;
       listInboxes().then((l) => live && Array.isArray(l) && setInboxes(l));
-      const r = await listItems(currentId, state, null, kindQ, q);
+      const r = await fetchItems(currentId);
       if (!live || isFailure(r)) return;
       setLoaded((l) => (l?.key === key && !isFailure(l.page) ? { key, page: mergeFresh(l.page, r) } : l));
     };
@@ -180,7 +197,8 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
       clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [currentId, state, kindQ, q, key]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` holds every filter fetchItems reads
+  }, [currentId, key]);
 
   useEffect(() => {
     if (!itemId) return;
@@ -194,7 +212,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   async function loadMore() {
     if (!currentId || isFailure(page) || !page?.next) return;
     setMore("loading");
-    const r = await listItems(currentId, state, page.next, kindQ, q);
+    const r = await fetchItems(currentId, page.next);
     if (isFailure(r)) return setMore(r);
     setMore(null);
     // A refresh that replaced the list meanwhile has its own cursor; this page no longer follows it.
@@ -335,6 +353,30 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
               </li>
             ))}
           </ul>
+          <ul aria-label="Assigned" className="flex flex-wrap items-center gap-1.5">
+            {assignedChips.map((c) => (
+              <li key={c.value}>
+                <Link
+                  href={href({ assigned: c.value, item: itemId })}
+                  scroll={false}
+                  aria-current={assigned === c.value ? "true" : undefined}
+                  className={`block rounded-full border px-3 py-1 text-sm font-bold ${
+                    assigned === c.value ? "border-ink bg-ink text-paper" : "border-ink/15 text-ink-soft hover:border-ink hover:text-ink"
+                  }`}
+                >
+                  {c.label}
+                </Link>
+              </li>
+            ))}
+            {tag && (
+              <li className="badge tone gap-1 pr-1 text-ink">
+                Tag: {tag}
+                <Link href={href({ tag: "", item: itemId })} scroll={false} aria-label={`Clear the tag filter ${tag}`} className="grid size-5 place-items-center rounded-full hover:bg-ink/10">
+                  <Icon name="close" className="size-3" />
+                </Link>
+              </li>
+            )}
+          </ul>
         </div>
         {/* p-px keeps the card's 1px ring inside the scroller. */}
         <div className="grid content-start gap-3 lg:block lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain lg:p-px">
@@ -361,6 +403,8 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
             <p className="card p-5 text-ink-soft">
               {q
                 ? `Nothing matches "${q}".`
+                : assigned || tag
+                ? "Nothing matches these filters."
                 : state === "done"
                 ? "Nothing marked done yet."
                 : kind !== "all"
@@ -413,8 +457,14 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
                             </time>
                           </span>
                           <span className="line-clamp-2 text-sm text-ink-soft">{i.text || "(no text)"}</span>
-                          <span className="mt-0.5">
+                          <span className="mt-0.5 flex items-center gap-2">
                             <KindBadge kind={i.kind} />
+                            {i.assigned_to && (
+                              <span className="ml-auto grid size-5 place-items-center rounded-full bg-ink text-[0.65rem] font-bold text-paper" title={`Assigned to ${i.assigned_to.name}`}>
+                                <span aria-hidden="true">{i.assigned_to.name.charAt(0).toUpperCase()}</span>
+                                <span className="sr-only">Assigned to {i.assigned_to.name}</span>
+                              </span>
+                            )}
                           </span>
                         </span>
                       </Link>
@@ -444,7 +494,16 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
             This item couldn&apos;t be loaded. {problemText(detail, replyMessages)}
           </p>
         ) : (
-          <Detail key={detail.id} item={detail} focus={opened === detail.id} account={accountList.find((a) => a.id === detail.social_account_id)} onChange={changed} />
+          <Detail
+            key={detail.id}
+            item={detail}
+            focus={opened === detail.id}
+            account={accountList.find((a) => a.id === detail.social_account_id)}
+            me={user}
+            members={members}
+            tagOptions={tagOptions}
+            onChange={changed}
+          />
         )}
       </section>
 
@@ -473,11 +532,52 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
 
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 
-function Detail({ item, account, focus, onChange }: { item: Item; account?: Connection; focus: boolean; onChange: (i: Item) => void }) {
+function Detail({
+  item,
+  account,
+  focus,
+  me,
+  members,
+  tagOptions,
+  onChange,
+}: {
+  item: Item;
+  account?: Connection;
+  focus: boolean;
+  me: Person;
+  members: Person[];
+  tagOptions: string[];
+  onChange: (i: Item) => void;
+}) {
   const [text, setText] = useState("");
   const [sendError, setSendError] = useState<SendError | null>(null);
+  // Saving the typed text as a saved reply: null, or the name being typed.
+  const [naming, setNaming] = useState<string | null>(null);
+  const [kept, setKept] = useState<Problem | "saved" | null>(null);
   const action = useAction();
   const reply = useAction();
+  const meta = useAction();
+  const who = item.assigned_to ?? null;
+  // The team's members, with me and whoever has the item even when the list did not load or they left.
+  const people = [...members, me, ...(who ? [who] : [])].filter((p, i, all) => all.findIndex((x) => x.id === p.id) === i);
+
+  const assign = (id: string | null) =>
+    meta.run("assign", () => assignItem(item.id, id), (r) => {
+      onChange(r);
+      return r.assigned_to ? `Assigned to ${r.assigned_to.name}.` : "Unassigned.";
+    });
+  const saveTags = (tags: string[]) =>
+    meta.run("tags", () => updateContact(item.contact_id!, { tags }), (c) => {
+      onChange({ ...item, contact_tags: c.tags });
+      return "Tags saved.";
+    });
+  async function keep() {
+    const name = naming?.trim();
+    if (!name) return;
+    const r = await createSnippet({ kind: "reply", name, body: text });
+    setKept(isProblem(r) ? r : "saved");
+    if (!isProblem(r)) setNaming(null);
+  }
   const headingRef = useRef<HTMLHeadingElement>(null);
   const max = maxFor(item.kind, account?.provider);
   const platform = platformName(account?.provider ?? "bluesky");
@@ -522,7 +622,8 @@ function Detail({ item, account, focus, onChange }: { item: Item; account?: Conn
   return (
     // From lg up the card fills the reader: the thread scrolls and the reply box stays at the bottom.
     <article className="card grid grid-cols-[minmax(0,1fr)] gap-5 p-5 lg:h-full lg:grid-rows-[auto_minmax(6rem,1fr)] lg:gap-4">
-      <header className="flex items-start gap-3">
+      <header className="grid grid-cols-[minmax(0,1fr)] gap-3">
+        <div className="flex items-start gap-3">
         <AuthorAvatar author={item.author} size="size-12" />
         <div className="min-w-0 flex-1">
           <h2 ref={headingRef} tabIndex={-1} className="truncate font-display text-lg font-extrabold tracking-tight focus:outline-none">
@@ -534,6 +635,34 @@ function Detail({ item, account, focus, onChange }: { item: Item; account?: Conn
           </p>
         </div>
         <KindBadge kind={item.kind} />
+        </div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
+          {item.contact_id && (
+            <>
+              <TagEditor id="item-tags" tags={item.contact_tags ?? []} suggestions={tagOptions} disabled={meta.busy !== null} onChange={saveTags} />
+              <Link href={`/contacts?contact=${encodeURIComponent(item.contact_id)}`} className="font-bold underline decoration-signal decoration-2 underline-offset-4">
+                Open contact
+              </Link>
+            </>
+          )}
+          <label className="ml-auto flex items-center gap-2 font-bold">
+            Assign
+            <select className="field w-auto py-1 text-sm font-normal" value={who?.id ?? ""} disabled={meta.busy !== null} onChange={(e) => assign(e.target.value || null)}>
+              <option value="">Unassigned</option>
+              {people.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {who?.id !== me.id && (
+            <button type="button" className="btn btn-quiet btn-sm" disabled={meta.busy !== null} onClick={() => assign(me.id)}>
+              Assign to me
+            </button>
+          )}
+        </div>
+        <Status problem={meta.problem} done={meta.done} overrides={metaMessages} />
       </header>
 
       <ol className="grid grid-cols-[minmax(0,1fr)] content-start gap-3 lg:-m-1 lg:overflow-y-auto lg:overscroll-contain lg:p-1" aria-label="Thread">
@@ -571,9 +700,12 @@ function Detail({ item, account, focus, onChange }: { item: Item; account?: Conn
 
       {/* A follow has nothing to reply to. */}
       <form onSubmit={onReply} hidden={item.kind === "follow"} className="grid gap-2 border-t border-ink/10 pt-4 [&[hidden]]:hidden">
-        <label htmlFor="reply-text" className="label">
-          {dm ? "Send DM" : "Reply publicly"}
-        </label>
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <label htmlFor="reply-text" className="label">
+            {dm ? "Send DM" : "Reply publicly"}
+          </label>
+          <SnippetMenu target="reply-text" label="the reply" value={text} onChange={setText} replies />
+        </div>
         <textarea
           id="reply-text"
           rows={3}
@@ -592,10 +724,58 @@ function Detail({ item, account, focus, onChange }: { item: Item; account?: Conn
             <Icon name="send" className="size-4" />
             {reply.busy ? "Sending..." : dm ? "Send DM" : "Reply publicly"}
           </button>
+          <button
+            type="button"
+            className="btn btn-quiet btn-sm"
+            disabled={!text.trim() || naming !== null}
+            onClick={() => {
+              setKept(null);
+              flushSync(() => setNaming(""));
+              document.getElementById("saved-reply-name")?.focus();
+            }}
+          >
+            Save as saved reply
+          </button>
           <p id="reply-count" className={`hint ml-auto ${count > max ? "font-bold text-signal-deep" : ""}`}>
             {count} of {max} characters
           </p>
         </div>
+        {naming !== null && (
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              id="saved-reply-name"
+              aria-label="Saved reply name"
+              placeholder="Name it, like Opening hours"
+              maxLength={60}
+              className="field min-w-40 flex-1 py-1.5"
+              value={naming}
+              onChange={(e) => setNaming(e.target.value)}
+              // Enter saves the saved reply, not the form around it, which would send the reply.
+              onKeyDown={(e) => {
+                if (e.key !== "Enter") return;
+                e.preventDefault();
+                keep();
+              }}
+            />
+            <button type="button" className="btn btn-secondary btn-sm" disabled={!naming.trim() || !text.trim()} onClick={keep}>
+              Save saved reply
+            </button>
+            <button type="button" className="btn btn-quiet btn-sm" onClick={() => setNaming(null)}>
+              Cancel
+            </button>
+          </div>
+        )}
+        {kept === "saved" ? (
+          <p role="status" className="waitlist-done">
+            Saved. Find it under Insert saved reply and in the Library.
+          </p>
+        ) : (
+          kept && (
+            <p role="alert" className="waitlist-error">
+              {libraryText(kept) ?? problemText(kept.code)}
+            </p>
+          )
+        )}
         {sendError ? (
           <p role="alert" className="waitlist-error">
             {sendMessages[sendError.code] ?? sendError.message}
