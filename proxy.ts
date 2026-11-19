@@ -1,24 +1,29 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { brainUrl } from "@/lib/brain-url";
+import { gaId } from "@/lib/ga";
 
 const dev = process.env.NODE_ENV === "development";
 
 const turnstile = "https://challenges.cloudflare.com";
 
+// Google Analytics (components/analytics.tsx), only when GA_MEASUREMENT_ID is set.
+const gaScript = "https://www.googletagmanager.com";
+const gaHits = "https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com";
+
 // The CSP is set here, not in next.config headers (fixed at build), because connect-src names brain's origin from BRAIN_URL at run time.
 // shortcut: 'unsafe-inline' scripts because the pages are static (no per-request nonce); move to nonces if pages go dynamic.
-const csp = (api: string, anyImage: boolean) =>
+const csp = (api: string, anyImage: boolean, ga: boolean) =>
   [
     "default-src 'self'",
     // Cloudflare Turnstile loads its script and runs its check in a frame (components/turnstile.tsx).
-    `script-src 'self' 'unsafe-inline' ${turnstile}${dev ? " 'unsafe-eval'" : ""}`,
+    `script-src 'self' 'unsafe-inline' ${turnstile}${ga ? ` ${gaScript}` : ""}${dev ? " 'unsafe-eval'" : ""}`,
     `frame-src ${turnstile}`,
     "style-src 'self' 'unsafe-inline'",
     // Bluesky, Facebook, Instagram, YouTube, X and TikTok avatars; safeAvatar in lib/connections.ts keeps to the same sources.
     // A public post page (/p/<code>) shows the author's own image links, from any https host.
-    anyImage ? "img-src 'self' data: https:" : "img-src 'self' data: https://cdn.bsky.app/img/ https://*.fbcdn.net https://*.cdninstagram.com https://yt3.ggpht.com https://yt3.googleusercontent.com https://pbs.twimg.com https://*.tiktokcdn.com https://*.tiktokcdn-us.com",
+    anyImage ? "img-src 'self' data: https:" : "img-src 'self' data: https://cdn.bsky.app/img/ https://*.fbcdn.net https://*.cdninstagram.com https://yt3.ggpht.com https://yt3.googleusercontent.com https://pbs.twimg.com https://*.tiktokcdn.com https://*.tiktokcdn-us.com" + (ga ? ` ${gaHits}` : ""),
     "font-src 'self'",
-    `connect-src 'self' ${api}${dev ? " ws:" : ""}`,
+    `connect-src 'self' ${api}${ga ? ` ${gaHits}` : ""}${dev ? " ws:" : ""}`,
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
@@ -27,7 +32,7 @@ const csp = (api: string, anyImage: boolean) =>
 
 export function proxy(req: NextRequest) {
   const res = NextResponse.next();
-  res.headers.set("Content-Security-Policy", csp(new URL(brainUrl()).origin, req.nextUrl.pathname.startsWith("/p/")));
+  res.headers.set("Content-Security-Policy", csp(new URL(brainUrl()).origin, req.nextUrl.pathname.startsWith("/p/"), gaId() !== null));
   return res;
 }
 

@@ -29,6 +29,11 @@ export default function Privacy() {
         </li>
         <li>Your posts: their text, the links to their images, when they are scheduled, and where they were published.</li>
         <li>Basic security records, such as counts of recent attempts used for rate limits.</li>
+        <li>
+          Site visits: our public pages (not the app, not public post pages) use Google Analytics, which sets cookies
+          and tells us which pages are visited and from where. It never sees your posts, accounts or anything you
+          do once signed in.
+        </li>
       </ul>
 
       <h2>Why we store it</h2>

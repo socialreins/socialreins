@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import Script from "next/script";
+import { Suspense } from "react";
+import { Analytics } from "@/components/analytics";
 import { Bricolage_Grotesque, Geist } from "next/font/google";
 import "./globals.css";
 
@@ -29,6 +31,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body>
         <Script src="/config.js" strategy="beforeInteractive" />
         {children}
+        <Suspense fallback={null}>
+          <Analytics />
+        </Suspense>
       </body>
     </html>
   );
