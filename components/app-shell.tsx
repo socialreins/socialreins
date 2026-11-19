@@ -5,7 +5,7 @@ import { flushSync } from "react-dom";
 import { TeamCode, TeamLink as Link, usePagePath } from "@/components/team-link";
 import { usePathname, useRouter } from "next/navigation";
 import { getMe, getTabTeam, setTabTeam, type MeResult, type Team, type User } from "@/lib/auth";
-import { MY_TEAM, splitTeamPath, teamPath } from "@/lib/team-path";
+import { isTeamSegment, MY_TEAM, splitTeamPath, teamPath, teamSegment } from "@/lib/team-path";
 import { Account } from "@/components/account";
 import { LogoMark } from "@/components/logo";
 import { TitleSlot } from "@/components/page-title";
@@ -129,12 +129,14 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
   const collapsed = useStored("sidebar-collapsed") === "1";
   useAppMark();
 
-  // The team code in the address: undefined until read, null on a page outside /t/ (profile, /admin).
+  // The team in the address (its slug or its code): undefined until read, null on a page outside /t/ (profile, /admin).
   const [urlTeam, setUrlTeam] = useState<string | null | undefined>(undefined);
-  // The code of the team whose session is loaded, for the effect below; kept in step after every render.
-  const loaded = useRef<string | null>(null);
+  // The address the team had until a moment ago, while the address bar catches up with a new one.
+  const [oldSegment, setOldSegment] = useState<string | null>(null);
+  // The team whose session is loaded, for the effect below; kept in step after every render.
+  const loaded = useRef<Team | null>(null);
   useEffect(() => {
-    loaded.current = typeof me === "object" && me ? me.user.current_team.code : null;
+    loaded.current = typeof me === "object" && me ? me.user.current_team : null;
   }, [me]);
 
   useEffect(() => {
@@ -143,19 +145,25 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
     // The address names the team and every call carries it. A page outside /t/ (profile, /admin) keeps the team this tab
     // is on. "_" names none: brain answers with the account's current team.
     // This also runs when Next shows a kept shell again (Back), so the tab's team and the sign-in are checked afresh.
-    if (urlTeam === null) setTabTeam(loaded.current ?? getTabTeam());
-    else setTabTeam(urlTeam === MY_TEAM ? null : urlTeam);
+    // Calls carry the permanent code once the team is known, so a new slug mid-session can't break them.
+    const known = loaded.current;
+    if (urlTeam === null) setTabTeam(known?.code ?? getTabTeam());
+    else setTabTeam(urlTeam === MY_TEAM ? null : known && isTeamSegment(known, urlTeam) ? known.code : urlTeam);
     getMe().then((r) => {
       if (!live) return;
       if (r === "signed_out") return router.replace("/login");
       if (typeof r !== "object") return setMe(r);
       // brain refuses admin calls from anyone else; this only spares them a page of errors.
       if (admin && !r.user.is_admin) return router.replace(teamPath(MY_TEAM, "/home"));
-      const code = r.user.current_team.code;
-      setTabTeam(code);
+      const team = r.user.current_team;
+      setTabTeam(team.code);
       setMe(r);
+      setOldSegment(null);
+      const address = teamPath(teamSegment(team), splitTeamPath(location.pathname)[1]) + location.search + location.hash;
       // An old address (/posts, sent here as /t/_/posts): show the team's real one, keeping the query and the hash.
-      if (urlTeam === MY_TEAM) router.replace(teamPath(code, splitTeamPath(location.pathname)[1]) + location.search + location.hash);
+      if (urlTeam === MY_TEAM) router.replace(address);
+      // The code of a team that has its own address: the same page, so only the address bar changes.
+      else if (urlTeam === team.code && team.slug) window.history.replaceState(null, "", address);
     });
     return () => {
       live = false;
@@ -167,12 +175,17 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
   const session: Session | null = user && {
     user,
     setUser: (u) => setMe({ user: u }),
-    // After a switch, a new team or a rename. A new team's address replaces the old one, on the same section:
-    // the rest of the address (a post id) belongs to the team being left.
+    // After a switch, a new team, a rename or a new address. A new team's address replaces the old one, on the
+    // same section: the rest of the address (a post id) belongs to the team being left.
     setTeam: (t) => {
       setTabTeam(t.code);
       setMe({ user: { ...user, current_team: t } });
-      if (urlTeam && urlTeam !== t.code) router.push(teamPath(t.code, `/${location.pathname.split("/")[3] ?? "home"}`));
+      const part = teamSegment(t);
+      if (!urlTeam || urlTeam === part) return;
+      if (t.id !== user.current_team.id) return router.push(teamPath(part, `/${location.pathname.split("/")[3] ?? "home"}`));
+      // The same team under a new address: the page stays, the address bar moves.
+      setOldSegment(urlTeam);
+      window.history.replaceState(null, "", teamPath(part, splitTeamPath(location.pathname)[1]) + location.search + location.hash);
     },
     refresh: async () => {
       const r = await getMe();
@@ -213,7 +226,7 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
     ) : session ? (
       // A new current team remounts the page, so it loads that team's data.
       <Suspense fallback={waiting}>
-        <OnTeam key={session.user.current_team.id} code={session.user.current_team.code} fallback={waiting}>
+        <OnTeam key={session.user.current_team.id} team={session.user.current_team} old={oldSegment} fallback={waiting}>
           {children}
         </OnTeam>
       </Suspense>
@@ -223,7 +236,7 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
 
   return (
     <SessionContext.Provider value={session}>
-      <TeamCode.Provider value={user?.current_team.code ?? MY_TEAM}>
+      <TeamCode.Provider value={user ? teamSegment(user.current_team) : MY_TEAM}>
       <Suspense fallback={null}>
         <TeamInAddress onCode={setUrlTeam} />
       </Suspense>
@@ -318,12 +331,12 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
 
 // The page, once the address and the loaded team agree. Read from the address in the same render as the page,
 // so a page never mounts under another team (mid-switch, or Back to another team); it waits for its own.
-function OnTeam({ code, fallback, children }: { code: string; fallback: ReactNode; children: ReactNode }) {
+function OnTeam({ team, old, fallback, children }: { team: Team; old: string | null; fallback: ReactNode; children: ReactNode }) {
   const inAddress = splitTeamPath(usePathname())[0];
-  return inAddress === null || inAddress === code ? <div>{children}</div> : fallback;
+  return inAddress === null || inAddress === old || isTeamSegment(team, inAddress) ? <div>{children}</div> : fallback;
 }
 
-// Reads the team code from the address. On its own under Suspense: usePathname waits for the request on /t/[team] pages.
+// Reads the team (slug or code) from the address. On its own under Suspense: usePathname waits for the request on /t/[team] pages.
 function TeamInAddress({ onCode }: { onCode: (code: string | null) => void }) {
   const code = splitTeamPath(usePathname())[0];
   useEffect(() => onCode(code), [code, onCode]);

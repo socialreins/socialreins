@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { legacyRedirects, MY_TEAM, splitTeamPath, TEAM_PAGES, teamPath } from "@/lib/team-path";
+import { isTeamSegment, legacyRedirects, MY_TEAM, splitTeamPath, TEAM_PAGES, teamPath, teamSegment } from "@/lib/team-path";
+import { slugProblem } from "@/lib/teams";
 
 describe("team addresses", () => {
   it("puts team pages under /t/<code> and leaves the rest alone", () => {
@@ -18,6 +19,32 @@ describe("team addresses", () => {
     expect(splitTeamPath("/t/_/connections")).toEqual([MY_TEAM, "/connections"]);
     expect(splitTeamPath("/profile")).toEqual([null, "/profile"]);
     expect(splitTeamPath("/team")).toEqual([null, "/team"]);
+  });
+
+  it("builds addresses with the slug when the team has one, else the code, and reads both", () => {
+    const plain = { code: "k7q2mf", slug: null };
+    const named = { code: "k7q2mf", slug: "acme" };
+    expect(teamSegment(plain)).toBe("k7q2mf");
+    expect(teamSegment({ code: "k7q2mf" })).toBe("k7q2mf");
+    expect(teamSegment(named)).toBe("acme");
+    expect(teamPath(teamSegment(named), "/posts/12?x=1")).toBe("/t/acme/posts/12?x=1");
+    expect(splitTeamPath("/t/acme/posts/12")).toEqual(["acme", "/posts/12"]);
+    expect(isTeamSegment(named, "acme")).toBe(true);
+    expect(isTeamSegment(named, "k7q2mf")).toBe(true);
+    expect(isTeamSegment(named, "other")).toBe(false);
+    expect(isTeamSegment(plain, "k7q2mf")).toBe(true);
+    expect(isTeamSegment(plain, "acme")).toBe(false);
+    expect(isTeamSegment(plain, MY_TEAM)).toBe(false);
+  });
+
+  it("checks a typed slug like brain does", () => {
+    for (const ok of ["abc", "acme", "acme-co", "a1-b2-c3", "123", "a".repeat(30)]) expect(slugProblem(ok), ok).toBeNull();
+    expect(slugProblem("ab")).toMatch(/3 to 30/);
+    expect(slugProblem("a".repeat(31))).toMatch(/3 to 30/);
+    for (const bad of ["Acme", "ac me", "ac_me", "acmé", "a.b.c"]) expect(slugProblem(bad), bad).toMatch(/lowercase letters, digits and dashes/);
+    expect(slugProblem("-acme")).toMatch(/Start and end/);
+    expect(slugProblem("acme-")).toMatch(/Start and end/);
+    expect(slugProblem("ac--me")).toMatch(/one dash/);
   });
 
   it("sends every old address to the current team's", () => {

@@ -182,7 +182,9 @@ test("a member sees no management controls and can leave", async ({ page }) => {
   await page.route("**/v1/teams", (route) => route.fulfill({ json: [acme("member")] }));
   await page.goto("/team");
   await expect(page.getByText("You are a member of Acme.")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "General" })).toHaveCount(0);
+  // General shows a member the team's address, with nothing to change.
+  await expect(page.getByRole("region", { name: "General" })).toContainText("/t/acme22");
+  await expect(page.getByRole("region", { name: "General" }).getByRole("textbox")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Invitations" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Remove/ })).toHaveCount(0);
   await expect(page.getByRole("combobox")).toHaveCount(0);

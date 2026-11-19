@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { MY_TEAM, splitTeamPath, teamPath } from "@/lib/team-path";
 
-// The code of the team on screen, set by the app shell. Outside the shell, links lead to "my current team".
+// The address segment of the team on screen (its slug, else its code), set by the app shell. Outside the shell, links lead to "my current team".
 export const TeamCode = createContext(MY_TEAM);
 
 // Turns an app path ("/posts/new") into its address in the team on screen.

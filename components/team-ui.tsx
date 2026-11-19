@@ -83,6 +83,10 @@ const messages: Partial<Record<Failure, ReactNode>> = {
   default_set: "The set that holds every account can't be deleted.",
   invalid_sets: "One of those sets no longer exists. Reload the page and try again.",
   default_set_required: "An account can't leave the set that holds every account.",
+  // The form checks length and characters itself, so brain's refusal is a reserved word.
+  invalid_slug: "That address is reserved or not allowed. Pick a different one.",
+  slug_taken: "Another team already uses that address. Pick a different one.",
+  slug_changed_too_often: "The address was changed 5 times today, the most allowed. Try again tomorrow.",
   invalid_role: "Pick one of the roles in the list.",
   invalid_email: "That email address doesn't look right. Check it and try again.",
   already_member: "That person is already in this team.",
