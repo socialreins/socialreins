@@ -26,6 +26,7 @@ import {
   repeatForm,
   repeatRule,
   repeatSummary,
+  untilUtc,
   monthWeeks,
   publishPost,
   takeDownAll,
@@ -655,13 +656,13 @@ describe("repeat", () => {
     expect(repeatSummary({ every: "day", interval: 1, until: null, remaining: null })).toBe("Repeats every day");
     expect(repeatSummary({ every: "week", interval: 2, until: null, remaining: 5 })).toBe("Repeats every 2 weeks, 5 more times");
     expect(repeatSummary({ every: "week", interval: 1, until: null, remaining: 1 })).toBe("Repeats every week, 1 more time");
-    expect(repeatSummary({ every: "month", interval: 1, until: "2026-12-31", remaining: null })).toBe("Repeats every month until Dec 31, 2026");
+    expect(repeatSummary({ every: "month", interval: 1, until: untilUtc("2026-12-31"), remaining: null })).toBe("Repeats every month until Dec 31, 2026");
   });
   it("maps the form to brain's rule", () => {
     expect(repeatRule(form)).toBeNull();
     expect(repeatRule({ ...form, every: "week" })).toEqual({ every: "week", interval: 1, until: null, remaining: null });
     expect(repeatRule({ ...form, every: "custom", unit: "month", interval: "3", ends: "count", count: "7" })).toEqual({ every: "month", interval: 3, until: null, remaining: 7 });
-    expect(repeatRule({ ...form, every: "day", ends: "date", until: "2026-12-31", count: "9" })).toEqual({ every: "day", interval: 1, until: "2026-12-31", remaining: null });
+    expect(repeatRule({ ...form, every: "day", ends: "date", until: "2026-12-31", count: "9" })).toEqual({ every: "day", interval: 1, until: untilUtc("2026-12-31"), remaining: null });
     // Out of range or blank numbers are kept within brain's limits; a missing date never ends.
     expect(repeatRule({ ...form, every: "custom", unit: "day", interval: "40", ends: "count", count: "" })).toEqual({ every: "day", interval: 12, until: null, remaining: 1 });
     expect(repeatRule({ ...form, every: "day", ends: "date", until: "" })).toEqual({ every: "day", interval: 1, until: null, remaining: null });
@@ -674,5 +675,14 @@ describe("repeat", () => {
       { every: "month", interval: 2, until: "2027-01-31", remaining: null },
     ] as const)
       expect(repeatRule(repeatForm(r))).toEqual(r);
+  });
+});
+
+describe("repeat until", () => {
+  it("round-trips a local end date through brain's UTC date", async () => {
+    const { untilLocal, untilUtc } = await import("@/lib/posts");
+    for (const day of ["2026-12-05", "2026-12-31", "2027-02-28"]) expect(untilLocal(untilUtc(day))).toBe(day);
+    // The local day's last second, as a UTC date.
+    expect(untilUtc("2026-12-05")).toBe(new Date(2026, 11, 5, 23, 59, 59).toISOString().slice(0, 10));
   });
 });
