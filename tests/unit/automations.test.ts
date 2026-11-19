@@ -2,9 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   actionsSummary,
   automationInput,
+  canEdit,
   changeTrigger,
   conditionNotes,
   draftOf,
+  postIds,
   postLink,
   postUri,
   reason,
@@ -42,6 +44,28 @@ describe("post links", () => {
 
   it("links an at:// URI back to bsky.app", () => {
     expect(postLink("at://did:plc:bob/app.bsky.feed.post/3abc")).toBe("https://bsky.app/profile/did:plc:bob/post/3abc");
+  });
+});
+
+describe("saved post ids", () => {
+  it("keeps the ids an automation was loaded with and reads only new lines as Bluesky links", () => {
+    const loaded = ["1234567890_987654321", "at://did:plc:bob/app.bsky.graph.list/3abc", "at://did:plc:bob/app.bsky.feed.post/3xyz"];
+    const lines = ["1234567890_987654321", "at://did:plc:bob/app.bsky.graph.list/3abc", "https://bsky.app/profile/did:plc:bob/post/3xyz", "https://bsky.app/profile/alice.bsky.social/post/3new", "999_888"];
+    expect(postIds(lines, loaded, accounts)).toEqual([...loaded, "at://did:plc:alice/app.bsky.feed.post/3new", null]);
+    expect(postIds(["1234567890_987654321"], [], accounts)).toEqual([null]);
+  });
+});
+
+describe("automations from a newer brain", () => {
+  const known = { trigger: "comment_received", conditions: { account_ids: [] }, actions: [{ type: "send_dm", text: "x" }] };
+  it("edits only a trigger it knows with plain actions", () => {
+    expect(canEdit(known as unknown as Automation)).toBe(true);
+    expect(canEdit({ ...known, trigger: "button_clicked" } as unknown as Automation)).toBe(false);
+    expect(canEdit({ ...known, trigger: "toString" } as unknown as Automation)).toBe(false);
+    expect(canEdit({ ...known, actions: [], steps: [{ type: "send_dm" }] } as unknown as Automation)).toBe(false);
+    expect(canEdit({ ...known, steps: [{}] } as unknown as Automation)).toBe(false);
+    expect(canEdit({ ...known, actions: undefined } as unknown as Automation)).toBe(false);
+    expect(canEdit({ ...known, conditions: null } as unknown as Automation)).toBe(false);
   });
 });
 

@@ -9,6 +9,7 @@ import type { Failure } from "@/lib/auth";
 import {
   actionName,
   actionsSummary,
+  canEdit,
   conditionNotes,
   deleteAutomation,
   getAutomation,
@@ -102,6 +103,14 @@ function Stats({ runs }: { runs: Automation["runs"] }) {
 
 // The trigger in words with its icon, the keywords, then scope, conditions and what it does.
 function Summary({ automation: a, accounts, sets }: { automation: Automation; accounts: Connection[]; sets: SocialSet[] }) {
+  // A trigger or shape from a newer brain: nothing here can be read safely but its name, switch and counts.
+  if (!canEdit(a))
+    return (
+      <p className="flex items-center gap-2 text-[0.95rem]">
+        <Icon name="automations" className="size-4 text-ink-soft" />
+        Made over the API
+      </p>
+    );
   const keywords = a.conditions.keywords ?? [];
   return (
     <>
@@ -214,14 +223,21 @@ export function AutomationDetail({ id }: { id: string }) {
     listRuns(id).then((r) => setRuns(isFailure(r) ? r : { runs: r.runs, next: r.next_cursor }));
   }, [id]);
 
-  // shortcut: one request per run's item (50 a page), since brain's runs carry no author; ask brain for it in the run if this gets slow.
+  // shortcut: one request per run's item (50 a page), 4 at a time, since brain's runs carry no author; ask brain for it in the run if this gets slow.
+  // A lookup that failed is forgotten, so the next Load more (or opening the page again) tries it once more.
   useEffect(() => {
     if (!runs || isFailure(runs)) return;
-    for (const r of runs.runs) {
-      if (asked.current.has(r.inbox_item_id)) continue;
-      asked.current.add(r.inbox_item_id);
-      getItem(r.inbox_item_id).then((i) => setPeople((p) => ({ ...p, [r.inbox_item_id]: isFailure(i) ? null : i.author })));
-    }
+    const queue = [...new Set(runs.runs.map((r) => r.inbox_item_id))].filter((x) => !asked.current.has(x));
+    for (const x of queue) asked.current.add(x);
+    const worker = async () => {
+      for (let x = queue.shift(); x; x = queue.shift()) {
+        const item = x;
+        const i = await getItem(item);
+        if (isFailure(i)) asked.current.delete(item);
+        setPeople((p) => ({ ...p, [item]: isFailure(i) ? null : i.author }));
+      }
+    };
+    for (let n = 0; n < 4; n++) worker();
   }, [runs]);
 
   if (a === null) return <div role="status" className="h-64 rounded-2xl bg-ink/5 motion-safe:animate-pulse"><span className="sr-only">Loading the automation...</span></div>;
@@ -246,7 +262,7 @@ export function AutomationDetail({ id }: { id: string }) {
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-10">
-      {editing ? (
+      {editing && canEdit(a) ? (
         <AutomationForm
           automation={a}
           accounts={accounts}
@@ -272,14 +288,19 @@ export function AutomationDetail({ id }: { id: string }) {
             <ActiveSwitch automation={a} canManage={canManage} onChange={(x) => setA({ ...x, runs: a.runs })} />
           </div>
           <Stats runs={a.runs} />
-          <dl className="grid gap-3 sm:grid-cols-2">
-            {a.actions.map((x) => (
+          {!canEdit(a) && (
+            <p role="note" className="rounded-xl bg-canvas p-3 text-sm">
+              This automation was made over the API with a trigger or steps this page doesn&apos;t know yet, so it can&apos;t be edited here yet. You can still switch it on or off, read its runs and delete it.
+            </p>
+          )}
+          <dl className="grid gap-3 sm:grid-cols-2" hidden={!canEdit(a)}>
+            {(canEdit(a) ? a.actions : []).map((x) => (
               <div key={x.type} className="grid gap-1 rounded-xl bg-canvas p-3">
                 <dt className="text-sm font-bold">{actionName[x.type]}</dt>
                 <dd className="whitespace-pre-wrap break-words">{x.text}</dd>
               </div>
             ))}
-            {a.fallback_public_reply && (
+            {canEdit(a) && a.fallback_public_reply && (
               <div className="grid gap-1 rounded-xl bg-canvas p-3">
                 <dt className="text-sm font-bold">Public reply if the DM can&apos;t go</dt>
                 <dd className="whitespace-pre-wrap break-words">{a.fallback_public_reply}</dd>
@@ -316,10 +337,12 @@ export function AutomationDetail({ id }: { id: string }) {
               </div>
             ) : (
               <div className="flex flex-wrap gap-2">
-                <button ref={editRef} type="button" className="btn btn-secondary btn-sm" onClick={() => setEditing(true)}>
-                  <Icon name="edit" className="size-4" />
-                  Edit
-                </button>
+                {canEdit(a) && (
+                  <button ref={editRef} type="button" className="btn btn-secondary btn-sm" onClick={() => setEditing(true)}>
+                    <Icon name="edit" className="size-4" />
+                    Edit
+                  </button>
+                )}
                 <button ref={deleteRef} type="button" className="btn btn-quiet btn-danger btn-sm" onClick={() => setConfirming(true)}>
                   <Icon name="trash" className="size-4" />
                   Delete
@@ -373,7 +396,7 @@ export function AutomationDetail({ id }: { id: string }) {
                       <tr key={r.id} className="align-top">
                         <td className="px-4 py-3">
                           <span className="badge tone" data-status={r.status === "skipped" ? undefined : r.status}>
-                            {statusName[r.status]}
+                            {statusName[r.status] ?? r.status}
                           </span>
                         </td>
                         <td className="max-w-40 truncate px-4 py-3 font-bold">{who ? authorName(who) : who === null ? "Unknown" : "..."}</td>
@@ -386,7 +409,7 @@ export function AutomationDetail({ id }: { id: string }) {
                             <ul aria-label="Actions" className="text-ink-soft">
                               {r.results.map((x, i) => (
                                 <li key={i}>
-                                  {actionName[x.type]}: {statusName[x.status].toLowerCase()}
+                                  {actionName[x.type] ?? String(x.type).replaceAll("_", " ")}: {(statusName[x.status] ?? x.status).toLowerCase()}
                                   {x.reason && x.reason !== r.reason ? ` (${reason(x.reason)})` : ""}
                                 </li>
                               ))}

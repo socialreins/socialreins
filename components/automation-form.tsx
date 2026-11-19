@@ -7,7 +7,7 @@ import {
   changeTrigger,
   createAutomation,
   draftOf,
-  postUri,
+  postIds,
   sample,
   templateLength,
   TRIGGERS,
@@ -166,7 +166,7 @@ export function AutomationForm({
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const specific = t.posts && d.specific;
-    const uris = specific ? lines.map((l) => postUri(l, accounts)) : [];
+    const uris = specific ? postIds(lines, a?.conditions.post_remote_ids ?? [], accounts) : [];
     const bad = specific ? lines.filter((_, i) => !uris[i]) : [];
     setBadLinks(bad);
     if (bad.length || (specific && !lines.length)) {
@@ -266,7 +266,7 @@ export function AutomationForm({
                     aria-invalid={badLinks.length > 0 || undefined}
                   />
                   <p id="automation-posts-hint" className="hint">
-                    One Bluesky post link per line, from a connected account.
+                    One Bluesky post link per line, from a connected account. Posts already listed here stay as they are.
                   </p>
                   {badLinks.length > 0 && (
                     <p id="automation-posts-error" role="alert" className="waitlist-error">

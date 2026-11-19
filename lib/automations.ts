@@ -28,6 +28,8 @@ export type Automation = {
   updated_at: string;
   // In the list and on one automation, not in the answer to a save or a switch.
   runs?: RunStats;
+  // A flow made over the API: steps in place of actions. Not built here yet.
+  steps?: unknown[];
 };
 export type AutomationInput = Pick<Automation, "name" | "trigger" | "conditions" | "actions" | "active" | "fallback_public_reply">;
 export type RunStatus = "running" | "sent" | "failed" | "skipped";
@@ -129,6 +131,21 @@ export const triggers: Record<Trigger, Capability> = {
   },
 };
 export const TRIGGERS = Object.keys(triggers) as Trigger[];
+
+// Whether the builder can show and save this automation without losing anything: a trigger it knows,
+// plain actions and no steps. brain may send a newer trigger or shape, whatever the type above says.
+export function canEdit(a: Automation) {
+  const x = a as { trigger: string; actions?: unknown; steps?: unknown[]; conditions?: unknown };
+  return Object.hasOwn(triggers, x.trigger) && !x.steps?.length && Array.isArray(x.actions) && x.actions.length > 0 && typeof x.conditions === "object" && x.conditions !== null;
+}
+
+// The ids to save for the post lines in the form. A line that still shows a post the automation was
+// loaded with keeps that id exactly (a Facebook or Instagram post id, any at:// URI); only a line the
+// user added or changed is read as a Bluesky link. null where a line is neither.
+export function postIds(lines: string[], loaded: string[], accounts: Parameters<typeof postUri>[1]) {
+  const kept = new Map(loaded.flatMap((id) => [[postLink(id), id], [id, id]]));
+  return lines.map((l) => kept.get(l) ?? postUri(l, accounts));
+}
 
 // The builder's fields. The scope and the post URIs are resolved by the form.
 export type Draft = {
