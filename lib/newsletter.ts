@@ -1,3 +1,4 @@
+import { csvCell } from "@/lib/csv";
 import { apiUrl } from "@/lib/waitlist";
 
 const TIMEOUT_MS = 10_000;
@@ -54,14 +55,8 @@ export async function verifyNewsletter(token: string): Promise<NewsletterVerifyR
 export type Subscriber = { id: string; email: string; confirmed: boolean; subscribed_at: string };
 
 // The confirmed emails as a CSV for a mailing tool. Unconfirmed ones never leave: nobody agreed to mail them.
-// A value a spreadsheet would run as a formula starts with a quote: a leading = or @, and a leading + or - unless
-// the value is a plain address (letters, digits and . _ % + - only), which a mailing tool needs to read as it is.
-const plain = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+$/;
 export function subscribersCsv(list: Subscriber[]): string {
-  const cell = (v: string) => {
-    const safe = /^[=@\t\r]/.test(v) || (/^[+-]/.test(v) && !plain.test(v)) ? `'${v}` : v;
-    return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
-  };
+  const cell = (v: string) => csvCell(v, true);
   const rows = list.filter((s) => s.confirmed).map((s) => `${cell(s.email)},${cell(s.subscribed_at)}`);
   return ["email,subscribed_at", ...rows].join("\r\n") + "\r\n";
 }
