@@ -44,7 +44,7 @@ test("an owner sets the team address: the address bar moves and pages keep worki
   const save = page.getByRole("button", { name: "Save address" });
   await expect(field).toHaveValue("");
   await expect(field).toHaveAttribute("placeholder", "acme22");
-  await expect(general(page)).toContainText("localhost:3102/t/");
+  await expect(general(page)).toContainText(`${new URL(page.url()).host}/t/`);
   await expect(general(page)).toContainText("3 to 30 lowercase letters, digits or dashes. Short is best: it is in every link.");
   await expect(save).toHaveClass(/btn-secondary/);
   await expect(page.getByRole("button", { name: "Use the default address" })).toHaveCount(0);
@@ -66,7 +66,7 @@ test("an owner sets the team address: the address bar moves and pages keep worki
   await expect(save).toHaveClass(/btn-primary/);
   sent.length = 0;
   await save.click();
-  await expect(page.getByText("The team address is now localhost:3102/t/acme. Old links with acme22 still work.")).toBeFocused();
+  await expect(page.getByText(`The team address is now ${new URL(page.url()).host}/t/acme. Old links with acme22 still work.`)).toBeFocused();
   expect(patches).toEqual([{ slug: "acme" }]);
   // No reload: the address bar moved and the typed name is still in its field.
   await expect(page).toHaveURL("/t/acme/team");
@@ -113,7 +113,7 @@ test("a taken, reserved or too often changed address is said plainly, and the de
     await expect(page).toHaveURL("/t/acme/team");
   }
   await page.getByRole("button", { name: "Use the default address" }).click();
-  await expect(page.getByText("The team is back on its default address, localhost:3102/t/acme22.")).toBeFocused();
+  await expect(page.getByText(`The team is back on its default address, ${new URL(page.url()).host}/t/acme22.`)).toBeFocused();
   expect(patches.at(-1)).toEqual({ slug: null });
   await expect(page).toHaveURL("/t/acme22/team");
   await expect(field).toHaveValue("");
@@ -126,7 +126,7 @@ test("a member reads the team address and cannot change it", async ({ page }) =>
   await page.goto("/t/beta33/team");
   await expect(page).toHaveURL("/t/beta-co/team");
   await expect(page.getByText("You are a member of Beta.")).toBeVisible();
-  await expect(general(page)).toContainText("localhost:3102/t/beta-co");
+  await expect(general(page)).toContainText(`${new URL(page.url()).host}/t/beta-co`);
   await expect(general(page).getByRole("textbox")).toHaveCount(0);
   await expect(general(page).getByRole("button")).toHaveCount(0);
 });
