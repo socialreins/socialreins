@@ -2,7 +2,7 @@ import { api } from "@/lib/auth";
 import type { Connection } from "@/lib/connections";
 import { graphemes } from "@/lib/posts";
 
-export type Trigger = "comment_received" | "dm_received" | "mention_received" | "new_follower" | "story_reply";
+export type Trigger = "comment_received" | "dm_received" | "mention_received" | "new_follower" | "story_reply" | "button_clicked";
 export type ScopeBody = { social_set_id?: string | null; account_ids: string[] };
 // brain stores only what the trigger takes, so everything but the scope may be missing.
 export type Conditions = ScopeBody & {
@@ -11,9 +11,14 @@ export type Conditions = ScopeBody & {
   keywords?: string[];
   first_per_author?: boolean;
   first_message?: boolean;
+  // button_clicked only: the payloads of the buttons whose click runs it.
+  payloads?: string[];
 };
 export type Action = { type: "send_dm" | "reply_publicly"; text: string };
-export type RunStats = { sent: number; skipped: number; failed: number; running: number; total: number; count: number; last_at: string | null };
+export type Button = { label: string; payload: string };
+// One step of a flow. brain leaves `buttons` out when a DM has none.
+export type Step = { type: "send_dm"; text: string; buttons?: Button[] } | { type: "reply_publicly"; text: string } | { type: "wait"; minutes: number };
+export type RunStats = { sent: number; skipped: number; failed: number; running: number; waiting?: number; total: number; count: number; last_at: string | null };
 export type Automation = {
   id: string;
   name: string;
@@ -28,11 +33,12 @@ export type Automation = {
   updated_at: string;
   // In the list and on one automation, not in the answer to a save or a switch.
   runs?: RunStats;
-  // A flow made over the API: steps in place of actions. Not built here yet.
-  steps?: unknown[];
+  // A flow: steps in place of actions (`actions` is then []). null or missing on a simple one.
+  steps?: Step[] | null;
 };
-export type AutomationInput = Pick<Automation, "name" | "trigger" | "conditions" | "actions" | "active" | "fallback_public_reply">;
-export type RunStatus = "running" | "sent" | "failed" | "skipped";
+// brain takes actions or steps, never both, and a fallback only with actions.
+export type AutomationInput = Pick<Automation, "name" | "trigger" | "conditions" | "active"> & { actions?: Action[]; steps?: Step[]; fallback_public_reply?: string | null };
+export type RunStatus = "running" | "waiting" | "sent" | "failed" | "skipped";
 export type ActionResult = {
   type: "send_dm" | "reply_publicly" | "fallback_public_reply";
   status: Exclude<RunStatus, "running">;
@@ -46,6 +52,9 @@ export type Run = {
   status: RunStatus;
   reason: string | null;
   results: ActionResult[];
+  // A flow's step last tried, from 0, and when a waiting run goes on.
+  step_index?: number | null;
+  resume_at?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -105,12 +114,13 @@ export type Capability = {
   firstPerAuthor: boolean;
   firstMessage: boolean;
   publicReply: boolean;
+  payloads: boolean;
   note: string | null;
 };
 export const triggers: Record<Trigger, Capability> = {
-  comment_received: { label: "When someone comments", keywords: true, posts: true, firstPerAuthor: true, firstMessage: false, publicReply: true, note: null },
-  dm_received: { label: "When someone sends a DM", keywords: true, posts: false, firstPerAuthor: false, firstMessage: true, publicReply: false, note: null },
-  mention_received: { label: "When someone mentions you", keywords: true, posts: false, firstPerAuthor: false, firstMessage: false, publicReply: true, note: null },
+  comment_received: { label: "When someone comments", keywords: true, posts: true, firstPerAuthor: true, firstMessage: false, publicReply: true, payloads: false, note: null },
+  dm_received: { label: "When someone sends a DM", keywords: true, posts: false, firstPerAuthor: false, firstMessage: true, publicReply: false, payloads: false, note: null },
+  mention_received: { label: "When someone mentions you", keywords: true, posts: false, firstPerAuthor: false, firstMessage: false, publicReply: true, payloads: false, note: null },
   new_follower: {
     label: "When someone follows you",
     keywords: false,
@@ -118,6 +128,7 @@ export const triggers: Record<Trigger, Capability> = {
     firstPerAuthor: false,
     firstMessage: false,
     publicReply: false,
+    payloads: false,
     note: "Bluesky only. Each follower gets the DM once, and only if they take DMs from accounts they don't follow.",
   },
   story_reply: {
@@ -127,16 +138,188 @@ export const triggers: Record<Trigger, Capability> = {
     firstPerAuthor: false,
     firstMessage: false,
     publicReply: false,
+    payloads: false,
     note: "Instagram only, and still in testing.",
+  },
+  button_clicked: {
+    label: "When someone taps a button",
+    keywords: false,
+    posts: false,
+    firstPerAuthor: false,
+    firstMessage: false,
+    publicReply: false,
+    payloads: true,
+    note: "Facebook and Instagram only. It runs when someone taps a button that a flow's DM showed them.",
   },
 };
 export const TRIGGERS = Object.keys(triggers) as Trigger[];
 
+const isText = (x: unknown) => typeof x === "string";
+// A step exactly as this page builds them, so saving it again loses nothing.
+function knownStep(s: unknown) {
+  const x = (s ?? {}) as { type?: unknown; text?: unknown; buttons?: unknown; minutes?: unknown };
+  const keys = Object.keys(x).filter((k) => k !== "type");
+  const only = (...names: string[]) => keys.every((k) => names.includes(k));
+  if (x.type === "wait") return only("minutes") && Number.isInteger(x.minutes);
+  if (x.type === "reply_publicly") return only("text") && isText(x.text);
+  const buttons = x.buttons ?? [];
+  return (
+    x.type === "send_dm" &&
+    only("text", "buttons") &&
+    isText(x.text) &&
+    Array.isArray(buttons) &&
+    buttons.every((b) => b && Object.keys(b).length === 2 && isText(b.label) && isText(b.payload))
+  );
+}
+
 // Whether the builder can show and save this automation without losing anything: a trigger it knows,
-// plain actions and no steps. brain may send a newer trigger or shape, whatever the type above says.
+// with plain actions or a flow of steps it knows. brain may send a newer trigger or shape, whatever
+// the type above says.
 export function canEdit(a: Automation) {
-  const x = a as { trigger: string; actions?: unknown; steps?: unknown[]; conditions?: unknown };
-  return Object.hasOwn(triggers, x.trigger) && !x.steps?.length && Array.isArray(x.actions) && x.actions.length > 0 && typeof x.conditions === "object" && x.conditions !== null;
+  const x = a as { trigger: string; actions?: unknown; steps?: unknown; conditions?: { payloads?: unknown } | null };
+  if (!Object.hasOwn(triggers, x.trigger) || typeof x.conditions !== "object" || x.conditions === null || !Array.isArray(x.actions)) return false;
+  if (triggers[x.trigger as Trigger].payloads && !Array.isArray(x.conditions.payloads)) return false;
+  if (x.steps === null || x.steps === undefined) return x.actions.length > 0;
+  return Array.isArray(x.steps) && x.steps.length > 0 && x.actions.length === 0 && x.steps.every(knownStep);
+}
+
+// A flow: steps, waits and buttons, as brain's `validate_steps` checks them.
+export const MAX_STEPS = 10;
+export const MAX_BUTTONS = 3;
+export const MAX_LABEL = 20;
+export const MAX_PAYLOADS = 20;
+export const MAX_WAIT_MINUTES = 10080;
+export type WaitUnit = "minutes" | "hours" | "days";
+const unitMinutes: Record<WaitUnit, number> = { minutes: 1, hours: 60, days: 1440 };
+export const WAIT_UNITS = Object.keys(unitMinutes) as WaitUnit[];
+
+// The wait in minutes; null unless it is a whole number of 1 minute to 7 days.
+export function waitMinutes(amount: string, unit: WaitUnit) {
+  if (!/^\d+$/.test(amount.trim())) return null;
+  const m = Number(amount) * unitMinutes[unit];
+  return m >= 1 && m <= MAX_WAIT_MINUTES ? m : null;
+}
+// Minutes in the largest unit that holds them exactly: 1440 is 1 day, 90 stays 90 minutes.
+export function waitParts(minutes: number): { amount: string; unit: WaitUnit } {
+  const unit = ([...WAIT_UNITS].reverse().find((u) => minutes > 0 && minutes % unitMinutes[u] === 0) ?? "minutes") as WaitUnit;
+  return { amount: String(minutes / unitMinutes[unit]), unit };
+}
+export function waitText(minutes: number) {
+  const { amount, unit } = waitParts(minutes);
+  return `${amount} ${amount === "1" ? unit.slice(0, -1) : unit}`;
+}
+
+export const payloadOk = (p: string) => /^[a-z0-9_-]{1,64}$/.test(p);
+// A label as a payload: "Yes, please!" is "yes-please". Empty when nothing in it can be kept.
+export const slug = (label: string) =>
+  label
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
+// `base`, or `base-2`, `base-3`... when another button of the flow has it.
+export function uniquePayload(base: string, taken: string[]) {
+  for (let n = 1; ; n++) {
+    const p = n === 1 ? base : `${base.slice(0, 64 - `-${n}`.length)}-${n}`;
+    if (!taken.includes(p)) return p;
+  }
+}
+
+// `own`: the payload was loaded or typed under Advanced, so a new label leaves it alone
+// (a follow-up automation may already listen for it).
+export type ButtonDraft = Button & { own: boolean };
+export type StepDraft = { id: number } & (
+  | { type: "send_dm"; text: string; buttons: ButtonDraft[] }
+  | { type: "reply_publicly"; text: string }
+  | { type: "wait"; amount: string; unit: WaitUnit }
+);
+let lastStepId = 0;
+export function newStep(type: Step["type"], text = ""): StepDraft {
+  const id = ++lastStepId;
+  if (type === "wait") return { id, type, amount: "1", unit: "days" };
+  return type === "send_dm" ? { id, type, text, buttons: [] } : { id, type, text };
+}
+const stepDraft = (s: Step): StepDraft => {
+  const id = ++lastStepId;
+  if (s.type === "wait") return { id, type: "wait", ...waitParts(s.minutes) };
+  return s.type === "send_dm" ? { id, type: s.type, text: s.text, buttons: (s.buttons ?? []).map((b) => ({ ...b, own: true })) } : { id, type: s.type, text: s.text };
+};
+// The steps as brain takes them. A wait that is not a valid time goes as 0, which `flowProblems` catches first.
+export const stepsBody = (steps: StepDraft[]): Step[] =>
+  steps.map((s) => {
+    if (s.type === "wait") return { type: s.type, minutes: waitMinutes(s.amount, s.unit) ?? 0 };
+    if (s.type === "reply_publicly") return { type: s.type, text: s.text };
+    const buttons = s.buttons.map((b) => ({ label: b.label.trim(), payload: b.payload }));
+    return { type: s.type, text: s.text, ...(buttons.length > 0 && { buttons }) };
+  });
+
+// The text as it is checked and as Bluesky shows it: the labels as numbered lines under it.
+export const numbered = (text: string, buttons: Pick<Button, "label">[]) => text + buttons.map((b, i) => `\n${i + 1}. ${b.label.trim()}`).join("");
+
+export type FlowProblem = { step: number | null; text: string };
+// What brain would refuse (422 invalid_steps or invalid_text), in words, with the step's index
+// or null for the flow as a whole. Empty when the flow can be saved.
+export function flowProblems(steps: StepDraft[], trigger: Trigger): FlowProblem[] {
+  const out: FlowProblem[] = [];
+  const pub = triggers[trigger].publicReply;
+  if (!steps.some((s) => s.type !== "wait")) out.push({ step: null, text: "A flow needs at least one step that sends something. Add a DM." });
+  else {
+    if (steps[0]!.type === "wait") out.push({ step: null, text: "A flow can't start with a wait. Move a DM above it." });
+    if (steps.at(-1)!.type === "wait") out.push({ step: null, text: "A flow can't end with a wait. Add a step after it, or remove it." });
+  }
+  if (steps.length > MAX_STEPS) out.push({ step: null, text: `A flow takes up to ${MAX_STEPS} steps.` });
+  const payloads = steps.flatMap((s) => (s.type === "send_dm" ? s.buttons.map((b) => b.payload) : []));
+  steps.forEach((s, step) => {
+    const say = (text: string) => out.push({ step, text });
+    if (s.type === "wait") {
+      if (waitMinutes(s.amount, s.unit) === null) say("Wait between 1 minute and 7 days, as a whole number.");
+      return;
+    }
+    if (s.type === "reply_publicly" && !pub) say("This trigger has nothing to reply under. Remove this step.");
+    const buttons = s.type === "send_dm" ? s.buttons : [];
+    const max = s.type === "send_dm" ? 1000 : 300;
+    if (!s.text.trim()) say("Write the text.");
+    else if (templateLength(numbered(s.text, buttons)) > max) say(`Too long: at most ${max} characters${buttons.length ? ", the button labels included" : ""}.`);
+    if (!pub && s.text.includes("{page}")) say("{page} works only for comments and mentions.");
+    if (buttons.length > MAX_BUTTONS) say(`A DM takes up to ${MAX_BUTTONS} buttons.`);
+    for (const b of buttons) {
+      const n = [...b.label.trim()].length;
+      if (n < 1 || n > MAX_LABEL) say(n ? `The label "${b.label.trim()}" is too long: at most ${MAX_LABEL} characters.` : "Give every button a label.");
+      if (!payloadOk(b.payload)) say(`The payload "${b.payload}" doesn't work: 1 to 64 lower-case letters, digits, - and _.`);
+      else if (payloads.indexOf(b.payload) !== payloads.lastIndexOf(b.payload)) say(`Two buttons share the payload "${b.payload}". Give each its own under Advanced.`);
+    }
+  });
+  // The same button problem once, whichever of its buttons raised it.
+  return out.filter((p, i) => out.findIndex((q) => q.step === p.step && q.text === p.text) === i);
+}
+
+const count = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
+
+// One reply as a flow: the DM and the public reply become steps. The fallback has no place in a flow.
+export function toFlow(d: Draft): { steps: StepDraft[]; dropped: string[] } {
+  const pub = triggers[d.trigger].publicReply;
+  const steps = [...(d.dm.trim() ? [newStep("send_dm", d.dm)] : []), ...(pub && d.publicReply.trim() ? [newStep("reply_publicly", d.publicReply.trim())] : [])];
+  return {
+    steps: steps.length ? steps : [newStep("send_dm")],
+    dropped: pub && d.fallbackOn && d.dm.trim() && d.fallback.trim() ? ["the fallback reply"] : [],
+  };
+}
+// A flow as one reply: its first DM and first public reply stay, and what One reply can't hold is named.
+export function toSimple(steps: StepDraft[]): { dm: string; publicReply: string; dropped: string[] } {
+  const of = <T extends StepDraft["type"]>(type: T) => steps.filter((s): s is Extract<StepDraft, { type: T }> => s.type === type);
+  const [dms, replies, waits] = [of("send_dm"), of("reply_publicly"), of("wait")];
+  const buttons = dms.reduce((n, s) => n + s.buttons.length, 0);
+  const lost: [number, string, string][] = [
+    [waits.length, "1 wait", "waits"],
+    [buttons, "1 button", "buttons"],
+    [dms.length - 1, "1 more DM", "more DMs"],
+    [replies.length - 1, "1 more public reply", "more public replies"],
+  ];
+  return {
+    dm: dms[0]?.text ?? "",
+    publicReply: replies[0]?.text ?? "",
+    dropped: lost.filter(([n]) => n > 0).map(([n, one, many]) => (n === 1 ? one : `${n} ${many}`)),
+  };
 }
 
 // The ids to save for the post lines in the form. A line that still shows a post the automation was
@@ -162,6 +345,11 @@ export type Draft = {
   fallbackOn: boolean;
   fallback: string;
   active: boolean;
+  // One reply (dm, publicReply, fallback) or a flow (steps).
+  flow: boolean;
+  steps: StepDraft[];
+  // button_clicked: the payloads it listens for.
+  payloads: string[];
 };
 const empty: Draft = {
   name: "",
@@ -176,6 +364,9 @@ const empty: Draft = {
   fallbackOn: false,
   fallback: "",
   active: true,
+  flow: false,
+  steps: [],
+  payloads: [],
 };
 
 export const templates: { id: string; title: string; about: string; draft: Partial<Draft> }[] = [
@@ -215,11 +406,20 @@ export const templates: { id: string; title: string; about: string; draft: Parti
     about: "Send a DM to people who reply to your story. Instagram only.",
     draft: { name: "Story reply", trigger: "story_reply", dm: "Thanks for replying to our story, {name}!" },
   },
+  {
+    id: "button-follow-up",
+    title: "Button follow-up",
+    about: "Answer a tap on a button that a flow's DM showed. Facebook and Instagram only.",
+    draft: { name: "Button follow-up", trigger: "button_clicked", dm: "Thanks, {name}! Here is more: " },
+  },
 ];
 
-// The builder's start: a saved automation, a template, or nothing.
-export function draftOf(a?: Automation, templateId?: string | null): Draft {
-  if (!a) return { ...empty, ...templates.find((t) => t.id === templateId)?.draft };
+// The builder's start: a saved automation, a template (with the button payload a follow-up link carried), or nothing.
+export function draftOf(a?: Automation, templateId?: string | null, payload?: string | null): Draft {
+  if (!a) {
+    const d = { ...empty, ...templates.find((t) => t.id === templateId)?.draft };
+    return triggers[d.trigger].payloads && payload && payloadOk(payload) ? { ...d, payloads: [payload] } : d;
+  }
   const c = a.conditions;
   const text = (type: Action["type"]) => a.actions.find((x) => x.type === type)?.text ?? "";
   return {
@@ -235,6 +435,9 @@ export function draftOf(a?: Automation, templateId?: string | null): Draft {
     fallbackOn: Boolean(a.fallback_public_reply),
     fallback: a.fallback_public_reply ?? "",
     active: a.active,
+    flow: Boolean(a.steps),
+    steps: (a.steps ?? []).map(stepDraft),
+    payloads: c.payloads ?? [],
   };
 }
 
@@ -254,7 +457,13 @@ export function changeTrigger(d: Draft, to: Trigger): { draft: Draft; dropped: s
   drop(!t.firstMessage && d.firstMessage, "first message only", { firstMessage: false });
   drop(!t.publicReply && Boolean(d.publicReply.trim()), "public reply", { publicReply: "" });
   drop(!t.publicReply && (d.fallbackOn || Boolean(d.fallback.trim())), "fallback reply", { fallbackOn: false, fallback: "" });
-  drop(!t.publicReply && d.dm.includes("{page}"), "{page} in the DM", { dm: d.dm.replaceAll("{page}", "").replace(/ {2,}/g, " ").trim() });
+  const unpage = (text: string) => text.replaceAll("{page}", "").replace(/ {2,}/g, " ").trim();
+  drop(!t.publicReply && d.dm.includes("{page}"), "{page} in the DM", { dm: unpage(d.dm) });
+  drop(!t.payloads && d.payloads.length > 0, "button payloads", { payloads: [] });
+  drop(!t.publicReply && d.steps.some((s) => s.type === "reply_publicly"), "public reply steps", { steps: d.steps.filter((s) => s.type !== "reply_publicly") });
+  drop(!t.publicReply && draft.steps.some((s) => s.type === "send_dm" && s.text.includes("{page}")), "{page} in the steps", {
+    steps: draft.steps.map((s) => (s.type === "send_dm" ? { ...s, text: unpage(s.text) } : s)),
+  });
   return { draft, dropped };
 }
 
@@ -265,7 +474,7 @@ export function automationInput(d: Draft, scope: ScopeBody, uris: string[]): Aut
   const reply = t.publicReply ? d.publicReply.trim() : "";
   // brain takes a fallback only next to a DM.
   const fallback = t.publicReply && dm && d.fallbackOn ? d.fallback.trim() : "";
-  return {
+  const head = {
     name: d.name,
     trigger: d.trigger,
     conditions: {
@@ -274,7 +483,13 @@ export function automationInput(d: Draft, scope: ScopeBody, uris: string[]): Aut
       ...(t.posts && { post_remote_ids: d.specific ? uris : [] }),
       ...(t.firstPerAuthor && { first_per_author: d.firstPerAuthor }),
       ...(t.firstMessage && { first_message: d.firstMessage }),
+      ...(t.payloads && { payloads: d.payloads }),
     },
+  };
+  // A flow goes without actions and without a fallback: brain refuses either next to steps.
+  if (d.flow) return { ...head, steps: stepsBody(d.steps), active: d.active };
+  return {
+    ...head,
     actions: [...(dm ? [{ type: "send_dm" as const, text: dm }] : []), ...(reply ? [{ type: "reply_publicly" as const, text: reply }] : [])],
     active: d.active,
     fallback_public_reply: fallback || null,
@@ -299,6 +514,7 @@ export const reasonText: Record<string, string> = {
   not_repliable: "This comment can't be replied to",
   too_long: "The text was too long",
   internal: "Something went wrong on our side",
+  automation_changed: "Stopped: the automation was changed or switched off before the flow finished",
 };
 export const reason = (code: string | null) => (code ? (reasonText[code] ?? code.replaceAll("_", " ")) : null);
 
@@ -316,7 +532,12 @@ export function conditionNotes(c: Conditions) {
   );
 }
 
-export function actionsSummary(a: Pick<Automation, "actions" | "fallback_public_reply">) {
+export const stepName: Record<Step["type"], string> = { send_dm: "Send a DM", reply_publicly: "Reply publicly", wait: "Wait" };
+// "DM, wait 1 day, DM".
+export const flowOutline = (steps: Step[]) => steps.map((s) => (s.type === "wait" ? `wait ${waitText(s.minutes)}` : s.type === "send_dm" ? "DM" : "public reply")).join(", ");
+
+export function actionsSummary(a: Pick<Automation, "actions" | "fallback_public_reply" | "steps">) {
+  if (a.steps) return `${count(a.steps.length, "step")}: ${flowOutline(a.steps)}`;
   const has = (type: Action["type"]) => a.actions.some((x) => x.type === type);
   if (!has("send_dm")) return "Replies publicly";
   if (has("reply_publicly")) return "Sends a DM and replies publicly";

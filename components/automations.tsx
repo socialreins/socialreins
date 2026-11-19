@@ -16,9 +16,11 @@ import {
   listAutomations,
   listRuns,
   reason,
+  stepName,
   switchAutomation,
   templates,
   triggers,
+  waitText,
   type Automation,
   type Run,
 } from "@/lib/automations";
@@ -33,7 +35,7 @@ import { isFailure, problemText, Status, useAction } from "@/components/team-ui"
 import { Icon } from "@/components/ui";
 
 const heading = "font-display text-xl font-extrabold tracking-tight";
-const statusName: Record<Run["status"], string> = { running: "Running", sent: "Sent", failed: "Failed", skipped: "Skipped" };
+const statusName: Record<Run["status"], string> = { running: "Running", waiting: "Waiting", sent: "Sent", failed: "Failed", skipped: "Skipped" };
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 // The team's accounts and sets, for the scope fields and summaries.
@@ -83,13 +85,13 @@ function ActiveSwitch({ automation: a, canManage, onChange }: { automation: Auto
   );
 }
 
-// Sent, Skipped and Failed as small figures, with the last run's time.
+// Sent, Skipped and Failed as small figures (and Waiting while a flow has runs at a wait), with the last run's time.
 function Stats({ runs }: { runs: Automation["runs"] }) {
   if (!runs) return null;
   return (
     <div className="flex flex-wrap items-end gap-x-6 gap-y-1">
       <dl aria-label="Runs" className="flex gap-5">
-        {(["sent", "skipped", "failed"] as const).map((k) => (
+        {(["sent", "skipped", "failed", ...(runs.waiting ? (["waiting"] as const) : [])] as const).map((k) => (
           <div key={k}>
             <dt className="text-xs text-ink-soft">{statusName[k]}</dt>
             <dd className={`font-bold tabular-nums ${k === "failed" && runs.failed ? "text-signal-deep" : ""}`}>{runs[k]}</dd>
@@ -111,7 +113,8 @@ function Summary({ automation: a, accounts, sets }: { automation: Automation; ac
         Made over the API
       </p>
     );
-  const keywords = a.conditions.keywords ?? [];
+  // A button automation shows the payloads it listens for where the others show their keywords.
+  const keywords = a.conditions.keywords?.length ? a.conditions.keywords : (a.conditions.payloads ?? []);
   return (
     <>
       <p className="flex items-center gap-2 text-[0.95rem]">
@@ -119,7 +122,7 @@ function Summary({ automation: a, accounts, sets }: { automation: Automation; ac
         {triggers[a.trigger]?.label ?? a.trigger}
       </p>
       {keywords.length > 0 && (
-        <ul aria-label="Keywords" className="flex flex-wrap gap-1.5">
+        <ul aria-label={a.conditions.payloads?.length ? "Button payloads" : "Keywords"} className="flex flex-wrap gap-1.5">
           {keywords.map((k) => (
             <li key={k} className="badge tone text-ink">
               {k}
@@ -166,7 +169,7 @@ export function Automations() {
           <p>
             <strong className="block">No automations yet</strong>
             <span className="text-ink-soft">
-              Answer comments, DMs, mentions, new followers and story replies on your own: a DM to everyone who comments &quot;link&quot;, a welcome to a first message. Start from a template.
+              Answer comments, DMs, mentions, new followers and story replies on your own: a DM to everyone who comments &quot;link&quot;, a welcome to a first message, or a flow of steps with waits and buttons. Start from a template.
             </span>
           </p>
           {canManage && (
@@ -293,7 +296,28 @@ export function AutomationDetail({ id }: { id: string }) {
               This automation was made over the API with a trigger or steps this page doesn&apos;t know yet, so it can&apos;t be edited here yet. You can still switch it on or off, read its runs and delete it.
             </p>
           )}
-          <dl className="grid gap-3 sm:grid-cols-2" hidden={!canEdit(a)}>
+          {canEdit(a) && a.steps && (
+            <ol aria-label="Steps" className="grid gap-2">
+              {a.steps.map((s, i) => (
+                <li key={i} className="grid gap-1 rounded-xl bg-canvas p-3">
+                  <strong className="text-sm">
+                    {i + 1}. {s.type === "wait" ? `Wait ${waitText(s.minutes)}` : stepName[s.type]}
+                  </strong>
+                  {s.type !== "wait" && <span className="whitespace-pre-wrap break-words">{s.text}</span>}
+                  {s.type === "send_dm" && s.buttons && s.buttons.length > 0 && (
+                    <ul aria-label="Buttons" className="flex flex-wrap gap-1.5">
+                      {s.buttons.map((b) => (
+                        <li key={b.payload} className="badge tone text-ink">
+                          {b.label}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              ))}
+            </ol>
+          )}
+          <dl className="grid gap-3 sm:grid-cols-2" hidden={!canEdit(a) || Boolean(a.steps)}>
             {(canEdit(a) ? a.actions : []).map((x) => (
               <div key={x.type} className="grid gap-1 rounded-xl bg-canvas p-3">
                 <dt className="text-sm font-bold">{actionName[x.type]}</dt>
@@ -395,7 +419,7 @@ export function AutomationDetail({ id }: { id: string }) {
                     return (
                       <tr key={r.id} className="align-top">
                         <td className="px-4 py-3">
-                          <span className="badge tone" data-status={r.status === "skipped" ? undefined : r.status}>
+                          <span className="badge tone" data-status={r.status === "skipped" ? undefined : r.status === "waiting" ? "scheduled" : r.status}>
                             {statusName[r.status] ?? r.status}
                           </span>
                         </td>
@@ -404,7 +428,18 @@ export function AutomationDetail({ id }: { id: string }) {
                           <time dateTime={r.created_at}>{when(r.created_at)}</time>
                         </td>
                         <td className="px-4 py-3">
+                          {r.status === "waiting" && r.resume_at && (
+                            <p>
+                              Waiting until <time dateTime={r.resume_at}>{when(r.resume_at)}</time>
+                            </p>
+                          )}
                           {r.reason && <p>{reason(r.reason)}</p>}
+                          {typeof r.step_index === "number" && (
+                            <p className="text-ink-soft">
+                              Step {r.step_index + 1}
+                              {canEdit(a) && a.steps && r.step_index < a.steps.length ? ` of ${a.steps.length}` : ""}
+                            </p>
+                          )}
                           {r.results.length > 0 && (
                             <ul aria-label="Actions" className="text-ink-soft">
                               {r.results.map((x, i) => (
@@ -453,7 +488,8 @@ export function AutomationDetail({ id }: { id: string }) {
 export function NewAutomation() {
   const { user } = useSession();
   const router = useRouter();
-  const template = useSearchParams().get("template");
+  const params = useSearchParams();
+  const template = params.get("template");
   const { accounts, ready, sets } = useScopeData();
   if (!manages(user.current_team.role)) return <p className="text-ink-soft">Only team owners and admins can create automations.</p>;
   if (!templates.some((t) => t.id === template))
@@ -485,7 +521,16 @@ export function NewAutomation() {
         <Icon name="left" className="size-4" />
         Templates
       </Link>
-      <AutomationForm key={template} template={template} accounts={accounts} ready={ready} sets={sets} onSaved={(a) => router.push(`/automations/${a.id}`)} />
+      <AutomationForm
+        key={template}
+        template={template}
+        payload={params.get("payload")}
+        startScope={{ social_set_id: params.get("set"), account_ids: params.get("accounts")?.split(",").filter(Boolean) ?? [] }}
+        accounts={accounts}
+        ready={ready}
+        sets={sets}
+        onSaved={(a) => router.push(`/automations/${a.id}`)}
+      />
     </div>
   );
 }

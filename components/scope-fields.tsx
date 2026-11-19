@@ -106,19 +106,22 @@ export function KeywordsField({
   hint,
   value,
   onChange,
+  clean = (raw) => raw.trim().slice(0, 100),
 }: {
   id: string;
   label: string;
   hint: string;
   value: string[];
   onChange: (k: string[]) => void;
+  // What one typed chip is stored as; empty adds nothing.
+  clean?: (raw: string) => string;
 }) {
   const [draft, setDraft] = useState("");
   const add = () => {
     // A pasted "price, link" becomes two.
     const next = [...value];
     for (const raw of draft.split(",")) {
-      const k = raw.trim().slice(0, 100);
+      const k = clean(raw);
       if (k && !next.some((v) => v.toLowerCase() === k.toLowerCase()) && next.length < 20) next.push(k);
     }
     if (next.length !== value.length) onChange(next);
