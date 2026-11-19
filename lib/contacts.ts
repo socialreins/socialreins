@@ -47,6 +47,8 @@ export function listContacts({ q, tag, platform }: ContactQuery, cursor?: string
 export const getContact = (id: string) => api<ContactDetail>(`/v1/contacts/${enc(id)}`);
 // `tags` replaces the whole set; `notes` null clears them.
 export const updateContact = (id: string, patch: { notes?: string | null; tags?: string[] }) => api<Contact>(`/v1/contacts/${enc(id)}`, "PATCH", patch);
+// Owners and admins only. The contact's name, tags and notes go; its items stay in the inbox.
+export const deleteContact = (id: string) => api(`/v1/contacts/${enc(id)}`, "DELETE");
 export const listContactTags = () => api<TagCount[]>("/v1/contact-tags");
 
 export const contactName = (c: Pick<Contact, "display_name" | "handle" | "external_id">) => c.display_name || (c.handle ? `@${c.handle}` : c.external_id);

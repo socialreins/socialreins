@@ -106,6 +106,8 @@ export function AutomationForm({
   const tokens = t.publicReply ? ["{name}", "{page}"] : ["{name}"];
   const lines = d.posts.split("\n").map((l) => l.trim()).filter(Boolean);
   const hasDm = Boolean(d.dm.trim());
+  // brain refuses tags with nothing sent beside them (422 invalid_actions).
+  const tagsAlone = !d.flow && d.tags.length > 0 && !hasDm && !(t.publicReply && d.publicReply.trim());
   const sam = incoming[d.trigger];
   const problems = d.flow ? flowProblems(d.steps, d.trigger) : [];
 
@@ -153,6 +155,11 @@ export function AutomationForm({
     if (t.payloads && !d.payloads.length) {
       setTried(true);
       document.getElementById("automation-payloads")?.focus();
+      return;
+    }
+    if (tagsAlone) {
+      setTried(true);
+      document.getElementById("automation-dm")?.focus();
       return;
     }
     if (problems.length) {
@@ -348,7 +355,8 @@ export function AutomationForm({
                 max={MAX_DM}
                 tokens={tokens}
                 // A comment or mention may get a public reply alone.
-                required={!t.publicReply || !d.publicReply.trim()}
+                // With tags the form says what is missing itself, in its own words.
+                required={(!t.publicReply || !d.publicReply.trim()) && !d.tags.length}
                 placeholder="Hi {name}, here is the link you asked for: ..."
                 hint={
                   t.publicReply
@@ -399,6 +407,11 @@ export function AutomationForm({
                 clean={cleanTag}
                 max={MAX_TAG_ACTIONS}
               />
+              {tried && tagsAlone && (
+                <p role="alert" className="waitlist-error">
+                  A tag needs something sent with it. Write {t.publicReply ? "a DM text or a public reply" : "a DM text"}, or remove the tags.
+                </p>
+              )}
             </>
           )}
         </fieldset>

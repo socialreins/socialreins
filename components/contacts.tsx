@@ -3,8 +3,10 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import type { Failure } from "@/lib/auth";
-import { contactName, getContact, listContacts, listContactTags, MAX_NOTES, updateContact, type Contact, type ContactDetail, type TagCount } from "@/lib/contacts";
+import { contactName, deleteContact, getContact, listContacts, listContactTags, MAX_NOTES, updateContact, type Contact, type ContactDetail, type TagCount } from "@/lib/contacts";
 import { relativeTime } from "@/lib/inbox";
+import { manages } from "@/lib/teams";
+import { useSession } from "@/components/app-shell";
 import { AuthorAvatar, KindBadge } from "@/components/inbox";
 import { platformOf, platformName, PlatformIcon, platforms } from "@/components/platform-icons";
 import { TagEditor } from "@/components/tag-editor";
@@ -15,6 +17,7 @@ import { Icon } from "@/components/ui";
 export const contactMessages: Partial<Record<Failure, ReactNode>> = {
   invalid_contact: "That wasn't saved: a tag takes 1 to 30 characters and no commas, a contact 20 tags, and the notes 2000 characters.",
   not_found: "This contact is no longer there. Reload to see the latest.",
+  forbidden: "Only team owners and admins can delete a contact.",
 };
 
 const enc = encodeURIComponent;
@@ -84,6 +87,13 @@ export function Contacts() {
   function saved(c: Contact) {
     setLoaded((l) => (l && !isFailure(l.page) ? { ...l, page: { ...l.page, items: l.page.items.map((x) => (x.id === c.id ? { ...x, ...c } : x)) } } : l));
     loadTags();
+  }
+
+  // A deleted contact: its row goes, the tags are counted again and the panel closes.
+  function deleted(id: string) {
+    setLoaded((l) => (l && !isFailure(l.page) ? { ...l, page: { ...l.page, items: l.page.items.filter((x) => x.id !== id) } } : l));
+    loadTags();
+    router.replace(href({ contact: null }), { scroll: false });
   }
 
   const suggestions = tags.map((t) => t.tag);
@@ -183,16 +193,18 @@ export function Contacts() {
           </>
         )}
       </section>
-      {openId && <ContactPanel key={openId} id={openId} suggestions={suggestions} close={href({ contact: null })} onSaved={saved} />}
+      {openId && <ContactPanel key={openId} id={openId} suggestions={suggestions} close={href({ contact: null })} onSaved={saved} onDeleted={deleted} />}
     </div>
   );
 }
 
 const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
 
-function ContactPanel({ id, suggestions, close, onSaved }: { id: string; suggestions: string[]; close: string; onSaved: (c: Contact) => void }) {
+function ContactPanel({ id, suggestions, close, onSaved, onDeleted }: { id: string; suggestions: string[]; close: string; onSaved: (c: Contact) => void; onDeleted: (id: string) => void }) {
+  const canDelete = manages(useSession().user.current_team.role);
   const [contact, setContact] = useState<ContactDetail | Failure | null>(null);
   const [notes, setNotes] = useState("");
+  const [confirming, setConfirming] = useState(false);
   const { busy, problem, done, run } = useAction();
   useEffect(() => {
     getContact(id).then((r) => {
@@ -286,6 +298,31 @@ function ContactPanel({ id, suggestions, close, onSaved }: { id: string; suggest
           </ul>
         )}
       </div>
+
+      {canDelete && (
+        <div className="grid gap-2 border-t border-ink/10 pt-4">
+          {confirming ? (
+            <div role="alertdialog" aria-labelledby="contact-delete-title" aria-describedby="contact-delete-about" className="grid gap-2">
+              <strong id="contact-delete-title">Delete {contactName(c)}?</strong>
+              <p id="contact-delete-about" className="text-sm text-ink-soft">
+                Their name, tags and notes are removed. Their messages stay in the inbox.
+              </p>
+              <span className="flex flex-wrap gap-2">
+                <button type="button" className="btn btn-danger-solid btn-sm" disabled={busy !== null} onClick={() => run("delete", () => deleteContact(c.id), () => onDeleted(c.id))}>
+                  {busy === "delete" ? "Deleting..." : "Yes, delete contact"}
+                </button>
+                <button type="button" className="btn btn-quiet btn-sm" disabled={busy !== null} onClick={() => setConfirming(false)}>
+                  Keep contact
+                </button>
+              </span>
+            </div>
+          ) : (
+            <button type="button" className="btn btn-danger-outline btn-sm justify-self-start" onClick={() => setConfirming(true)}>
+              Delete contact
+            </button>
+          )}
+        </div>
+      )}
     </section>
   );
 }

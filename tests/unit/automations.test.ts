@@ -119,6 +119,9 @@ describe("texts", () => {
     expect(reason("daily_cap")).toBe("The team reached 500 automation runs today");
     expect(reason("something_new")).toBe("something new");
     expect(reason(null)).toBeNull();
+    expect(reason("already_tagged")).toBe("They already had this tag");
+    expect(reason("tag_limit")).toContain("20 tags");
+    expect(reason("no_contact")).toContain("no contact");
   });
 });
 

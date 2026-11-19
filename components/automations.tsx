@@ -444,7 +444,7 @@ export function AutomationDetail({ id }: { id: string }) {
                             <ul aria-label="Actions" className="text-ink-soft">
                               {r.results.map((x, i) => (
                                 <li key={i}>
-                                  {actionName[x.type] ?? String(x.type).replaceAll("_", " ")}: {(statusName[x.status] ?? x.status).toLowerCase()}
+                                  {actionName[x.type] ?? String(x.type).replaceAll("_", " ")}: {(x.status === "done" ? "done" : (statusName[x.status] ?? x.status)).toLowerCase()}
                                   {x.reason && x.reason !== r.reason ? ` (${reason(x.reason)})` : ""}
                                 </li>
                               ))}

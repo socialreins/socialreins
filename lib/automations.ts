@@ -45,7 +45,8 @@ export type AutomationInput = Pick<Automation, "name" | "trigger" | "conditions"
 export type RunStatus = "running" | "waiting" | "sent" | "failed" | "skipped";
 export type ActionResult = {
   type: "send_dm" | "reply_publicly" | "fallback_public_reply" | "tag_contact";
-  status: Exclude<RunStatus, "running">;
+  // A tag is `done` or `skipped`; it is never sent.
+  status: Exclude<RunStatus, "running"> | "done";
   reason: string | null;
   remote_id: string | null;
 };
@@ -545,6 +546,9 @@ export const reasonText: Record<string, string> = {
   not_repliable: "This comment can't be replied to",
   too_long: "The text was too long",
   internal: "Something went wrong on our side",
+  already_tagged: "They already had this tag",
+  tag_limit: "The contact already has 20 tags, the most allowed",
+  no_contact: "There is no contact behind this item to tag",
   automation_changed: "Stopped: the automation was changed or switched off before the flow finished",
 };
 export const reason = (code: string | null) => (code ? (reasonText[code] ?? code.replaceAll("_", " ")) : null);

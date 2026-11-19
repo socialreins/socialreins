@@ -56,7 +56,7 @@ const contact = (id: string, name: string, extra = {}) => ({
 type Snip = { id: string; kind: string; name: string; body: string };
 
 // A small in-memory brain for contacts, the inbox around them, saved replies and automations.
-async function brain(page: Page) {
+async function brain(page: Page, role = "owner") {
   const state = {
     contacts: [contact("k1", "Bob", { tags: ["vip"], notes: "Asked about prices." }), contact("k2", "Cara", { platform: "instagram", items_count: 1 })],
     items: [item("p1", "What is the price?"), item("p2", "Second one", { received_at: ago(50) })],
@@ -65,9 +65,10 @@ async function brain(page: Page) {
     itemQueries: [] as URLSearchParams[],
     patches: [] as { path: string; body: unknown }[],
     posts: [] as unknown[],
+    deleted: [] as string[],
   };
   const path = (url: string) => new URL(url).pathname;
-  await page.route("**/auth/me", (route) => route.fulfill({ json: me }));
+  await page.route("**/auth/me", (route) => route.fulfill({ json: { ...me, current_team: { ...me.current_team, role } } }));
   await page.route("**/v1/connections", (route) => route.fulfill({ json: [alice] }));
   await page.route(/\/v1\/social-sets$/, (route) => route.fulfill({ json: [{ id: "d", name: "All sets", is_default: true, account_ids: ["c1"], account_count: 1, created_at: "", deleted_at: null }] }));
   await page.route("**/v1/team/members", (route) => route.fulfill({ json: members }));
@@ -87,6 +88,11 @@ async function brain(page: Page) {
     const req = route.request();
     const found = state.contacts.find((c) => c.id === path(req.url()).split("/").pop());
     if (!found) return route.fulfill({ status: 404, json: { error: "not_found" } });
+    if (req.method() === "DELETE") {
+      state.deleted.push(found.id);
+      state.contacts = state.contacts.filter((c) => c !== found);
+      return route.fulfill({ status: 204 });
+    }
     if (req.method() === "PATCH") {
       state.patches.push({ path: path(req.url()), body: req.postDataJSON() });
       Object.assign(found, req.postDataJSON());
@@ -350,6 +356,19 @@ test("an automation tags the contact beside its reply, and a flow takes a tag st
   });
   expect(state.posts[0]).not.toHaveProperty("steps");
 
+  // Tags with nothing sent beside them are refused here, in plain words, before brain is asked.
+  await page.goto("/automations/new?template=dm-keyword");
+  await page.getByLabel("Name").fill("Only tags");
+  await tags.fill("vip");
+  await tags.press("Enter");
+  await doThis.getByLabel("DM text").fill("  ");
+  await page.getByRole("button", { name: "Create automation" }).click();
+  await expect(doThis.getByRole("alert")).toHaveText("A tag needs something sent with it. Write a DM text, or remove the tags.");
+  await expect(doThis.getByLabel("DM text")).toBeFocused();
+  expect(state.posts).toHaveLength(1);
+  await doThis.getByLabel("DM text").fill("Hi!");
+  await expect(doThis.getByRole("alert")).toHaveCount(0);
+
   await page.goto("/automations/new?template=dm-keyword");
   await page.getByLabel("Name").fill("Tag flow");
   await doThis.getByRole("radio", { name: "A flow of steps" }).check();
@@ -383,4 +402,30 @@ test("an automation tags the contact beside its reply, and a flow takes a tag st
   await page.getByRole("button", { name: "Create automation" }).click();
   await expect(doThis.getByRole("alert").filter({ hasText: "A flow needs at least one step that sends something." })).toBeVisible();
   expect(state.posts).toHaveLength(2);
+});
+
+test("an owner deletes a contact after a confirm that says what goes; a member has no such button", async ({ page }) => {
+  const state = await brain(page);
+  await page.goto("/contacts?tag=vip&contact=k1");
+  await expect(panel(page).getByRole("heading", { name: "Bob" })).toBeVisible();
+  await panel(page).getByRole("button", { name: "Delete contact" }).click();
+  const confirm = panel(page).getByRole("alertdialog", { name: "Delete Bob?" });
+  await expect(confirm).toContainText("Their name, tags and notes are removed. Their messages stay in the inbox.");
+  await confirm.getByRole("button", { name: "Keep contact" }).click();
+  expect(state.deleted).toEqual([]);
+  await panel(page).getByRole("button", { name: "Delete contact" }).click();
+  await confirm.getByRole("button", { name: "Yes, delete contact" }).click();
+  await expect(panel(page)).toHaveCount(0);
+  expect(state.deleted).toEqual(["k1"]);
+  await expect(list(page).getByRole("link", { name: /Bob/ })).toHaveCount(0);
+  // The panel is gone from the address, the filter is not.
+  await expect.poll(() => query(page).get("contact")).toBeNull();
+  expect(query(page).get("tag")).toBe("vip");
+
+  const member = await page.context().newPage();
+  await brain(member, "member");
+  await member.goto("/contacts?contact=k2");
+  await expect(panel(member).getByRole("heading", { name: "Cara" })).toBeVisible();
+  await expect(panel(member).getByLabel("Notes")).toBeVisible();
+  await expect(panel(member).getByRole("button", { name: "Delete contact" })).toHaveCount(0);
 });
