@@ -22,11 +22,18 @@ export const features: Feature[] = [
   {
     slug: "automations",
     name: "Automations",
-    short: "Comment to DM by keyword",
-    description: "Comment to DM in SocialReins: when someone comments a keyword on your post, they get a DM or a public reply. See which networks support it.",
-    intro: "An automation watches for something and then acts on it for you. The one automation today is comment to DM: someone comments a keyword on your post, and SocialReins sends them a DM.",
+    short: "Keyword triggers and flows",
+    description: "Automations in SocialReins: triggers for comments, DMs, mentions and more, and flows of steps with waits and buttons. See which networks work.",
+    intro: "An automation watches for something and then acts on it for you. For example, comment to DM: someone comments a keyword on your post, and SocialReins sends them a DM.",
     support,
     sections: [
+      {
+        heading: "Triggers and flows",
+        bullets: [
+          "Triggers: a comment keyword, a DM keyword, a first message (welcome), a new follower (Bluesky), a mention, a story reply and a button tap.",
+          "A flow runs several steps in turn, with waits and buttons.",
+        ],
+      },
       {
         heading: "How comment to DM works",
         bullets: [
