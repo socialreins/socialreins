@@ -3,7 +3,7 @@
 
 // First path segments of the pages that belong to a team. Profile, security, /admin and the
 // sign-in pages are about the person, so they stay outside /t/.
-export const TEAM_PAGES = ["home", "posts", "calendar", "queue", "lists", "library", "inbox", "automations", "connections", "sets", "team", "api-tokens", "billing"];
+export const TEAM_PAGES = ["home", "posts", "calendar", "queue", "lists", "library", "feeds", "inbox", "automations", "connections", "sets", "team", "api-tokens", "billing"];
 
 // Stands for "my current team" where the code is not known (old addresses, links in emails,
 // after sign-in). The app shell swaps it for the real code.

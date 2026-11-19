@@ -37,6 +37,7 @@ const nav: NavGroup[] = [
       { href: "/queue", label: "Queue", icon: "clock", set: true },
       { href: "/lists", label: "Lists", icon: "lists", set: true },
       { href: "/library", label: "Library", icon: "library" },
+      { href: "/feeds", label: "Feeds", icon: "rss" },
     ],
   },
   {
