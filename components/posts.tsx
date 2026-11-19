@@ -1,22 +1,26 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { TeamLink as Link, useTeamPath } from "@/components/team-link";
 import type { Failure } from "@/lib/auth";
 import { listConnections } from "@/lib/connections";
 import { partLabel } from "@/lib/lists";
 import {
+  editInput,
   filterQuery,
   isPlatform,
   listPosts,
   matchesFilters,
   monthRange,
   monthWeeks,
+  moveToDay,
   parseFilters,
   postDay,
   rows,
   sameDay,
+  toLocalInput,
+  updatePost,
   type Platform,
   type Post,
   type PostFilters,
@@ -163,11 +167,38 @@ function PostChip({ posts }: { posts: Post[] }) {
   );
 }
 
+// Only a scheduled post has a time that can change; brain refuses an edit once it is publishing or out.
+const movable = (posts: Post[]) => posts.every((p) => p.status === "scheduled" && p.scheduled_at);
+
 // A post in a calendar cell: time and networks on the first line, the text on the second; the "+N more" list has the links out.
-function GridChip({ posts }: { posts: Post[] }) {
+// A scheduled one drags to another day, or moves with its "Move to..." button.
+function GridChip({ posts, onDrag, onMove }: { posts: Post[]; onDrag: (posts: Post[] | null) => void; onMove: (posts: Post[]) => void }) {
   const p = posts[0]!;
+  const can = movable(posts);
   return (
-    <li className="min-w-0 rounded text-xs hover:bg-ink/[0.045]">
+    <li
+      className={`group relative min-w-0 rounded text-xs hover:bg-ink/[0.045] ${can ? "cursor-grab" : ""}`}
+      draggable={can || undefined}
+      data-movable={can || undefined}
+      onDragStart={(e) => {
+        if (!can) return;
+        e.dataTransfer.setData("text/plain", p.id);
+        e.dataTransfer.effectAllowed = "move";
+        onDrag(posts);
+      }}
+      onDragEnd={() => onDrag(null)}
+    >
+      {can && (
+        <button
+          type="button"
+          aria-label={`Move to... ${snippet(p)}`}
+          title="Move to..."
+          onClick={() => onMove(posts)}
+          className="absolute right-0.5 top-0.5 z-10 rounded bg-paper p-0.5 text-ink-soft opacity-0 shadow-sm hover:text-ink focus-visible:opacity-100 group-hover:opacity-100"
+        >
+          <Icon name="clock" className="size-3" />
+        </button>
+      )}
       <Link href={`/posts/${p.id}`} className="grid min-w-0 px-1.5 py-0.5 leading-4 hover:underline">
         <span className="flex min-w-0 items-center gap-1 whitespace-nowrap text-ink-soft">
           <span aria-hidden="true" className="dot shrink-0" data-status={p.status} />
@@ -185,7 +216,7 @@ function GridChip({ posts }: { posts: Post[] }) {
 }
 
 // "+N more" in a calendar cell: a dialog next to the button with every post of the day as a full row.
-function DayMore({ day, list, hidden }: { day: Date; list: Post[][]; hidden: number }) {
+function DayMore({ day, list, hidden, onMove }: { day: Date; list: Post[][]; hidden: number; onMove: (posts: Post[]) => void }) {
   const ref = useRef<HTMLDialogElement>(null);
   const id = useId();
   const date = day.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
@@ -224,11 +255,64 @@ function DayMore({ day, list, hidden }: { day: Date; list: Post[][]; hidden: num
         </div>
         <ul className="divide-y divide-[var(--line-soft)]">
           {list.map((v) => (
-            <PostRow key={v[0]!.id} posts={v} />
+            <PostRow key={v[0]!.id} posts={v} onMove={movable(v) ? onMove : undefined} />
           ))}
         </ul>
       </dialog>
     </>
+  );
+}
+
+// "Move to...": a date picker that moves the posts to that day at the same time, the keyboard way to drag a chip.
+function MoveDialog({ posts, onClose, onMove }: { posts: Post[]; onClose: () => void; onMove: (posts: Post[], day: Date) => void }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const id = useId();
+  const when = postDay(posts[0]!)!;
+  const [value, setValue] = useState(toLocalInput(when.toISOString()).slice(0, 10));
+  const day = value ? new Date(`${value}T00:00`) : null;
+  const ok = day !== null && moveToDay(when, day) !== null;
+  useEffect(() => ref.current?.showModal(), []);
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!ok) return;
+    ref.current?.close();
+    onMove(posts, day);
+  };
+  return (
+    <dialog ref={ref} aria-labelledby={id} onClose={onClose} className="m-auto w-[min(22rem,calc(100vw-1rem))] rounded-lg bg-paper p-0 text-ink shadow-2xl backdrop:bg-ink/20">
+      <form onSubmit={submit} className="grid gap-3 p-4">
+        <h3 id={id} className="text-sm font-bold">
+          Move {snippet(posts[0]!)}
+        </h3>
+        <div className="grid gap-1.5">
+          <label htmlFor={`${id}-date`} className="label">
+            New date
+          </label>
+          <input
+            id={`${id}-date`}
+            type="date"
+            className="field"
+            required
+            min={toLocalInput(new Date().toISOString()).slice(0, 10)}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            aria-describedby={`${id}-hint`}
+          />
+          <p id={`${id}-hint`} className="hint">
+            It keeps its time, {time(when)}{posts.length > 1 ? `, on all ${posts.length} networks` : ""}.
+          </p>
+          {value && !ok && <p className="waitlist-error">That is in the past. Pick a later day.</p>}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="submit" className="btn btn-primary btn-sm" disabled={!ok}>
+            Move
+          </button>
+          <button type="button" className="btn btn-quiet btn-sm" onClick={() => ref.current?.close()}>
+            Cancel
+          </button>
+        </div>
+      </form>
+    </dialog>
   );
 }
 
@@ -264,7 +348,7 @@ const noFilters: PostFilters = { q: "", status: "all", network: "all" };
 const failText = (posts: Post[]) => posts.map((p) => p.error ?? p.targets.find((t) => t.error)?.error).find(Boolean);
 
 // One line of the Posts list: time, networks, text and status; the whole line opens the post.
-function PostRow({ posts }: { posts: Post[] }) {
+function PostRow({ posts, onMove }: { posts: Post[]; onMove?: (posts: Post[]) => void }) {
   const p = posts[0]!;
   const remote = posts.flatMap((v) => v.targets.filter((t) => t.remote_url && t.status === "published").map((t) => ({ ...t, platform: v.platform })));
   const error = p.status === "failed" ? failText(posts) : undefined;
@@ -283,6 +367,20 @@ function PostRow({ posts }: { posts: Post[] }) {
         </span>
       </Link>
       <StatusBadge status={p.status} />
+      {onMove && (
+        <button type="button" className="btn btn-quiet btn-sm relative z-10" aria-label={`Move to... ${snippet(p)}`} onClick={() => onMove(posts)}>
+          <Icon name="clock" className="size-3.5" />
+          Move to...
+        </button>
+      )}
+      <Link
+        href={`/posts/new?from=${encodeURIComponent(p.id)}`}
+        aria-label={`Duplicate ${snippet(p)}`}
+        title="Duplicate"
+        className="relative z-10 shrink-0 rounded-md p-1 text-ink-soft hover:bg-ink/10 hover:text-ink"
+      >
+        <Icon name="copy" className="size-3.5" />
+      </Link>
       {remote.map((t) => (
         <a
           key={t.id}
@@ -405,6 +503,13 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
   const [drafts, setDrafts] = useState<Post[] | Failure | null>(null);
   // Unique ids: Next can keep /posts and /calendar both mounted, one hidden.
   const ids = useId();
+  // Rescheduling: the chip being dragged, the day under it, the posts the "Move to..." picker is open for,
+  // what the last move did, and a counter that reloads the month after one.
+  const [dragging, setDragging] = useState<Post[] | null>(null);
+  const [over, setOver] = useState<string | null>(null);
+  const [picking, setPicking] = useState<Post[] | null>(null);
+  const [moved, setMoved] = useState<{ ok: boolean; text: ReactNode } | null>(null);
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     listSets().then(setSets);
@@ -416,7 +521,43 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
     return () => {
       live = false;
     };
-  }, [month, setId]);
+  }, [month, setId, reload]);
+
+  // Moves the versions of one post to `day` at the same time: shown there at once, then one PUT each with
+  // the post as it is and the new time. A version brain refuses goes back to its day, named with brain's reason.
+  async function move(group: Post[], day: Date) {
+    setDragging(null);
+    setOver(null);
+    const to = moveToDay(postDay(group[0]!)!, day);
+    if (!to) return setMoved({ ok: false, text: "A post can't move to a time that has passed." });
+    const iso = to.toISOString();
+    const label = to.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    const ids = new Set(group.map((p) => p.id));
+    setMoved({ ok: true, text: `Moving to ${label}...` });
+    setPosts((old) => (Array.isArray(old) ? old.map((p) => (ids.has(p.id) ? { ...p, scheduled_at: iso } : p)) : old));
+    const saved: Post[] = [];
+    const failed: { platform: Platform; failure: Failure }[] = [];
+    for (const p of group) {
+      const r = await updatePost(p.id, editInput(p, iso));
+      if (isFailure(r)) failed.push({ platform: p.platform, failure: r });
+      else saved.push(r);
+    }
+    setPosts((old) => (Array.isArray(old) ? old.map((p) => saved.find((v) => v.id === p.id) ?? (ids.has(p.id) ? group.find((g) => g.id === p.id)! : p)) : old));
+    setMoved({
+      ok: failed.length === 0,
+      text: (
+        <>
+          {saved.length > 0 && `Moved ${failed.length ? `${saved.map((v) => platformName(v.platform)).join(", ")} ` : ""}to ${label}. `}
+          {failed.map((f) => (
+            <span key={f.platform}>
+              Not moved on {platformName(f.platform)}: {problemText(f.failure, postMessages)}{" "}
+            </span>
+          ))}
+        </>
+      ),
+    });
+    setReload((n) => n + 1);
+  }
 
   useEffect(() => {
     if (view !== "list") return;
@@ -515,6 +656,12 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
             ) : null}
           </div>
         )}
+        {view === "calendar" && moved && (
+          <p role={moved.ok ? "status" : "alert"} className={moved.ok ? "waitlist-done" : "waitlist-error"}>
+            {moved.text}
+          </p>
+        )}
+        {picking && <MoveDialog key={picking[0]!.id} posts={picking} onClose={() => setPicking(null)} onMove={move} />}
         {posts === null ? (
           <div className="h-96 rounded-2xl bg-ink/5 motion-safe:animate-pulse" role="status">
             <span className="sr-only">Loading posts...</span>
@@ -551,13 +698,30 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
                     {week.map((day, j) => {
                       const list = day ? monthRows.filter((r) => sameDay(postDay(r[0]!)!, day)) : [];
                       const today = day && sameDay(day, now);
+                      // While a chip is dragged, each day says whether it can take it: not its own day, not the past.
+                      const from = dragging && postDay(dragging[0]!);
+                      const drop = day && from ? (!sameDay(day, from) && moveToDay(from, day) ? "ok" : "no") : undefined;
+                      const key = day?.toDateString() ?? "";
                       return (
                         <td
                           key={j}
                           aria-current={today ? "date" : undefined}
+                          data-drop={drop}
+                          title={drop === "no" ? "Can't move here" : undefined}
+                          onDragOver={(e) => {
+                            if (drop !== "ok") return void (e.dataTransfer.dropEffect = "none");
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = "move";
+                            setOver(key);
+                          }}
+                          onDragLeave={() => setOver((o) => (o === key ? null : o))}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            if (drop === "ok" && dragging && day) move(dragging, day);
+                          }}
                           className={`border-[var(--line-soft)] p-0 align-top [&:not(:last-child)]:border-r ${i > 0 ? "border-t" : ""} ${
                             day ? (today ? "bg-signal/[0.05] shadow-[inset_0_2px_0_var(--color-signal-deep)]" : "") : "bg-[var(--side)]"
-                          }`}
+                          } ${drop === "no" ? "cursor-not-allowed opacity-45" : ""} ${drop === "ok" && over === key ? "outline-2 -outline-offset-2 outline-dashed outline-signal-deep bg-signal/10" : ""}`}
                         >
                           {/* Every week is as tall as three two-line chips and "+N more", however busy the days. */}
                           <div className="flex h-[10.5rem] flex-col gap-0.5 overflow-hidden p-1">
@@ -573,11 +737,11 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
                                 {list.length > 0 && (
                                   <ul className="grid gap-0.5">
                                     {list.slice(0, 3).map((v) => (
-                                      <GridChip key={v[0]!.id} posts={v} />
+                                      <GridChip key={v[0]!.id} posts={v} onDrag={setDragging} onMove={setPicking} />
                                     ))}
                                   </ul>
                                 )}
-                                {list.length > 3 && <DayMore day={day} list={list} hidden={list.length - 3} />}
+                                {list.length > 3 && <DayMore day={day} list={list} hidden={list.length - 3} onMove={setPicking} />}
                               </>
                             )}
                           </div>

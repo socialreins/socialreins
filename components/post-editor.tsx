@@ -58,7 +58,7 @@ import { listSets, type SocialSet } from "@/lib/sets";
 import { getQueue, type Queue } from "@/lib/queue";
 import { accountName, Avatar } from "@/components/connections";
 import { platformName } from "@/components/platform-icons";
-import { AccountNote, PlatformMark, postMessages, StatusBadge, statusName } from "@/components/posts";
+import { AccountNote, PlatformMark, postMessages, snippet, StatusBadge, statusName } from "@/components/posts";
 import { isFailure, problemText, Status, useAction } from "@/components/team-ui";
 import { useCurrentSet, useSession } from "@/components/app-shell";
 import { ReconnectNotice } from "@/components/connections";
@@ -101,7 +101,8 @@ function platformProblem(platform: Platform, failure: Failure, xLong = false): R
   return postMessages[failure] ?? failure;
 }
 
-export function PostEditor({ id }: { id?: string }) {
+// `id` opens a saved post; `from` starts a new one as a copy of that post (Duplicate).
+export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const { user } = useSession();
   const router = useRouter();
   const to = useTeamPath();
@@ -157,6 +158,8 @@ export function PostEditor({ id }: { id?: string }) {
   const [downsShown, setDownsShown] = useState(0);
   // Bumped after Publish now, to move focus onto the status line that follows the post.
   const [sent, setSent] = useState(0);
+  // The post a duplicate was copied from, for the note above the form.
+  const [copied, setCopied] = useState<Post | Failure | null>(null);
   const statusRef = useRef<HTMLParagraphElement>(null);
   const addPartRef = useRef<HTMLButtonElement>(null);
   const partRefs = useRef<(HTMLTextAreaElement | null)[]>([]);
@@ -189,6 +192,12 @@ export function PostEditor({ id }: { id?: string }) {
   // differs from it gets its own text, media or first comment.
   function loadTogether(mine: Post, all: Post[]) {
     load(mine);
+    fillGroup(mine, all);
+    setWhole(true);
+  }
+
+  // The group's per-platform text, media, comment, thread, cover and settings, `mine` being the shared one.
+  function fillGroup(mine: Post, all: Post[]) {
     const rest = all.filter((g) => g.id !== mine.id);
     setCustom(Object.fromEntries(rest.filter((g) => g.body !== mine.body).map((g) => [g.platform, g.body])));
     setMediaCustom(Object.fromEntries(rest.filter((g) => !same(g.media, mine.media)).map((g) => [g.platform, g.media])));
@@ -202,7 +211,18 @@ export function PostEditor({ id }: { id?: string }) {
     if (tk) setTikTok(tk.tiktok ?? noTikTok);
     const yt = all.find((g) => g.platform === "youtube");
     if (yt) setYtPrivacy(yt.youtube?.privacy ?? "private");
-    setWhole(true);
+  }
+
+  // Duplicate: a new post with the content and platforms of `mine` and its group, but no time, and TikTok's
+  // privacy left unset, since TikTok has it chosen anew for every post.
+  function copy(mine: Post, all: Post[]) {
+    load(mine);
+    fillGroup(mine, all);
+    setPost(null);
+    setAt("");
+    setChosen(all.map((g) => g.platform));
+    setTikTok((t) => ({ ...t, privacy_level: null }));
+    setCopied(mine);
   }
 
   useEffect(() => {
@@ -222,7 +242,16 @@ export function PostEditor({ id }: { id?: string }) {
         load(r);
         if (r.group_id) listPosts({ group_id: r.group_id }).then((g) => Array.isArray(g) && setGroup(g));
       });
-  }, [id]);
+    else if (from)
+      getPost(from).then(async (r) => {
+        if (isFailure(r)) return setCopied(r);
+        const g = r.group_id ? await listPosts({ group_id: r.group_id }) : null;
+        // A group that can't be read still copies the post itself.
+        copy(r, Array.isArray(g) && g.some((v) => v.id === r.id) ? [r, ...g.filter((v) => v.id !== r.id)] : [r]);
+      });
+    // copy only calls state setters, so it never goes stale.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, from]);
 
   const postId = post && !isFailure(post) ? post.id : undefined;
   const status = post && !isFailure(post) ? post.status : undefined;
@@ -790,6 +819,14 @@ export function PostEditor({ id }: { id?: string }) {
     </>
   );
 
+  // A saved post, read-only or not, starts a new one with its content.
+  const duplicate = postId && (
+    <Link href={`/posts/new?from=${encodeURIComponent(postId)}`} className="btn btn-secondary btn-sm justify-self-start">
+      <Icon name="copy" className="size-4" />
+      Duplicate
+    </Link>
+  );
+
   if (!editable && post) {
     return (
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_26rem]">
@@ -899,6 +936,7 @@ export function PostEditor({ id }: { id?: string }) {
           )}
           {siblings}
           <PostPagePanel id={post.id} />
+          {duplicate}
           {post.status === "published" && confirm}
         </div>
         {preview}
@@ -1244,6 +1282,11 @@ export function PostEditor({ id }: { id?: string }) {
       <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
         <AccountNote />
         {versions}
+        {copied && (
+          <p role={isFailure(copied) ? "alert" : "status"} className={isFailure(copied) ? "waitlist-error" : "hint"}>
+            {isFailure(copied) ? <>The post to copy couldn&apos;t be loaded. {problemText(copied, postMessages)}</> : <>Copied from {snippet(copied)}. Pick a time, and on TikTok who can see it, again.</>}
+          </p>
+        )}
         {status === "scheduled" && post && (
           <p className="flex flex-wrap items-center gap-3 font-bold">
             <StatusBadge status="scheduled" />
@@ -1472,6 +1515,7 @@ export function PostEditor({ id }: { id?: string }) {
         </form>
         {siblings}
         {postId && <PostPagePanel id={postId} />}
+        {duplicate}
         {postId && together.length < 2 && confirm}
       </div>
       {preview}
