@@ -25,7 +25,8 @@ export const isProblem = (r: unknown): r is Problem => typeof r === "object" && 
 const enc = encodeURIComponent;
 
 async function call<T = "ok">(path: string, method = "GET", body?: unknown): Promise<T | Problem> {
-  const res = await request(path, method, body);
+  // A write makes brain read the feed (up to 10 s, with redirects), so it gets longer than the default.
+  const res = await request(path, method, body, method === "GET" ? undefined : 40_000);
   if (typeof res === "string") return { code: res };
   if (res.ok) return (res.status === 204 ? "ok" : await res.json()) as T;
   const code = await failure(res.clone());
