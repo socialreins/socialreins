@@ -76,7 +76,7 @@ function AuthorAvatar({ author, size = "size-10" }: { author: Author; size?: str
   );
 }
 
-function KindBadge({ kind }: { kind: Kind }) {
+function KindBadge({ kind }: { kind: Item["kind"] }) {
   return (
     <span className="badge tone" data-kind={kind}>
       {kindName[kind]}
@@ -91,6 +91,8 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   const params = useSearchParams();
   const itemId = params.get("item");
   const state: ItemState = params.get("state") === "done" ? "done" : "open";
+  const q = (params.get("q") ?? "").trim().slice(0, 100);
+  const [search, setSearch] = useState(q);
 
   const [inboxes, setInboxes] = useState<InboxT[] | Failure | null>(null);
   const [accounts, setAccounts] = useState<Connection[] | Failure | null>(null);
@@ -114,15 +116,16 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   const current = inboxId ? list.find((i) => i.id === inboxId) : list[0];
   const currentId = current?.id ?? inboxId;
   const base = inboxId ? `/inbox/${encodeURIComponent(inboxId)}` : "/inbox";
-  const href = (q: { item?: string | null; state?: ItemState }) => {
+  const href = (to: { item?: string | null; state?: ItemState }) => {
     const s = new URLSearchParams();
-    if ((q.state ?? state) === "done") s.set("state", "done");
-    if (q.item) s.set("item", q.item);
+    if ((to.state ?? state) === "done") s.set("state", "done");
+    if (to.item) s.set("item", to.item);
+    if (search.trim()) s.set("q", search.trim());
     return s.size ? `${base}?${s}` : base;
   };
 
   const kindQ = kind === "all" ? null : kind;
-  const key = `${currentId}:${state}:${kind}`;
+  const key = `${currentId}:${state}:${kind}:${q}`;
   const page = loaded?.key === key ? loaded.page : null;
   const setPage = (f: (p: Page | Failure | null) => Page | Failure | null) =>
     // A late answer for another inbox or tab leaves the newer page alone.
@@ -137,21 +140,35 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   useEffect(() => {
     if (!currentId) return;
     let live = true;
-    listItems(currentId, state, null, kindQ).then(
+    listItems(currentId, state, null, kindQ, q).then(
       (r) => live && setLoaded({ key, page: isFailure(r) ? r : { items: r.items, next: r.next_cursor } }),
     );
     return () => {
       live = false;
     };
-  }, [currentId, state, kindQ, key, reloads]);
+  }, [currentId, state, kindQ, q, key, reloads]);
 
-  // While the tab shows, fold the newest page into the list; a failed check waits for the next.
+  // The search goes into ?q= a moment after the typing stops, with replaceState so it adds no history.
+  useEffect(() => {
+    const next = search.trim();
+    if (next === q) return;
+    const timer = setTimeout(() => {
+      const url = new URL(window.location.href);
+      if (next) url.searchParams.set("q", next);
+      else url.searchParams.delete("q");
+      window.history.replaceState(null, "", url);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search, q]);
+
+  // While the tab shows, fold the newest page into the list and refresh the open counts; a failed check waits for the next.
   useEffect(() => {
     if (!currentId) return;
     let live = true;
     const check = async () => {
       if (document.visibilityState !== "visible") return;
-      const r = await listItems(currentId, state, null, kindQ);
+      listInboxes().then((l) => live && Array.isArray(l) && setInboxes(l));
+      const r = await listItems(currentId, state, null, kindQ, q);
       if (!live || isFailure(r)) return;
       setLoaded((l) => (l?.key === key && !isFailure(l.page) ? { key, page: mergeFresh(l.page, r) } : l));
     };
@@ -163,7 +180,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
       clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [currentId, state, kindQ, key]);
+  }, [currentId, state, kindQ, q, key]);
 
   useEffect(() => {
     if (!itemId) return;
@@ -177,7 +194,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   async function loadMore() {
     if (!currentId || isFailure(page) || !page?.next) return;
     setMore("loading");
-    const r = await listItems(currentId, state, page.next, kindQ);
+    const r = await listItems(currentId, state, page.next, kindQ, q);
     if (isFailure(r)) return setMore(r);
     setMore(null);
     // A refresh that replaced the list meanwhile has its own cursor; this page no longer follows it.
@@ -188,6 +205,8 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   // A changed item: the detail shows it, the list keeps it only while it fits the tab.
   function changed(i: Item) {
     setDetail(i);
+    // Done or reopened: the open counts moved.
+    listInboxes().then((l) => Array.isArray(l) && setInboxes(l));
     setPage((p) =>
       p && !isFailure(p) ? { ...p, items: i.state === state ? p.items.map((x) => (x.id === i.id ? i : x)) : p.items.filter((x) => x.id !== i.id) } : p,
     );
@@ -245,6 +264,12 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
                     <Icon name="inbox" className={`size-4 ${active ? "text-signal" : ""}`} />
                     <span className="truncate">{i.name}</span>
                   </Link>
+                  {Boolean(i.open_count) && (
+                    <span className="badge tone shrink-0 tabular-nums" data-kind="dm">
+                      {i.open_count}
+                      <span className="sr-only"> open in {i.name}</span>
+                    </span>
+                  )}
                   {canManage && !i.is_all && (
                     <button
                       type="button"
@@ -277,6 +302,11 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
           {current?.name ?? "Inbox"}
         </h2>
         <div className="grid gap-3 lg:mb-3">
+          <label className="relative block">
+            <span className="sr-only">Search {current?.name ?? "this inbox"}</span>
+            <Icon name="search" className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-soft" />
+            <input type="search" maxLength={100} className="field w-full pl-9" placeholder="Search text or author" value={search} onChange={(e) => setSearch(e.target.value)} />
+          </label>
           <nav aria-label="State" className="flex gap-1 rounded-full bg-ink/5 p-1">
             {(["open", "done"] as const).map((s) => (
               <Link
@@ -329,7 +359,9 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
           ) : items.length === 0 ? (
             <>
             <p className="card p-5 text-ink-soft">
-              {state === "done"
+              {q
+                ? `Nothing matches "${q}".`
+                : state === "done"
                 ? "Nothing marked done yet."
                 : kind !== "all"
                   ? "No items of this kind here."
@@ -424,6 +456,8 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
           onClose={() => setEditing(null)}
           onSaved={(saved) => {
             setInboxes((l) => (Array.isArray(l) ? (l.some((x) => x.id === saved.id) ? l.map((x) => (x.id === saved.id ? saved : x)) : [...l, saved]) : l));
+            // The saved inbox comes without its count, and new filters change it.
+            listInboxes().then((l) => Array.isArray(l) && setInboxes(l));
             // Its filters changed, so its items did too.
             if (saved.id === currentId) setReloads((n) => n + 1);
           }}
@@ -535,7 +569,8 @@ function Detail({ item, account, focus, onChange }: { item: Item; account?: Conn
         ))}
       </ol>
 
-      <form onSubmit={onReply} className="grid gap-2 border-t border-ink/10 pt-4">
+      {/* A follow has nothing to reply to. */}
+      <form onSubmit={onReply} hidden={item.kind === "follow"} className="grid gap-2 border-t border-ink/10 pt-4 [&[hidden]]:hidden">
         <label htmlFor="reply-text" className="label">
           {dm ? "Send DM" : "Reply publicly"}
         </label>
