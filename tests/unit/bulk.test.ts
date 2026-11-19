@@ -160,6 +160,17 @@ describe("failuresCsv", () => {
   });
 });
 
+describe("failures CSV round trip", () => {
+  it("gives back the original text after the formula quote", () => {
+    for (const text of ["@brand launch", "-10% today", "=1+1", "+1 more", "'quoted on purpose", "plain"]) {
+      const cells = { text, networks: "bluesky", media: "", time: "", first_comment: "-ok" };
+      const [row] = read(failuresCsv([{ cells, error: "e" }]));
+      expect(row!.text).toBe(text);
+      expect(row!.first_comment).toBe("-ok");
+    }
+  });
+});
+
 describe("templateCsv", () => {
   it("reads back as valid rows on a set with the networks it names", () => {
     const rows = read(templateCsv(now), ["bluesky", "linkedin", "facebook"] as never);

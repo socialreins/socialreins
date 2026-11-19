@@ -162,6 +162,62 @@ test("a preview shows local and brain's problems, and scheduling sends the right
   await expect(page.getByRole("button", { name: "Schedule 0 posts" })).toBeDisabled();
 });
 
+test("a rate limit pauses the checks, and Retry checks re-checks only the rows left", async ({ page }) => {
+  const checked: string[] = [];
+  let limited = false;
+  await brain(page);
+  await page.route(/validate_only=true$/, (route) => {
+    const body = String((route.request().postDataJSON() as Record<string, unknown>).body);
+    checked.push(body);
+    if (body === "Queued one" && !limited) {
+      limited = true;
+      return route.fulfill({ status: 429, json: { error: "rate_limited" } });
+    }
+    return route.fulfill({ json: { ok: true, platforms: [], problems: [] } });
+  });
+  await page.goto("/posts/bulk");
+  await upload(page, "text,networks\nScheduled hello,bluesky\nQueued one,bluesky\nA draft,bluesky\nFourth,bluesky\nFifth,bluesky");
+  const table = page.getByRole("table", { name: "Posts in the file, in order" });
+  await expect(page.getByRole("alert").filter({ hasText: "Paused by a rate limit" })).toBeVisible();
+  await expect(table.getByText("Not checked yet").first()).toBeVisible();
+  await expect(table).not.toContainText("Too many");
+  const first = [...checked];
+  await page.getByRole("button", { name: "Retry checks" }).click();
+  await expect(page.getByText("5 rows: 5 ready, 0 with problems.")).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "Paused" })).toBeHidden();
+  // Each row is checked once successfully; nothing that passed is checked again.
+  const again = checked.slice(first.length);
+  expect(again).toContain("Queued one");
+  for (const body of again) expect(first.filter((b) => b === body && b !== "Queued one")).toEqual([]);
+  expect(new Set(checked).size).toBe(5);
+});
+
+test("a create that gets no answer is Unknown, links to Posts, is never resent and stays out of the failures", async ({ page }) => {
+  const creates: string[] = [];
+  await brain(page);
+  await page.route(/\/v1\/posts$/, (route) => {
+    if (route.request().method() === "GET") return route.fulfill({ json: [] });
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    creates.push(String(body.body));
+    if (body.body === "Lost") return route.abort("connectionreset");
+    return route.fulfill({ status: 201, json: { ...body, id: `p-${creates.length}`, status: "draft", scheduled_at: null, targets: [], lists: [], thread: [], group_id: null } });
+  });
+  await page.goto("/posts/bulk");
+  await upload(page, "text,networks\nLost,bluesky\nFine,bluesky\n,bluesky");
+  await page.getByRole("button", { name: "Schedule 2 posts" }).click();
+  await expect(page.getByText("3 rows: 1 created, 1 unknown, 0 ready, 1 with problems.")).toBeVisible();
+  const lost = page.getByRole("row").filter({ hasText: "Lost" });
+  await expect(lost).toContainText("Unknown");
+  await expect(lost).toContainText("It may have been created: check Posts before retrying.");
+  await expect(lost.getByRole("link", { name: "Posts" })).toHaveAttribute("href", "/t/acme22/posts");
+  await expect(page.getByRole("button", { name: "Schedule 0 posts" })).toBeDisabled();
+  expect(creates).toEqual(["Lost", "Fine"]);
+  const failures = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download 1 row with problems" }).click();
+  const text = readFileSync((await (await failures).path())!, "utf8");
+  expect(text).not.toContain("Lost");
+});
+
 test("a file that can't be read says why", async ({ page }) => {
   await brain(page);
   await page.goto("/posts/bulk");

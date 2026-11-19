@@ -33,7 +33,9 @@ const problems = (v: Validation | Failure): string[] => {
 
 // A row's state after brain looked at it: checked (with what is wrong) and, once scheduled, created or not.
 type Check = "checking" | string[];
-type Result = { post: Post; count: number } | { error: string };
+// "unknown": the create got no answer (a timeout or a lost connection), so the post may exist. Such a row is
+// never sent again and stays out of the failures CSV, since uploading it again could post it twice.
+type Result = { post: Post; count: number } | { error: string } | "unknown";
 
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 function save(name: string, text: string) {
@@ -72,6 +74,8 @@ function Bulk({ setId, setName, available }: { setId: string; setName: string; a
   const [results, setResults] = useState<Record<number, Result>>({});
   const [running, setRunning] = useState(false);
   const [stopped, setStopped] = useState(false);
+  // brain's rate limit paused the checks; the rows not yet checked wait for Retry checks.
+  const [paused, setPaused] = useState(false);
   // A new file makes the checks still running for the old one stale.
   const generation = useRef(0);
 
@@ -82,6 +86,7 @@ function Bulk({ setId, setName, available }: { setId: string; setName: string; a
     setChecks({});
     setResults({});
     setStopped(false);
+    setPaused(false);
     setFileError(null);
     if (!file) return;
     if (file.size > MAX_FILE_BYTES) return setFileError("The file is over 1 MB. Split it into smaller files.");
@@ -89,32 +94,50 @@ function Bulk({ setId, setName, available }: { setId: string; setName: string; a
     if (gen !== generation.current) return;
     if (typeof read === "string") return setFileError(read);
     setRows(read);
-    // brain checks each row with no local problem, three at a time.
-    const todo = read.filter((r) => r.errors.length === 0);
-    setChecks(Object.fromEntries(todo.map((r) => [r.n, "checking"])));
+    await check(read.filter((r) => r.errors.length === 0), gen);
+  }
+
+  // brain checks each row, three at a time. A rate limit pauses them all: its row and the ones not yet
+  // sent go back to unchecked, for Retry checks.
+  async function check(todo: BulkRow[], gen = generation.current) {
+    setPaused(false);
+    setChecks((c) => ({ ...c, ...Object.fromEntries(todo.map((r) => [r.n, "checking"])) }));
     let next = 0;
+    let limited = false;
     const worker = async () => {
-      while (next < todo.length) {
+      while (next < todo.length && !limited) {
         const row = todo[next++]!;
         const v = await validateRow(row, setId);
         if (gen !== generation.current) return;
-        setChecks((c) => ({ ...c, [row.n]: problems(v) }));
+        if (v === "rate_limited") limited = true;
+        setChecks((c) => {
+          if (v !== "rate_limited") return { ...c, [row.n]: problems(v) };
+          const rest = { ...c };
+          delete rest[row.n];
+          return rest;
+        });
       }
     };
     await Promise.all([worker(), worker(), worker()]);
+    if (gen !== generation.current || !limited) return;
+    setPaused(true);
+    const left = new Set(todo.slice(next).map((r) => r.n));
+    setChecks((c) => Object.fromEntries(Object.entries(c).filter(([n]) => !left.has(Number(n)))));
   }
 
   const errorsOf = (r: BulkRow) => {
     const c = checks[r.n];
     const res = results[r.n];
-    return [...r.errors, ...(Array.isArray(c) ? c : []), ...(res && "error" in res ? [res.error] : [])];
+    return [...r.errors, ...(Array.isArray(c) ? c : []), ...(typeof res === "object" && "error" in res ? [res.error] : [])];
   };
   const list = rows ?? [];
   const checking = list.filter((r) => checks[r.n] === "checking").length;
   const checked = list.filter((r) => Array.isArray(checks[r.n])).length;
   const ready = list.filter((r) => errorsOf(r).length === 0 && Array.isArray(checks[r.n]) && !results[r.n]);
   const bad = list.filter((r) => errorsOf(r).length > 0);
-  const made = list.filter((r) => results[r.n] && "post" in results[r.n]!);
+  const made = list.filter((r) => typeof results[r.n] === "object" && "post" in (results[r.n] as object));
+  const unknown = list.filter((r) => results[r.n] === "unknown").length;
+  const unchecked = list.filter((r) => r.errors.length === 0 && checks[r.n] === undefined);
 
   // Creates the ready rows one after another; brain's rate limit stops the run, and Continue picks it up.
   async function schedule() {
@@ -127,7 +150,8 @@ function Bulk({ setId, setName, available }: { setId: string; setName: string; a
         setStopped(true);
         break;
       }
-      const result: Result = isFailure(r) ? { error: say(r) } : "posts" in r ? { post: r.posts[0]!, count: r.posts.length } : { post: r, count: 1 };
+      const result: Result =
+        r === "timeout" || r === "error" ? "unknown" : isFailure(r) ? { error: say(r) } : "posts" in r ? { post: r.posts[0]!, count: r.posts.length } : { post: r, count: 1 };
       setResults((old) => ({ ...old, [row.n]: result }));
     }
     setRunning(false);
@@ -163,7 +187,8 @@ function Bulk({ setId, setName, available }: { setId: string; setName: string; a
           <div className="mt-3 grid gap-3">
             <p className="max-w-prose text-ink-soft">
               The first line names the columns, in any order. Up to {MAX_ROWS} posts and 1 MB a file. Put a value with a comma, a quote or a line break in double
-              quotes, and write a quote inside as two.
+              quotes, and write a quote inside as two. A value starting with &apos; and then = @ + or - loses that &apos;, which the download of rows with problems adds
+              so spreadsheets don&apos;t run it as a formula.
             </p>
             <dl className="grid max-w-prose gap-2 sm:grid-cols-[9rem_1fr]">
               <dt className="font-mono font-bold">text</dt>
@@ -200,9 +225,19 @@ function Bulk({ setId, setName, available }: { setId: string; setName: string; a
             <p role="status" className="text-sm text-ink-soft">
               {checking > 0
                 ? `Checking ${checked} of ${checked + checking} rows...`
-                : `${rows.length} ${rows.length === 1 ? "row" : "rows"}: ${made.length ? `${made.length} created, ` : ""}${ready.length} ready, ${bad.length} with problems.`}
+                : `${rows.length} ${rows.length === 1 ? "row" : "rows"}: ${made.length ? `${made.length} created, ` : ""}${unknown ? `${unknown} unknown, ` : ""}${ready.length} ready, ${bad.length} with problems.`}
             </p>
           </div>
+          {paused && checking === 0 && (
+            <div role="alert" className="flex flex-wrap items-center gap-3">
+              <p className="waitlist-error">
+                Paused by a rate limit: {unchecked.length} {unchecked.length === 1 ? "row isn't" : "rows aren't"} checked yet. Wait a minute, then retry.
+              </p>
+              <button type="button" className="btn btn-secondary" disabled={running} onClick={() => check(unchecked)}>
+                Retry checks
+              </button>
+            </div>
+          )}
           {stopped && (
             <p role="alert" className="waitlist-error">
               brain&apos;s rate limit stopped the run after {made.length} {made.length === 1 ? "post" : "posts"}. Wait a minute, then continue with the{" "}
@@ -239,7 +274,7 @@ function Bulk({ setId, setName, available }: { setId: string; setName: string; a
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <Row key={r.n} row={r} check={checks[r.n]} result={results[r.n]} errors={errorsOf(r)} waiting={stopped && ready.includes(r)} />
+                  <Row key={r.n} row={r} check={checks[r.n]} unchecked={unchecked.includes(r)} result={results[r.n]} errors={errorsOf(r)} waiting={stopped && ready.includes(r)} />
                 ))}
               </tbody>
             </table>
@@ -250,8 +285,8 @@ function Bulk({ setId, setName, available }: { setId: string; setName: string; a
   );
 }
 
-function Row({ row, check, result, errors, waiting }: { row: BulkRow; check?: Check; result?: Result; errors: string[]; waiting: boolean }) {
-  const created = result && "post" in result ? result : null;
+function Row({ row, check, unchecked, result, errors, waiting }: { row: BulkRow; check?: Check; unchecked: boolean; result?: Result; errors: string[]; waiting: boolean }) {
+  const created = typeof result === "object" && "post" in result ? result : null;
   const at = created?.post.scheduled_at ?? (row.when?.kind === "at" ? row.when.iso : null);
   return (
     <tr className="border-t border-ink/10 align-top first:border-t-0">
@@ -295,6 +330,17 @@ function Row({ row, check, result, errors, waiting }: { row: BulkRow; check?: Ch
               Open post {row.n}
             </Link>
           </span>
+        ) : result === "unknown" ? (
+          <>
+            <span className="badge tone" data-status="queued">
+              Unknown
+            </span>
+            <p className="mt-1">
+              It may have been created: check <Link href="/posts" className={linkButton}>Posts</Link> before retrying.
+            </p>
+          </>
+        ) : unchecked ? (
+          <span className="badge">Not checked yet</span>
         ) : check === "checking" ? (
           <span className="badge tone" data-status="queued">
             Checking...

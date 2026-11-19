@@ -93,7 +93,8 @@ export function readCsv(csv: string, available: Platform[], now = new Date()): B
   if (lines.length === 0) return "The file has no posts under its header.";
   if (lines.length > MAX_ROWS) return `The file has ${lines.length} posts. Upload at most ${MAX_ROWS} at a time.`;
   return lines.map((cells, i) => {
-    const get = (c: Column) => (columns.includes(c) ? (cells[columns.indexOf(c)] ?? "") : "");
+    // A failures CSV starts a cell that looks like a formula with a quote (csvCell); one quote there is dropped.
+    const get = (c: Column) => (columns.includes(c) ? (cells[columns.indexOf(c)] ?? "") : "").replace(/^'(?=[=@+\-\t\r])/, "");
     return readRow(i + 1, Object.fromEntries(COLUMNS.map((c) => [c, get(c)])) as Record<Column, string>, available, now);
   });
 }
