@@ -10,10 +10,10 @@ describe("proxy CSP", () => {
     expect(csp).toMatch(/connect-src 'self' https?:\/\//);
   });
 
-  it("lets only a public post page load images from any https host", () => {
+  it("lets only a public post page and the team pages (media library, composer) load images from any https host", () => {
     const img = (path: string) => proxy(new NextRequest(`https://socialreins.com${path}`)).headers.get("Content-Security-Policy")!.match(/img-src [^;]*/)![0];
-    expect(img("/p/abcdefghjk")).toBe("img-src 'self' data: https:");
-    for (const path of ["/", "/pricing", "/post-types", "/privacy"]) expect(img(path)).not.toMatch(/https:($| )/);
+    for (const path of ["/p/abcdefghjk", "/t/acme22/library", "/t/acme22/posts/new", "/t/acme22/home"]) expect(img(path)).toBe("img-src 'self' data: https:");
+    for (const path of ["/", "/pricing", "/post-types", "/privacy", "/profile", "/admin", "/login"]) expect(img(path)).not.toMatch(/https:($| )/);
   });
 });
 
