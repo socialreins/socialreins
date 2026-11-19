@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
-import { MY_TEAM, teamPath } from "@/lib/team-path";
+import { MY_TEAM, teamPath, teamSegment } from "@/lib/team-path";
 import type { Failure, Role, Team, User } from "@/lib/auth";
 import { useSession } from "@/components/app-shell";
 import {
@@ -24,6 +24,8 @@ import {
   roleArticle,
   revokeInvitation,
   setRole,
+  setSlug,
+  slugProblem,
   type Invitation,
   type Member,
 } from "@/lib/teams";
@@ -71,7 +73,7 @@ function TeamPage({ user }: { user: User }) {
       <p className="text-ink-soft">
         You are {roleArticle(mine)} {roleName[mine].toLowerCase()} of <strong className="text-ink">{team.name}</strong>.
       </p>
-      {manages(mine) && <Rename team={team} onRenamed={setTeam} />}
+      <Rename team={team} onRenamed={setTeam} />
       <Members me={user} mine={mine} onChanged={() => setVersion((v) => v + 1)} />
       {manages(mine) && <Invitations version={version} />}
       {manages(mine) && (
@@ -90,8 +92,18 @@ function Rename({ team, onRenamed }: { team: Team; onRenamed: (t: Team) => void 
   const [name, setName] = useState(team.name);
   const { busy, problem, done, run } = useAction();
   const changed = name.trim() !== team.name;
+  const address = `${window.location.host}/t/`;
+  // Members read the address; owners and admins change the name and the address.
+  if (!manages(team.role))
+    return (
+      <Card id="rename-heading" title="General" help="The team's address, the start of every link to it.">
+        <p>
+          <span className="label">Team address</span> <code>{address + teamSegment(team)}</code>
+        </p>
+      </Card>
+    );
   return (
-    <Card id="rename-heading" title="General" help="The name everyone in the team sees.">
+    <Card id="rename-heading" title="General" help="The name everyone in the team sees, and the team's address.">
       <form
         className="grid gap-1.5"
         onSubmit={(e) => {
@@ -121,7 +133,69 @@ function Rename({ team, onRenamed }: { team: Team; onRenamed: (t: Team) => void 
         </div>
       </form>
       <Status problem={problem} done={done} />
+      <Address team={team} prefix={address} onChanged={onRenamed} />
     </Card>
+  );
+}
+
+function Address({ team, prefix, onChanged }: { team: Team; prefix: string; onChanged: (t: Team) => void }) {
+  const [slug, setSlugText] = useState(team.slug ?? "");
+  const { busy, problem, done, run } = useAction();
+  const changed = slug !== (team.slug ?? "");
+  const wrong = slug ? slugProblem(slug) : null;
+  const save = (to: string | null) =>
+    run("slug", () => setSlug(to), (t) => {
+      onChanged(t);
+      setSlugText(t.slug ?? "");
+      return t.slug
+        ? `The team address is now ${prefix}${t.slug}. Old links with ${t.code} still work.`
+        : `The team is back on its default address, ${prefix}${t.code}.`;
+    });
+  return (
+    <>
+      <form
+        className="grid gap-1.5"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (slug && !wrong) save(slug);
+        }}
+      >
+        <label htmlFor="team-slug" className="label">
+          Team address
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex min-w-0 flex-[1_1_14rem] items-center gap-1">
+            <span className="text-sm text-ink-soft">{prefix}</span>
+            <input
+              id="team-slug"
+              className="field min-w-0 flex-1"
+              maxLength={30}
+              autoCapitalize="none"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder={team.code}
+              value={slug}
+              onChange={(e) => setSlugText(e.target.value.trim().toLowerCase())}
+              aria-invalid={!!wrong || problem === "invalid_slug" || problem === "slug_taken" || undefined}
+              aria-describedby="team-slug-help"
+            />
+          </div>
+          <button type="submit" className={`btn h-9 ${changed && slug ? "btn-primary" : "btn-secondary"}`} disabled={busy !== null}>
+            {busy ? "Saving..." : "Save address"}
+          </button>
+          {team.slug && (
+            <button type="button" className="btn btn-secondary h-9" disabled={busy !== null} onClick={() => save(null)}>
+              Use the default address
+            </button>
+          )}
+        </div>
+        <p id="team-slug-help" className="hint">
+          {wrong ? <span className="text-signal-deep">{wrong} </span> : null}3 to 30 lowercase letters, digits or dashes. Short is best: it is in every link. Links with the
+          team&apos;s code ({team.code}) always keep working.
+        </p>
+      </form>
+      <Status problem={problem} done={done} />
+    </>
   );
 }
 

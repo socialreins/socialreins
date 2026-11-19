@@ -4,10 +4,11 @@ import { createCredential, getCredential, type CreationOptionsJSON, type Request
 
 export type LinkResult = "sent" | "invalid" | Captcha | "rate_limited" | "timeout" | "error";
 export type Role = "owner" | "admin" | "member";
-// `code` is the team's permanent address: /t/<code>/... (lib/team-path.ts).
+// `code` is the team's permanent address: /t/<code>/... (lib/team-path.ts). `slug` is the address the team
+// picked for itself, shown instead of the code when set; brain takes either in X-Team and ?team=.
 // `public_pages`: posts of the team may have a public page (`/p/<code>`); `newsletter`: those pages offer a sign-up;
 // `require_approval`: a member's post waits for an owner or admin to approve it.
-export type Team = { id: string; name: string; code: string; role: Role; public_pages?: boolean; newsletter?: boolean; require_approval?: boolean };
+export type Team = { id: string; name: string; code: string; slug?: string | null; role: Role; public_pages?: boolean; newsletter?: boolean; require_approval?: boolean };
 export type User = {
   id: string;
   email: string;
@@ -20,7 +21,8 @@ export type User = {
 // "not_found": the address names a team the user is not in, or no team at all; brain answers both the same.
 export type MeResult = { user: User } | "signed_out" | "not_found" | "error";
 
-// The team this tab is on, by code. The app shell sets it from the address, and every call to brain
+// The team this tab is on, by code (never the slug, which may change mid-session; only the first call of
+// a page carries what the address says). The app shell sets it from the address, and every call to brain
 // carries it, so two tabs on two teams each act in their own. null: brain uses the account's current team.
 let tabTeam: string | null = null;
 export const setTabTeam = (code: string | null) => void (tabTeam = code);
@@ -188,6 +190,9 @@ const codes = [
   "feed_unreadable",
   "too_many_feeds",
   "checked_recently",
+  "invalid_slug",
+  "slug_taken",
+  "slug_changed_too_often",
 ] as const;
 export type Failure = (typeof codes)[number] | "rate_limited" | "signed_out" | "timeout" | "error";
 export type Passkey = { id: string; name: string; created_at: string; last_used_at: string | null };

@@ -1,5 +1,6 @@
-// Team addresses: every page about a team lives at /t/<code>/<page>, where <code> is the team's
-// permanent 6-character code from brain. This file is the one place that builds and reads them.
+// Team addresses: every page about a team lives at /t/<team>/<page>, where <team> is the team's own
+// address (its slug) when it has one, else its permanent 6-character code from brain. Both lead to the
+// team. This file is the one place that builds and reads them.
 
 // First path segments of the pages that belong to a team. Profile, security, /admin and the
 // sign-in pages are about the person, so they stay outside /t/.
@@ -8,6 +9,12 @@ export const TEAM_PAGES = ["home", "posts", "calendar", "queue", "lists", "libra
 // Stands for "my current team" where the code is not known (old addresses, links in emails,
 // after sign-in). The app shell swaps it for the real code.
 export const MY_TEAM = "_";
+
+type Addressed = { code: string; slug?: string | null };
+// The team's part of every address built: the slug when it has one, else the code.
+export const teamSegment = (team: Addressed) => team.slug ?? team.code;
+// Whether a team segment read from an address names this team: its slug or its code.
+export const isTeamSegment = (team: Addressed, part: string) => part === team.code || (!!team.slug && part === team.slug);
 
 const segment = (path: string) => path.split(/[/?#]/)[1] ?? "";
 
