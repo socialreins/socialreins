@@ -231,7 +231,6 @@ export function FlowEditor({
                             id={`step-${s.id}-button-${j}`}
                             className="field min-w-0 flex-1"
                             aria-label={`Button ${j + 1} label`}
-                            maxLength={MAX_LABEL}
                             placeholder="Yes, send it"
                             value={b.label}
                             onChange={(e) => set({ ...b, label: e.target.value, payload: b.own ? b.payload : uniquePayload(slug(e.target.value) || "button", taken(b)) })}
