@@ -181,6 +181,11 @@ const codes = [
   "repeat_not_supported",
   "invalid_repeat",
   "too_many_repeats",
+  "invalid_feed",
+  "platform_not_supported",
+  "feed_unreadable",
+  "too_many_feeds",
+  "checked_recently",
 ] as const;
 export type Failure = (typeof codes)[number] | "rate_limited" | "signed_out" | "timeout" | "error";
 export type Passkey = { id: string; name: string; created_at: string; last_used_at: string | null };
