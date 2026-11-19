@@ -31,9 +31,13 @@ export const removeSubscriber = (id: string) => api(`/v1/subscribers/${enc(id)}`
 export const renameTeam = (name: string) => api<Team>("/v1/team", "PATCH", { name });
 // The team's own address (/t/<slug>/...); null goes back to the code.
 export const setSlug = (slug: string | null) => api<Team>("/v1/team", "PATCH", { slug });
-// What is wrong with a typed address, or null. Mirrors brain's rules, except its reserved words.
+// brain refuses these as a team address (invalid_slug, reason reserved).
+const RESERVED = ["new", "admin", "api", "app", "t", "team", "teams", "login", "signup", "settings", "billing", "www", "socialreins", "support", "help", "_"];
+// What is wrong with a typed address, or null. Mirrors brain's rules.
 export const slugProblem = (slug: string) =>
-  slug.length < 3 || slug.length > 30
+  RESERVED.includes(slug)
+    ? "That address is reserved. Pick another."
+    : slug.length < 3 || slug.length > 30
     ? "Use 3 to 30 characters."
     : /[^a-z0-9-]/.test(slug)
       ? "Use only lowercase letters, digits and dashes."
