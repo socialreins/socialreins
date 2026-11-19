@@ -85,12 +85,12 @@ test("an owner sets the team address: the address bar moves and pages keep worki
   await expect(page.getByRole("heading", { name: "Posts", level: 1 })).toBeVisible();
   await page.goto("/inbox/i7?item=p1");
   await expect(page).toHaveURL("/t/acme/inbox/i7?item=p1");
-  // The slug address itself: only the first call can name the slug, the rest carry the code.
+  // The slug address itself: only the session check can name the slug, every other call carries the code.
   sent.length = 0;
   await page.goto("/t/acme/posts");
   await expect(page.getByRole("heading", { name: "Posts", level: 1 })).toBeVisible();
   await expect.poll(() => sent.some(([path]) => path === "/v1/posts")).toBe(true);
-  expect(sent.slice(1).filter(([, named]) => named !== "acme22")).toEqual([]);
+  expect(sent.filter(([path, named]) => named !== "acme22" && !(path === "/auth/me" && named === "acme"))).toEqual([]);
   await page.locator("aside").getByRole("link", { name: "Accounts" }).click();
   await expect(page).toHaveURL("/t/acme/connections");
 });
