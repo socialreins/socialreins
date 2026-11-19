@@ -13,7 +13,8 @@ export type Filters = {
   keywords: string[];
   unanswered: boolean;
 };
-export type Inbox = { id: string; name: string; is_all: boolean; filters: Filters; created_at: string; updated_at: string };
+// `open_count` (open items, follows left out) comes with the list only.
+export type Inbox = { id: string; name: string; is_all: boolean; filters: Filters; open_count?: number; created_at: string; updated_at: string };
 export type Author = { id: string; handle: string | null; name: string | null; avatar_url: string | null };
 export type Reply = {
   id: string;
@@ -29,7 +30,8 @@ export type Item = {
   id: string;
   social_account_id: string;
   platform: string;
-  kind: Kind;
+  // A follow (a new Bluesky follower) is listed only when asked for, but an automation run links to one.
+  kind: Kind | "follow";
   remote_id: string;
   remote_url: string | null;
   convo_id: string | null;
@@ -48,13 +50,13 @@ export const MAX_PUBLIC = 300;
 export const MAX_DM = 1000;
 // Facebook takes comments of 8000 characters and messages of 2000; Instagram comments of 2200 and messages of 1000.
 const META_MAX: Record<string, { public: number; dm: number }> = { facebook: { public: 8000, dm: 2000 }, instagram: { public: 2200, dm: 1000 } };
-export const maxFor = (kind: Kind, provider?: string) => {
+export const maxFor = (kind: Item["kind"], provider?: string) => {
   const meta = provider ? META_MAX[provider] : undefined;
   if (meta) return kind === "dm" ? meta.dm : meta.public;
   return kind === "dm" ? MAX_DM : MAX_PUBLIC;
 };
 
-export const kindName: Record<Kind, string> = { comment: "Comment", mention: "Mention", dm: "DM" };
+export const kindName: Record<Item["kind"], string> = { comment: "Comment", mention: "Mention", dm: "DM", follow: "Follow" };
 
 const enc = encodeURIComponent;
 
@@ -64,9 +66,11 @@ export const updateInbox = (id: string, name: string, filters: Filters) =>
   api<Inbox>(`/v1/inboxes/${enc(id)}`, "PUT", { name, filters });
 export const deleteInbox = (id: string) => api(`/v1/inboxes/${enc(id)}`, "DELETE");
 
-export function listItems(inboxId: string, state: ItemState, cursor?: string | null, kind?: Kind | null) {
+// `search` looks in the text and the author's name and handle; brain takes 1 to 100 characters.
+export function listItems(inboxId: string, state: ItemState, cursor?: string | null, kind?: Kind | null, search?: string) {
   const q = new URLSearchParams({ state });
   if (kind) q.set("kind", kind);
+  if (search) q.set("q", search);
   if (cursor) q.set("cursor", cursor);
   return api<ItemPage>(`/v1/inboxes/${enc(inboxId)}/items?${q}`);
 }

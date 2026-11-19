@@ -12,6 +12,8 @@ describe("inbox requests", () => {
     vi.stubGlobal("fetch", fetch);
     await listItems("i 1", "done", "c9");
     expect(call(fetch)[0]).toBe(`${apiUrl}/v1/inboxes/i%201/items?state=done&cursor=c9`);
+    await listItems("all", "open", null, "dm", "price list");
+    expect((fetch.mock.calls[1] as unknown as [string])[0]).toBe(`${apiUrl}/v1/inboxes/all/items?state=open&kind=dm&q=price+list`);
   });
 
   it("patches the state", async () => {

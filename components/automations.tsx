@@ -1,39 +1,40 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { flushSync } from "react-dom";
 import { TeamLink as Link } from "@/components/team-link";
 import { useTeamRouter as useRouter } from "@/components/team-link";
 import type { Failure } from "@/lib/auth";
 import {
   actionName,
+  actionsSummary,
+  canEdit,
+  conditionNotes,
   deleteAutomation,
   getAutomation,
   listAutomations,
   listRuns,
   reason,
   switchAutomation,
-  triggerSummary,
+  templates,
+  triggers,
   type Automation,
   type Run,
 } from "@/lib/automations";
+import { authorName, getItem, type Author } from "@/lib/inbox";
 import { listConnections, type Connection } from "@/lib/connections";
 import { listSets, type SocialSet } from "@/lib/sets";
 import { manages } from "@/lib/teams";
 import { useSession } from "@/components/app-shell";
-import { AutomationForm, automationMessages } from "@/components/automation-form";
+import { AutomationForm, automationMessages, triggerIcon } from "@/components/automation-form";
 import { scopeSummary } from "@/components/scope-fields";
 import { isFailure, problemText, Status, useAction } from "@/components/team-ui";
 import { Icon } from "@/components/ui";
 
 const heading = "font-display text-xl font-extrabold tracking-tight";
+const statusName: Record<Run["status"], string> = { running: "Running", sent: "Sent", failed: "Failed", skipped: "Skipped" };
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-
-export const actionsSummary = (a: Automation) => {
-  const reply = a.actions.find((x) => x.type === "reply_publicly");
-  if (reply) return "Sends a DM and replies publicly";
-  return a.fallback_public_reply ? "Sends a DM, or replies publicly if it can't" : "Sends a DM";
-};
 
 // The team's accounts and sets, for the scope fields and summaries.
 function useScopeData() {
@@ -82,9 +83,55 @@ function ActiveSwitch({ automation: a, canManage, onChange }: { automation: Auto
   );
 }
 
-function runsSummary(runs: Automation["runs"]) {
-  if (!runs?.count || !runs.last_at) return "No runs yet";
-  return `${runs.count} ${runs.count === 1 ? "run" : "runs"}, last ${when(runs.last_at)}`;
+// Sent, Skipped and Failed as small figures, with the last run's time.
+function Stats({ runs }: { runs: Automation["runs"] }) {
+  if (!runs) return null;
+  return (
+    <div className="flex flex-wrap items-end gap-x-6 gap-y-1">
+      <dl aria-label="Runs" className="flex gap-5">
+        {(["sent", "skipped", "failed"] as const).map((k) => (
+          <div key={k}>
+            <dt className="text-xs text-ink-soft">{statusName[k]}</dt>
+            <dd className={`font-bold tabular-nums ${k === "failed" && runs.failed ? "text-signal-deep" : ""}`}>{runs[k]}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="text-xs text-ink-soft">{runs.last_at ? `Last run ${when(runs.last_at)}` : "No runs yet"}</p>
+    </div>
+  );
+}
+
+// The trigger in words with its icon, the keywords, then scope, conditions and what it does.
+function Summary({ automation: a, accounts, sets }: { automation: Automation; accounts: Connection[]; sets: SocialSet[] }) {
+  // A trigger or shape from a newer brain: nothing here can be read safely but its name, switch and counts.
+  if (!canEdit(a))
+    return (
+      <p className="flex items-center gap-2 text-[0.95rem]">
+        <Icon name="automations" className="size-4 text-ink-soft" />
+        Made over the API
+      </p>
+    );
+  const keywords = a.conditions.keywords ?? [];
+  return (
+    <>
+      <p className="flex items-center gap-2 text-[0.95rem]">
+        <Icon name={triggerIcon[a.trigger] ?? "automations"} className="size-4 text-ink-soft" />
+        {triggers[a.trigger]?.label ?? a.trigger}
+      </p>
+      {keywords.length > 0 && (
+        <ul aria-label="Keywords" className="flex flex-wrap gap-1.5">
+          {keywords.map((k) => (
+            <li key={k} className="badge tone text-ink">
+              {k}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="text-sm text-ink-soft">
+        {[scopeSummary(a.conditions, accounts, sets), ...conditionNotes(a.conditions), actionsSummary(a)].join(". ")}.
+      </p>
+    </>
+  );
 }
 
 export function Automations() {
@@ -119,7 +166,7 @@ export function Automations() {
           <p>
             <strong className="block">No automations yet</strong>
             <span className="text-ink-soft">
-              Send a DM to everyone who comments a keyword on your posts, like &quot;price&quot; or &quot;link&quot;. It runs within a minute of the comment.
+              Answer comments, DMs, mentions, new followers and story replies on your own: a DM to everyone who comments &quot;link&quot;, a welcome to a first message. Start from a template.
             </span>
           </p>
           {canManage && (
@@ -132,19 +179,16 @@ export function Automations() {
       ) : (
         <ul className="grid gap-3">
           {list.map((a) => (
-            <li key={a.id} className="card relative flex flex-wrap items-start gap-4 p-5">
-              <span className={`grid size-10 shrink-0 place-items-center rounded-xl ${a.active ? "bg-signal/10 text-signal-deep" : "bg-ink/5 text-ink-soft"}`}>
-                <Icon name="automations" />
+            <li key={a.id} className="card relative flex items-start gap-4 p-5">
+              <span className={`hidden size-10 shrink-0 place-items-center rounded-xl sm:grid ${a.active ? "bg-signal/10 text-signal-deep" : "bg-ink/5 text-ink-soft"}`}>
+                <Icon name={triggerIcon[a.trigger] ?? "automations"} />
               </span>
-              <div className="grid min-w-0 flex-1 basis-64 gap-1">
+              <div className="grid min-w-0 flex-1 gap-1.5">
                 <Link href={`/automations/${a.id}`} className="font-bold hover:underline">
                   {a.name}
                 </Link>
-                <p className="text-[0.95rem]">{triggerSummary(a.conditions)}</p>
-                <p className="text-sm text-ink-soft">
-                  {scopeSummary(a.conditions, accounts, sets)}. {actionsSummary(a)}.
-                </p>
-                <p className="text-sm text-ink-soft">{runsSummary(a.runs)}</p>
+                <Summary automation={a} accounts={accounts} sets={sets} />
+                <Stats runs={a.runs} />
               </div>
               <ActiveSwitch automation={a} canManage={canManage} onChange={replace} />
             </li>
@@ -155,8 +199,6 @@ export function Automations() {
   );
 }
 
-const statusName: Record<Run["status"], string> = { running: "Running", sent: "Sent", failed: "Failed", skipped: "Skipped" };
-
 export function AutomationDetail({ id }: { id: string }) {
   const { user } = useSession();
   const canManage = manages(user.current_team.role);
@@ -166,6 +208,9 @@ export function AutomationDetail({ id }: { id: string }) {
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [saved, setSaved] = useState<{ text: string; n: number } | null>(null);
+  // Who each run answered: the author of its inbox item, null when the item can't be read.
+  const [people, setPeople] = useState<Record<string, Author | null>>({});
+  const asked = useRef(new Set<string>());
   const { accounts, ready, sets } = useScopeData();
   const del = useAction();
   const more = useAction();
@@ -177,6 +222,23 @@ export function AutomationDetail({ id }: { id: string }) {
     getAutomation(id).then(setA);
     listRuns(id).then((r) => setRuns(isFailure(r) ? r : { runs: r.runs, next: r.next_cursor }));
   }, [id]);
+
+  // shortcut: one request per run's item (50 a page), 4 at a time, since brain's runs carry no author; ask brain for it in the run if this gets slow.
+  // A lookup that failed is forgotten, so the next Load more (or opening the page again) tries it once more.
+  useEffect(() => {
+    if (!runs || isFailure(runs)) return;
+    const queue = [...new Set(runs.runs.map((r) => r.inbox_item_id))].filter((x) => !asked.current.has(x));
+    for (const x of queue) asked.current.add(x);
+    const worker = async () => {
+      for (let x = queue.shift(); x; x = queue.shift()) {
+        const item = x;
+        const i = await getItem(item);
+        if (isFailure(i)) asked.current.delete(item);
+        setPeople((p) => ({ ...p, [item]: isFailure(i) ? null : i.author }));
+      }
+    };
+    for (let n = 0; n < 4; n++) worker();
+  }, [runs]);
 
   if (a === null) return <div role="status" className="h-64 rounded-2xl bg-ink/5 motion-safe:animate-pulse"><span className="sr-only">Loading the automation...</span></div>;
   if (isFailure(a))
@@ -199,8 +261,8 @@ export function AutomationDetail({ id }: { id: string }) {
   };
 
   return (
-    <div className="grid gap-10">
-      {editing ? (
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-10">
+      {editing && canEdit(a) ? (
         <AutomationForm
           automation={a}
           accounts={accounts}
@@ -208,7 +270,7 @@ export function AutomationDetail({ id }: { id: string }) {
           sets={sets}
           onCancel={close}
           onSaved={(saved) => {
-            setA(saved);
+            setA((cur) => ({ ...saved, runs: cur && !isFailure(cur) ? cur.runs : undefined }));
             close();
             setSaved((n) => ({ text: "Automation saved.", n: (n?.n ?? 0) + 1 }));
           }}
@@ -220,21 +282,25 @@ export function AutomationDetail({ id }: { id: string }) {
               <h2 id="summary-heading" className={heading}>
                 {a.name}
               </h2>
-              <p>{triggerSummary(a.conditions)}</p>
-              <p className="text-sm text-ink-soft">
-                {scopeSummary(a.conditions, accounts, sets)}. {actionsSummary(a)}.{a.active ? ` On since ${when(a.activated_at)}.` : " Off."}
-              </p>
+              <Summary automation={a} accounts={accounts} sets={sets} />
+              <p className="text-sm text-ink-soft">{a.active ? `On since ${when(a.activated_at)}.` : "Off."}</p>
             </div>
-            <ActiveSwitch automation={a} canManage={canManage} onChange={setA} />
+            <ActiveSwitch automation={a} canManage={canManage} onChange={(x) => setA({ ...x, runs: a.runs })} />
           </div>
-          <dl className="grid gap-3 sm:grid-cols-2">
-            {a.actions.map((x) => (
+          <Stats runs={a.runs} />
+          {!canEdit(a) && (
+            <p role="note" className="rounded-xl bg-canvas p-3 text-sm">
+              This automation was made over the API with a trigger or steps this page doesn&apos;t know yet, so it can&apos;t be edited here yet. You can still switch it on or off, read its runs and delete it.
+            </p>
+          )}
+          <dl className="grid gap-3 sm:grid-cols-2" hidden={!canEdit(a)}>
+            {(canEdit(a) ? a.actions : []).map((x) => (
               <div key={x.type} className="grid gap-1 rounded-xl bg-canvas p-3">
-                <dt className="text-sm font-bold">{x.type === "send_dm" ? "DM" : "Public reply"}</dt>
+                <dt className="text-sm font-bold">{actionName[x.type]}</dt>
                 <dd className="whitespace-pre-wrap break-words">{x.text}</dd>
               </div>
             ))}
-            {a.fallback_public_reply && (
+            {canEdit(a) && a.fallback_public_reply && (
               <div className="grid gap-1 rounded-xl bg-canvas p-3">
                 <dt className="text-sm font-bold">Public reply if the DM can&apos;t go</dt>
                 <dd className="whitespace-pre-wrap break-words">{a.fallback_public_reply}</dd>
@@ -271,10 +337,12 @@ export function AutomationDetail({ id }: { id: string }) {
               </div>
             ) : (
               <div className="flex flex-wrap gap-2">
-                <button ref={editRef} type="button" className="btn btn-secondary btn-sm" onClick={() => setEditing(true)}>
-                  <Icon name="edit" className="size-4" />
-                  Edit
-                </button>
+                {canEdit(a) && (
+                  <button ref={editRef} type="button" className="btn btn-secondary btn-sm" onClick={() => setEditing(true)}>
+                    <Icon name="edit" className="size-4" />
+                    Edit
+                  </button>
+                )}
                 <button ref={deleteRef} type="button" className="btn btn-quiet btn-danger btn-sm" onClick={() => setConfirming(true)}>
                   <Icon name="trash" className="size-4" />
                   Delete
@@ -290,7 +358,7 @@ export function AutomationDetail({ id }: { id: string }) {
         </section>
       )}
 
-      <section aria-labelledby="runs-heading" className="grid gap-4">
+      <section aria-labelledby="runs-heading" className="grid grid-cols-[minmax(0,1fr)] gap-4">
         <h2 id="runs-heading" className={heading}>
           Run history
         </h2>
@@ -303,37 +371,62 @@ export function AutomationDetail({ id }: { id: string }) {
             Runs couldn&apos;t be loaded. {problemText(runs)}
           </p>
         ) : runs.runs.length === 0 ? (
-          <p className="card p-5 text-ink-soft">No runs yet. Each matching comment shows here with what was sent.</p>
+          <p className="card p-5 text-ink-soft">No runs yet. Each time it acts, the run shows here with who it answered and what was sent.</p>
         ) : (
           <>
-            <ol className="card divide-y divide-ink/10">
-              {runs.runs.map((r) => (
-                <li key={r.id} className="grid gap-2 px-5 py-4">
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                    <span className="badge tone" data-status={r.status === "skipped" ? undefined : r.status}>
-                      {statusName[r.status]}
-                    </span>
-                    <time dateTime={r.created_at} className="text-sm text-ink-soft">
-                      {when(r.created_at)}
-                    </time>
-                    {r.reason && <span className="text-sm font-bold">{reason(r.reason)}</span>}
-                    <Link href={`/inbox?item=${encodeURIComponent(r.inbox_item_id)}`} className="ml-auto text-sm font-bold underline decoration-signal decoration-2 underline-offset-4">
-                      Open the comment<span className="sr-only"> from {when(r.created_at)}</span>
-                    </Link>
-                  </div>
-                  {r.results.length > 0 && (
-                    <ul aria-label="Actions" className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-ink-soft">
-                      {r.results.map((x, i) => (
-                        <li key={i}>
-                          {actionName[x.type]}: {statusName[x.status].toLowerCase()}
-                          {x.reason ? ` (${reason(x.reason)})` : ""}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </li>
-              ))}
-            </ol>
+            {/* relative: the sr-only texts inside are absolute, and would otherwise widen the page past the scroller. */}
+            <div className="card relative overflow-x-auto">
+              <table className="w-full min-w-[40rem] text-left text-sm">
+                <thead className="text-xs text-ink-soft">
+                  <tr>
+                    {["Status", "Who", "When", "What happened"].map((h) => (
+                      <th key={h} scope="col" className="px-4 py-3 font-bold">
+                        {h}
+                      </th>
+                    ))}
+                    <th scope="col" className="px-4 py-3">
+                      <span className="sr-only">Inbox</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-ink/10 border-t border-ink/10">
+                  {runs.runs.map((r) => {
+                    const who = people[r.inbox_item_id];
+                    return (
+                      <tr key={r.id} className="align-top">
+                        <td className="px-4 py-3">
+                          <span className="badge tone" data-status={r.status === "skipped" ? undefined : r.status}>
+                            {statusName[r.status] ?? r.status}
+                          </span>
+                        </td>
+                        <td className="max-w-40 truncate px-4 py-3 font-bold">{who ? authorName(who) : who === null ? "Unknown" : "..."}</td>
+                        <td className="whitespace-nowrap px-4 py-3 text-ink-soft">
+                          <time dateTime={r.created_at}>{when(r.created_at)}</time>
+                        </td>
+                        <td className="px-4 py-3">
+                          {r.reason && <p>{reason(r.reason)}</p>}
+                          {r.results.length > 0 && (
+                            <ul aria-label="Actions" className="text-ink-soft">
+                              {r.results.map((x, i) => (
+                                <li key={i}>
+                                  {actionName[x.type] ?? String(x.type).replaceAll("_", " ")}: {(statusName[x.status] ?? x.status).toLowerCase()}
+                                  {x.reason && x.reason !== r.reason ? ` (${reason(x.reason)})` : ""}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right">
+                          <Link href={`/inbox?item=${encodeURIComponent(r.inbox_item_id)}`} className="font-bold underline decoration-signal decoration-2 underline-offset-4">
+                            Open in inbox<span className="sr-only">, {when(r.created_at)}</span>
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
             {runs.next && (
               <button
                 type="button"
@@ -356,12 +449,45 @@ export function AutomationDetail({ id }: { id: string }) {
   );
 }
 
+// A new automation starts at the template chooser; a picked template (?template=) opens the builder prefilled.
 export function NewAutomation() {
   const { user } = useSession();
   const router = useRouter();
+  const template = useSearchParams().get("template");
   const { accounts, ready, sets } = useScopeData();
   if (!manages(user.current_team.role)) return <p className="text-ink-soft">Only team owners and admins can create automations.</p>;
-  return <AutomationForm accounts={accounts} ready={ready} sets={sets} onSaved={(a) => router.push(`/automations/${a.id}`)} />;
+  if (!templates.some((t) => t.id === template))
+    return (
+      <section aria-labelledby="templates-heading" className="grid max-w-4xl gap-4">
+        <h2 id="templates-heading" className={heading}>
+          Start from a template
+        </h2>
+        <p className="text-ink-soft">Each one opens the builder filled in. You can change everything, the trigger too.</p>
+        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {templates.map((t) => (
+            <li key={t.id}>
+              <Link href={`/automations/new?template=${t.id}`} className="card grid h-full content-start gap-2 p-5 hover:ring-ink focus-visible:outline-offset-2">
+                <span className="grid size-10 place-items-center rounded-xl bg-signal/10 text-signal-deep">
+                  <Icon name={triggerIcon[t.draft.trigger ?? "comment_received"]} />
+                </span>
+                <strong>{t.title}</strong>
+                <span className="text-sm text-ink-soft">{t.about}</span>
+                <span className="text-xs font-bold text-ink-soft">{triggers[t.draft.trigger ?? "comment_received"].label}</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </section>
+    );
+  return (
+    <div className="grid gap-5">
+      <Link href="/automations/new" className="flex items-center gap-1 justify-self-start text-sm font-bold text-ink-soft hover:text-ink">
+        <Icon name="left" className="size-4" />
+        Templates
+      </Link>
+      <AutomationForm key={template} template={template} accounts={accounts} ready={ready} sets={sets} onSaved={(a) => router.push(`/automations/${a.id}`)} />
+    </div>
+  );
 }
 
 // The page header's action, for owners and admins only.

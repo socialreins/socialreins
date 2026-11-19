@@ -61,6 +61,7 @@ async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items
       item("p3", "dm", "Hi, can we talk?", { received_at: ago(60 * 30) }),
     ],
     bodies: [] as unknown[],
+    asked: [] as URLSearchParams[],
   };
   await page.route("**/auth/me", (route) => route.fulfill({ json: me(role) }));
   await page.route("**/v1/connections", (route) => route.fulfill({ json: opts.accounts ?? [alice] }));
@@ -73,7 +74,9 @@ async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items
       state.inboxes.push(made);
       return route.fulfill({ status: 201, json: made });
     }
-    return route.fulfill({ json: state.inboxes });
+    // brain counts each inbox's open items; "Questions" holds the ones about the price.
+    const open = (id: string) => state.items.filter((i) => i.state === "open" && (id !== "i2" || i.text.includes("price"))).length;
+    return route.fulfill({ json: state.inboxes.map((i) => ({ ...i, open_count: open(i.id) })) });
   });
   await page.route(/\/v1\/inboxes\/i2$/, (route) => {
     const req = route.request();
@@ -87,7 +90,10 @@ async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items
   await page.route(/\/v1\/inboxes\/[^/]+\/items/, (route) => {
     const q = new URL(route.request().url()).searchParams;
     const kind = q.get("kind");
-    return route.fulfill({ json: { items: state.items.filter((i) => i.state === q.get("state") && (!kind || i.kind === kind)), next_cursor: null } });
+    const search = q.get("q")?.toLowerCase();
+    state.asked.push(q);
+    const hit = (i: ReturnType<typeof item>) => i.state === q.get("state") && (!kind || i.kind === kind) && (!search || i.text.toLowerCase().includes(search));
+    return route.fulfill({ json: { items: state.items.filter(hit), next_cursor: null } });
   });
   await page.route(/\/v1\/inbox-items\/[^/]+$/, (route) => {
     const id = route.request().url().split("/").pop()!;
@@ -285,6 +291,59 @@ test("the open list picks up new items without a reload", async ({ page }) => {
   const rows = page.getByRole("list", { name: "Items" }).getByRole("listitem");
   await expect(rows.first()).toContainText("Brand new comment");
   await expect(rows).toHaveCount(2);
+});
+
+test("search asks brain with q, keeps it in the address and on reload", async ({ page }) => {
+  const state = await brain(page, "owner");
+  await page.goto("/inbox");
+  const items = page.getByRole("list", { name: "Items" }).getByRole("listitem");
+  await expect(items).toHaveCount(3);
+  const box = page.getByRole("searchbox", { name: "Search All" });
+  await box.fill("PRICE");
+  await expect(items).toHaveCount(1);
+  await expect(items.first()).toContainText("What is the price?");
+  await expect(page).toHaveURL("/t/acme22/inbox?q=PRICE");
+  expect(state.asked.at(-1)?.get("q")).toBe("PRICE");
+  // Typing is debounced: one request for the whole word, not one per letter.
+  expect(state.asked.filter((q) => q.has("q"))).toHaveLength(1);
+
+  await page.reload();
+  await expect(box).toHaveValue("PRICE");
+  await expect(items).toHaveCount(1);
+  // Opening an item and switching to Done keep the search.
+  await items.first().getByRole("link").click();
+  await expect(page).toHaveURL("/t/acme22/inbox?item=p1&q=PRICE");
+  await page.getByRole("link", { name: "Done", exact: true }).click();
+  await expect(page.getByText('Nothing matches "PRICE".')).toBeVisible();
+  expect(state.asked.at(-1)?.get("q")).toBe("PRICE");
+  expect(state.asked.at(-1)?.get("state")).toBe("done");
+
+  await box.fill("");
+  await expect(page).toHaveURL("/t/acme22/inbox?state=done&item=p1");
+});
+
+test("each inbox shows its open count, kept fresh by the poll and by Mark done", async ({ page }) => {
+  await page.clock.install();
+  const state = await brain(page, "owner");
+  await page.goto("/inbox?item=p1");
+  const nav = page.getByRole("navigation", { name: "Inboxes" });
+  const all = nav.getByRole("listitem").filter({ hasText: "All" });
+  const questions = nav.getByRole("listitem").filter({ hasText: "Questions" });
+  await expect(all.getByText("3 open in All")).toBeAttached();
+  await expect(questions.getByText("1 open in Questions")).toBeAttached();
+
+  state.items.unshift(item("p7", "comment", "Is the price the same?"));
+  await page.clock.runFor(31_000);
+  await expect(all.getByText("4 open in All")).toBeAttached();
+  await expect(questions.getByText("2 open in Questions")).toBeAttached();
+
+  await page.getByRole("region", { name: "Item" }).getByRole("button", { name: "Mark done" }).click();
+  await expect(all.getByText("3 open in All")).toBeAttached();
+  await expect(questions.getByText("1 open in Questions")).toBeAttached();
+  // An inbox with nothing open shows no badge.
+  state.items.forEach((i) => (i.state = "done"));
+  await page.clock.runFor(31_000);
+  await expect(nav.getByText(/open in/)).toHaveCount(0);
 });
 
 test.describe("on a wide screen", () => {
