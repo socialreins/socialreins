@@ -1,25 +1,31 @@
 "use client";
 
-import { useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import type { Failure } from "@/lib/auth";
 import {
   automationInput,
   changeTrigger,
   createAutomation,
   draftOf,
+  flowProblems,
   postIds,
   sample,
-  templateLength,
+  slug,
+  toFlow,
+  toSimple,
   TRIGGERS,
   triggers,
   updateAutomation,
   type Automation,
   type Draft,
+  type ScopeBody,
   type Trigger,
 } from "@/lib/automations";
 import type { Connection } from "@/lib/connections";
 import { MAX_DM, MAX_PUBLIC } from "@/lib/inbox";
 import type { SocialSet } from "@/lib/sets";
+import { FlowEditor, FlowPreview, TextField } from "@/components/automation-flow";
 import { KeywordsField, ScopeField, scopeBody, scopeOf } from "@/components/scope-fields";
 import { Status, useAction } from "@/components/team-ui";
 import { Icon, type IconName } from "@/components/ui";
@@ -29,6 +35,8 @@ export const automationMessages: Partial<Record<Failure, ReactNode>> = {
   invalid_actions: "Add a DM text or a public reply that this trigger can send.",
   invalid_text: "A text is too long or holds {page} where it can't go. DMs take 1000 characters and public replies 300, with {name} counted as 64 and {page} as 100. {page} works only for comments and mentions, and needs a space before it and a space or the end after it.",
   invalid_fallback: "The fallback reply does not work: it needs a DM text, at most 300 characters, with {name} counted as 64 and {page} as 100, and {page} needs a space before it and a space or the end after it.",
+  invalid_steps: "A step does not work. A flow takes 1 to 10 steps, can't start or end with a wait (1 minute to 7 days), sends only what its trigger can send, and each DM takes up to 3 buttons with a label of 1 to 20 characters.",
+  actions_and_steps: "An automation is one reply or a flow of steps, not both. Reload the page and try again.",
   invalid_trigger: "That trigger isn't supported.",
   too_many_automations: "This team already has 50 automations, the most allowed. Delete one first.",
   forbidden: "Only team owners and admins can change automations.",
@@ -41,6 +49,7 @@ export const triggerIcon: Record<Trigger, IconName> = {
   mention_received: "mention",
   new_follower: "follower",
   story_reply: "story",
+  button_clicked: "check",
 };
 
 // What Sam does in the preview, and what Sam writes when no keyword is set.
@@ -50,84 +59,17 @@ const incoming: Record<Trigger, { did: string; text: string | null }> = {
   mention_received: { did: "mentioned you", text: "Just tried this, so good!" },
   new_follower: { did: "followed you", text: null },
   story_reply: { did: "replied to your story", text: "Wow, where is this?" },
+  button_clicked: { did: "tapped a button", text: null },
 };
 
 const cardTitle = "px-1 font-display text-lg font-extrabold tracking-tight";
-
-// A text with its placeholder insert buttons and character count.
-function TextField({
-  id,
-  label,
-  value,
-  onChange,
-  max,
-  tokens,
-  required,
-  placeholder,
-  hint,
-}: {
-  id: string;
-  label: ReactNode;
-  value: string;
-  onChange: (v: string) => void;
-  max: number;
-  tokens: string[];
-  required?: boolean;
-  placeholder: string;
-  hint?: string;
-}) {
-  const ref = useRef<HTMLTextAreaElement>(null);
-  const n = templateLength(value);
-  // At the cursor, with the space before it that {page} needs to become a link.
-  const insert = (token: string) => {
-    const el = ref.current;
-    const before = value.slice(0, el?.selectionStart ?? value.length);
-    onChange(`${before}${before && !/\s$/.test(before) ? " " : ""}${token}${value.slice(el?.selectionEnd ?? value.length)}`);
-    el?.focus();
-  };
-  return (
-    <div className="grid gap-1.5">
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <label id={`${id}-label`} htmlFor={id} className="label">
-          {label}
-        </label>
-        <span className="flex items-center gap-1.5 text-sm text-ink-soft">
-          Insert
-          {tokens.map((t) => (
-            <button key={t} type="button" className="badge tone font-mono text-ink hover:bg-ink/10" aria-controls={id} aria-describedby={`${id}-label`} onClick={() => insert(t)}>
-              {t}
-            </button>
-          ))}
-        </span>
-      </div>
-      <textarea
-        ref={ref}
-        id={id}
-        rows={3}
-        required={required}
-        className="field resize-y"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        aria-describedby={`${id}-hint ${id}-count`}
-        aria-invalid={n > max || undefined}
-      />
-      <p className="flex flex-wrap justify-between gap-2">
-        <span id={`${id}-hint`} className="hint">
-          {hint}
-        </span>
-        <span id={`${id}-count`} className={`hint ml-auto ${n > max ? "font-bold text-signal-deep" : ""}`}>
-          {n} of {max} characters
-        </span>
-      </p>
-    </div>
-  );
-}
 
 // The builder over brain's trigger, conditions and actions: When, Only if, Do this, and a preview.
 export function AutomationForm({
   automation: a,
   template,
+  payload,
+  startScope,
   accounts,
   ready,
   sets,
@@ -137,6 +79,9 @@ export function AutomationForm({
   automation?: Automation;
   // A template id from `templates`, for a new automation.
   template?: string | null;
+  // From a button's follow-up link, for a new automation: the payload to listen for and the flow's scope.
+  payload?: string | null;
+  startScope?: ScopeBody;
   accounts: Connection[];
   // The accounts have loaded, so post links by handle can be resolved.
   ready: boolean;
@@ -144,8 +89,12 @@ export function AutomationForm({
   onSaved: (a: Automation) => void;
   onCancel?: () => void;
 }) {
-  const [d, setD] = useState<Draft>(() => draftOf(a, template));
-  const [scope, setScope] = useState(scopeOf(a?.conditions ?? { account_ids: [] }));
+  const [d, setD] = useState<Draft>(() => draftOf(a, template, payload));
+  const [scope, setScope] = useState(scopeOf(a?.conditions ?? startScope ?? { account_ids: [] }));
+  // A switch between One reply and A flow that would drop something, waiting for a yes.
+  const [pending, setPending] = useState<{ patch: Partial<Draft>; dropped: string[] } | null>(null);
+  // A save was tried, so the flow's and the payloads' problems show.
+  const [tried, setTried] = useState(false);
   const [dropped, setDropped] = useState<string[]>([]);
   const [badLinks, setBadLinks] = useState<string[]>([]);
   const { busy, problem, done, run } = useAction();
@@ -156,11 +105,37 @@ export function AutomationForm({
   const lines = d.posts.split("\n").map((l) => l.trim()).filter(Boolean);
   const hasDm = Boolean(d.dm.trim());
   const sam = incoming[d.trigger];
+  const problems = d.flow ? flowProblems(d.steps, d.trigger) : [];
+
+  function onMode(flow: boolean) {
+    if (flow === d.flow) return;
+    const patch: Partial<Draft> = { flow, steps: [] };
+    let dropped: string[];
+    if (flow) {
+      const next = toFlow(d);
+      Object.assign(patch, { steps: next.steps, fallbackOn: false, fallback: "" });
+      dropped = next.dropped;
+    } else {
+      const next = toSimple(d.steps);
+      Object.assign(patch, { dm: next.dm, publicReply: next.publicReply });
+      dropped = next.dropped;
+    }
+    if (dropped.length) setPending({ patch, dropped });
+    else set(patch);
+  }
+  const followUp = (payload: string) => {
+    const s = scopeBody(scope);
+    const q = new URLSearchParams({ template: "button-follow-up", payload });
+    if (s.social_set_id) q.set("set", s.social_set_id);
+    else if (s.account_ids.length) q.set("accounts", s.account_ids.join(","));
+    return `/automations/new?${q}`;
+  };
 
   function onTrigger(to: Trigger) {
     const next = changeTrigger(d, to);
     setD(next.draft);
     setDropped(next.dropped);
+    setPending(null);
   }
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
@@ -171,6 +146,16 @@ export function AutomationForm({
     setBadLinks(bad);
     if (bad.length || (specific && !lines.length)) {
       document.getElementById("automation-posts")?.focus();
+      return;
+    }
+    if (t.payloads && !d.payloads.length) {
+      setTried(true);
+      document.getElementById("automation-payloads")?.focus();
+      return;
+    }
+    if (problems.length) {
+      flushSync(() => setTried(true));
+      document.querySelector("#automation-flow [role=alert]")?.scrollIntoView({ block: "center" });
       return;
     }
     const input = automationInput(d, scopeBody(scope), uris as string[]);
@@ -236,6 +221,23 @@ export function AutomationForm({
               onChange={(keywords) => set({ keywords })}
             />
           )}
+          {t.payloads && (
+            <div className="grid gap-1.5">
+              <KeywordsField
+                id="automation-payloads"
+                label="Button payloads"
+                hint="The payload of each button whose tap runs this: find it under Advanced on the button in the flow. Press Enter or a comma after each. Up to 20."
+                value={d.payloads}
+                onChange={(payloads) => set({ payloads })}
+                clean={slug}
+              />
+              {tried && !d.payloads.length && (
+                <p role="alert" className="waitlist-error">
+                  Add at least one button payload.
+                </p>
+              )}
+            </div>
+          )}
           {t.posts && (
             <fieldset className="grid gap-2">
               <legend className="label mb-1">On</legend>
@@ -293,54 +295,99 @@ export function AutomationForm({
 
         <fieldset className="card grid gap-5 p-5">
           <legend className={cardTitle}>Do this</legend>
-          <TextField
-            id="automation-dm"
-            label={t.publicReply ? <>DM text <span className="font-normal text-ink-soft">(optional when it replies publicly)</span></> : "DM text"}
-            value={d.dm}
-            onChange={(dm) => set({ dm })}
-            max={MAX_DM}
-            tokens={tokens}
-            // A comment or mention may get a public reply alone.
-            required={!t.publicReply || !d.publicReply.trim()}
-            placeholder="Hi {name}, here is the link you asked for: ..."
-            hint={
-              t.publicReply
-                ? "{name} is their display name, or \"there\" when it has links or symbols (counts as 64). {page} is the link to the post's public page (counts as 100): the automation then runs only under posts made here whose public page is open."
-                : "{name} is their display name, or \"there\" when it has links or symbols. It counts as 64 characters."
-            }
-          />
-          {t.publicReply && (
+          <div role="radiogroup" aria-label="Reply with" className="flex flex-wrap gap-x-5 gap-y-1">
+            <label className="flex items-center gap-2">
+              <input type="radio" name="automation-mode" checked={!d.flow} onChange={() => onMode(false)} />
+              One reply
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="radio" name="automation-mode" checked={d.flow} onChange={() => onMode(true)} />
+              A flow of steps
+            </label>
+          </div>
+          {pending && (
+            <div role="alert" className="flex flex-wrap items-center gap-2 rounded-xl bg-canvas p-3">
+              <p className="basis-full text-sm">
+                {d.flow ? "One reply" : "A flow"} can&apos;t hold everything here. Switching drops: {pending.dropped.join(", ")}.
+              </p>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => {
+                  set(pending.patch);
+                  setPending(null);
+                }}
+              >
+                Switch and drop them
+              </button>
+              <button type="button" className="btn btn-quiet btn-sm" onClick={() => setPending(null)}>
+                Keep {d.flow ? "the flow" : "one reply"}
+              </button>
+            </div>
+          )}
+          {d.flow ? (
+            <FlowEditor
+              steps={d.steps}
+              onChange={(steps) => {
+                set({ steps });
+                setPending(null);
+              }}
+              trigger={d.trigger}
+              problems={tried ? problems : []}
+              followUp={followUp}
+            />
+          ) : (
             <>
               <TextField
-                id="automation-public-reply"
-                label={<>Public reply <span className="font-normal text-ink-soft">(optional, goes every time)</span></>}
-                value={d.publicReply}
-                onChange={(publicReply) => set({ publicReply })}
-                max={MAX_PUBLIC}
+                id="automation-dm"
+                label={t.publicReply ? <>DM text <span className="font-normal text-ink-soft">(optional when it replies publicly)</span></> : "DM text"}
+                value={d.dm}
+                onChange={(dm) => set({ dm })}
+                max={MAX_DM}
                 tokens={tokens}
-                placeholder="Sent you a DM, {name}!"
+                // A comment or mention may get a public reply alone.
+                required={!t.publicReply || !d.publicReply.trim()}
+                placeholder="Hi {name}, here is the link you asked for: ..."
+                hint={
+                  t.publicReply
+                    ? "{name} is their display name, or \"there\" when it has links or symbols (counts as 64). {page} is the link to the post's public page (counts as 100): the automation then runs only under posts made here whose public page is open."
+                    : "{name} is their display name, or \"there\" when it has links or symbols. It counts as 64 characters."
+                }
               />
-              <div className="grid gap-2">
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" checked={d.fallbackOn && hasDm} disabled={!hasDm} onChange={(e) => set({ fallbackOn: e.target.checked })} aria-describedby="automation-fallback-about" />
-                  If the DM can&apos;t be delivered, reply publicly instead
-                </label>
-                <p id="automation-fallback-about" className="hint pl-6">
-                  {hasDm ? "Many people take DMs only from accounts they follow. The fallback reply goes only when the DM is refused." : "Write a DM text first."}
-                </p>
-                {d.fallbackOn && hasDm && (
+              {t.publicReply && (
+                <>
                   <TextField
-                    id="automation-fallback-reply"
-                    label="Fallback reply"
-                    value={d.fallback}
-                    onChange={(fallback) => set({ fallback })}
+                    id="automation-public-reply"
+                    label={<>Public reply <span className="font-normal text-ink-soft">(optional, goes every time)</span></>}
+                    value={d.publicReply}
+                    onChange={(publicReply) => set({ publicReply })}
                     max={MAX_PUBLIC}
                     tokens={tokens}
-                    required
-                    placeholder="I couldn't DM you, {name}. Follow us and comment again!"
+                    placeholder="Sent you a DM, {name}!"
                   />
-                )}
-              </div>
+                  <div className="grid gap-2">
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={d.fallbackOn && hasDm} disabled={!hasDm} onChange={(e) => set({ fallbackOn: e.target.checked })} aria-describedby="automation-fallback-about" />
+                      If the DM can&apos;t be delivered, reply publicly instead
+                    </label>
+                    <p id="automation-fallback-about" className="hint pl-6">
+                      {hasDm ? "Many people take DMs only from accounts they follow. The fallback reply goes only when the DM is refused." : "Write a DM text first."}
+                    </p>
+                    {d.fallbackOn && hasDm && (
+                      <TextField
+                        id="automation-fallback-reply"
+                        label="Fallback reply"
+                        value={d.fallback}
+                        onChange={(fallback) => set({ fallback })}
+                        max={MAX_PUBLIC}
+                        tokens={tokens}
+                        required
+                        placeholder="I couldn't DM you, {name}. Follow us and comment again!"
+                      />
+                    )}
+                  </div>
+                </>
+              )}
             </>
           )}
         </fieldset>
@@ -376,24 +423,32 @@ export function AutomationForm({
             </span>
           </p>
           {sam.text && <p className="justify-self-start whitespace-pre-wrap break-words rounded-2xl rounded-tl-md bg-canvas px-3.5 py-2.5 text-[0.95rem] leading-snug">{d.keywords[0] ? `Can I get the ${d.keywords[0]}?` : sam.text}</p>}
-          {hasDm && (
-            <div className="grid justify-items-end gap-1 border-t border-ink/10 pt-3">
-              <span className="text-xs font-bold text-ink-soft">DM to Sam</span>
-              <p className="whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-[#1185FE] px-3.5 py-2.5 text-[0.95rem] leading-snug text-white">{sample(d.dm)}</p>
+          {d.flow ? (
+            <div className="grid gap-3 border-t border-ink/10 pt-3">
+              <FlowPreview steps={d.steps} />
             </div>
+          ) : (
+            <>
+              {hasDm && (
+                <div className="grid justify-items-end gap-1 border-t border-ink/10 pt-3">
+                  <span className="text-xs font-bold text-ink-soft">DM to Sam</span>
+                  <p className="whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-[#1185FE] px-3.5 py-2.5 text-[0.95rem] leading-snug text-white">{sample(d.dm)}</p>
+                </div>
+              )}
+              {t.publicReply && d.publicReply.trim() && (
+                <div className="grid justify-items-end gap-1 border-t border-ink/10 pt-3">
+                  <span className="text-xs font-bold text-ink-soft">Public reply</span>
+                  <p className="whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-ink px-3.5 py-2.5 text-[0.95rem] leading-snug text-paper">{sample(d.publicReply)}</p>
+                </div>
+              )}
+              {t.publicReply && hasDm && d.fallbackOn && d.fallback.trim() && (
+                <p className="border-t border-ink/10 pt-3 text-sm text-ink-soft">
+                  If the DM can&apos;t go, replies publicly: <span className="text-ink">{sample(d.fallback)}</span>
+                </p>
+              )}
+              {!hasDm && !(t.publicReply && d.publicReply.trim()) && <p className="text-sm text-ink-soft">Your reply shows here as you write, for someone called Sam.</p>}
+            </>
           )}
-          {t.publicReply && d.publicReply.trim() && (
-            <div className="grid justify-items-end gap-1 border-t border-ink/10 pt-3">
-              <span className="text-xs font-bold text-ink-soft">Public reply</span>
-              <p className="whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-ink px-3.5 py-2.5 text-[0.95rem] leading-snug text-paper">{sample(d.publicReply)}</p>
-            </div>
-          )}
-          {t.publicReply && hasDm && d.fallbackOn && d.fallback.trim() && (
-            <p className="border-t border-ink/10 pt-3 text-sm text-ink-soft">
-              If the DM can&apos;t go, replies publicly: <span className="text-ink">{sample(d.fallback)}</span>
-            </p>
-          )}
-          {!hasDm && !(t.publicReply && d.publicReply.trim()) && <p className="text-sm text-ink-soft">Your reply shows here as you write, for someone called Sam.</p>}
         </div>
       </section>
     </div>

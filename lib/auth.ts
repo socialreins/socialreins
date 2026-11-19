@@ -146,6 +146,8 @@ const codes = [
   "invalid_conditions",
   "invalid_actions",
   "invalid_fallback",
+  "invalid_steps",
+  "actions_and_steps",
   "too_many_automations",
   "invalid_expiry",
   "too_many_tokens",
