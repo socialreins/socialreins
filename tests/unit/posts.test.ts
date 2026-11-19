@@ -22,6 +22,10 @@ import {
   mergeCreators,
   monthRange,
   noTikTok,
+  noRepeat,
+  repeatForm,
+  repeatRule,
+  repeatSummary,
   monthWeeks,
   publishPost,
   takeDownAll,
@@ -642,5 +646,33 @@ describe("post list filters", () => {
     }
     expect(calls.map((c) => c.url.replace(/^.*\/v1/, ""))).toEqual(["/posts/p1/approve", "/post-groups/g1/reject", "/posts/p9/approve"]);
     expect(calls.map((c) => c.body)).toEqual([{}, { note: "Fix the link" }, {}]);
+  });
+});
+
+describe("repeat", () => {
+  const form = { ...noRepeat };
+  it("says the rule in plain words", () => {
+    expect(repeatSummary({ every: "day", interval: 1, until: null, remaining: null })).toBe("Repeats every day");
+    expect(repeatSummary({ every: "week", interval: 2, until: null, remaining: 5 })).toBe("Repeats every 2 weeks, 5 more times");
+    expect(repeatSummary({ every: "week", interval: 1, until: null, remaining: 1 })).toBe("Repeats every week, 1 more time");
+    expect(repeatSummary({ every: "month", interval: 1, until: "2026-12-31", remaining: null })).toBe("Repeats every month until Dec 31, 2026");
+  });
+  it("maps the form to brain's rule", () => {
+    expect(repeatRule(form)).toBeNull();
+    expect(repeatRule({ ...form, every: "week" })).toEqual({ every: "week", interval: 1, until: null, remaining: null });
+    expect(repeatRule({ ...form, every: "custom", unit: "month", interval: "3", ends: "count", count: "7" })).toEqual({ every: "month", interval: 3, until: null, remaining: 7 });
+    expect(repeatRule({ ...form, every: "day", ends: "date", until: "2026-12-31", count: "9" })).toEqual({ every: "day", interval: 1, until: "2026-12-31", remaining: null });
+    // Out of range or blank numbers are kept within brain's limits; a missing date never ends.
+    expect(repeatRule({ ...form, every: "custom", unit: "day", interval: "40", ends: "count", count: "" })).toEqual({ every: "day", interval: 12, until: null, remaining: 1 });
+    expect(repeatRule({ ...form, every: "day", ends: "date", until: "" })).toEqual({ every: "day", interval: 1, until: null, remaining: null });
+  });
+  it("fills the form from a saved rule and back", () => {
+    expect(repeatForm(null)).toEqual(noRepeat);
+    for (const r of [
+      { every: "week", interval: 1, until: null, remaining: null },
+      { every: "day", interval: 3, until: null, remaining: 4 },
+      { every: "month", interval: 2, until: "2027-01-31", remaining: null },
+    ] as const)
+      expect(repeatRule(repeatForm(r))).toEqual(r);
   });
 });
