@@ -67,6 +67,9 @@ export const postMessages: Partial<Record<Failure, ReactNode>> = {
   publish_quota: "The team reached its limit of 100 published posts today. Schedule this one for tomorrow.",
   rate_limited: "Too many publish or take down actions. Wait a minute, then try again.",
   not_found: "This post no longer exists.",
+  queue_empty: "This set's queue has no times yet. Add some on the Queue page, or pick a time to schedule.",
+  queue_with_scheduled_at: "A post goes in the queue or at a time you pick, not both.",
+  queue_not_supported: "A saved post can't move to the queue. Pick a time to schedule it.",
 };
 
 export const statusName: Record<PostStatus, string> = {

@@ -55,6 +55,7 @@ import {
 } from "@/lib/posts";
 import { fitsList, listLists, partLabel, type PostList } from "@/lib/lists";
 import { listSets, type SocialSet } from "@/lib/sets";
+import { getQueue, type Queue } from "@/lib/queue";
 import { accountName, Avatar } from "@/components/connections";
 import { platformName } from "@/components/platform-icons";
 import { AccountNote, PlatformMark, postMessages, StatusBadge, statusName } from "@/components/posts";
@@ -123,6 +124,8 @@ export function PostEditor({ id }: { id?: string }) {
   const [tiktok, setTikTok] = useState<TikTokSettings>(noTikTok);
   const [creatorRead, setCreatorRead] = useState<{ key: string; value: TikTokCreator | Failure } | null>(null);
   const [creatorTry, setCreatorTry] = useState(0);
+  // The picked set's queue, for Add to queue on a new post (keyed by the set it was read for).
+  const [queueRead, setQueueRead] = useState<{ key: string; value: Queue | Failure } | null>(null);
   // The YouTube video's visibility: private unless chosen.
   const [ytPrivacy, setYtPrivacy] = useState<YouTubePrivacy>("private");
   // The open tab, and whether the action bar lists the issues.
@@ -268,6 +271,16 @@ export function PostEditor({ id }: { id?: string }) {
     };
   }, [ttKey]);
 
+  const queueKey = !id && !postId ? setId : "";
+  useEffect(() => {
+    if (!queueKey) return;
+    let live = true;
+    getQueue(queueKey).then((value) => live && setQueueRead({ key: queueKey, value }));
+    return () => {
+      live = false;
+    };
+  }, [queueKey]);
+
   useEffect(() => {
     if (confirming) confirmRef.current?.focus();
   }, [confirming]);
@@ -292,7 +305,7 @@ export function PostEditor({ id }: { id?: string }) {
       </p>
     );
 
-  async function save(mode: "draft" | "schedule" | "publish") {
+  async function save(mode: "draft" | "schedule" | "publish" | "queue") {
     flushSync(() => setLocal(null));
     if (selected.length === 0) return setLocal("Pick at least one platform to post to.");
     for (const p of selected) {
@@ -309,7 +322,8 @@ export function PostEditor({ id }: { id?: string }) {
     if (mode === "schedule" && !at) return setLocal("Pick a date and time to schedule the post.");
     const shared = {
       social_set_id: setId,
-      scheduled_at: mode === "schedule" ? fromLocalInput(at) : null,
+      // brain picks the time for a queued post and refuses one sent with scheduled_at.
+      ...(mode === "queue" ? { queue: true as const } : { scheduled_at: mode === "schedule" ? fromLocalInput(at) : null }),
       list_id: listChoices.some((l) => l.id === listId) ? listId : undefined,
     };
     const input: PostInput = { ...shared, platform: selected[0]!, ...entry(selected[0]!) };
@@ -379,6 +393,7 @@ export function PostEditor({ id }: { id?: string }) {
       else load(p);
       // The status line says Publishing and updates itself; a separate message would go stale.
       if (mode === "publish") return void setSent((n) => n + 1);
+      if (p.status === "scheduled" && mode === "queue") return `${made > 1 ? `Added ${made} posts, one per platform, to the queue for` : "Added to the queue for"} ${when(p.scheduled_at!)}.`;
       if (p.status === "scheduled") return `${made > 1 ? `Scheduled ${made} posts, one per platform, for` : "Scheduled for"} ${when(p.scheduled_at!)}.`;
       return made > 1 ? `Saved ${made} drafts, one per platform.` : "Draft saved.";
     });
@@ -459,6 +474,10 @@ export function PostEditor({ id }: { id?: string }) {
   const listChoices = lists.filter((l) => fitsList(l, setId) && !listed.some((x) => x.id === l.id));
   const editable = !status || status === "draft" || status === "scheduled";
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const queue = queueRead?.key === queueKey && queueKey && !isFailure(queueRead.value) ? queueRead.value : null;
+  // A queue that couldn't be read leaves the button on: brain answers queue_empty if need be.
+  const queueEmpty = queue?.slots.length === 0;
+  const queueNext = queue?.next[0];
   const setName = Array.isArray(sets) ? sets.find((s) => s.id === (post as Post | null)?.social_set_id)?.name : undefined;
   const byId = new Map(accounts.map((a) => [a.id, a]));
   const shownProblem = local ? null : problem;
@@ -889,7 +908,7 @@ export function PostEditor({ id }: { id?: string }) {
 
   function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const mode = ((e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null)?.value as "draft" | "schedule" | "publish";
+    const mode = ((e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null)?.value as "draft" | "schedule" | "publish" | "queue";
     save(mode || "draft");
   }
 
@@ -1425,6 +1444,26 @@ export function PostEditor({ id }: { id?: string }) {
                 <Icon name="clock" className="size-4" />
                 {busy === "schedule" ? "Scheduling..." : "Schedule"}
               </button>
+              {queueKey && (
+                <>
+                  <button type="submit" name="mode" value="queue" className="btn btn-secondary" disabled={busy !== null || queueEmpty} aria-describedby="post-queue-note">
+                    <Icon name="lists" className="size-4" />
+                    {busy === "queue" ? "Adding..." : "Add to queue"}
+                  </button>
+                  <p id="post-queue-note" className="hint text-xs">
+                    {queueEmpty ? (
+                      <>
+                        No queue times for this set.{" "}
+                        <Link href="/queue" className="font-bold underline">
+                          Set up the queue
+                        </Link>
+                      </>
+                    ) : (
+                      queueNext && `Next slot: ${when(queueNext)}`
+                    )}
+                  </p>
+                </>
+              )}
               <p id="post-at-note" className="hint text-xs sm:ml-auto">
                 In your time zone, {zone}.
               </p>
