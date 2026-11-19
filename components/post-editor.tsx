@@ -65,6 +65,7 @@ import { ReconnectNotice } from "@/components/connections";
 import { TikTokConsent, TikTokPanel } from "@/components/tiktok-settings";
 import { manages } from "@/lib/teams";
 import { Icon } from "@/components/ui";
+import { LibraryPicker, SaveToLibrary, SnippetMenu } from "@/components/library";
 
 const POLL_MS = 2000;
 const POLL_FOR_MS = 60_000;
@@ -1038,9 +1039,12 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const shared = (
     <>
       <div className="grid gap-1.5">
-        <label htmlFor="post-body" className="label">
-          Post
-        </label>
+        <div className="flex items-center justify-between gap-2">
+          <label htmlFor="post-body" className="label">
+            Post
+          </label>
+          <SnippetMenu target="post-body" label="Post" value={body} onChange={setBody} />
+        </div>
         <textarea
           id="post-body"
           rows={6}
@@ -1089,9 +1093,12 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
       )}
       {commentable.length > 0 && (
         <div className="grid gap-1.5">
-          <label htmlFor="post-comment" className="label">
-            First comment
-          </label>
+          <div className="flex items-center justify-between gap-2">
+            <label htmlFor="post-comment" className="label">
+              First comment
+            </label>
+            <SnippetMenu target="post-comment" label="First comment" value={comment} onChange={setComment} />
+          </div>
           <textarea
             id="post-comment"
             rows={2}
@@ -1206,9 +1213,12 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
               <label htmlFor={`post-body-${p}`} className="label">
                 {name} text
               </label>
-              <button type="button" className="icon-btn" aria-label={`Use the main post on ${name}`} onClick={() => uncustomize(p)}>
-                <Icon name="close" className="size-4" />
-              </button>
+              <span className="flex items-center gap-1">
+                <SnippetMenu target={`post-body-${p}`} label={`${name} text`} value={custom[p]!} onChange={(v) => setCustom((c) => ({ ...c, [p]: v }))} />
+                <button type="button" className="icon-btn" aria-label={`Use the main post on ${name}`} onClick={() => uncustomize(p)}>
+                  <Icon name="close" className="size-4" />
+                </button>
+              </span>
             </div>
             <textarea
               id={`post-body-${p}`}
@@ -1256,9 +1266,12 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
               <label htmlFor={`post-comment-${p}`} className="label">
                 {name} first comment
               </label>
-              <button type="button" className="icon-btn" aria-label={`Use the main first comment on ${name}`} onClick={() => uncustomizeComment(p)}>
-                <Icon name="close" className="size-4" />
-              </button>
+              <span className="flex items-center gap-1">
+                <SnippetMenu target={`post-comment-${p}`} label={`${name} first comment`} value={commentCustom[p]!} onChange={(v) => setCommentCustom((c) => ({ ...c, [p]: v }))} />
+                <button type="button" className="icon-btn" aria-label={`Use the main first comment on ${name}`} onClick={() => uncustomizeComment(p)}>
+                  <Icon name="close" className="size-4" />
+                </button>
+              </span>
             </div>
             <textarea
               id={`post-comment-${p}`}
@@ -1618,7 +1631,10 @@ const mediaRule = (p: Platform) => `${mediaRules[p] ?? `${platformName(p)} takes
 function ImageLinks({ media, max, post, own, platforms, rule, onChange, onClose }: { media: string[]; max: number; post?: number; own?: Platform; platforms?: Platform[]; rule?: Platform; onChange: (media: string[]) => void; onClose?: () => void }) {
   const addRef = useRef<HTMLButtonElement>(null);
   const imageRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const [saved, setSaved] = useState<{ text: string; ok: boolean } | null>(null);
   const of = post ? ` of post ${post}` : own ? ` for ${platformName(own)}` : "";
+  // Library picks fill the empty link boxes first, then follow the links already there.
+  const filled = media.filter((m) => m.trim());
 
   function addImage() {
     flushSync(() => onChange([...media, ""]));
@@ -1684,6 +1700,7 @@ function ImageLinks({ media, max, post, own, platforms, rule, onChange, onClose 
                   onChange={(e) => onChange(media.map((v, j) => (j === i ? e.target.value : v)))}
                 />
               </label>
+              <SaveToLibrary url={m} label={`Image ${i + 1}${of}`} onResult={(text, ok) => setSaved({ text, ok })} />
               <button type="button" className="icon-btn mb-1" aria-label={`Remove image ${i + 1}${of}`} onClick={() => removeImage(i)}>
                 <Icon name="close" className="size-4" />
               </button>
@@ -1691,12 +1708,20 @@ function ImageLinks({ media, max, post, own, platforms, rule, onChange, onClose 
           ))}
         </ul>
       )}
-      {media.length < max && (
-        <button ref={addRef} type="button" className="btn btn-secondary btn-sm justify-self-start" onClick={addImage}>
-          <Icon name="image" className="size-4" />
-          Add image<span className="sr-only">{post ? ` to post ${post}` : of}</span>
-        </button>
+      {saved && (
+        <p role={saved.ok ? "status" : "alert"} className={saved.ok ? "hint" : "waitlist-error"}>
+          {saved.text}
+        </p>
       )}
+      <div className="flex flex-wrap gap-2">
+        {media.length < max && (
+          <button ref={addRef} type="button" className="btn btn-secondary btn-sm justify-self-start" onClick={addImage}>
+            <Icon name="image" className="size-4" />
+            Add image<span className="sr-only">{post ? ` to post ${post}` : of}</span>
+          </button>
+        )}
+        <LibraryPicker remaining={max - filled.length} of={post ? ` to post ${post}` : of} onPick={(urls) => onChange([...filled, ...urls])} />
+      </div>
     </fieldset>
   );
 }

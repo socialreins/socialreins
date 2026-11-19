@@ -525,8 +525,10 @@ test("a connect that times out reloads the list, since brain may still finish", 
   expect(loads.list).toBe(2);
 });
 
-test("the CSP allows only Bluesky's image path and Meta's, YouTube's, X's and TikTok's image CDNs for avatars", async ({ request }) => {
-  const csp = (await request.get("/connections")).headers()["content-security-policy"];
+// Team pages (/t/...) show the team's own media links from any https host; avatars there go through safeAvatar.
+test("the CSP allows only Bluesky's image path and Meta's, YouTube's, X's and TikTok's image CDNs for avatars outside team pages", async ({ request }) => {
+  expect((await request.get("/connections")).headers()["content-security-policy"]).toContain("img-src 'self' data: https:;");
+  const csp = (await request.get("/profile")).headers()["content-security-policy"];
   expect(csp).toContain(
     "img-src 'self' data: https://cdn.bsky.app/img/ https://*.fbcdn.net https://*.cdninstagram.com https://yt3.ggpht.com https://yt3.googleusercontent.com https://pbs.twimg.com https://*.tiktokcdn.com https://*.tiktokcdn-us.com;",
   );

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { brainUrl } from "@/lib/brain-url";
 import { gaId } from "@/lib/ga";
+import { splitTeamPath } from "@/lib/team-path";
 
 const dev = process.env.NODE_ENV === "development";
 
@@ -20,7 +21,8 @@ const csp = (api: string, anyImage: boolean, ga: boolean) =>
     `frame-src ${turnstile}`,
     "style-src 'self' 'unsafe-inline'",
     // Bluesky, Facebook, Instagram, YouTube, X and TikTok avatars; safeAvatar in lib/connections.ts keeps to the same sources.
-    // A public post page (/p/<code>) shows the author's own image links, from any https host.
+    // A public post page (/p/<code>) shows the author's own image links, from any https host, and so do the
+    // team pages (the media library and the composer's picker); all of /t/, since the app moves between its pages without a reload.
     anyImage ? "img-src 'self' data: https:" : "img-src 'self' data: https://cdn.bsky.app/img/ https://*.fbcdn.net https://*.cdninstagram.com https://yt3.ggpht.com https://yt3.googleusercontent.com https://pbs.twimg.com https://*.tiktokcdn.com https://*.tiktokcdn-us.com" + (ga ? ` ${gaHits}` : ""),
     "font-src 'self'",
     `connect-src 'self' ${api}${ga ? ` ${gaHits}` : ""}${dev ? " ws:" : ""}`,
@@ -32,7 +34,9 @@ const csp = (api: string, anyImage: boolean, ga: boolean) =>
 
 export function proxy(req: NextRequest) {
   const res = NextResponse.next();
-  res.headers.set("Content-Security-Policy", csp(new URL(brainUrl()).origin, req.nextUrl.pathname.startsWith("/p/"), gaId() !== null));
+  const path = req.nextUrl.pathname;
+  const anyImage = path.startsWith("/p/") || splitTeamPath(path)[0] !== null;
+  res.headers.set("Content-Security-Policy", csp(new URL(brainUrl()).origin, anyImage, gaId() !== null));
   return res;
 }
 

@@ -169,6 +169,11 @@ const codes = [
   "queue_with_scheduled_at",
   "queue_empty",
   "queue_not_supported",
+  "already_in_library",
+  "library_full",
+  "snippet_name_taken",
+  "too_many_snippets",
+  "invalid_snippet",
 ] as const;
 export type Failure = (typeof codes)[number] | "rate_limited" | "signed_out" | "timeout" | "error";
 export type Passkey = { id: string; name: string; created_at: string; last_used_at: string | null };
