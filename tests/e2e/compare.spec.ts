@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 
-const rivals = { postsyncer: "PostSyncer", manychat: "Manychat", buffer: "Buffer", hootsuite: "Hootsuite", later: "Later", postiz: "Postiz" };
+const rivals = { postsyncer: "PostSyncer", manychat: "Manychat", buffer: "Buffer", hootsuite: "Hootsuite", later: "Later", postiz: "Postiz", publer: "Publer", socialbee: "SocialBee", metricool: "Metricool", "sprout-social": "Sprout Social" };
+// Manychat's column was not read again on the 19th (lib/compare.ts).
+const checked = (slug: string) => (slug === "manychat" ? "13 November 2026" : "19 November 2026");
 
 test("the compare page lists every tool, and each has its own page with a table, sources and a date", async ({ page }) => {
   await page.goto("/");
@@ -15,13 +17,13 @@ test("the compare page lists every tool, and each has its own page with a table,
     const table = page.getByRole("table");
     await expect(table.getByRole("columnheader", { name: "SocialReins", exact: true })).toBeVisible();
     await expect(table.getByRole("columnheader", { name, exact: true })).toBeVisible();
-    await expect(page.getByText(`comes from its own website, checked on 13 November 2026`)).toBeVisible();
+    await expect(page.getByText(`comes from its own website, checked on ${checked(slug)}`)).toBeVisible();
     await expect(page.getByRole("heading", { name: `Pick ${name} if` })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Sources" })).toBeVisible();
-    await expect(page.getByRole("navigation", { name: "Other comparisons" }).getByRole("link")).toHaveCount(5);
+    await expect(page.getByRole("navigation", { name: "Other comparisons" }).getByRole("link")).toHaveCount(9);
   }
   // Outside links open in a new tab and pass no ranking.
-  const source = page.locator('a[href="https://postiz.com/pricing"]');
+  const source = page.locator('a[href="https://sproutsocial.com/pricing/"]');
   await expect(source).toHaveAttribute("rel", /nofollow/);
   await expect(source).toHaveAttribute("target", "_blank");
 });

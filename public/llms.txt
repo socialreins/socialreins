@@ -34,4 +34,8 @@
 - [SocialReins vs Hootsuite](https://socialreins.com/compare/hootsuite)
 - [SocialReins vs Later](https://socialreins.com/compare/later)
 - [SocialReins vs Postiz](https://socialreins.com/compare/postiz)
+- [SocialReins vs Publer](https://socialreins.com/compare/publer)
+- [SocialReins vs SocialBee](https://socialreins.com/compare/socialbee)
+- [SocialReins vs Metricool](https://socialreins.com/compare/metricool)
+- [SocialReins vs Sprout Social](https://socialreins.com/compare/sprout-social)
 - [Source code](https://github.com/socialreins/socialreins)
