@@ -1720,7 +1720,7 @@ function ImageLinks({ media, max, post, own, platforms, rule, onChange, onClose 
             Add image<span className="sr-only">{post ? ` to post ${post}` : of}</span>
           </button>
         )}
-        <LibraryPicker remaining={max - filled.length} of={post ? ` to post ${post}` : of} onPick={(urls) => onChange([...filled, ...urls])} />
+        <LibraryPicker remaining={max - filled.length} of={post ? ` to post ${post}` : of} onPick={(urls) => onChange([...filled, ...urls.filter((u) => !filled.includes(u))].slice(0, max))} />
       </div>
     </fieldset>
   );

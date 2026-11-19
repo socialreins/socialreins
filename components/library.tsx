@@ -319,7 +319,7 @@ function MediaCard({ item, onRenamed, onDeleted }: { item: MediaItem; onRenamed:
 
   return (
     <li className="card grid min-w-0 content-start gap-2 p-2">
-      <a href={item.url} target="_blank" rel="noreferrer" className="block" aria-label={`Open ${label}`}>
+      <a href={item.url.startsWith("https://") ? item.url : undefined} target="_blank" rel="noreferrer" className="block" aria-label={`Open ${label}`}>
         <MediaThumb url={item.url} />
       </a>
       {mode === "rename" ? (
@@ -393,7 +393,7 @@ function MediaCard({ item, onRenamed, onDeleted }: { item: MediaItem; onRenamed:
 function SnippetsPanel() {
   return (
     <div className="grid gap-5">
-      <p className="max-w-prose text-ink-soft">Text you reuse. In the composer, Insert snippet puts one at the cursor of any text box.</p>
+      <p className="max-w-prose text-ink-soft">Text you reuse. In the composer, Insert snippet puts one at the cursor of the post text, a network&apos;s own text or the first comment.</p>
       <SnippetSection kind="caption" />
       <SnippetSection kind="hashtags" />
     </div>
