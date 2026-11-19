@@ -351,7 +351,8 @@ export function AutomationDetail({ id }: { id: string }) {
           <p className="card p-5 text-ink-soft">No runs yet. Each time it acts, the run shows here with who it answered and what was sent.</p>
         ) : (
           <>
-            <div className="card overflow-x-auto">
+            {/* relative: the sr-only texts inside are absolute, and would otherwise widen the page past the scroller. */}
+            <div className="card relative overflow-x-auto">
               <table className="w-full min-w-[40rem] text-left text-sm">
                 <thead className="text-xs text-ink-soft">
                   <tr>

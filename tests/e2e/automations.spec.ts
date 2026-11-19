@@ -298,6 +298,10 @@ test("detail shows stats and the run history with who, readable reasons and Load
   // Its inbox item is gone, so nobody can be named.
   await expect(rows.nth(4)).toContainText("Unknown");
   await expect(history.getByRole("button", { name: "Load more" })).toHaveCount(0);
+
+  // On a phone the table scrolls sideways inside its card; the page does not.
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
 });
 
 test("editing keeps a fallback next to a public reply, then deletes", async ({ page }) => {
