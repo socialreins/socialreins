@@ -177,6 +177,10 @@ const codes = [
   "invalid_snippet",
   "approval_required",
   "not_awaiting_approval",
+  "not_scheduled",
+  "repeat_not_supported",
+  "invalid_repeat",
+  "too_many_repeats",
 ] as const;
 export type Failure = (typeof codes)[number] | "rate_limited" | "signed_out" | "timeout" | "error";
 export type Passkey = { id: string; name: string; created_at: string; last_used_at: string | null };

@@ -37,6 +37,12 @@ import {
   privacyName,
   publishing,
   publishPost,
+  noRepeat,
+  repeatForm,
+  repeatRule,
+  repeatSummary,
+  saveRepeat,
+  type RepeatForm,
   takeDownAll,
   toLocalInput,
   updatePost,
@@ -67,6 +73,7 @@ import { ReconnectNotice } from "@/components/connections";
 import { TikTokConsent, TikTokPanel } from "@/components/tiktok-settings";
 import { manages } from "@/lib/teams";
 import { Icon } from "@/components/ui";
+import { RepeatControl } from "@/components/repeat";
 import { LibraryPicker, SaveToLibrary, SnippetMenu } from "@/components/library";
 
 const POLL_MS = 2000;
@@ -150,6 +157,8 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   // Group posts still to publish after Publish now stopped partway, in order.
   const [unsent, setUnsent] = useState<string[]>([]);
   const [at, setAt] = useState("");
+  // The Repeat control: what a new post is scheduled with, or a saved scheduled post's rule.
+  const [repeat, setRepeat] = useState<RepeatForm>(noRepeat);
   const [lists, setLists] = useState<PostList[]>([]);
   const [listId, setListId] = useState("");
   const [local, setLocal] = useState<ReactNode>(null);
@@ -189,6 +198,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     setCustom({});
     setMediaCustom({});
     setAt(toLocalInput(p.status === "scheduled" ? p.scheduled_at : null));
+    setRepeat(repeatForm(p.repeat));
     setListId("");
     setWhole(false);
   }
@@ -225,6 +235,8 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     fillGroup(mine, all);
     setPost(null);
     setAt("");
+    // A copy goes out once unless asked to repeat again.
+    setRepeat(noRepeat);
     setChosen(all.map((g) => g.platform));
     setTikTok((t) => ({ ...t, privacy_level: null }));
     setCopied(mine);
@@ -377,6 +389,17 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     }
     let made = 1;
     let all: Post[] | null = null;
+    // A new post scheduled or queued with a repeat: one call on the first post covers its group. A refusal
+    // leaves the post scheduled and is said beside the success.
+    const rule = !postId && (mode === "schedule" || mode === "queue") && !hasTikTok ? repeatRule(repeat) : null;
+    let unrepeated: Failure | null = null;
+    const repeating = async (p: Post) => {
+      if (!rule) return p;
+      const r = await saveRepeat(p.id, rule);
+      if (!isFailure(r) && r !== "ok") return r;
+      unrepeated = isFailure(r) ? r : "error";
+      return p;
+    };
     await run(mode, async () => {
       if (together.length > 1) {
         // Each version is saved on its own; one that is refused is named and the rest wait for the next save.
@@ -406,7 +429,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
         // Keep this editor mounted on the new post's own address.
         if (!postId) window.history.replaceState(null, "", to(`/posts/${saved.id}`));
         load(saved);
-        if (mode !== "publish") return saved;
+        if (mode !== "publish") return repeating(saved);
         // Group posts a failed Publish now left behind go out with this one.
         const r = await publishAll([saved.id, ...unsent.filter((u) => u !== saved.id)]);
         return isFailure(r) ? r : r[0]!;
@@ -419,12 +442,13 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
       window.history.replaceState(null, "", to(`/posts/${posts[0]!.id}`));
       load(posts[0]!);
       setGroup(posts);
-      if (mode !== "publish") return posts[0]!;
+      if (mode !== "publish") return repeating(posts[0]!);
       const r = await publishAll(posts.map((p) => p.id));
       return isFailure(r) ? r : r[0]!;
     }, (p) => {
       if (all && mode !== "publish") loadTogether(p, all);
       else load(p);
+      if (unrepeated) setLocal(<>The post is scheduled, but the repeat was not saved. {problemText(unrepeated, postMessages)}</>);
       // The status line says Publishing and updates itself; a separate message would go stale.
       if (mode === "publish") return void setSent((n) => n + 1);
       if (p.status === "scheduled" && mode === "queue") return `${made > 1 ? `Added ${made} posts, one per platform, to the queue for` : "Added to the queue for"} ${when(p.scheduled_at!)}.`;
@@ -459,6 +483,22 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
       const on = out.length > 1 ? ` on ${out.length} networks` : "";
       return what === "approve" ? `Approved${on}. It goes out at its scheduled time.` : `Asked for changes${on}. It stays unpublished until then.`;
     });
+  }
+
+  // A saved scheduled post: each change of the Repeat control is saved at once; a refusal puts the control back.
+  async function changeRepeat(f: RepeatForm) {
+    if (!post || isFailure(post)) return;
+    flushSync(() => setLocal(null));
+    const rule = repeatRule(f);
+    // Leaving a box unchanged saves nothing.
+    if (same(rule, post.repeat ?? null)) return;
+    const ok = await run("repeat", () => saveRepeat(post.id, rule), (r) => {
+      const p = r === "ok" ? { ...post, repeat: null } : r;
+      setPost(p);
+      setRepeat(repeatForm(p.repeat));
+      return p.repeat ? `${repeatSummary(p.repeat)}.` : "This post no longer repeats.";
+    });
+    if (!ok) setRepeat(repeatForm(post.repeat));
   }
 
   async function publishRest() {
@@ -537,6 +577,8 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const together = open.length > 1 && canEdit(open[0]!) ? open : [];
   const available: Platform[] = together.length > 1 ? together.map((g) => g.platform) : post ? [post.platform] : publishing.filter((p) => inSet(p).length > 0);
   const selected = post ? available : (chosen ?? available).filter((p) => available.includes(p));
+  // TikTok has a person confirm every post, so a post with a TikTok version can't repeat.
+  const hasTikTok = selected.includes("tiktok") || group.some((g) => g.platform === "tiktok");
   const threadable = selected.filter((p) => limits[p].thread);
   const noThread = selected.filter((p) => !limits[p].thread);
   // Custom text counts only while its box shows: two or more platforms, this one ticked.
@@ -1323,6 +1365,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
           <p className="flex flex-wrap items-center gap-3 font-bold">
             <StatusBadge status="scheduled" />
             Scheduled for {when(post.scheduled_at!)}.
+            {post.repeat && <span className="font-normal text-ink-soft">{repeatSummary(post.repeat)}.</span>}
           </p>
         )}
         {post && approvalState(post) && (
@@ -1574,6 +1617,18 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
               <p id="post-at-note" className="hint text-xs sm:ml-auto">
                 In your time zone, {zone}.
               </p>
+              <div className="flex basis-full flex-wrap items-center gap-x-2 gap-y-1">
+                {hasTikTok ? (
+                  <p className="hint text-xs">A post that goes to TikTok can&apos;t repeat: TikTok needs a person to confirm each post.</p>
+                ) : (
+                  <>
+                    <RepeatControl value={repeat} disabled={status === "draft"} onChange={setRepeat} onCommit={status === "scheduled" ? changeRepeat : undefined} />
+                    <p id="post-repeat-note" className="hint basis-full text-xs">
+                      {status === "scheduled" ? "Each time it goes out, the next one is scheduled." : "For a scheduled or queued post, not a draft or Publish now."}
+                    </p>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </form>

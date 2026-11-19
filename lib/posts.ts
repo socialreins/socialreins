@@ -124,7 +124,62 @@ export type Post = {
   approval_note?: string | null;
   approval_by?: string | null;
   approval_at?: string | null;
+  // A scheduled post that goes out again and again; null for one that goes out once.
+  repeat?: Repeat | null;
 };
+// brain's repeat rule: every `interval` (1 to 12) days, weeks or months, until a date (YYYY-MM-DD), for
+// `remaining` (1 to 100) more posts, or for good when both are null. When the post goes out brain schedules
+// the next copy and moves the rule to it.
+// brain reads `until` as a UTC date; the form's date is local. The last local day's end falls on this UTC date.
+const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+export function untilUtc(local: string) {
+  const [y, m, d] = local.split("-").map(Number);
+  return new Date(y!, m! - 1, d!, 23, 59, 59).toISOString().slice(0, 10);
+}
+export function untilLocal(utc: string) {
+  const [y, m, d] = utc.split("-").map(Number);
+  for (const shift of [0, -1, 1]) {
+    const local = ymd(new Date(y!, m! - 1, d! + shift));
+    if (untilUtc(local) === utc) return local;
+  }
+  return utc;
+}
+
+export type Repeat = { every: "day" | "week" | "month"; interval: number; until: string | null; remaining: number | null };
+// The Repeat control as the form holds it: number boxes keep their text.
+export type RepeatForm = { every: "none" | Repeat["every"] | "custom"; unit: Repeat["every"]; interval: string; ends: "never" | "count" | "date"; count: string; until: string };
+export const noRepeat: RepeatForm = { every: "none", unit: "week", interval: "2", ends: "never", count: "5", until: "" };
+const within = (text: string, max: number) => Math.min(max, Math.max(1, Math.round(Number(text)) || 1));
+// The rule the form stands for; null for "Does not repeat". "On a date" with no date picked yet never ends.
+export function repeatRule(f: RepeatForm): Repeat | null {
+  if (f.every === "none") return null;
+  return {
+    every: f.every === "custom" ? f.unit : f.every,
+    interval: f.every === "custom" ? within(f.interval, 12) : 1,
+    until: f.ends === "date" && f.until ? untilUtc(f.until) : null,
+    remaining: f.ends === "count" ? within(f.count, 100) : null,
+  };
+}
+export function repeatForm(r: Repeat | null | undefined): RepeatForm {
+  if (!r) return noRepeat;
+  return {
+    every: r.interval === 1 ? r.every : "custom",
+    unit: r.every,
+    interval: String(r.interval === 1 ? 2 : r.interval),
+    ends: r.until ? "date" : r.remaining ? "count" : "never",
+    count: String(r.remaining ?? 5),
+    until: r.until ? untilLocal(r.until) : "",
+  };
+}
+// "Repeats every 2 weeks, 5 more times", "Repeats every month until Dec 31, 2026".
+export function repeatSummary(r: Repeat): string {
+  const [y, m, d] = (r.until ? untilLocal(r.until) : "").split("-").map(Number);
+  return (
+    `Repeats every ${r.interval === 1 ? r.every : `${r.interval} ${r.every}s`}` +
+    (r.remaining ? `, ${r.remaining} more ${r.remaining === 1 ? "time" : "times"}` : "") +
+    (r.until ? ` until ${new Date(y!, m! - 1, d!).toLocaleDateString("en-US", { dateStyle: "medium" })}` : "")
+  );
+}
 export type Approval = "pending" | "approved" | "rejected";
 export const NOTE_MAX = 500;
 // What a post's row and page say about approval: waiting (a scheduled post), or changes requested
@@ -249,6 +304,10 @@ export const createPostGroup = (input: PostGroupInput) =>
 export const updatePost = (id: string, input: PostInput) => api<Post>(`/v1/posts/${enc(id)}`, "PUT", input);
 // 202 with the post queued; poll getPost until it is published or failed.
 export const publishPost = (id: string) => api<Post>(`/v1/posts/${enc(id)}/publish`, "POST");
+// Sets the repeat rule on a scheduled post and the other scheduled posts of its group; null clears it.
+// brain answers 409 not_scheduled, 422 repeat_not_supported (TikTok), invalid_repeat or too_many_repeats.
+export const saveRepeat = (id: string, rule: Repeat | null) =>
+  rule ? api<Post>(`/v1/posts/${enc(id)}/repeat`, "PUT", rule) : api<Post | "ok">(`/v1/posts/${enc(id)}/repeat`, "DELETE");
 // Approves a waiting post or asks for changes (owners and admins), for every post of its group at once.
 // Answers the posts as they are now; 409 not_awaiting_approval when none was waiting.
 export async function decidePost(p: Pick<Post, "id" | "group_id">, decision: "approve" | "reject", note = ""): Promise<Post[] | Failure> {

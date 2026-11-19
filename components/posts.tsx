@@ -21,6 +21,7 @@ import {
   NOTE_MAX,
   parseFilters,
   postDay,
+  repeatSummary,
   rows,
   sameDay,
   toLocalInput,
@@ -81,6 +82,10 @@ export const postMessages: Partial<Record<Failure, ReactNode>> = {
   queue_not_supported: "A saved post can't move to the queue. Pick a time to schedule it.",
   approval_required: "This team's posts need an owner or admin to approve them before they go out. Schedule the post to ask for approval.",
   not_awaiting_approval: "This post is no longer waiting for approval. Reload to see it.",
+  not_scheduled: "Only a scheduled post can repeat. Schedule it first.",
+  repeat_not_supported: "TikTok posts can't repeat: TikTok needs a person to confirm each post.",
+  invalid_repeat: "That repeat isn't valid. Repeat every 1 to 12 days, weeks or months, and end it never, after 1 to 100 more posts or on a date after the post's own.",
+  too_many_repeats: "Too many repeating posts. Turn the repeat off on another post first.",
 };
 
 export const statusName: Record<PostStatus, string> = {
@@ -113,6 +118,16 @@ export function ApprovalBadge({ post }: { post: Post }) {
       {approvalName[a]}
     </span>
   );
+}
+// "Repeats" on a post that goes out again, with the rule in plain words as its title.
+export function RepeatBadge({ post }: { post: Post }) {
+  return post.repeat ? (
+    <span className="badge tone" title={repeatSummary(post.repeat)}>
+      <Icon name="repeat" className="size-3" />
+      Repeats
+      <span className="sr-only">: {repeatSummary(post.repeat)}</span>
+    </span>
+  ) : null;
 }
 // A post's status for screen readers, with its approval state: "Scheduled, needs approval".
 const stateName = (p: Post) => statusName[p.status] + (approvalState(p) ? `, ${approvalName[approvalState(p)!].toLowerCase()}` : "");
@@ -265,6 +280,12 @@ function GridChip({ posts, onDrag, onMove }: { posts: Post[]; onDrag: (posts: Po
           {posts.map((v) => (
             <PlatformMark key={v.id} platform={v.platform} className="size-3" />
           ))}
+          {p.repeat && (
+            <span title={repeatSummary(p.repeat)} data-repeat>
+              <Icon name="repeat" className="size-3" />
+              <span className="sr-only">{repeatSummary(p.repeat)}</span>
+            </span>
+          )}
           {p.lists.length > 0 && <span className="min-w-0 truncate font-bold text-ink">{p.lists.map(partLabel).join(", ")}</span>}
         </span>
         <span className="truncate">{p.body.trim().slice(0, 200) || "(images only)"}</span>
@@ -429,6 +450,7 @@ function PostRow({ posts, onMove, review }: { posts: Post[]; onMove?: (posts: Po
       </Link>
       <StatusBadge status={p.status} />
       <ApprovalBadge post={p} />
+      <RepeatBadge post={p} />
       {review && approval === "pending" && (
         <>
           <button type="button" className="btn btn-primary btn-sm relative z-10" disabled={review.busy} aria-label={`Approve ${snippet(p)}`} onClick={() => review.approve(posts)}>
