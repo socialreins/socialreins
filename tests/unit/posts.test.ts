@@ -582,10 +582,13 @@ describe("post list filters", () => {
   it("reads the URL, dropping values brain doesn't know, and writes back only what is set", async () => {
     const { parseFilters, filterQuery } = await import("@/lib/posts");
     const f = parseFilters(new URLSearchParams("q=%20Launch%20&status=failed&network=x"));
-    expect(f).toEqual({ q: "Launch", status: "failed", network: "x" });
+    expect(f).toEqual({ q: "Launch", status: "failed", network: "x", approval: "all" });
     expect(filterQuery(f)).toBe("?q=Launch&status=failed&network=x");
-    expect(parseFilters(new URLSearchParams("status=nope&network=myspace"))).toEqual({ q: "", status: "all", network: "all" });
-    expect(filterQuery({ q: "", status: "all", network: "all" })).toBe("");
+    expect(parseFilters(new URLSearchParams("status=nope&network=myspace"))).toEqual({ q: "", status: "all", network: "all", approval: "all" });
+    expect(filterQuery({ q: "", status: "all", network: "all", approval: "all" })).toBe("");
+    expect(parseFilters(new URLSearchParams("approval=pending")).approval).toBe("pending");
+    expect(parseFilters(new URLSearchParams("approval=approved")).approval).toBe("all");
+    expect(filterQuery({ q: "", status: "all", network: "all", approval: "rejected" })).toBe("?approval=rejected");
   });
 
   it("matches a row on its text, status and any version's network, skipping one filter for counts", async () => {
@@ -595,11 +598,49 @@ describe("post list filters", () => {
       { body: "Launch DAY", status: "failed", platform: "bluesky" },
       { body: "Launch DAY", status: "failed", platform: "x" },
     ] as Row;
-    expect(matchesFilters(row, { q: "launch day", status: "failed", network: "x" })).toBe(true);
-    expect(matchesFilters(row, { q: "other", status: "all", network: "all" })).toBe(false);
-    expect(matchesFilters(row, { q: "", status: "published", network: "all" })).toBe(false);
-    expect(matchesFilters(row, { q: "", status: "published", network: "all" }, "status")).toBe(true);
-    expect(matchesFilters(row, { q: "", status: "all", network: "threads" })).toBe(false);
-    expect(matchesFilters(row, { q: "", status: "all", network: "threads" }, "network")).toBe(true);
+    expect(matchesFilters(row, { q: "launch day", status: "failed", network: "x", approval: "all" })).toBe(true);
+    expect(matchesFilters(row, { q: "other", status: "all", network: "all", approval: "all" })).toBe(false);
+    expect(matchesFilters(row, { q: "", status: "published", network: "all", approval: "all" })).toBe(false);
+    expect(matchesFilters(row, { q: "", status: "published", network: "all", approval: "all" }, "status")).toBe(true);
+    expect(matchesFilters(row, { q: "", status: "all", network: "threads", approval: "all" })).toBe(false);
+    expect(matchesFilters(row, { q: "", status: "all", network: "threads", approval: "all" }, "network")).toBe(true);
+  });
+
+  it("says a scheduled post waits for approval and a rejected one needs changes, and filters on it", async () => {
+    const { approvalState, matchesFilters } = await import("@/lib/posts");
+    type P = Parameters<typeof approvalState>[0];
+    const post = (status: string, approval: string | null) => ({ body: "", status, platform: "x", approval }) as P;
+    expect(approvalState(post("scheduled", "pending"))).toBe("pending");
+    expect(approvalState(post("draft", "pending"))).toBeNull();
+    expect(approvalState(post("scheduled", "rejected"))).toBe("rejected");
+    expect(approvalState(post("draft", "rejected"))).toBe("rejected");
+    expect(approvalState(post("published", "rejected"))).toBeNull();
+    expect(approvalState(post("scheduled", "approved"))).toBeNull();
+    expect(approvalState(post("scheduled", null))).toBeNull();
+    const all = { q: "", status: "all", network: "all" } as const;
+    expect(matchesFilters([post("scheduled", "pending")], { ...all, approval: "pending" })).toBe(true);
+    expect(matchesFilters([post("scheduled", "approved")], { ...all, approval: "pending" })).toBe(false);
+    expect(matchesFilters([post("scheduled", "approved")], { ...all, approval: "pending" }, "approval")).toBe(true);
+  });
+
+  it("approves one post at its own address and a group at the group's, sending a note only when there is one", async () => {
+    const { decidePost } = await import("@/lib/posts");
+    const calls: { url: string; body: unknown }[] = [];
+    const real = globalThis.fetch;
+    globalThis.fetch = (async (url: string, init: RequestInit) => {
+      calls.push({ url: String(url), body: JSON.parse(String(init.body)) });
+      const group = String(url).includes("post-groups");
+      if (String(url).endsWith("/p9/approve")) return new Response(JSON.stringify({ error: "not_awaiting_approval" }), { status: 409 });
+      return new Response(JSON.stringify(group ? { posts: [{ id: "a" }, { id: "b" }] } : { id: "p1" }));
+    }) as typeof fetch;
+    try {
+      expect(await decidePost({ id: "p1", group_id: null }, "approve")).toEqual([{ id: "p1" }]);
+      expect(await decidePost({ id: "a", group_id: "g1" }, "reject", " Fix the link ")).toEqual([{ id: "a" }, { id: "b" }]);
+      expect(await decidePost({ id: "p9", group_id: null }, "approve")).toBe("not_awaiting_approval");
+    } finally {
+      globalThis.fetch = real;
+    }
+    expect(calls.map((c) => c.url.replace(/^.*\/v1/, ""))).toEqual(["/posts/p1/approve", "/post-groups/g1/reject", "/posts/p9/approve"]);
+    expect(calls.map((c) => c.body)).toEqual([{}, { note: "Fix the link" }, {}]);
   });
 });

@@ -5,8 +5,9 @@ import { createCredential, getCredential, type CreationOptionsJSON, type Request
 export type LinkResult = "sent" | "invalid" | Captcha | "rate_limited" | "timeout" | "error";
 export type Role = "owner" | "admin" | "member";
 // `code` is the team's permanent address: /t/<code>/... (lib/team-path.ts).
-// `public_pages`: posts of the team may have a public page (`/p/<code>`); `newsletter`: those pages offer a sign-up.
-export type Team = { id: string; name: string; code: string; role: Role; public_pages?: boolean; newsletter?: boolean };
+// `public_pages`: posts of the team may have a public page (`/p/<code>`); `newsletter`: those pages offer a sign-up;
+// `require_approval`: a member's post waits for an owner or admin to approve it.
+export type Team = { id: string; name: string; code: string; role: Role; public_pages?: boolean; newsletter?: boolean; require_approval?: boolean };
 export type User = {
   id: string;
   email: string;
@@ -174,6 +175,8 @@ const codes = [
   "snippet_name_taken",
   "too_many_snippets",
   "invalid_snippet",
+  "approval_required",
+  "not_awaiting_approval",
 ] as const;
 export type Failure = (typeof codes)[number] | "rate_limited" | "signed_out" | "timeout" | "error";
 export type Passkey = { id: string; name: string; created_at: string; last_used_at: string | null };

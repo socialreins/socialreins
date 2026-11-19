@@ -6,10 +6,10 @@ import type { Failure } from "@/lib/auth";
 import { listConnections, needingReconnect, type Connection } from "@/lib/connections";
 import { manages } from "@/lib/teams";
 import { authorName, kindName, listInboxes, listItems, relativeTime, type Item } from "@/lib/inbox";
-import { listPosts, type Post } from "@/lib/posts";
+import { approvalState, listPosts, type Post } from "@/lib/posts";
 import { useCurrentSet, useSession } from "@/components/app-shell";
 import { ReconnectNotice } from "@/components/connections";
-import { AccountNote, PlatformMark, snippet, StatusBadge } from "@/components/posts";
+import { AccountNote, ApprovalBadge, PlatformMark, snippet, StatusBadge } from "@/components/posts";
 import { isFailure, problemText } from "@/components/team-ui";
 
 const DAY = 86_400_000;
@@ -59,6 +59,8 @@ export function Dashboard() {
   const upcoming = list.filter((p) => (p.status === "scheduled" || p.status === "queued") && p.scheduled_at).sort((a, b) => Date.parse(a.scheduled_at!) - Date.parse(b.scheduled_at!));
   // Only this week's failures: failed posts cannot be deleted, so older ones would sit here forever.
   const failed = list.filter((p) => p.status === "failed" && Date.parse(postTime(p)) > now - 7 * DAY).sort((a, b) => Date.parse(postTime(b)) - Date.parse(postTime(a)));
+  // Posts an owner or admin still has to approve, the soonest first.
+  const waiting = manages(user.current_team.role) ? upcoming.filter((p) => approvalState(p) === "pending") : [];
   const published = list.filter((p) => p.status === "published").sort((a, b) => Date.parse(postTime(b)) - Date.parse(postTime(a)));
   const nextWeek = upcoming.filter((p) => Date.parse(p.scheduled_at!) < now + 7 * DAY).length;
   const count = <T,>(v: Load<T[]>, n?: number) => (v === null ? null : isFailure(v) ? "-" : (n ?? v.length).toLocaleString());
@@ -74,9 +76,17 @@ export function Dashboard() {
         lead="A sign-in that has ended, or ends within a week, stops posts to that account. Reconnect it to keep posting."
       />
       {/* Shown only when something failed, so a calm week reads calm. */}
-      {failed.length > 0 && (
-        <Panel id="needs-attention" title="Needs attention" note={failed.length > 3 ? `${failed.length} this week` : undefined} link={{ href: "/posts", label: "All posts" }} load={posts}>
-          <PostRows posts={failed.slice(0, 3)} at={postTime} detail={(p) => p.error} />
+      {(failed.length > 0 || waiting.length > 0) && (
+        <Panel id="needs-attention" title="Needs attention" note={failed.length > 3 ? `${failed.length} failed this week` : undefined} link={{ href: "/posts", label: "All posts" }} load={posts}>
+          {failed.length > 0 && <PostRows posts={failed.slice(0, 3)} at={postTime} detail={(p) => p.error} />}
+          {waiting.length > 0 && (
+            <div className={failed.length > 0 ? "border-t border-[var(--line-soft)]" : ""}>
+              <Link href="/posts?approval=pending" className="block px-4 py-2.5 font-semibold hover:bg-ink/[0.025] hover:underline">
+                {waiting.length === 1 ? "1 post needs approval" : `${waiting.length} posts need approval`}
+              </Link>
+              <PostRows posts={waiting.slice(0, 3)} at={(p) => p.scheduled_at!} />
+            </div>
+          )}
         </Panel>
       )}
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
@@ -204,7 +214,7 @@ function PostRows({ posts, at, detail }: { posts: Post[]; at: (p: Post) => strin
               <span className="block truncate"><PlatformMark platform={p.platform} /> {snippet(p)}</span>
               {detail?.(p) && <span className="block truncate text-sm text-signal-deep">{detail(p)}</span>}
             </span>
-            <StatusBadge status={p.status} />
+            {approvalState(p) ? <ApprovalBadge post={p} /> : <StatusBadge status={p.status} />}
           </Link>
         </li>
       ))}

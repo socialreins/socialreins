@@ -118,7 +118,23 @@ export type Post = {
   lists: { id: string; name: string; position: number }[];
   // Ties the posts of one POST /v1/post-groups call; null for a single post.
   group_id: string | null;
+  // Set when the team requires approval and a member scheduled the post: it goes out only once approved.
+  approval?: Approval | null;
+  // What the owner or admin wrote when approving or asking for changes.
+  approval_note?: string | null;
+  approval_by?: string | null;
+  approval_at?: string | null;
 };
+export type Approval = "pending" | "approved" | "rejected";
+export const NOTE_MAX = 500;
+// What a post's row and page say about approval: waiting (a scheduled post), or changes requested
+// (until the post goes out or is edited back to pending). Null for everything else.
+export function approvalState(p: Post): "pending" | "rejected" | null {
+  if (p.approval === "pending" && p.status === "scheduled") return "pending";
+  if (p.approval === "rejected" && (p.status === "scheduled" || p.status === "draft")) return "rejected";
+  return null;
+}
+export const approvalName = { pending: "Needs approval", rejected: "Changes requested" } as const;
 export type PostInput = {
   social_set_id: string;
   platform: Platform;
@@ -145,7 +161,7 @@ export type PostGroupInput = Omit<PostInput, "platform"> & {
   platforms: Platform[];
   overrides?: Partial<Record<Platform, { body?: string; media?: string[]; thread?: ThreadPart[]; first_comment?: string; cover?: string }>>;
 };
-export type PostFilter = { social_set_id?: string; status?: PostStatus; from?: string; to?: string; group_id?: string };
+export type PostFilter = { social_set_id?: string; status?: PostStatus; from?: string; to?: string; group_id?: string; approval?: Approval };
 
 // Each platform's limits, as brain's crates/core/src/post.rs checks them. `chars` counts graphemes
 // on Bluesky, X's weighted count on X (`xWeight`), UTF-16 code units on TikTok and Unicode code points elsewhere (on YouTube it is the
@@ -233,6 +249,17 @@ export const createPostGroup = (input: PostGroupInput) =>
 export const updatePost = (id: string, input: PostInput) => api<Post>(`/v1/posts/${enc(id)}`, "PUT", input);
 // 202 with the post queued; poll getPost until it is published or failed.
 export const publishPost = (id: string) => api<Post>(`/v1/posts/${enc(id)}/publish`, "POST");
+// Approves a waiting post or asks for changes (owners and admins), for every post of its group at once.
+// Answers the posts as they are now; 409 not_awaiting_approval when none was waiting.
+export async function decidePost(p: Pick<Post, "id" | "group_id">, decision: "approve" | "reject", note = ""): Promise<Post[] | Failure> {
+  const body = note.trim() ? { note: note.trim() } : {};
+  if (p.group_id) {
+    const r = await api<{ posts: Post[] }>(`/v1/post-groups/${enc(p.group_id)}/${decision}`, "POST", body);
+    return typeof r === "string" ? r : r.posts;
+  }
+  const r = await api<Post>(`/v1/posts/${enc(p.id)}/${decision}`, "POST", body);
+  return typeof r === "string" ? r : [r];
+}
 
 export type DeleteResult = "ok" | Post | Failure | { takedownFailed: string };
 
@@ -443,16 +470,18 @@ export function rows(posts: Post[], key: (p: Post) => string): Post[][] {
   return [...out.values()];
 }
 
-// The Posts list's filters, kept in the URL as ?q=&status=&network= (a value brain doesn't know means all).
-export type PostFilters = { q: string; status: PostStatus | "all"; network: Platform | "all" };
+// The Posts list's filters, kept in the URL as ?q=&status=&network=&approval= (a value brain doesn't know means all).
+export type PostFilters = { q: string; status: PostStatus | "all"; network: Platform | "all"; approval: "pending" | "rejected" | "all" };
 const statuses: PostStatus[] = ["draft", "scheduled", "queued", "published", "failed", "deleted"];
 export function parseFilters(params: { get: (k: string) => string | null }): PostFilters {
   const status = params.get("status") ?? "";
   const network = params.get("network") ?? "";
+  const approval = params.get("approval");
   return {
     q: (params.get("q") ?? "").trim(),
     status: statuses.includes(status as PostStatus) ? (status as PostStatus) : "all",
     network: isPlatform(network) ? network : "all",
+    approval: approval === "pending" || approval === "rejected" ? approval : "all",
   };
 }
 export function filterQuery(f: PostFilters): string {
@@ -460,15 +489,17 @@ export function filterQuery(f: PostFilters): string {
   if (f.q) q.set("q", f.q);
   if (f.status !== "all") q.set("status", f.status);
   if (f.network !== "all") q.set("network", f.network);
+  if (f.approval !== "all") q.set("approval", f.approval);
   return q.size ? `?${q}` : "";
 }
 // Whether a row (the versions of one post) passes the filters, leaving out `skip` to count that filter's choices.
-export function matchesFilters(row: Post[], f: PostFilters, skip?: "status" | "network"): boolean {
+export function matchesFilters(row: Post[], f: PostFilters, skip?: "status" | "network" | "approval"): boolean {
   const q = f.q.toLowerCase();
   return (
     (!q || row.some((p) => p.body.toLowerCase().includes(q))) &&
     (skip === "status" || f.status === "all" || row[0]!.status === f.status) &&
-    (skip === "network" || f.network === "all" || row.some((p) => p.platform === f.network))
+    (skip === "network" || f.network === "all" || row.some((p) => p.platform === f.network)) &&
+    (skip === "approval" || f.approval === "all" || approvalState(row[0]!) === f.approval)
   );
 }
 
