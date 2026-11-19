@@ -132,8 +132,10 @@ export type PostInput = {
   tiktok?: TikTokSettings;
   // YouTube settings: only a YouTube post takes them, and a group gives them to its YouTube post.
   youtube?: { privacy: YouTubePrivacy };
-  // ISO time to publish; null keeps the post a draft. A past time means now.
-  scheduled_at: string | null;
+  // ISO time to publish; null keeps the post a draft. A past time means now. Left out with `queue`.
+  scheduled_at?: string | null;
+  // New posts only: brain schedules the post at the set's earliest free queue slot.
+  queue?: true;
   // A list to put the post in; one it is already in would move it to the end.
   list_id?: string;
 };

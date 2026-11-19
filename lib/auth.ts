@@ -162,6 +162,13 @@ const codes = [
   "tiktok_branded_content_private",
   "reconnect_required",
   "tiktok_failed",
+  "invalid_time_zone",
+  "invalid_slot",
+  "duplicate_slot",
+  "too_many_slots",
+  "queue_with_scheduled_at",
+  "queue_empty",
+  "queue_not_supported",
 ] as const;
 export type Failure = (typeof codes)[number] | "rate_limited" | "signed_out" | "timeout" | "error";
 export type Passkey = { id: string; name: string; created_at: string; last_used_at: string | null };
