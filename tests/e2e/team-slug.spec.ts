@@ -26,7 +26,7 @@ async function brain(page: Page, all = teams()) {
       const { slug } = req.postDataJSON();
       patches.push(req.postDataJSON());
       if (slug === "taken") return route.fulfill({ status: 409, json: { error: "slug_taken" } });
-      if (slug === "admin") return route.fulfill({ status: 422, json: { error: "invalid_slug", reason: "reserved" } });
+      if (slug === "refused") return route.fulfill({ status: 422, json: { error: "invalid_slug", reason: "reserved" } });
       if (slug === "busy") return route.fulfill({ status: 429, json: { error: "slug_changed_too_often" } });
       team.slug = slug;
       return route.fulfill({ json: team });
@@ -104,7 +104,7 @@ test("a taken, reserved or too often changed address is said plainly, and the de
   await expect(field).toHaveValue("acme");
   for (const [slug, text] of [
     ["taken", "Another team already uses that address. Pick a different one."],
-    ["admin", "That address is reserved or not allowed. Pick a different one."],
+    ["refused", "That address is reserved or not allowed. Pick a different one."],
     ["busy", "The address was changed 5 times today, the most allowed. Try again tomorrow."],
   ]) {
     await field.fill(slug);
