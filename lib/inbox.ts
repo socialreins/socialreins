@@ -42,6 +42,10 @@ export type Item = {
   state: ItemState;
   replied_at: string | null;
   replies: Reply[];
+  // The contact behind the author, its tags and the team member the item is assigned to. Missing from an older brain.
+  contact_id?: string | null;
+  contact_tags?: string[];
+  assigned_to?: { id: string; name: string } | null;
 };
 export type ItemPage = { items: Item[]; next_cursor: string | null };
 
@@ -67,10 +71,13 @@ export const updateInbox = (id: string, name: string, filters: Filters) =>
 export const deleteInbox = (id: string) => api(`/v1/inboxes/${enc(id)}`, "DELETE");
 
 // `search` looks in the text and the author's name and handle; brain takes 1 to 100 characters.
-export function listItems(inboxId: string, state: ItemState, cursor?: string | null, kind?: Kind | null, search?: string) {
+// `assigned` is "me", "none" or a user id; `tag` is a contact tag.
+export function listItems(inboxId: string, state: ItemState, cursor?: string | null, kind?: Kind | null, search?: string, more: { assigned?: string; tag?: string } = {}) {
   const q = new URLSearchParams({ state });
   if (kind) q.set("kind", kind);
   if (search) q.set("q", search);
+  if (more.assigned) q.set("assigned", more.assigned);
+  if (more.tag) q.set("tag", more.tag);
   if (cursor) q.set("cursor", cursor);
   return api<ItemPage>(`/v1/inboxes/${enc(inboxId)}/items?${q}`);
 }
@@ -92,6 +99,8 @@ export function mergeFresh(loaded: Page, fresh: ItemPage): Page {
 
 export const getItem = (id: string) => api<Item>(`/v1/inbox-items/${enc(id)}`);
 export const setItemState = (id: string, state: ItemState) => api<Item>(`/v1/inbox-items/${enc(id)}`, "PATCH", { state });
+// A team member's user id, or null for nobody.
+export const assignItem = (id: string, userId: string | null) => api<Item>(`/v1/inbox-items/${enc(id)}`, "PATCH", { assigned_to: userId });
 
 // A send that did not happen: brain's code and its message saying what to do.
 export type SendError = { code: string; message: string };

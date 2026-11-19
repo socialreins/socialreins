@@ -303,7 +303,7 @@ export function AutomationDetail({ id }: { id: string }) {
                   <strong className="text-sm">
                     {i + 1}. {s.type === "wait" ? `Wait ${waitText(s.minutes)}` : stepName[s.type]}
                   </strong>
-                  {s.type !== "wait" && <span className="whitespace-pre-wrap break-words">{s.text}</span>}
+                  {s.type !== "wait" && <span className="whitespace-pre-wrap break-words">{s.type === "tag_contact" ? s.tag : s.text}</span>}
                   {s.type === "send_dm" && s.buttons && s.buttons.length > 0 && (
                     <ul aria-label="Buttons" className="flex flex-wrap gap-1.5">
                       {s.buttons.map((b) => (
@@ -318,10 +318,10 @@ export function AutomationDetail({ id }: { id: string }) {
             </ol>
           )}
           <dl className="grid gap-3 sm:grid-cols-2" hidden={!canEdit(a) || Boolean(a.steps)}>
-            {(canEdit(a) ? a.actions : []).map((x) => (
-              <div key={x.type} className="grid gap-1 rounded-xl bg-canvas p-3">
+            {(canEdit(a) ? a.actions : []).map((x, i) => (
+              <div key={i} className="grid gap-1 rounded-xl bg-canvas p-3">
                 <dt className="text-sm font-bold">{actionName[x.type]}</dt>
-                <dd className="whitespace-pre-wrap break-words">{x.text}</dd>
+                <dd className="whitespace-pre-wrap break-words">{x.type === "tag_contact" ? x.tag : x.text}</dd>
               </div>
             ))}
             {canEdit(a) && a.fallback_public_reply && (

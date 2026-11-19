@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { Fragment, useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { TeamLink as Link } from "@/components/team-link";
 import { problemText } from "@/components/team-ui";
@@ -35,8 +35,8 @@ const host = (url: string) => {
   }
 };
 const byName = (a: Snippet, b: Snippet) => a.name.localeCompare(b.name);
-const kindTitle: Record<SnippetKind, string> = { caption: "Captions", hashtags: "Hashtag groups" };
-const kindOne: Record<SnippetKind, string> = { caption: "caption", hashtags: "hashtag group" };
+const kindTitle: Record<SnippetKind, string> = { caption: "Captions", hashtags: "Hashtag groups", reply: "Saved replies" };
+const kindOne: Record<SnippetKind, string> = { caption: "caption", hashtags: "hashtag group", reply: "saved reply" };
 
 // A library item as a tile: image links and Drive or Dropbox shares as their picture (pageMedia, as the public
 // page shows them), anything else, or a picture that fails to load, as a file tile with the host.
@@ -393,9 +393,10 @@ function MediaCard({ item, onRenamed, onDeleted }: { item: MediaItem; onRenamed:
 function SnippetsPanel() {
   return (
     <div className="grid gap-5">
-      <p className="max-w-prose text-ink-soft">Text you reuse. In the composer, Insert snippet puts one at the cursor of the post text, a network&apos;s own text or the first comment.</p>
+      <p className="max-w-prose text-ink-soft">Text you reuse. In the composer, Insert snippet puts one at the cursor of the post text, a network&apos;s own text or the first comment. In the inbox, Insert saved reply puts one into the reply.</p>
       <SnippetSection kind="caption" />
       <SnippetSection kind="hashtags" />
+      <SnippetSection kind="reply" />
     </div>
   );
 }
@@ -731,10 +732,15 @@ export function SaveToLibrary({ url, label, onResult }: { url: string; label: st
 }
 
 // "Insert snippet" beside a text box (by id): a menu of captions and hashtag groups; a choice goes in at the
-// cursor and focus returns to the box. `value` and `onChange` are the box's own state.
-export function SnippetMenu({ target, label, value, onChange }: { target: string; label: string; value: string; onChange: (v: string) => void }) {
+// cursor and focus returns to the box. `value` and `onChange` are the box's own state. With `replies`
+// (the inbox's reply box) it lists the saved replies instead.
+const menuKinds: Record<"snippets" | "replies", SnippetKind[]> = { snippets: ["caption", "hashtags"], replies: ["reply"] };
+export function SnippetMenu({ target, label, value, onChange, replies = false }: { target: string; label: string; value: string; onChange: (v: string) => void; replies?: boolean }) {
+  const kinds = menuKinds[replies ? "replies" : "snippets"];
+  const many = replies ? "saved replies" : "snippets";
   const [open, setOpen] = useState(false);
-  const [lists, setLists] = useState<Record<SnippetKind, Snippet[]> | Problem | null>(null);
+  // One list per kind, in the order of `kinds`.
+  const [lists, setLists] = useState<Snippet[][] | Problem | null>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const menuId = useId();
@@ -750,8 +756,8 @@ export function SnippetMenu({ target, label, value, onChange }: { target: string
 
   async function show() {
     flushSync(() => setOpen(true));
-    const [c, h] = await Promise.all([listSnippets("caption"), listSnippets("hashtags")]);
-    const next = isProblem(c) ? c : isProblem(h) ? h : { caption: c.items, hashtags: h.items };
+    const got = await Promise.all(kinds.map(listSnippets));
+    const next = got.find(isProblem) ?? got.map((r) => (isProblem(r) ? [] : r.items));
     flushSync(() => setLists(next));
     (items()[0] ?? wrap.current?.querySelector<HTMLElement>("[data-menu]"))?.focus();
   }
@@ -816,7 +822,7 @@ export function SnippetMenu({ target, label, value, onChange }: { target: string
         aria-controls={open ? menuId : undefined}
         onClick={() => (open ? close() : show())}
       >
-        Insert snippet<span className="sr-only"> into {label}</span>
+        Insert {replies ? "saved reply" : "snippet"}<span className="sr-only"> into {label}</span>
         <Icon name="down" className="size-3.5" />
       </button>
       {open && (
@@ -825,28 +831,25 @@ export function SnippetMenu({ target, label, value, onChange }: { target: string
           data-menu
           tabIndex={-1}
           role="menu"
-          aria-label={`Snippets for ${label}`}
+          aria-label={`${replies ? "Saved replies" : "Snippets"} for ${label}`}
           className="absolute right-0 z-20 mt-1 grid max-h-80 w-72 max-w-[calc(100vw-2rem)] gap-1 overflow-y-auto rounded-xl border border-[var(--line)] bg-paper p-1.5 shadow-lg"
         >
           {lists === null ? (
-            <p className="p-2 text-sm text-ink-soft">Loading snippets...</p>
+            <p className="p-2 text-sm text-ink-soft">Loading {many}...</p>
           ) : isProblem(lists) ? (
             <p role="alert" className="p-2 text-sm text-danger">
-              The snippets couldn&apos;t be loaded. {say(lists)}
+              The {many} couldn&apos;t be loaded. {say(lists)}
             </p>
-          ) : lists.caption.length + lists.hashtags.length === 0 ? (
+          ) : lists.every((l) => l.length === 0) ? (
             <p className="p-2 text-sm text-ink-soft">
-              No snippets yet. Add some on the{" "}
+              No {many} yet. Add some on the{" "}
               <Link href="/library" role="menuitem" className="underline">
                 Library
               </Link>{" "}
               page.
             </p>
           ) : (
-            <>
-              {group("caption", lists.caption)}
-              {group("hashtags", lists.hashtags)}
-            </>
+            kinds.map((k, i) => <Fragment key={k}>{group(k, lists[i] ?? [])}</Fragment>)
           )}
         </div>
       )}

@@ -135,6 +135,7 @@ const full: Draft = {
   publicReply: "Sent you a DM",
   fallbackOn: true,
   fallback: "Check your DMs",
+  tags: [],
   active: true,
   flow: false,
   steps: [],
@@ -329,16 +330,17 @@ describe("flows", () => {
       { type: "send_dm", text: "Hi {name}, see {page}" },
       { type: "reply_publicly", text: "Sent you a DM" },
     ]);
-    expect(toSimple(flow.steps)).toEqual({ dm: "Hi {name}, see {page}", publicReply: "Sent you a DM", dropped: [] });
+    expect(toSimple(flow.steps)).toEqual({ dm: "Hi {name}, see {page}", publicReply: "Sent you a DM", tags: [], dropped: [] });
     // The fallback has no place in a flow, a public reply none under a DM trigger, and an empty reply starts with one DM.
     expect(toFlow(full).dropped).toEqual(["the fallback reply"]);
     expect(stepsBody(toFlow({ ...one, trigger: "dm_received" }).steps)).toEqual([{ type: "send_dm", text: "Hi {name}, see {page}" }]);
     expect(stepsBody(toFlow({ ...one, dm: "", publicReply: "" }).steps)).toEqual([{ type: "send_dm", text: "" }]);
-    expect(toSimple([newStep("reply_publicly", "Thanks!")])).toEqual({ dm: "", publicReply: "Thanks!", dropped: [] });
+    expect(toSimple([newStep("reply_publicly", "Thanks!")])).toEqual({ dm: "", publicReply: "Thanks!", tags: [], dropped: [] });
     // What one reply can't hold is named, and the first DM and public reply stay.
     expect(toSimple([dm("First", "Yes", "No"), wait("1", "days"), dm("Second"), wait("5"), dm("Third", "Ok"), newStep("reply_publicly", "A"), newStep("reply_publicly", "B")])).toEqual({
       dm: "First",
       publicReply: "A",
+      tags: [],
       dropped: ["2 waits", "3 buttons", "2 more DMs", "1 more public reply"],
     });
     expect(toSimple([dm("Hi", "Yes"), wait("5"), dm("Bye")]).dropped).toEqual(["1 wait", "1 button", "1 more DM"]);
@@ -400,5 +402,52 @@ describe("flows", () => {
     expect(moved.dropped).toEqual(["button payloads"]);
     expect(automationInput(moved.draft, { social_set_id: null, account_ids: [] }, []).conditions).not.toHaveProperty("payloads");
     expect(reason("automation_changed")).toContain("changed or switched off");
+  });
+});
+
+describe("tag the contact", () => {
+  const tagged = { ...full, tags: ["vip", "lead"] };
+
+  it("sends tags as actions beside the others, three at most, under every trigger", () => {
+    expect(automationInput(tagged, scope, uris).actions).toEqual([
+      { type: "send_dm", text: "Hi {name}, see {page}" },
+      { type: "reply_publicly", text: "Sent you a DM" },
+      { type: "tag_contact", tag: "vip" },
+      { type: "tag_contact", tag: "lead" },
+    ]);
+    expect(automationInput({ ...tagged, tags: ["a", "b", "c", "d"] }, scope, uris).actions?.filter((a) => a.type === "tag_contact")).toHaveLength(3);
+    const follower = automationInput({ ...changeTrigger(tagged, "new_follower").draft, dm: "Hi" }, scope, []);
+    expect(follower.actions).toEqual([{ type: "send_dm", text: "Hi" }, { type: "tag_contact", tag: "vip" }, { type: "tag_contact", tag: "lead" }]);
+  });
+
+  it("reads the tags of a saved automation back and names them in the summary", () => {
+    const actions = automationInput(tagged, scope, uris).actions!;
+    const saved = { id: "a", name: "A", active: true, activated_at: "", trigger: "comment_received", conditions: scope, actions, fallback_public_reply: null, created_by: null, created_at: "", updated_at: "" } as const;
+    expect(canEdit(saved)).toBe(true);
+    expect(draftOf(saved)).toMatchObject({ dm: "Hi {name}, see {page}", publicReply: "Sent you a DM", tags: ["vip", "lead"] });
+    expect(actionsSummary(saved)).toBe("Sends a DM and replies publicly, tag: vip, tag: lead");
+    // An action in a shape this page does not know leaves the automation read-only.
+    expect(canEdit({ ...saved, actions: [...actions, { type: "add_to_list", list: "x" } as never] })).toBe(false);
+    expect(canEdit({ ...saved, actions: [], steps: [{ type: "send_dm", text: "Hi" }, { type: "tag_contact", tag: "vip", extra: 1 } as never] })).toBe(false);
+  });
+
+  it("is a flow step that sends nothing: saved clean, outlined, and never the flow's only step", () => {
+    const tag = { ...newStep("tag_contact"), tag: "  VIP, Gold " };
+    const steps = [newStep("send_dm", "Hi"), tag];
+    expect(flowProblems(steps, "dm_received")).toEqual([]);
+    expect(stepsBody(steps)).toEqual([{ type: "send_dm", text: "Hi" }, { type: "tag_contact", tag: "vip gold" }]);
+    expect(flowOutline(stepsBody(steps))).toBe("DM, tag: vip gold");
+    expect(canEdit({ id: "f", name: "F", active: true, activated_at: "", trigger: "dm_received", conditions: scope, actions: [], fallback_public_reply: null, created_by: null, created_at: "", updated_at: "", steps: stepsBody(steps) })).toBe(true);
+    expect(flowProblems([tag], "dm_received")).toEqual([{ step: null, text: "A flow needs at least one step that sends something. Add a DM." }]);
+    expect(flowProblems([newStep("send_dm", "Hi"), newStep("tag_contact")], "dm_received")).toEqual([{ step: 1, text: "Write the tag: 1 to 30 characters, no commas." }]);
+  });
+
+  it("moves between one reply and a flow with the tags", () => {
+    const flow = toFlow(tagged);
+    expect(flow.dropped).toEqual(["the fallback reply"]);
+    expect(stepsBody(flow.steps).slice(2)).toEqual([{ type: "tag_contact", tag: "vip" }, { type: "tag_contact", tag: "lead" }]);
+    expect(toSimple(flow.steps)).toMatchObject({ tags: ["vip", "lead"], dropped: [] });
+    const many = [newStep("send_dm", "Hi"), ...["a", "b", "c", "d", "a"].map((t) => newStep("tag_contact", t))];
+    expect(toSimple(many)).toMatchObject({ tags: ["a", "b", "c"], dropped: ["1 more tag"] });
   });
 });

@@ -1,4 +1,5 @@
 import { api } from "@/lib/auth";
+import { cleanTag } from "@/lib/contacts";
 import type { Connection } from "@/lib/connections";
 import { graphemes } from "@/lib/posts";
 
@@ -14,10 +15,13 @@ export type Conditions = ScopeBody & {
   // button_clicked only: the payloads of the buttons whose click runs it.
   payloads?: string[];
 };
-export type Action = { type: "send_dm" | "reply_publicly"; text: string };
+// tag_contact sends nothing: it puts a tag on the contact behind the item.
+export type TagAction = { type: "tag_contact"; tag: string };
+export type Action = { type: "send_dm" | "reply_publicly"; text: string } | TagAction;
+export const MAX_TAG_ACTIONS = 3;
 export type Button = { label: string; payload: string };
 // One step of a flow. brain leaves `buttons` out when a DM has none.
-export type Step = { type: "send_dm"; text: string; buttons?: Button[] } | { type: "reply_publicly"; text: string } | { type: "wait"; minutes: number };
+export type Step = { type: "send_dm"; text: string; buttons?: Button[] } | { type: "reply_publicly"; text: string } | { type: "wait"; minutes: number } | TagAction;
 export type RunStats = { sent: number; skipped: number; failed: number; running: number; waiting?: number; total: number; count: number; last_at: string | null };
 export type Automation = {
   id: string;
@@ -40,7 +44,7 @@ export type Automation = {
 export type AutomationInput = Pick<Automation, "name" | "trigger" | "conditions" | "active"> & { actions?: Action[]; steps?: Step[]; fallback_public_reply?: string | null };
 export type RunStatus = "running" | "waiting" | "sent" | "failed" | "skipped";
 export type ActionResult = {
-  type: "send_dm" | "reply_publicly" | "fallback_public_reply";
+  type: "send_dm" | "reply_publicly" | "fallback_public_reply" | "tag_contact";
   status: Exclude<RunStatus, "running">;
   reason: string | null;
   remote_id: string | null;
@@ -157,11 +161,12 @@ export const TRIGGERS = Object.keys(triggers) as Trigger[];
 const isText = (x: unknown) => typeof x === "string";
 // A step exactly as this page builds them, so saving it again loses nothing.
 function knownStep(s: unknown) {
-  const x = (s ?? {}) as { type?: unknown; text?: unknown; buttons?: unknown; minutes?: unknown };
+  const x = (s ?? {}) as { type?: unknown; text?: unknown; buttons?: unknown; minutes?: unknown; tag?: unknown };
   const keys = Object.keys(x).filter((k) => k !== "type");
   const only = (...names: string[]) => keys.every((k) => names.includes(k));
   if (x.type === "wait") return only("minutes") && Number.isInteger(x.minutes);
   if (x.type === "reply_publicly") return only("text") && isText(x.text);
+  if (x.type === "tag_contact") return only("tag") && isText(x.tag);
   const buttons = x.buttons ?? [];
   return (
     x.type === "send_dm" &&
@@ -172,6 +177,11 @@ function knownStep(s: unknown) {
   );
 }
 
+const knownAction = (a: unknown) => {
+  const x = (a ?? {}) as { type?: unknown; text?: unknown; tag?: unknown };
+  return x.type === "tag_contact" ? isText(x.tag) : (x.type === "send_dm" || x.type === "reply_publicly") && isText(x.text);
+};
+
 // Whether the builder can show and save this automation without losing anything: a trigger it knows,
 // with plain actions or a flow of steps it knows. brain may send a newer trigger or shape, whatever
 // the type above says.
@@ -179,7 +189,7 @@ export function canEdit(a: Automation) {
   const x = a as { trigger: string; actions?: unknown; steps?: unknown; conditions?: { payloads?: unknown } | null };
   if (!Object.hasOwn(triggers, x.trigger) || typeof x.conditions !== "object" || x.conditions === null || !Array.isArray(x.actions)) return false;
   if (triggers[x.trigger as Trigger].payloads && !Array.isArray(x.conditions.payloads)) return false;
-  if (x.steps === null || x.steps === undefined) return x.actions.length > 0;
+  if (x.steps === null || x.steps === undefined) return x.actions.length > 0 && x.actions.every(knownAction);
   return Array.isArray(x.steps) && x.steps.length > 0 && x.actions.length === 0 && x.steps.every(knownStep);
 }
 
@@ -232,16 +242,21 @@ export type StepDraft = { id: number } & (
   | { type: "send_dm"; text: string; buttons: ButtonDraft[] }
   | { type: "reply_publicly"; text: string }
   | { type: "wait"; amount: string; unit: WaitUnit }
+  | { type: "tag_contact"; tag: string }
 );
+// A step that sends something; a wait and a tag do not.
+export const isSend = <T extends { type: Step["type"] }>(s: T): s is Extract<T, { type: "send_dm" | "reply_publicly" }> => s.type === "send_dm" || s.type === "reply_publicly";
 let lastStepId = 0;
 export function newStep(type: Step["type"], text = ""): StepDraft {
   const id = ++lastStepId;
   if (type === "wait") return { id, type, amount: "1", unit: "days" };
+  if (type === "tag_contact") return { id, type, tag: text };
   return type === "send_dm" ? { id, type, text, buttons: [] } : { id, type, text };
 }
 const stepDraft = (s: Step): StepDraft => {
   const id = ++lastStepId;
   if (s.type === "wait") return { id, type: "wait", ...waitParts(s.minutes) };
+  if (s.type === "tag_contact") return { id, type: s.type, tag: s.tag };
   return s.type === "send_dm" ? { id, type: s.type, text: s.text, buttons: (s.buttons ?? []).map((b) => ({ ...b, own: true })) } : { id, type: s.type, text: s.text };
 };
 // The steps as brain takes them. A wait that is not a valid time goes as 0, which `flowProblems` catches first.
@@ -249,6 +264,7 @@ export const stepsBody = (steps: StepDraft[]): Step[] =>
   steps.map((s) => {
     if (s.type === "wait") return { type: s.type, minutes: waitMinutes(s.amount, s.unit) ?? 0 };
     if (s.type === "reply_publicly") return { type: s.type, text: s.text };
+    if (s.type === "tag_contact") return { type: s.type, tag: cleanTag(s.tag) };
     const buttons = s.buttons.map((b) => ({ label: b.label.trim(), payload: b.payload }));
     return { type: s.type, text: s.text, ...(buttons.length > 0 && { buttons }) };
   });
@@ -262,7 +278,7 @@ export type FlowProblem = { step: number | null; text: string };
 export function flowProblems(steps: StepDraft[], trigger: Trigger): FlowProblem[] {
   const out: FlowProblem[] = [];
   const pub = triggers[trigger].publicReply;
-  if (!steps.some((s) => s.type !== "wait")) out.push({ step: null, text: "A flow needs at least one step that sends something. Add a DM." });
+  if (!steps.some(isSend)) out.push({ step: null, text: "A flow needs at least one step that sends something. Add a DM." });
   else {
     if (steps[0]!.type === "wait") out.push({ step: null, text: "A flow can't start with a wait. Move a DM above it." });
     if (steps.at(-1)!.type === "wait") out.push({ step: null, text: "A flow can't end with a wait. Add a step after it, or remove it." });
@@ -273,6 +289,10 @@ export function flowProblems(steps: StepDraft[], trigger: Trigger): FlowProblem[
     const say = (text: string) => out.push({ step, text });
     if (s.type === "wait") {
       if (waitMinutes(s.amount, s.unit) === null) say("Wait between 1 minute and 7 days, as a whole number.");
+      return;
+    }
+    if (s.type === "tag_contact") {
+      if (!cleanTag(s.tag)) say("Write the tag: 1 to 30 characters, no commas.");
       return;
     }
     if (s.type === "reply_publicly" && !pub) say("This trigger has nothing to reply under. Remove this step.");
@@ -300,22 +320,25 @@ export function toFlow(d: Draft): { steps: StepDraft[]; dropped: string[] } {
   const pub = triggers[d.trigger].publicReply;
   const steps = [...(d.dm.trim() ? [newStep("send_dm", d.dm)] : []), ...(pub && d.publicReply.trim() ? [newStep("reply_publicly", d.publicReply.trim())] : [])];
   return {
-    steps: steps.length ? steps : [newStep("send_dm")],
+    steps: [...(steps.length ? steps : [newStep("send_dm")]), ...d.tags.map((t) => newStep("tag_contact", t))],
     dropped: pub && d.fallbackOn && d.dm.trim() && d.fallback.trim() ? ["the fallback reply"] : [],
   };
 }
 // A flow as one reply: its first DM and first public reply stay, and what One reply can't hold is named.
-export function toSimple(steps: StepDraft[]): { dm: string; publicReply: string; dropped: string[] } {
+export function toSimple(steps: StepDraft[]): { dm: string; publicReply: string; tags: string[]; dropped: string[] } {
   const of = <T extends StepDraft["type"]>(type: T) => steps.filter((s): s is Extract<StepDraft, { type: T }> => s.type === type);
   const [dms, replies, waits] = [of("send_dm"), of("reply_publicly"), of("wait")];
   const buttons = dms.reduce((n, s) => n + s.buttons.length, 0);
+  const tags = [...new Set(of("tag_contact").map((s) => cleanTag(s.tag)).filter(Boolean))];
   const lost: [number, string, string][] = [
     [waits.length, "1 wait", "waits"],
     [buttons, "1 button", "buttons"],
     [dms.length - 1, "1 more DM", "more DMs"],
     [replies.length - 1, "1 more public reply", "more public replies"],
+    [tags.length - MAX_TAG_ACTIONS, "1 more tag", "more tags"],
   ];
   return {
+    tags: tags.slice(0, MAX_TAG_ACTIONS),
     dm: dms[0]?.text ?? "",
     publicReply: replies[0]?.text ?? "",
     dropped: lost.filter(([n]) => n > 0).map(([n, one, many]) => (n === 1 ? one : `${n} ${many}`)),
@@ -344,6 +367,8 @@ export type Draft = {
   publicReply: string;
   fallbackOn: boolean;
   fallback: string;
+  // One reply: the tags it puts on the contact, 3 at most.
+  tags: string[];
   active: boolean;
   // One reply (dm, publicReply, fallback) or a flow (steps).
   flow: boolean;
@@ -363,6 +388,7 @@ const empty: Draft = {
   publicReply: "",
   fallbackOn: false,
   fallback: "",
+  tags: [],
   active: true,
   flow: false,
   steps: [],
@@ -421,7 +447,7 @@ export function draftOf(a?: Automation, templateId?: string | null, payload?: st
     return triggers[d.trigger].payloads && payload && payloadOk(payload) ? { ...d, payloads: [payload] } : d;
   }
   const c = a.conditions;
-  const text = (type: Action["type"]) => a.actions.find((x) => x.type === type)?.text ?? "";
+  const text = (type: "send_dm" | "reply_publicly") => a.actions.flatMap((x) => (x.type === type ? [x.text] : []))[0] ?? "";
   return {
     name: a.name,
     trigger: a.trigger,
@@ -434,6 +460,7 @@ export function draftOf(a?: Automation, templateId?: string | null, payload?: st
     publicReply: text("reply_publicly"),
     fallbackOn: Boolean(a.fallback_public_reply),
     fallback: a.fallback_public_reply ?? "",
+    tags: a.actions.flatMap((x) => (x.type === "tag_contact" ? [x.tag] : [])),
     active: a.active,
     flow: Boolean(a.steps),
     steps: (a.steps ?? []).map(stepDraft),
@@ -490,7 +517,11 @@ export function automationInput(d: Draft, scope: ScopeBody, uris: string[]): Aut
   if (d.flow) return { ...head, steps: stepsBody(d.steps), active: d.active };
   return {
     ...head,
-    actions: [...(dm ? [{ type: "send_dm" as const, text: dm }] : []), ...(reply ? [{ type: "reply_publicly" as const, text: reply }] : [])],
+    actions: [
+      ...(dm ? [{ type: "send_dm" as const, text: dm }] : []),
+      ...(reply ? [{ type: "reply_publicly" as const, text: reply }] : []),
+      ...d.tags.slice(0, MAX_TAG_ACTIONS).map((tag) => ({ type: "tag_contact" as const, tag })),
+    ],
     active: d.active,
     fallback_public_reply: fallback || null,
   };
@@ -522,6 +553,7 @@ export const actionName: Record<ActionResult["type"], string> = {
   send_dm: "DM",
   reply_publicly: "Public reply",
   fallback_public_reply: "Fallback reply",
+  tag_contact: "Tag",
 };
 
 // "On 2 posts", "First comment per person", "First message only".
@@ -532,14 +564,16 @@ export function conditionNotes(c: Conditions) {
   );
 }
 
-export const stepName: Record<Step["type"], string> = { send_dm: "Send a DM", reply_publicly: "Reply publicly", wait: "Wait" };
-// "DM, wait 1 day, DM".
-export const flowOutline = (steps: Step[]) => steps.map((s) => (s.type === "wait" ? `wait ${waitText(s.minutes)}` : s.type === "send_dm" ? "DM" : "public reply")).join(", ");
+export const stepName: Record<Step["type"], string> = { send_dm: "Send a DM", reply_publicly: "Reply publicly", wait: "Wait", tag_contact: "Tag the contact" };
+// "DM, wait 1 day, DM, tag: vip".
+export const flowOutline = (steps: Step[]) =>
+  steps.map((s) => (s.type === "wait" ? `wait ${waitText(s.minutes)}` : s.type === "tag_contact" ? `tag: ${s.tag}` : s.type === "send_dm" ? "DM" : "public reply")).join(", ");
 
 export function actionsSummary(a: Pick<Automation, "actions" | "fallback_public_reply" | "steps">) {
   if (a.steps) return `${count(a.steps.length, "step")}: ${flowOutline(a.steps)}`;
   const has = (type: Action["type"]) => a.actions.some((x) => x.type === type);
-  if (!has("send_dm")) return "Replies publicly";
-  if (has("reply_publicly")) return "Sends a DM and replies publicly";
-  return a.fallback_public_reply ? "Sends a DM, or replies publicly if it can't" : "Sends a DM";
+  const tags = a.actions.flatMap((x) => (x.type === "tag_contact" ? [`, tag: ${x.tag}`] : [])).join("");
+  if (!has("send_dm")) return `Replies publicly${tags}`;
+  if (has("reply_publicly")) return `Sends a DM and replies publicly${tags}`;
+  return `${a.fallback_public_reply ? "Sends a DM, or replies publicly if it can't" : "Sends a DM"}${tags}`;
 }

@@ -107,6 +107,7 @@ export function KeywordsField({
   value,
   onChange,
   clean = (raw) => raw.trim().slice(0, 100),
+  max = 20,
 }: {
   id: string;
   label: string;
@@ -115,6 +116,8 @@ export function KeywordsField({
   onChange: (k: string[]) => void;
   // What one typed chip is stored as; empty adds nothing.
   clean?: (raw: string) => string;
+  // How many chips it takes.
+  max?: number;
 }) {
   const [draft, setDraft] = useState("");
   const add = () => {
@@ -122,7 +125,7 @@ export function KeywordsField({
     const next = [...value];
     for (const raw of draft.split(",")) {
       const k = clean(raw);
-      if (k && !next.some((v) => v.toLowerCase() === k.toLowerCase()) && next.length < 20) next.push(k);
+      if (k && !next.some((v) => v.toLowerCase() === k.toLowerCase()) && next.length < max) next.push(k);
     }
     if (next.length !== value.length) onChange(next);
     setDraft("");

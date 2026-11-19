@@ -3,7 +3,8 @@ import { failure, request, type Failure } from "@/lib/auth";
 // The team's media library: links to files kept for reuse, nothing uploaded. `created_by` is a user id.
 export type MediaItem = { id: string; url: string; name: string; created_at: string; created_by: string };
 export type MediaPage = { items: MediaItem[]; next_cursor: string | null };
-export type SnippetKind = "caption" | "hashtags";
+// A reply is a saved reply, used in the inbox.
+export type SnippetKind = "caption" | "hashtags" | "reply";
 export type Snippet = { id: string; kind: SnippetKind; name: string; body: string; created_at: string; updated_at: string };
 
 // A refusal with what brain adds to it: the field it is about (`invalid_media`, `invalid_snippet`) and, for

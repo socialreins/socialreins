@@ -9,6 +9,7 @@ import {
   createAutomation,
   draftOf,
   flowProblems,
+  MAX_TAG_ACTIONS,
   postIds,
   sample,
   slug,
@@ -23,9 +24,10 @@ import {
   type Trigger,
 } from "@/lib/automations";
 import type { Connection } from "@/lib/connections";
+import { cleanTag } from "@/lib/contacts";
 import { MAX_DM, MAX_PUBLIC } from "@/lib/inbox";
 import type { SocialSet } from "@/lib/sets";
-import { FlowEditor, FlowPreview, TextField } from "@/components/automation-flow";
+import { FlowEditor, FlowPreview, TagLine, TextField } from "@/components/automation-flow";
 import { KeywordsField, ScopeField, scopeBody, scopeOf } from "@/components/scope-fields";
 import { Status, useAction } from "@/components/team-ui";
 import { Icon, type IconName } from "@/components/ui";
@@ -109,7 +111,7 @@ export function AutomationForm({
 
   function onMode(flow: boolean) {
     if (flow === d.flow) return;
-    const patch: Partial<Draft> = { flow, steps: [] };
+    const patch: Partial<Draft> = { flow, steps: [], tags: [] };
     let dropped: string[];
     if (flow) {
       const next = toFlow(d);
@@ -117,7 +119,7 @@ export function AutomationForm({
       dropped = next.dropped;
     } else {
       const next = toSimple(d.steps);
-      Object.assign(patch, { dm: next.dm, publicReply: next.publicReply });
+      Object.assign(patch, { dm: next.dm, publicReply: next.publicReply, tags: next.tags });
       dropped = next.dropped;
     }
     if (dropped.length) setPending({ patch, dropped });
@@ -388,6 +390,15 @@ export function AutomationForm({
                   </div>
                 </>
               )}
+              <KeywordsField
+                id="automation-tags"
+                label="Tag the contact"
+                hint="Optional, up to 3 tags put on the person's contact when this runs. Press Enter or a comma after each. Tags are saved in lower case."
+                value={d.tags}
+                onChange={(tags) => set({ tags })}
+                clean={cleanTag}
+                max={MAX_TAG_ACTIONS}
+              />
             </>
           )}
         </fieldset>
@@ -446,6 +457,7 @@ export function AutomationForm({
                   If the DM can&apos;t go, replies publicly: <span className="text-ink">{sample(d.fallback)}</span>
                 </p>
               )}
+              {d.tags.length > 0 && <TagLine tags={d.tags} />}
               {!hasDm && !(t.publicReply && d.publicReply.trim()) && <p className="text-sm text-ink-soft">Your reply shows here as you write, for someone called Sam.</p>}
             </>
           )}
