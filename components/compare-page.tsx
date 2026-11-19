@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { SiteHeader, sitePage } from "@/components/site-header";
-import { CHECKED, rival, rivals } from "@/lib/compare";
+import { rival, rivals } from "@/lib/compare";
 import { publicPage } from "@/lib/seo";
 
 // One public page per tool: app/compare/<slug>/page.tsx calls these with its slug.
@@ -23,7 +23,7 @@ export function ComparePage({ slug }: { slug: string }) {
         <h1 className="font-display text-4xl font-extrabold tracking-tight">SocialReins vs {r.name}</h1>
         <p className="text-ink-soft">{r.intro}</p>
         <p className="text-sm text-ink-soft">
-          What we say about {r.name} comes from its own website, checked on {CHECKED}. Prices and plans change, so check its site before you
+          What we say about {r.name} comes from its own website, checked on {r.checked}. Prices and plans change, so check its site before you
           decide.
         </p>
       </div>
