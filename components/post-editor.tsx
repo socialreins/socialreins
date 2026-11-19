@@ -17,11 +17,13 @@ import {
   mediaTypes,
   sizeHint,
   coverTypes,
+  approvalState,
   charLimit,
   checkThread,
   checkTikTok,
   createPost,
   createPostGroup,
+  decidePost,
   deletePost,
   fromLocalInput,
   getPost,
@@ -58,7 +60,7 @@ import { listSets, type SocialSet } from "@/lib/sets";
 import { getQueue, type Queue } from "@/lib/queue";
 import { accountName, Avatar } from "@/components/connections";
 import { platformName } from "@/components/platform-icons";
-import { AccountNote, PlatformMark, postMessages, snippet, StatusBadge, statusName } from "@/components/posts";
+import { AccountNote, ApprovalBadge, ChangesDialog, PlatformMark, postMessages, snippet, StatusBadge, statusName } from "@/components/posts";
 import { isFailure, problemText, Status, useAction } from "@/components/team-ui";
 import { useCurrentSet, useSession } from "@/components/app-shell";
 import { ReconnectNotice } from "@/components/connections";
@@ -161,6 +163,8 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const [sent, setSent] = useState(0);
   // The post a duplicate was copied from, for the note above the form.
   const [copied, setCopied] = useState<Post | Failure | null>(null);
+  // The "Request changes" dialog is open.
+  const [rejecting, setRejecting] = useState(false);
   const statusRef = useRef<HTMLParagraphElement>(null);
   const addPartRef = useRef<HTMLButtonElement>(null);
   const partRefs = useRef<(HTMLTextAreaElement | null)[]>([]);
@@ -445,6 +449,18 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     return queued;
   }
 
+  // Approves this post, or asks for changes, with the rest of its group. The form keeps what was typed.
+  async function decide(what: "approve" | "reject", note = "") {
+    if (!post || isFailure(post)) return;
+    await run(what, () => decidePost(post, what, note), (out) => {
+      const mine = out.find((p) => p.id === post.id);
+      if (mine) setPost(mine);
+      setGroup((g) => g.map((x) => out.find((o) => o.id === x.id) ?? x));
+      const on = out.length > 1 ? ` on ${out.length} networks` : "";
+      return what === "approve" ? `Approved${on}. It goes out at its scheduled time.` : `Asked for changes${on}. It stays unpublished until then.`;
+    });
+  }
+
   async function publishRest() {
     await run("publish", () => publishAll(unsent), (queued) => {
       const mine = queued.find((p) => p.id === postId);
@@ -503,6 +519,9 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const listed = whole ? [...inLists, ...group.flatMap((g) => g.lists)] : inLists;
   const listChoices = lists.filter((l) => fitsList(l, setId) && !listed.some((x) => x.id === l.id));
   const editable = !status || status === "draft" || status === "scheduled";
+  const mayReview = manages(user.current_team.role);
+  // A member's post can't go out before an owner or admin approved it: brain answers approval_required.
+  const needsApproval = !!user.current_team.require_approval && !mayReview && !(post && !isFailure(post) && post.approval === "approved");
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const queue = queueRead?.key === queueKey && queueKey && !isFailure(queueRead.value) ? queueRead.value : null;
   // A queue that couldn't be read leaves the button on: brain answers queue_empty if need be.
@@ -1306,6 +1325,33 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
             Scheduled for {when(post.scheduled_at!)}.
           </p>
         )}
+        {post && approvalState(post) && (
+          <section aria-label="Approval" className="card flex flex-wrap items-center gap-x-3 gap-y-2 p-4">
+            <ApprovalBadge post={post} />
+            <p className="min-w-0 flex-1 basis-60">
+              {approvalState(post) === "pending" ? (
+                "Waiting for an owner or admin to approve. It is not published until then."
+              ) : (
+                <>
+                  An owner or admin asked for changes{post.approval_note ? <>: <strong>{post.approval_note}</strong></> : "."} Edit the post and schedule it again to ask for approval.
+                </>
+              )}
+            </p>
+            {mayReview && approvalState(post) === "pending" && (
+              <div className="flex gap-2">
+                <button type="button" className="btn btn-primary btn-sm" disabled={busy !== null} onClick={() => decide("approve")}>
+                  {busy === "approve" ? "Approving..." : "Approve"}
+                </button>
+                <button type="button" className="btn btn-secondary btn-sm" disabled={busy !== null} onClick={() => setRejecting(true)}>
+                  Request changes
+                </button>
+              </div>
+            )}
+          </section>
+        )}
+        {rejecting && post && (
+          <ChangesDialog posts={[post, ...group.filter((g) => g.id !== post.id)]} onClose={() => setRejecting(false)} onSend={(_, note) => decide("reject", note)} />
+        )}
         {/* Save draft is the first submit button, so Enter in a field saves rather than publishes. */}
         <form onSubmit={onSubmit} className="grid grid-cols-[minmax(0,1fr)] gap-4">
           <div className="card grid gap-4 p-4 sm:p-5">
@@ -1485,11 +1531,16 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
                 <button type="submit" name="mode" value="draft" className="btn btn-secondary" disabled={busy !== null}>
                   {busy === "draft" ? "Saving..." : "Save draft"}
                 </button>
-                <button type="submit" name="mode" value="publish" className="btn btn-primary" disabled={busy !== null}>
+                <button type="submit" name="mode" value="publish" className="btn btn-primary" disabled={busy !== null || needsApproval} aria-describedby={needsApproval ? "post-approval-note" : undefined}>
                   <Icon name="send" className="size-4" />
                   {busy === "publish" ? "Publishing..." : "Publish now"}
                 </button>
               </div>
+              {needsApproval && (
+                <p id="post-approval-note" className="hint basis-full text-xs sm:text-right">
+                  An owner or admin has to approve this post before it goes out. Schedule it to ask for approval.
+                </p>
+              )}
             </div>
             <div className={`${scheduleOpen || at ? "flex" : "hidden"} flex-wrap items-center gap-x-2 gap-y-1 border-t border-[var(--line)] pt-2 sm:flex`}>
               <label htmlFor="post-at" className="text-xs font-bold whitespace-nowrap">

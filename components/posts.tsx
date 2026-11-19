@@ -7,6 +7,9 @@ import type { Failure } from "@/lib/auth";
 import { listConnections } from "@/lib/connections";
 import { partLabel } from "@/lib/lists";
 import {
+  approvalName,
+  approvalState,
+  decidePost,
   editInput,
   filterQuery,
   isPlatform,
@@ -15,6 +18,7 @@ import {
   monthRange,
   monthWeeks,
   moveToDay,
+  NOTE_MAX,
   parseFilters,
   postDay,
   rows,
@@ -28,8 +32,9 @@ import {
 } from "@/lib/posts";
 import { listSets, type SocialSet } from "@/lib/sets";
 import { PlatformIcon, platformName, platformOf } from "@/components/platform-icons";
-import { isFailure, problemText } from "@/components/team-ui";
-import { useCurrentSet } from "@/components/app-shell";
+import { manages } from "@/lib/teams";
+import { isFailure, problemText, Status, useAction } from "@/components/team-ui";
+import { useCurrentSet, useSession } from "@/components/app-shell";
 import { Icon } from "@/components/ui";
 
 export const postMessages: Partial<Record<Failure, ReactNode>> = {
@@ -74,6 +79,8 @@ export const postMessages: Partial<Record<Failure, ReactNode>> = {
   queue_empty: "This set's queue has no times yet. Add some on the Queue page, or pick a time to schedule.",
   queue_with_scheduled_at: "A post goes in the queue or at a time you pick, not both.",
   queue_not_supported: "A saved post can't move to the queue. Pick a time to schedule it.",
+  approval_required: "This team's posts need an owner or admin to approve them before they go out. Schedule the post to ask for approval.",
+  not_awaiting_approval: "This post is no longer waiting for approval. Reload to see it.",
 };
 
 export const statusName: Record<PostStatus, string> = {
@@ -95,6 +102,57 @@ export function StatusBadge({ status }: { status: PostStatus }) {
     <span className="badge tone" data-status={status}>
       {statusName[status]}
     </span>
+  );
+}
+
+// "Needs approval" or "Changes requested"; nothing for a post with neither.
+export function ApprovalBadge({ post }: { post: Post }) {
+  const a = approvalState(post);
+  return a && (
+    <span className="badge tone" data-approval={a}>
+      {approvalName[a]}
+    </span>
+  );
+}
+// A post's status for screen readers, with its approval state: "Scheduled, needs approval".
+const stateName = (p: Post) => statusName[p.status] + (approvalState(p) ? `, ${approvalName[approvalState(p)!].toLowerCase()}` : "");
+
+// "Request changes": an optional note for the author, sent with the rejection.
+export function ChangesDialog({ posts, onClose, onSend }: { posts: Post[]; onClose: () => void; onSend: (posts: Post[], note: string) => void }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const id = useId();
+  const [note, setNote] = useState("");
+  useEffect(() => ref.current?.showModal(), []);
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    ref.current?.close();
+    onSend(posts, note);
+  };
+  return (
+    <dialog ref={ref} aria-labelledby={id} onClose={onClose} className="m-auto w-[min(26rem,calc(100vw-1rem))] rounded-lg bg-paper p-0 text-ink shadow-2xl backdrop:bg-ink/20">
+      <form onSubmit={submit} className="grid gap-3 p-4">
+        <h3 id={id} className="text-sm font-bold">
+          Request changes: {snippet(posts[0]!)}
+        </h3>
+        <div className="grid gap-1.5">
+          <label htmlFor={`${id}-note`} className="label">
+            Note for the author (optional)
+          </label>
+          <textarea id={`${id}-note`} className="field min-h-24" maxLength={NOTE_MAX} value={note} onChange={(e) => setNote(e.target.value)} aria-describedby={`${id}-hint`} />
+          <p id={`${id}-hint`} className="hint">
+            The post is not published{posts.length > 1 ? ` on any of its ${posts.length} networks` : ""} until the author edits it and it is approved.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="submit" className="btn btn-primary btn-sm">
+            Request changes
+          </button>
+          <button type="button" className="btn btn-quiet btn-sm" onClick={() => ref.current?.close()}>
+            Cancel
+          </button>
+        </div>
+      </form>
+    </dialog>
   );
 }
 
@@ -135,14 +193,14 @@ export function PlatformMark({ platform, className = "size-3.5", named }: { plat
 }
 
 // The versions of one post on a day's line: the same status and time, so both show once.
-const chips = (posts: Post[]) => rows(posts, (p) => `${p.status} ${postDay(p)?.toDateString()} ${postDay(p) && time(postDay(p)!)}`);
+const chips = (posts: Post[]) => rows(posts, (p) => `${p.status} ${approvalState(p)} ${postDay(p)?.toDateString()} ${postDay(p) && time(postDay(p)!)}`);
 
 function PostChip({ posts }: { posts: Post[] }) {
   const p = posts[0]!;
   const remote = posts.flatMap((v) => v.targets.filter((t) => t.remote_url && t.status === "published").map((t) => ({ ...t, platform: v.platform })));
   return (
     <li className="flex min-w-0 items-center rounded text-xs hover:bg-ink/[0.045]">
-      <span aria-hidden="true" className="dot ml-1.5 shrink-0" data-status={p.status} />
+      <span aria-hidden="true" className="dot ml-1.5 shrink-0" data-status={p.status} data-approval={approvalState(p) ?? undefined} />
       <Link href={`/posts/${p.id}`} className="min-w-0 flex-1 truncate px-1.5 py-1 hover:underline">
         {p.lists.length > 0 && <span className="block truncate font-bold">{p.lists.map(partLabel).join(", ")}</span>}
         {posts.map((v) => (
@@ -150,7 +208,7 @@ function PostChip({ posts }: { posts: Post[] }) {
         ))}{" "}
         <span className="text-ink-soft tabular-nums">{time(postDay(p)!)}</span> {snippet(p)}
       </Link>
-      <span className="sr-only">{statusName[p.status]}</span>
+      <span className="sr-only">{stateName(p)}</span>
       {remote.map((t) => (
         <a
           key={t.id}
@@ -201,8 +259,8 @@ function GridChip({ posts, onDrag, onMove }: { posts: Post[]; onDrag: (posts: Po
       )}
       <Link href={`/posts/${p.id}`} className="grid min-w-0 px-1.5 py-0.5 leading-4 hover:underline">
         <span className="flex min-w-0 items-center gap-1 whitespace-nowrap text-ink-soft">
-          <span aria-hidden="true" className="dot shrink-0" data-status={p.status} />
-          <span className="sr-only">{statusName[p.status]}: </span>
+          <span aria-hidden="true" className="dot shrink-0" data-status={p.status} data-approval={approvalState(p) ?? undefined} />
+          <span className="sr-only">{stateName(p)}: </span>
           <span className="tabular-nums">{time(postDay(p)!)}</span>
           {posts.map((v) => (
             <PlatformMark key={v.id} platform={v.platform} className="size-3" />
@@ -344,12 +402,15 @@ function MonthList({ posts, y, m, title }: { posts: Post[]; y: number; m: number
 
 // The Posts list's choices, in the order the chips show them.
 const statusChips: PostStatus[] = ["scheduled", "queued", "published", "failed", "deleted", "draft"];
-const noFilters: PostFilters = { q: "", status: "all", network: "all" };
+const noFilters: PostFilters = { q: "", status: "all", network: "all", approval: "all" };
+// What an owner or admin can do with a row that waits for approval.
+type Review = { busy: boolean; approve: (posts: Post[]) => void; reject: (posts: Post[]) => void };
 const failText = (posts: Post[]) => posts.map((p) => p.error ?? p.targets.find((t) => t.error)?.error).find(Boolean);
 
 // One line of the Posts list: time, networks, text and status; the whole line opens the post.
-function PostRow({ posts, onMove }: { posts: Post[]; onMove?: (posts: Post[]) => void }) {
+function PostRow({ posts, onMove, review }: { posts: Post[]; onMove?: (posts: Post[]) => void; review?: Review }) {
   const p = posts[0]!;
+  const approval = approvalState(p);
   const remote = posts.flatMap((v) => v.targets.filter((t) => t.remote_url && t.status === "published").map((t) => ({ ...t, platform: v.platform })));
   const error = p.status === "failed" ? failText(posts) : undefined;
   return (
@@ -367,6 +428,17 @@ function PostRow({ posts, onMove }: { posts: Post[]; onMove?: (posts: Post[]) =>
         </span>
       </Link>
       <StatusBadge status={p.status} />
+      <ApprovalBadge post={p} />
+      {review && approval === "pending" && (
+        <>
+          <button type="button" className="btn btn-primary btn-sm relative z-10" disabled={review.busy} aria-label={`Approve ${snippet(p)}`} onClick={() => review.approve(posts)}>
+            Approve
+          </button>
+          <button type="button" className="btn btn-quiet btn-sm relative z-10" disabled={review.busy} aria-label={`Request changes: ${snippet(p)}`} onClick={() => review.reject(posts)}>
+            Request changes
+          </button>
+        </>
+      )}
       {onMove && (
         <button type="button" className="btn btn-quiet btn-sm relative z-10" aria-label={`Move to... ${snippet(p)}`} onClick={() => onMove(posts)}>
           <Icon name="clock" className="size-3.5" />
@@ -398,11 +470,16 @@ function PostRow({ posts, onMove }: { posts: Post[]; onMove?: (posts: Post[]) =>
           {error}
         </p>
       )}
+      {approval === "rejected" && p.approval_note && (
+        <p className="basis-full truncate text-xs sm:pl-[5.25rem] text-signal-deep" title={p.approval_note}>
+          {p.approval_note}
+        </p>
+      )}
     </li>
   );
 }
 
-function DayGroup({ date, list, today }: { date: Date; list: Post[][]; today: boolean }) {
+function DayGroup({ date, list, today, review }: { date: Date; list: Post[][]; today: boolean; review?: Review }) {
   return (
     <li aria-current={today ? "date" : undefined}>
       <h3 className={`flex items-baseline gap-2 border-b border-[var(--line-soft)] bg-[var(--side)] px-3 py-1.5 text-xs sm:px-4 ${today ? "text-ink" : "text-ink-soft"}`}>
@@ -412,7 +489,7 @@ function DayGroup({ date, list, today }: { date: Date; list: Post[][]; today: bo
       </h3>
       <ul className="divide-y divide-[var(--line-soft)]">
         {list.map((v) => (
-          <PostRow key={v[0]!.id} posts={v} />
+          <PostRow key={v[0]!.id} posts={v} review={review} />
         ))}
       </ul>
     </li>
@@ -443,7 +520,7 @@ function Chips<T extends string>({ label, value, options, onPick }: { label: str
 }
 
 // The month's posts by day under the filters: from today on first, earlier days of the current month folded.
-function PostList({ rows: all, y, m, title, filters, onClear }: { rows: Post[][]; y: number; m: number; title: string; filters: PostFilters; onClear: () => void }) {
+function PostList({ rows: all, y, m, title, filters, onClear, review }: { rows: Post[][]; y: number; m: number; title: string; filters: PostFilters; onClear: () => void; review?: Review }) {
   const now = new Date();
   const days = new Map<number, Post[][]>();
   for (const r of all.filter((r) => matchesFilters(r, filters))) {
@@ -466,7 +543,7 @@ function PostList({ rows: all, y, m, title, filters, onClear }: { rows: Post[][]
   const entries = [...days].sort(([a], [b]) => a - b);
   const earlier = thisMonth ? entries.filter(([d]) => d < now.getDate()) : [];
   const upcoming = thisMonth ? entries.filter(([d]) => d >= now.getDate()) : entries;
-  const group = ([d, list]: [number, Post[][]]) => <DayGroup key={d} date={new Date(y, m, d)} list={list} today={thisMonth && d === now.getDate()} />;
+  const group = ([d, list]: [number, Post[][]]) => <DayGroup key={d} date={new Date(y, m, d)} list={list} today={thisMonth && d === now.getDate()} review={review} />;
   const count = earlier.reduce((n, [, l]) => n + l.length, 0);
   return (
     <div className="grid gap-4">
@@ -510,6 +587,21 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
   const [picking, setPicking] = useState<Post[] | null>(null);
   const [moved, setMoved] = useState<{ ok: boolean; text: ReactNode } | null>(null);
   const [reload, setReload] = useState(0);
+  // Approvals: owners and admins approve a waiting row or ask for changes (the dialog is open for `rejecting`).
+  const team = useSession().user.current_team;
+  const requires = !!team.require_approval;
+  const decision = useAction();
+  const [rejecting, setRejecting] = useState<Post[] | null>(null);
+  async function decide(group: Post[], what: "approve" | "reject", note = "") {
+    const name = snippet(group[0]!);
+    await decision.run(what, () => decidePost(group[0]!, what, note), (out) => {
+      const on = out.length > 1 ? ` on ${out.length} networks` : "";
+      return what === "approve" ? `Approved ${name}${on}. It goes out at its scheduled time.` : `Asked for changes to ${name}${on}. It stays unpublished until then.`;
+    });
+    // Also after a refusal: the row was stale.
+    setReload((n) => n + 1);
+  }
+  const review: Review | undefined = manages(team.role) ? { busy: decision.busy !== null, approve: (g) => decide(g, "approve"), reject: setRejecting } : undefined;
 
   useEffect(() => {
     listSets().then(setSets);
@@ -576,7 +668,9 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
   const setName = (id: string) => (Array.isArray(sets) ? sets.find((s) => s.id === id)?.name : undefined);
 
   // The list's filters live in the URL, written with replaceState so typing doesn't add history or reload.
-  const filters = parseFilters(useSearchParams());
+  // The approval filter only counts while the team requires approval, since its chips are hidden otherwise.
+  const parsed = parseFilters(useSearchParams());
+  const filters: PostFilters = requires ? parsed : { ...parsed, approval: "all" };
   const teamPath = useTeamPath();
   const search = useRef<HTMLInputElement>(null);
   const setFilters = (f: PostFilters) => window.history.replaceState(null, "", teamPath(`/posts${filterQuery(f)}`));
@@ -592,12 +686,13 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
   const draftRows = Array.isArray(drafts) ? rows(drafts, () => "") : [];
   const shownDrafts = draftRows.filter((r) => matchesFilters(r, filters));
   const loaded = Array.isArray(posts);
-  const counted = (skip: "status" | "network") => [...monthRows, ...draftRows].filter((r) => matchesFilters(r, filters, skip));
+  const counted = (skip: "status" | "network" | "approval") => [...monthRows, ...draftRows].filter((r) => matchesFilters(r, filters, skip));
   const byStatus = counted("status");
   const byNetwork = counted("network");
+  const byApproval = counted("approval");
   const networks = [...new Set([...monthRows, ...draftRows].flat().map((p) => p.platform))];
   if (filters.network !== "all" && !networks.includes(filters.network)) networks.push(filters.network);
-  const filtered = filters.q !== "" || filters.status !== "all" || filters.network !== "all";
+  const filtered = filters.q !== "" || filters.status !== "all" || filters.network !== "all" || filters.approval !== "all";
 
   return (
     <div className="grid gap-10">
@@ -654,8 +749,21 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
                 ]}
               />
             ) : null}
+            {requires && (
+              <Chips
+                label="Approval"
+                value={filters.approval}
+                onPick={(approval) => setFilters({ ...filters, approval })}
+                options={[
+                  { id: "all" as PostFilters["approval"], name: "All", count: loaded ? byApproval.length : undefined },
+                  ...(["pending", "rejected"] as const).map((a) => ({ id: a, name: approvalName[a], count: loaded ? byApproval.filter((r) => approvalState(r[0]!) === a).length : undefined })),
+                ]}
+              />
+            )}
+            <Status problem={decision.problem} done={decision.done} overrides={postMessages} />
           </div>
         )}
+        {rejecting && <ChangesDialog key={rejecting[0]!.id} posts={rejecting} onClose={() => setRejecting(null)} onSend={(g, note) => decide(g, "reject", note)} />}
         {view === "calendar" && moved && (
           <p role={moved.ok ? "status" : "alert"} className={moved.ok ? "waitlist-done" : "waitlist-error"}>
             {moved.text}
@@ -672,7 +780,7 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
           </p>
         ) : (
           <>
-            {view === "list" && <PostList rows={monthRows} y={month.y} m={month.m} title={title} filters={filters} onClear={clear} />}
+            {view === "list" && <PostList rows={monthRows} y={month.y} m={month.m} title={title} filters={filters} onClear={clear} review={review} />}
             {/* Narrow screens get the month as a list of days; the grid needs about 46rem. */}
             {view === "calendar" && (
             <div className="lg:hidden">
@@ -764,6 +872,14 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
               <StatusBadge status={s} />
             </li>
           ))}
+          {requires && (
+            <li>
+              <span className="badge tone" data-approval="pending">
+                <span aria-hidden="true" className="dot" data-approval="pending" />
+                {approvalName.pending}
+              </span>
+            </li>
+          )}
         </ul>
         )}
       </section>
@@ -802,6 +918,11 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
                   {snippet(p)}
                 </Link>
                 {p.lists.length > 0 && <p className="text-sm font-bold">{p.lists.map(partLabel).join(", ")}</p>}
+                {approvalState(p) && (
+                  <p className="text-sm text-signal-deep">
+                    <ApprovalBadge post={p} /> {p.approval_note}
+                  </p>
+                )}
                 <p className="text-sm text-ink-soft">
                   {setName(p.social_set_id) ? `${setName(p.social_set_id)}. ` : ""}Saved{" "}
                   {new Date(p.updated_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}.

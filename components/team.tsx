@@ -17,6 +17,7 @@ import {
   removeMember,
   renameTeam,
   setNewsletter,
+  setRequireApproval,
   setPublicPages,
   listSubscribers,
   removeSubscriber,
@@ -79,6 +80,7 @@ function TeamPage({ user }: { user: User }) {
           {team.public_pages && <Newsletter team={team} onChanged={setTeam} />}
         </Card>
       )}
+      {manages(mine) && <Approvals team={team} onChanged={setTeam} />}
       {mine === "owner" && <DeleteTeam team={team} />}
     </>
   );
@@ -147,6 +149,30 @@ function PublicPages({ team, onChanged }: { team: Team; onChanged: (t: Team) => 
       <p className="hint pl-6">A public page shows a published post with extra details and links to anyone who has its link. Each post is switched on by itself.</p>
       <Status problem={problem} done={done} />
     </section>
+  );
+}
+
+function Approvals({ team, onChanged }: { team: Team; onChanged: (t: Team) => void }) {
+  const { busy, problem, done, run } = useAction();
+  return (
+    <Card id="approvals-heading" title="Approvals" help="Have an owner or admin look at members' posts before they are published.">
+      <label className="flex cursor-pointer items-center gap-2 font-medium">
+        <input
+          type="checkbox"
+          checked={!!team.require_approval}
+          disabled={busy !== null}
+          onChange={() =>
+            run("approval", () => setRequireApproval(!team.require_approval), (t) => {
+              onChanged(t);
+              return t.require_approval ? "Members' posts now wait for an owner or admin to approve them." : "Members' posts go out without approval again.";
+            })
+          }
+        />
+        Members&apos; posts need an owner or admin to approve them before they go out
+      </label>
+      <p className="hint pl-6">A member&apos;s scheduled post shows as Needs approval on the Posts page. Approve it or ask for changes there or on the post. Posts by owners and admins go out as before.</p>
+      <Status problem={problem} done={done} />
+    </Card>
   );
 }
 
