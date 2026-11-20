@@ -23,7 +23,7 @@ import { listSets, type SocialSet } from "@/lib/sets";
 import { snippet, StatusBadge } from "@/components/posts";
 import { isFailure, linkButton, problemText, Status, useAction } from "@/components/team-ui";
 import { useCurrentSet } from "@/components/app-shell";
-import { Icon } from "@/components/ui";
+import { EmptyState, Icon, LoadFailed, Skeleton, SkeletonRows } from "@/components/ui";
 
 const heading = "font-display text-xl font-extrabold tracking-tight";
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
@@ -67,9 +67,10 @@ export function Lists() {
   // Rename and delete are announced here rather than in Status, which would take focus.
   const [note, setNote] = useState("");
 
+  const [tries, setTries] = useState(0);
   useEffect(() => {
     listLists().then(setLists);
-  }, []);
+  }, [tries]);
 
   function show(kind: "rename" | "delete", l: PostList) {
     flushSync(() => {
@@ -170,17 +171,41 @@ export function Lists() {
         {note}
       </p>
       {lists === null ? (
-        <div role="status" className="h-40 rounded-2xl bg-ink/5 motion-safe:animate-pulse">
+        <div role="status" className="grid gap-3">
           <span className="sr-only">Loading lists...</span>
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="card flex items-start gap-4 p-5">
+              <Skeleton className="size-10 shrink-0 rounded-xl" />
+              <span className="grid flex-1 gap-2.5 py-0.5">
+                <Skeleton className={`h-3.5 ${i % 2 ? "w-1/4" : "w-1/3"}`} />
+                <Skeleton className="h-3 w-1/5" />
+              </span>
+            </div>
+          ))}
         </div>
       ) : isFailure(lists) ? (
-        <p role="alert" className="waitlist-error">
+        <LoadFailed
+          what="lists"
+          retry={() => {
+            setLists(null);
+            setTries((n) => n + 1);
+          }}
+        >
           Lists couldn&apos;t be loaded. {problemText(lists, listMessages)}
-        </p>
+        </LoadFailed>
       ) : lists.length === 0 ? (
-        <p className="card p-5 text-ink-soft">No lists yet. Create one above, then add posts to it.</p>
+        <EmptyState
+          title="No lists yet."
+          action={
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => nameRef.current?.focus()}>
+              Name a list
+            </button>
+          }
+        >
+          Create one above, then add posts to it.
+        </EmptyState>
       ) : (
-        <ul className="grid gap-3">
+        <ul className="enter grid gap-3">
           {lists.map((l) => (
             <li key={l.id} className="card flex flex-wrap items-start gap-4 p-5">
               <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-ink/5 text-ink-soft">
@@ -255,21 +280,28 @@ export function ListView({ id }: { id: string }) {
   const addRef = useRef<HTMLSelectElement>(null);
   const setId = list && !isFailure(list) ? list.social_set_id : undefined;
 
+  const [tries, setTries] = useState(0);
   useEffect(() => {
     getList(id).then(setList);
-  }, [id]);
+  }, [id, tries]);
 
   useEffect(() => {
     if (setId === undefined) return;
     listPosts(setId ? { social_set_id: setId } : {}).then((r) => Array.isArray(r) && setPosts(r));
   }, [setId]);
 
-  if (list === null) return <div role="status" className="h-64 rounded-2xl bg-ink/5 motion-safe:animate-pulse"><span className="sr-only">Loading the list...</span></div>;
+  if (list === null) return <SkeletonRows label="Loading the list..." rows={5} tall />;
   if (isFailure(list))
     return (
-      <p role="alert" className="waitlist-error">
+      <LoadFailed
+        what="this list"
+        retry={() => {
+          setList(null);
+          setTries((n) => n + 1);
+        }}
+      >
         This list couldn&apos;t be loaded. {problemText(list, listMessages)}
-      </p>
+      </LoadFailed>
     );
 
   const l = list;
@@ -333,7 +365,7 @@ export function ListView({ id }: { id: string }) {
           {note}
         </p>
         {l.items.length === 0 ? (
-          <p className="card p-5 text-ink-soft">No posts in this list yet. Add one below.</p>
+          <EmptyState title="No posts in this list yet.">Add one below.</EmptyState>
         ) : (
           <ol aria-label={`Posts in ${l.name}`} className="card divide-y divide-ink/10">
             {l.items.map((item, i) => {
