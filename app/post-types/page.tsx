@@ -98,9 +98,9 @@ export default function PostTypes() {
         </p>
         <h2>Beyond posting</h2>
         <ul>
-          <li>Post analytics (likes, comments, shares and views) are read on Bluesky, Facebook, Instagram and YouTube, and not on the other networks yet.</li>
+          <li>Post analytics: likes and comments on Bluesky, Facebook, Instagram and YouTube, shares on Bluesky and Facebook, and views on YouTube. Nothing is read on the other networks.</li>
           <li>Bulk upload from a CSV file and recurring posts work on every network except TikTok, where each post needs a person&apos;s own choices.</li>
-          <li>RSS and Atom feeds post to every network except TikTok and YouTube, which take video only.</li>
+          <li>RSS and Atom feeds post to every network except TikTok and YouTube, and an item needs an image to go to Instagram.</li>
           <li>The inbox and automations are live on Bluesky. Facebook Pages and Instagram are in testing.</li>
         </ul>
         <p>

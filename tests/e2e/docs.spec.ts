@@ -59,7 +59,7 @@ test("the use guide has a how-to for each part of the app, in both versions", as
   await expect(article).toContainText("text,networks,media,time,first_comment");
   await expect(article).toContainText('Anyone who replies "stop" is opted out');
   await expect(article).toContainText("Send a test to your own email");
-  await expect(article).toContainText("read on Bluesky, Facebook, Instagram and YouTube");
+  await expect(article).toContainText("shares on Bluesky and Facebook, and views on YouTube");
   await expect(article).toContainText("Facebook Pages and Instagram are in testing");
   await page.setViewportSize({ width: 320, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

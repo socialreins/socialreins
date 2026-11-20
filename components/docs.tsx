@@ -301,7 +301,7 @@ function Use({ mode }: { mode: Mode }) {
       <h2 id="feeds">Post from an RSS or Atom feed</h2>
       <ol>
         <li>Open Feeds and choose Add feed.</li>
-        <li>Paste the feed&apos;s link, and pick the set and its networks. TikTok and YouTube are not offered, since they take video only.</li>
+        <li>Paste the feed&apos;s link, and pick the set and its networks. TikTok and YouTube are not offered, and an item needs an image to go to Instagram.</li>
         <li>Choose what a new item becomes: Save a draft, Add to the queue or Post right away.</li>
         <li>
           Write the post text. <C>{"{title}"}</C>, <C>{"{link}"}</C> and <C>{"{summary}"}</C> are filled in from each item.
@@ -350,7 +350,7 @@ function Use({ mode }: { mode: Mode }) {
           Open Broadcasts and choose New broadcast. Give it a name, pick the tag and, if you want, one network, and write the message. <C>{"{name}"}</C> becomes each person&apos;s name.
         </li>
         <li>Choose Save draft. Nothing is sent: the review shows how many people will get it, who will not and why.</li>
-        <li>Choose Send, then confirm the number once more. Owners and admins send; every member can read.</li>
+        <li>Choose Send, then confirm the number once more. Only owners and admins write, review and send a broadcast and see who got it. Members can see the list of broadcasts.</li>
       </ol>
       <p>The rules of every broadcast:</p>
       <ul>
@@ -372,7 +372,7 @@ function Use({ mode }: { mode: Mode }) {
 
       <h2 id="analytics">Read your analytics</h2>
       <p>
-        Open Analytics and pick the last 7, 30 or 90 days. It shows the totals, engagement by day, a table by network and your top posts, for the set picked in the top bar. Likes, comments, shares and views are read on Bluesky, Facebook, Instagram and YouTube; the other networks say Not available yet. A published post&apos;s own page shows the numbers of each account, with Refresh stats. There are no reach, audience or follower reports yet.
+        Open Analytics and pick the last 7, 30 or 90 days. It shows the totals, engagement by day, a table by network and your top posts, for the set picked in the top bar. It reads likes and comments on Bluesky, Facebook, Instagram and YouTube, shares on Bluesky and Facebook, and views on YouTube; the other networks say Not available yet. A published post&apos;s own page shows the numbers of each account, with Refresh stats. There are no reach, audience or follower reports yet.
       </p>
 
       <h2 id="team-address">Give your team its own address</h2>

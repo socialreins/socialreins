@@ -148,7 +148,7 @@ test("the home page lists the seven feature groups and links each to its page", 
   await expect(section.getByText("Live on Bluesky")).toHaveCount(2);
   // The old undersold claims are gone: approvals and analytics exist, and nothing is promised beyond them.
   await expect(section).toContainText("approval step");
-  await expect(section).toContainText("Likes, comments, shares and views");
+  await expect(section).toContainText("shares on Bluesky and Facebook, and views on YouTube");
   await expect(page.getByRole("main")).not.toContainText(/AI writer|WhatsApp|mobile app/i);
 });
 

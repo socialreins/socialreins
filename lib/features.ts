@@ -144,7 +144,7 @@ export const groups: Group[] = [
       { name: "Queue", text: "Set weekly time slots for a set of accounts, and a new post takes the next free one." },
       { name: "Bulk upload", text: "Schedule many posts at once from a CSV file. TikTok is posted from the composer, not from a file." },
       { name: "Recurring posts", text: "Repeat a post every day, week or month, forever or until an end you set. Not for TikTok." },
-      { name: "Feeds", text: "An RSS or Atom feed turns each new item into a draft, a queued post or a post. Not for TikTok or YouTube, which take video only." },
+      { name: "Feeds", text: "An RSS or Atom feed turns each new item into a draft, a queued post or a post. Not for TikTok or YouTube, and an item needs an image to go to Instagram." },
       { name: "Duplicate a post", text: "Copy a post with its text, media and network settings, and schedule it again." },
       { name: "Library", text: "Keep media links, saved captions and hashtag groups, and drop them into a post." },
     ],
@@ -191,11 +191,11 @@ export const groups: Group[] = [
   {
     id: "measure",
     name: "Measure",
-    summary: "Likes, comments, shares and views for each post on Bluesky, Facebook, Instagram and YouTube.",
+    summary: "For each post: likes and comments on Bluesky, Facebook, Instagram and YouTube, shares on Bluesky and Facebook, and views on YouTube.",
     pill: "On 4 networks",
     note: "On Bluesky, Facebook, Instagram and YouTube. Not on the other networks yet.",
     items: [
-      { name: "Post analytics", text: "See likes, comments, shares and views for each post on Bluesky, Facebook, Instagram and YouTube." },
+      { name: "Post analytics", text: "For each post: likes and comments on Bluesky, Facebook, Instagram and YouTube, shares on Bluesky and Facebook, and views on YouTube." },
       { name: "Not yet", text: "There are no reach, audience or follower reports yet." },
     ],
   },

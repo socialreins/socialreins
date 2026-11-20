@@ -6,7 +6,7 @@ import { publicPage } from "@/lib/seo";
 
 export const metadata: Metadata = {
   title: "Features: SocialReins",
-  description: "Everything SocialReins does today: publishing to eight networks, scheduling, an inbox, automations, teams, post analytics, an API and an MCP server.",
+  description: "Everything SocialReins does today: publishing to eight networks, scheduling, teams, post analytics, an API and an MCP server, with an inbox live on Bluesky.",
   ...publicPage("/features"),
 };
 
