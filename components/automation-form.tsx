@@ -144,18 +144,28 @@ export function AutomationForm({
   useEffect(() => {
     if (!dirty) return;
     let leaving = false;
+    let retry = 0;
+    const here = window.location.href;
     const unload = (e: BeforeUnloadEvent) => {
       if (!leaving) e.preventDefault();
     };
     // Next's own history state passes through its pushState untouched, so the router sees the same page.
     const hold = () => window.history.state?.unsaved || window.history.pushState({ ...window.history.state, unsaved: true }, "", window.location.href);
     const back = () => {
-      if (window.history.state?.unsaved) return;
+      // A jump of several entries has already left this page: asking there would hold the wrong one.
+      if (window.history.state?.unsaved || window.location.href !== here) return;
       if (!window.confirm(leaveQuestion)) return hold();
       // The yes is given: neither this listener nor `unload` asks a second time.
       leaving = true;
       window.removeEventListener("popstate", back);
       window.history.back();
+      // With no page before this one (a new tab) Back goes nowhere: the form is still here, so guard it again.
+      retry = window.setTimeout(() => {
+        if (window.location.href !== here) return;
+        leaving = false;
+        hold();
+        window.addEventListener("popstate", back);
+      }, 500);
     };
     hold();
     const click = (e: MouseEvent) => {
@@ -169,6 +179,7 @@ export function AutomationForm({
     window.addEventListener("popstate", back);
     document.addEventListener("click", click, true);
     return () => {
+      window.clearTimeout(retry);
       window.removeEventListener("beforeunload", unload);
       window.removeEventListener("popstate", back);
       document.removeEventListener("click", click, true);
