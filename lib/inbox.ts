@@ -46,7 +46,10 @@ export type Item = {
   contact_id?: string | null;
   contact_tags?: string[];
   assigned_to?: { id: string; name: string } | null;
+  // On a list row that stands for a whole DM conversation (the row is its latest DM); null or missing otherwise.
+  conversation?: Conversation | null;
 };
+export type Conversation = { count: number; open_count: number; first_at: string; last_at: string };
 export type ItemPage = { items: Item[]; next_cursor: string | null };
 
 // Bluesky's limits as brain checks them: a public reply is a post, a DM is a chat message.
@@ -73,7 +76,8 @@ export const deleteInbox = (id: string) => api(`/v1/inboxes/${enc(id)}`, "DELETE
 // `search` looks in the text and the author's name and handle; brain takes 1 to 100 characters.
 // `assigned` is "me", "none" or a user id; `tag` is a contact tag.
 export function listItems(inboxId: string, state: ItemState, cursor?: string | null, kind?: Kind | null, search?: string, more: { assigned?: string; tag?: string } = {}) {
-  const q = new URLSearchParams({ state });
+  // DMs come as one row per person and account; comments and mentions as they are.
+  const q = new URLSearchParams({ state, group: "conversations" });
   if (kind) q.set("kind", kind);
   if (search) q.set("q", search);
   if (more.assigned) q.set("assigned", more.assigned);
@@ -93,22 +97,75 @@ export function mergeFresh(loaded: Page, fresh: ItemPage): Page {
   const byId = new Map(fresh.items.map((i) => [i.id, i]));
   const newest = loaded.items[0]!.received_at;
   const oldest = fresh.items.at(-1)!.received_at;
-  const kept = loaded.items.flatMap((i) => (byId.has(i.id) ? [byId.get(i.id)!] : i.received_at >= oldest ? [] : [i]));
+  // A conversation whose latest DM changed has a new row id: its old row goes, wherever it sits.
+  const threads = new Set(fresh.items.map(threadKey));
+  const kept = loaded.items.flatMap((i) => (byId.has(i.id) ? [byId.get(i.id)!] : i.received_at >= oldest || threads.has(threadKey(i)) ? [] : [i]));
   return { items: [...fresh.items.filter((i) => !known.has(i.id) && i.received_at > newest), ...kept], next: loaded.next };
 }
 
 export const getItem = (id: string) => api<Item>(`/v1/inbox-items/${enc(id)}`);
-export const setItemState = (id: string, state: ItemState) => api<Item>(`/v1/inbox-items/${enc(id)}`, "PATCH", { state });
+// `conversation` applies the change, or the reply's Mark done, to every DM of the item's conversation.
+const whole = (conversation: boolean) => (conversation ? { conversation: true } : {});
+export const setItemState = (id: string, state: ItemState, conversation = false) =>
+  api<Item>(`/v1/inbox-items/${enc(id)}`, "PATCH", { state, ...whole(conversation) });
 // A team member's user id, or null for nobody.
-export const assignItem = (id: string, userId: string | null) => api<Item>(`/v1/inbox-items/${enc(id)}`, "PATCH", { assigned_to: userId });
+export const assignItem = (id: string, userId: string | null, conversation = false) =>
+  api<Item>(`/v1/inbox-items/${enc(id)}`, "PATCH", { assigned_to: userId, ...whole(conversation) });
+
+// A page of a DM conversation, oldest first; `before` is the id of the oldest item on screen.
+export type ConversationPage = { items: Item[]; has_more: boolean };
+export function getConversation(id: string, before?: string) {
+  const q = before ? `?before=${enc(before)}` : "";
+  return api<ConversationPage>(`/v1/inbox-items/${enc(id)}/conversation${q}`);
+}
+
+// What a list row or an open item belongs to: a DM to its person and account, anything else to itself.
+export const threadKey = (i: Item) => (i.kind === "dm" ? `dm:${i.social_account_id}:${i.author.id}` : i.id);
+
+export const messageCount = (n: number) => `${n} ${n === 1 ? "message" : "messages"}`;
+
+const dayOf = (iso: string) => new Date(iso).toDateString();
+// "Today", "Yesterday", else the date, in the reader's own time zone.
+export function dayLabel(iso: string, now = Date.now()) {
+  const day = dayOf(iso);
+  if (day === new Date(now).toDateString()) return "Today";
+  if (day === new Date(now - 86_400_000).toDateString()) return "Yesterday";
+  return new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
+}
+
+export type ChatRow =
+  | { type: "day"; key: string; label: string }
+  | { type: "them"; key: string; at: string; text: string; item: Item }
+  | { type: "us"; key: string; at: string; text: string; reply: Reply };
+// A conversation as chat rows: their messages and our replies in time order, a day row before each new day.
+export function chatRows(items: Item[], now = Date.now()): ChatRow[] {
+  const seen = new Set<string>();
+  const rows = items.flatMap((item): Exclude<ChatRow, { type: "day" }>[] => [
+    { type: "them", key: item.id, at: item.received_at, text: item.text, item },
+    ...item.replies.filter((r) => !seen.has(r.id) && seen.add(r.id)).map((reply) => ({ type: "us" as const, key: `r-${reply.id}`, at: reply.created_at, text: reply.text, reply })),
+  ]);
+  rows.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  return rows.flatMap((row, n) => (n > 0 && dayOf(rows[n - 1]!.at) === dayOf(row.at) ? [row] : [{ type: "day" as const, key: `day-${row.key}`, label: dayLabel(row.at, now) }, row]));
+}
+
+// The inbox's one-key shortcuts. Never while typing, with a modifier key, or inside a dialog.
+const SHORTCUTS = { j: "next", k: "previous", e: "done", r: "reply", a: "assign", "/": "search", "?": "help" } as const;
+export type Shortcut = (typeof SHORTCUTS)[keyof typeof SHORTCUTS];
+type KeyLike = { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; target: EventTarget | null };
+export function shortcutFor(e: KeyLike): Shortcut | null {
+  if (e.metaKey || e.ctrlKey || e.altKey) return null;
+  const el = e.target as (Partial<HTMLElement> & { closest?: (s: string) => unknown }) | null;
+  if (el?.isContentEditable || el?.closest?.("input, textarea, select, [contenteditable], dialog, [role=menu]")) return null;
+  return SHORTCUTS[e.key.toLowerCase() as keyof typeof SHORTCUTS] ?? null;
+}
 
 // A send that did not happen: brain's code and its message saying what to do.
 export type SendError = { code: string; message: string };
 export type ReplyResult = Item | Failure | SendError;
 
 // 201 with the item and its replies. Sending waits on Bluesky, so it gets the connect timeout.
-export async function replyToItem(id: string, text: string): Promise<ReplyResult> {
-  const res = await request(`/v1/inbox-items/${enc(id)}/reply`, "POST", { text }, CONNECT_TIMEOUT_MS);
+export async function replyToItem(id: string, text: string, conversation = false): Promise<ReplyResult> {
+  const res = await request(`/v1/inbox-items/${enc(id)}/reply`, "POST", { text, ...whole(conversation) }, CONNECT_TIMEOUT_MS);
   if (typeof res === "string") return res;
   if (res.ok) return ((await res.json().catch(() => null)) as Item | null) ?? "error";
   const body = await res.clone().json().catch(() => null);

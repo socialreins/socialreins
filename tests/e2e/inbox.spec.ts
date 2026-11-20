@@ -1,5 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 
+// Day rows and times are read in one fixed time zone.
+test.use({ timezoneId: "Europe/Berlin" });
+
 type Role = "owner" | "admin" | "member";
 const me = (role: Role) => ({
   id: "u-me",
@@ -52,7 +55,12 @@ const item = (id: string, kind: "comment" | "mention" | "dm", text: string, extr
 });
 
 // A small in-memory brain for the inbox.
-async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items?: ReturnType<typeof item>[] } = {}) {
+type Row = ReturnType<typeof item>;
+// brain groups DMs per person and account.
+const thread = (i: Row) => (i.kind === "dm" ? `${i.social_account_id}:${i.author.id}` : i.id);
+const oldestFirst = (a: Row, b: Row) => a.received_at.localeCompare(b.received_at);
+
+async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items?: Row[]; convoPage?: number } = {}) {
   const state = {
     inboxes: [inbox("all", "All"), inbox("i2", "Questions", { filters: { ...filters, keywords: ["price"] } })],
     items: opts.items ?? [
@@ -62,7 +70,14 @@ async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items
     ],
     bodies: [] as unknown[],
     asked: [] as URLSearchParams[],
+    // Every PATCH and reply to an item, and every conversation page asked for.
+    patches: [] as { id: string; body: Record<string, unknown> }[],
+    replies: [] as { id: string; body: Record<string, unknown> }[],
+    convos: [] as { id: string; before: string | null }[],
+    // Set to a status to make the next PATCHes fail.
+    failPatch: 0,
   };
+  const dms = (i: Row) => state.items.filter((x) => x.kind === "dm" && thread(x) === thread(i)).sort(oldestFirst);
   await page.route("**/auth/me", (route) => route.fulfill({ json: me(role) }));
   await page.route("**/v1/connections", (route) => route.fulfill({ json: opts.accounts ?? [alice] }));
   await page.route(/\/v1\/social-sets$/, (route) => route.fulfill({ json: [{ id: "d", name: "All sets", is_default: true, account_ids: ["c1"], account_count: 1, created_at: "", deleted_at: null }] }));
@@ -92,15 +107,52 @@ async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items
     const kind = q.get("kind");
     const search = q.get("q")?.toLowerCase();
     state.asked.push(q);
-    const hit = (i: ReturnType<typeof item>) => i.state === q.get("state") && (!kind || i.kind === kind) && (!search || i.text.toLowerCase().includes(search));
-    return route.fulfill({ json: { items: state.items.filter(hit), next_cursor: null } });
+    const match = (i: Row) => (!kind || i.kind === kind) && (!search || i.text.toLowerCase().includes(search));
+    // One row per conversation: its latest DM. Open while any of its DMs is open, done once none is.
+    const rows = state.items.filter(match).flatMap((i): (Row & { conversation: object | null })[] => {
+      if (i.kind !== "dm" || q.get("group") !== "conversations") return i.state === q.get("state") ? [{ ...i, conversation: null }] : [];
+      const all = dms(i);
+      const open = all.filter((x) => x.state === "open").length;
+      if (all.at(-1) !== i || (open > 0 ? "open" : "done") !== q.get("state")) return [];
+      return [{ ...i, conversation: { count: all.length, open_count: open, first_at: all[0]!.received_at, last_at: i.received_at } }];
+    });
+    return route.fulfill({ json: { items: rows.sort((a, b) => -oldestFirst(a, b)), next_cursor: null } });
   });
+  const itemId = (url: string) => new URL(url).pathname.split("/")[3]!;
   await page.route(/\/v1\/inbox-items\/[^/]+$/, (route) => {
-    const id = route.request().url().split("/").pop()!;
-    const found = state.items.find((i) => i.id === id);
+    const found = state.items.find((i) => i.id === itemId(route.request().url()));
     if (!found) return route.fulfill({ status: 404, json: { error: "not_found" } });
-    if (route.request().method() === "PATCH") found.state = route.request().postDataJSON().state;
+    if (route.request().method() === "PATCH") {
+      const body = route.request().postDataJSON();
+      state.patches.push({ id: found.id, body });
+      if (state.failPatch) return route.fulfill({ status: state.failPatch, json: { error: "server_error" } });
+      for (const i of body.conversation ? dms(found) : [found]) {
+        if ("state" in body) i.state = body.state;
+        if ("assigned_to" in body) Object.assign(i, { assigned_to: body.assigned_to ? { id: body.assigned_to, name: "Me" } : null });
+      }
+    }
     return route.fulfill({ json: found });
+  });
+  await page.route(/\/v1\/inbox-items\/[^/]+\/conversation(\?.*)?$/, (route) => {
+    const url = new URL(route.request().url());
+    const found = state.items.find((i) => i.id === itemId(route.request().url()));
+    if (!found) return route.fulfill({ status: 404, json: { error: "not_found" } });
+    if (found.kind !== "dm") return route.fulfill({ status: 422, json: { error: "not_a_conversation" } });
+    const before = url.searchParams.get("before");
+    state.convos.push({ id: found.id, before });
+    const all = dms(found);
+    const older = before ? all.slice(0, all.findIndex((i) => i.id === before)) : all;
+    const size = opts.convoPage ?? 50;
+    return route.fulfill({ json: { items: older.slice(-size), has_more: older.length > size } });
+  });
+  await page.route(/\/v1\/inbox-items\/[^/]+\/reply$/, (route) => {
+    const found = state.items.find((i) => i.id === itemId(route.request().url()))!;
+    const body = route.request().postDataJSON();
+    state.replies.push({ id: found.id, body });
+    found.replied_at = new Date().toISOString();
+    found.replies = [...found.replies, { id: `r${state.replies.length}`, kind: found.kind === "dm" ? "dm" : "public", text: body.text, remote_id: null, remote_url: null, sent_by: "u-me", automation_id: null, created_at: found.replied_at }];
+    if (body.conversation) for (const i of dms(found)) i.state = "done";
+    return route.fulfill({ status: 201, json: found });
   });
   return state;
 }
@@ -133,8 +185,8 @@ test("inbox lists items, filters by kind, and opens one by URL", async ({ page }
   await expect(rows).toHaveCount(3);
   await expect(rows.first()).toContainText("Unanswered:");
   await expect(rows.first()).toContainText("5 minutes ago");
-  await page.getByRole("button", { name: "DMs" }).click();
-  await expect(page.getByRole("button", { name: "DMs" })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("combobox", { name: "Kind" }).selectOption({ label: "DMs" });
+  await expect(page.getByRole("combobox", { name: "Kind" })).toHaveValue("dm");
   await expect(rows).toHaveCount(1);
   await list.getByRole("link", { name: /Hi, can we talk/ }).click();
   await expect(page).toHaveURL("/t/acme22/inbox?item=p3");
@@ -175,11 +227,15 @@ test("reply publicly, then mark done and reopen", async ({ page }) => {
   await expect(detail.getByRole("list", { name: "Thread" })).toContainText("It is free!");
   await expect(detail.getByRole("list", { name: "Thread" })).toContainText("Team, public reply");
   await detail.getByRole("button", { name: "Mark done" }).click();
-  await expect(detail.getByText("Marked done.")).toBeFocused();
+  // The row goes at once and the next item opens.
+  await expect(page.getByRole("status").filter({ hasText: "Marked done." })).toBeVisible();
   await expect(page.getByRole("region", { name: "All" }).getByRole("link", { name: /What is the price/ })).toHaveCount(0);
+  await expect(page).toHaveURL("/t/acme22/inbox?item=p2");
+  // A comment is one item: no word of a conversation.
+  expect(state.patches).toEqual([{ id: "p1", body: { state: "done" } }]);
   await page.getByRole("link", { name: "Done", exact: true }).click();
+  await page.getByRole("region", { name: "All" }).getByRole("link", { name: /What is the price/ }).click();
   await expect(page).toHaveURL("/t/acme22/inbox?state=done&item=p1");
-  await expect(page.getByRole("region", { name: "All" }).getByRole("link", { name: /What is the price/ })).toBeVisible();
   await detail.getByRole("button", { name: "Reopen" }).click();
   await expect(detail.getByText("Reopened.")).toBeFocused();
 });
@@ -195,6 +251,9 @@ test("a DM that can't be sent says why", async ({ page }) => {
   await detail.getByRole("button", { name: "Send DM" }).click();
   await expect(detail.getByRole("alert")).toContainText("Reconnect with an app password that allows DMs");
   await expect(detail.getByRole("alert").getByRole("link", { name: "Open Accounts" })).toHaveAttribute("href", "/t/acme22/connections");
+  // The message stays in the chat, marked as not sent.
+  await expect(detail.getByRole("list", { name: "Conversation" })).toContainText("Sure");
+  await expect(detail.getByRole("button", { name: "Retry" })).toBeVisible();
 });
 
 test("empty states: no accounts, then no items", async ({ page }) => {
@@ -274,7 +333,7 @@ test("a kind filter asks brain for that kind, and load more keeps it", async ({ 
     });
   });
   await page.goto("/inbox");
-  await page.getByRole("button", { name: "DMs" }).click();
+  await page.getByRole("combobox", { name: "Kind" }).selectOption({ label: "DMs" });
   await expect(page.getByRole("link", { name: /Newer DM/ })).toBeVisible();
   await expect(page.getByRole("link", { name: /First page/ })).toHaveCount(0);
   await page.getByRole("button", { name: "Load more" }).click();
@@ -351,8 +410,8 @@ test("each inbox shows its open count, kept fresh by the poll and by Mark done",
 test.describe("on a wide screen", () => {
   test.use({ viewport: { width: 1440, height: 900 } });
   test("the panes scroll on their own, not the page, and the reply box stays in view", async ({ page }) => {
-    const kinds = ["comment", "mention", "dm"] as const;
-    await brain(page, "owner", { items: Array.from({ length: 40 }, (_, n) => item(`q${n}`, kinds[n % 3], `Message number ${n}`, { received_at: ago(n * 7) })) });
+    const kinds = ["comment", "mention"] as const;
+    await brain(page, "owner", { items: Array.from({ length: 40 }, (_, n) => item(`q${n}`, kinds[n % 2], `Message number ${n}`, { received_at: ago(n * 7) })) });
     await page.goto("/inbox");
     const items = page.getByRole("list", { name: "Items" });
     await expect(items.getByRole("listitem")).toHaveCount(40);
@@ -391,5 +450,290 @@ test.describe("on a wide screen", () => {
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL("/t/acme22/inbox?item=p2");
     await expect(page.getByRole("region", { name: "Item" }).getByRole("heading", { name: "Bob" })).toBeFocused();
+  });
+});
+
+// Two conversations (Bob with 4 DMs, Cara with 2) and three comments, at fixed times around a fixed "now".
+const NOW = "2026-11-12T12:00:00Z";
+const cara = { id: "did:plc:cara", handle: "cara.bsky.social", name: "Cara", avatar_url: null };
+const ourReply = { id: "r0", kind: "dm", text: "Hello Bob, sure.", remote_id: null, remote_url: null, sent_by: "u-me", automation_id: null, created_at: "2026-11-10T09:30:00Z" };
+const mixed = () => [
+  item("b1", "dm", "Hi, do you ship to Berlin?", { received_at: "2026-11-10T09:00:00Z", state: "done", replied_at: ourReply.created_at, replies: [ourReply] }),
+  item("b2", "dm", "And how long does it take?", { received_at: "2026-11-11T10:00:00Z", state: "done" }),
+  item("b3", "dm", "Still there?", { received_at: "2026-11-12T08:00:00Z" }),
+  item("b4", "dm", "I would like two of them.", { received_at: "2026-11-12T11:00:00Z" }),
+  item("k1", "dm", "Do you have gift cards?", { received_at: "2026-11-12T09:00:00Z", author: cara }),
+  item("k2", "dm", "For 50 euros.", { received_at: "2026-11-12T09:05:00Z", author: cara }),
+  item("m1", "comment", "What is the price?", { received_at: "2026-11-12T11:30:00Z" }),
+  item("m2", "comment", "Great post", { received_at: "2026-11-12T07:00:00Z" }),
+  item("m3", "comment", "Where is the shop?", { received_at: "2026-11-11T07:00:00Z" }),
+];
+// The address as the browser has it, whatever host and port the test server runs on.
+const query = (page: Page) => new URL(page.url()).searchParams;
+
+test.describe("conversations", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+  test.beforeEach(({ page }) => page.clock.setFixedTime(new Date(NOW)));
+  const rows = (page: Page) => page.getByRole("list", { name: "Items" }).getByRole("listitem");
+  const reader = (page: Page) => page.getByRole("region", { name: "Item" });
+  const chat = (page: Page) => reader(page).getByRole("list", { name: "Conversation" });
+  const bubbles = (page: Page) => chat(page).locator("[data-row]");
+
+  test("the list asks brain for conversations and shows one row for each, with its count", async ({ page }) => {
+    const state = await brain(page, "owner", { items: mixed() });
+    await page.goto("/inbox");
+    // Newest first: the comment, Bob's conversation, Cara's, then the older comments.
+    await expect(rows(page)).toHaveText([/What is the price/, /I would like two of them/, /For 50 euros/, /Great post/, /Where is the shop/]);
+    expect(state.asked.length).toBeGreaterThan(0);
+    expect(state.asked.every((q) => q.get("group") === "conversations")).toBe(true);
+    const bob = rows(page).nth(1);
+    await expect(bob).toContainText("Bob");
+    await expect(bob).toContainText("4 messages");
+    await expect(bob).toContainText("Unread:");
+    await expect(bob).toContainText("1 hour ago");
+    await expect(rows(page).nth(2)).toContainText("2 messages");
+    // A comment is a row of its own, as before.
+    await expect(rows(page).first()).not.toContainText("message");
+    await expect(rows(page).first()).toContainText("Unanswered:");
+    // The filter and Load more keep asking for conversations.
+    await page.getByRole("combobox", { name: "Kind" }).selectOption({ label: "DMs" });
+    await expect(rows(page)).toHaveCount(2);
+    expect(state.asked.at(-1)?.get("group")).toBe("conversations");
+    expect(state.asked.at(-1)?.get("kind")).toBe("dm");
+  });
+
+  test("a conversation opens as a chat at its newest message, and Load earlier brings the rest", async ({ page }) => {
+    const state = await brain(page, "owner", { items: mixed(), convoPage: 2 });
+    await page.goto("/inbox");
+    await rows(page).nth(1).getByRole("link").click();
+    await expect.poll(() => query(page).get("item")).toBe("b4");
+    await expect(reader(page).getByRole("heading", { name: "Bob" })).toBeFocused();
+    await expect(reader(page)).toContainText("DMs with Alice, 4 messages");
+    // The newest page: one day, their two messages on the left.
+    await expect(bubbles(page)).toHaveText(["Today", /Still there\?/, /I would like two of them\./]);
+    await expect(bubbles(page).nth(2)).toHaveAttribute("data-row", "them");
+    await expect(chat(page).getByText("I would like two of them.")).toBeInViewport();
+    await expect(reader(page).getByRole("list", { name: "Thread" })).toHaveCount(0);
+
+    await chat(page).getByRole("button", { name: "Load earlier" }).click();
+    await expect(bubbles(page)).toHaveText([
+      new Date("2026-11-10T09:00:00Z").toLocaleDateString("en-US", { dateStyle: "medium" }),
+      /Hi, do you ship to Berlin\?/,
+      /Hello Bob, sure\..*Team, DM/,
+      "Yesterday",
+      /And how long does it take\?/,
+      "Today",
+      /Still there\?/,
+      /I would like two of them\./,
+    ]);
+    // Ours sit on the right.
+    await expect(bubbles(page).nth(2)).toHaveAttribute("data-row", "us");
+    await expect(chat(page).getByRole("button", { name: "Load earlier" })).toHaveCount(0);
+    expect(state.convos).toEqual([
+      { id: "b4", before: null },
+      { id: "b4", before: "b3" },
+    ]);
+    // A time reads in the pinned zone: 11:00 UTC is noon in Berlin.
+    await expect(bubbles(page).last()).toContainText("12:00");
+  });
+
+  test("a reply goes to the latest message for the whole conversation and shows at once", async ({ page }) => {
+    const state = await brain(page, "owner", { items: mixed() });
+    // The first send is refused, the second waits until the test lets it through.
+    let attempt = 0;
+    let release = () => {};
+    const held = new Promise<void>((done) => (release = done));
+    await page.route(/\/v1\/inbox-items\/[^/]+\/reply$/, async (route) => {
+      attempt += 1;
+      if (attempt === 1) return route.fulfill({ status: 422, json: { error: "dm_not_allowed", message: "Not taken." } });
+      await held;
+      return route.fallback();
+    });
+    // Opened through an older DM of the conversation.
+    await page.goto("/inbox?item=b3");
+    await expect(bubbles(page).last()).toContainText("I would like two of them.");
+    const box = reader(page).getByLabel("Send DM");
+    await box.fill("Two it is!");
+    await box.press("ControlOrMeta+Enter");
+    await expect(box).toHaveValue("");
+    await expect(bubbles(page).last()).toContainText("Two it is!");
+    await expect(bubbles(page).last().getByRole("alert")).toContainText("Not sent. They only accept DMs from people they follow");
+
+    await bubbles(page).last().getByRole("button", { name: "Retry" }).click();
+    await expect(bubbles(page).last()).toContainText("Sending...");
+    await expect(bubbles(page).last()).toContainText("Two it is!");
+    await expect(reader(page).getByRole("button", { name: "Send DM" })).toBeDisabled();
+    release();
+    await expect(chat(page).getByText("Sending...")).toHaveCount(0);
+    await expect(bubbles(page).last()).toContainText("Two it is!");
+    await expect(bubbles(page).last()).toContainText("Team, DM");
+    await expect(bubbles(page).last()).toHaveAttribute("data-row", "us");
+    expect(state.replies).toEqual([{ id: "b4", body: { text: "Two it is!", conversation: true } }]);
+    // Answered, so the whole conversation is done and leaves the open list.
+    await expect(rows(page).filter({ hasText: "Bob" }).filter({ hasText: "messages" })).toHaveCount(0);
+    await expect(reader(page).getByRole("button", { name: "Reopen" })).toBeVisible();
+  });
+
+  test("Mark done closes the whole conversation at once, Undo brings it back, and a refusal says so", async ({ page }) => {
+    const state = await brain(page, "owner", { items: mixed() });
+    await page.goto("/inbox?item=b4");
+    await expect(bubbles(page).last()).toContainText("I would like two of them.");
+    await reader(page).getByRole("button", { name: "Mark done" }).click();
+    await expect(rows(page)).toHaveText([/What is the price/, /For 50 euros/, /Great post/, /Where is the shop/]);
+    // The next row opens.
+    await expect.poll(() => query(page).get("item")).toBe("k2");
+    await expect(reader(page).getByRole("heading", { name: "Cara" })).toBeVisible();
+    const line = page.getByRole("status").filter({ hasText: "Marked done." });
+    await line.getByRole("button", { name: "Undo" }).click();
+    await expect(rows(page)).toHaveText([/What is the price/, /I would like two of them/, /For 50 euros/, /Great post/, /Where is the shop/]);
+    await expect.poll(() => query(page).get("item")).toBe("b4");
+    expect(state.patches).toEqual([
+      { id: "b4", body: { state: "done", conversation: true } },
+      { id: "b4", body: { state: "open", conversation: true } },
+    ]);
+    await expect(line).toHaveCount(0);
+
+    // Assign covers the conversation too.
+    await reader(page).getByRole("button", { name: "Assign to me" }).click();
+    await expect(reader(page).getByRole("status").filter({ hasText: "Assigned to Me." })).toBeVisible();
+    expect(state.patches.at(-1)).toEqual({ id: "b4", body: { assigned_to: "u-me", conversation: true } });
+
+    // brain refuses: the row comes back with a message.
+    state.failPatch = 500;
+    await reader(page).getByRole("button", { name: "Mark done" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "couldn't be marked done, so it is back in the list" })).toBeVisible();
+    await expect(rows(page)).toHaveCount(5);
+    await expect(rows(page).nth(1)).toContainText("I would like two of them");
+    await expect.poll(() => query(page).get("item")).toBe("b4");
+    await page.getByRole("button", { name: "Dismiss" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "marked done" })).toHaveCount(0);
+  });
+
+  test("the Undo line goes after five seconds", async ({ page }) => {
+    await page.clock.install({ time: new Date(NOW) });
+    await brain(page, "owner", { items: mixed() });
+    await page.goto("/inbox?item=m1");
+    await reader(page).getByRole("button", { name: "Mark done" }).click();
+    const line = page.getByRole("status").filter({ hasText: "Marked done." });
+    await expect(line).toBeVisible();
+    await page.clock.runFor(4_000);
+    await expect(line).toBeVisible();
+    await page.clock.runFor(1_500);
+    await expect(line).toHaveCount(0);
+  });
+
+  test("J, K, E, R, A, / and ? work, and never while typing", async ({ page }) => {
+    const state = await brain(page, "owner", { items: mixed() });
+    await page.goto("/inbox");
+    await expect(rows(page)).toHaveCount(5);
+    await expect(reader(page)).toContainText("move between items");
+    const item = () => query(page).get("item");
+    await page.keyboard.press("j");
+    await expect.poll(item).toBe("m1");
+    await page.keyboard.press("j");
+    await expect.poll(item).toBe("b4");
+    await expect(rows(page).nth(1).getByRole("link")).toHaveAttribute("aria-current", "true");
+    await page.keyboard.press("j");
+    await expect.poll(item).toBe("k2");
+    await page.keyboard.press("k");
+    await expect.poll(item).toBe("b4");
+    // A modifier key leaves the shortcut alone.
+    await page.keyboard.press("Control+j");
+    await page.keyboard.press("Alt+k");
+    await expect(bubbles(page).last()).toContainText("I would like two of them.");
+    expect(item()).toBe("b4");
+
+    await page.keyboard.press("a");
+    await expect(reader(page).getByRole("status").filter({ hasText: "Assigned to Me." })).toBeVisible();
+    expect(state.patches).toEqual([{ id: "b4", body: { assigned_to: "u-me", conversation: true } }]);
+
+    // R goes to the reply box, where the same keys are just letters.
+    const box = reader(page).getByLabel("Send DM");
+    await page.keyboard.press("r");
+    await expect(box).toBeFocused();
+    await page.keyboard.type("jkera/?");
+    await expect(box).toHaveValue("jkera/?");
+    expect(item()).toBe("b4");
+    expect(state.patches).toHaveLength(1);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await box.fill("");
+
+    // / goes to the search box, the same there.
+    await reader(page).getByRole("heading", { name: "Bob" }).focus();
+    await page.keyboard.press("/");
+    const search = page.getByRole("searchbox", { name: "Search All" });
+    await expect(search).toBeFocused();
+    await expect(search).toHaveValue("");
+    await page.keyboard.type("e?");
+    await expect(search).toHaveValue("e?");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    expect(state.patches).toHaveLength(1);
+    await search.fill("");
+    await expect(rows(page)).toHaveCount(5);
+
+    // E marks the open one done and opens the next.
+    await reader(page).getByRole("heading", { name: "Bob" }).focus();
+    await page.keyboard.press("e");
+    await expect(rows(page)).toHaveCount(4);
+    await expect.poll(item).toBe("k2");
+    expect(state.patches.at(-1)).toEqual({ id: "b4", body: { state: "done", conversation: true } });
+    await expect(reader(page).getByRole("heading", { name: "Cara" })).toBeFocused();
+
+    await page.keyboard.press("?");
+    const help = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+    await expect(help).toContainText("Mark done and open the next one");
+    // Open, the dialog holds the keys.
+    await page.keyboard.press("j");
+    expect(item()).toBe("k2");
+    await help.getByRole("button", { name: "Close" }).click();
+    await expect(help).toHaveCount(0);
+  });
+
+  test("the filter menus keep the address, and set filters show as chips to remove", async ({ page }) => {
+    const state = await brain(page, "owner", { items: mixed() });
+    await page.goto("/inbox?q=price&tag=vip&item=m1");
+    const chips = page.getByRole("list", { name: "Active filters" });
+    await expect(chips.getByRole("listitem")).toHaveText(["Tag: vip"]);
+    await page.getByRole("combobox", { name: "Assigned" }).selectOption({ label: "Me" });
+    await expect.poll(() => query(page).get("assigned")).toBe("me");
+    expect(Object.fromEntries(query(page))).toEqual({ item: "m1", q: "price", assigned: "me", tag: "vip" });
+    await expect(chips.getByRole("listitem")).toHaveText(["Assigned: Me", "Tag: vip"]);
+    await expect.poll(() => state.asked.at(-1)?.get("assigned")).toBe("me");
+
+    await page.getByRole("combobox", { name: "Kind" }).selectOption({ label: "Comments" });
+    await expect(chips.getByRole("listitem")).toHaveText(["Comments", "Assigned: Me", "Tag: vip"]);
+    await expect.poll(() => state.asked.at(-1)?.get("kind")).toBe("comment");
+    expect(Object.fromEntries(state.asked.at(-1)!)).toEqual({ state: "open", group: "conversations", kind: "comment", q: "price", assigned: "me", tag: "vip" });
+    expect(Object.fromEntries(query(page))).toEqual({ item: "m1", q: "price", assigned: "me", tag: "vip" });
+
+    // Done keeps them too.
+    await page.getByRole("link", { name: "Done", exact: true }).click();
+    await expect.poll(() => query(page).get("state")).toBe("done");
+    expect(Object.fromEntries(query(page))).toEqual({ state: "done", item: "m1", q: "price", assigned: "me", tag: "vip" });
+
+    await chips.getByRole("button", { name: "Clear the kind filter" }).click();
+    await expect(page.getByRole("combobox", { name: "Kind" })).toHaveValue("all");
+    await chips.getByRole("link", { name: "Clear the assigned filter" }).click();
+    await expect.poll(() => query(page).get("assigned")).toBeNull();
+    await expect(page.getByRole("combobox", { name: "Assigned" })).toHaveValue("");
+    await chips.getByRole("link", { name: "Clear the tag filter vip" }).click();
+    await expect(chips).toHaveCount(0);
+    expect(Object.fromEntries(query(page))).toEqual({ state: "done", item: "m1", q: "price" });
+  });
+
+  test("a comment still opens in the thread reader and answers for itself", async ({ page }) => {
+    const state = await brain(page, "owner", { items: mixed() });
+    await page.goto("/inbox");
+    await rows(page).first().getByRole("link").click();
+    const thread = reader(page).getByRole("list", { name: "Thread" });
+    await expect(thread.getByRole("listitem")).toHaveText([/What is the price\?/]);
+    await expect(chat(page)).toHaveCount(0);
+    await expect(reader(page)).toContainText("Comment to Alice");
+    await reader(page).getByLabel("Reply publicly").fill("Ten euros.");
+    await reader(page).getByRole("button", { name: "Reply publicly" }).click();
+    await expect(reader(page).getByText("Reply sent.")).toBeFocused();
+    await expect(thread.getByRole("listitem")).toHaveText([/What is the price\?/, /Ten euros\..*Team, public reply/]);
+    expect(state.replies).toEqual([{ id: "m1", body: { text: "Ten euros." } }]);
+    expect(state.convos).toEqual([]);
   });
 });

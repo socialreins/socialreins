@@ -52,7 +52,7 @@ describe("inbox assignment", () => {
     await listItems("all", "open", "c9", null, "", { assigned: "me", tag: "big spender" });
     await assignItem("p1", "u2");
     await assignItem("p1", null);
-    expect(urls(fetch)[0]).toBe("/v1/inboxes/all/items?state=open&assigned=me&tag=big+spender&cursor=c9");
+    expect(urls(fetch)[0]).toBe("/v1/inboxes/all/items?state=open&group=conversations&assigned=me&tag=big+spender&cursor=c9");
     const bodies = fetch.mock.calls.slice(1).map((c) => (c as unknown as [string, RequestInit])[1].body);
     expect(bodies).toEqual([JSON.stringify({ assigned_to: "u2" }), JSON.stringify({ assigned_to: null })]);
   });

@@ -11,22 +11,27 @@ import { listContactTags, updateContact } from "@/lib/contacts";
 import {
   assignItem,
   authorName,
+  chatRows,
+  getConversation,
   getItem,
   kindName,
   listInboxes,
   listItems,
   maxFor,
   mergeFresh,
+  messageCount,
   relativeTime,
   replyToItem,
   setItemState,
+  shortcutFor,
+  threadKey,
   type Author,
+  type ConversationPage,
   type Inbox as InboxT,
   type Item,
   type ItemState,
   type Kind,
   type Page,
-  type SendError,
 } from "@/lib/inbox";
 import { createSnippet, isProblem, libraryText, type Problem } from "@/lib/library";
 import { graphemes } from "@/lib/posts";
@@ -38,7 +43,7 @@ import { InboxEditor, inboxMessages } from "@/components/inbox-editor";
 import { SnippetMenu } from "@/components/library";
 import { platformName } from "@/components/platform-icons";
 import { TagEditor } from "@/components/tag-editor";
-import { isFailure, problemText, Status, useAction, useSearchInUrl } from "@/components/team-ui";
+import { isFailure, linkButton, problemText, Status, useAction, useSearchInUrl } from "@/components/team-ui";
 import { Icon } from "@/components/ui";
 
 // New comments arrive on brain's per-minute tick; the open list checks twice a minute.
@@ -63,19 +68,91 @@ const sendMessages: Record<string, ReactNode> = {
   reconnect_required: <>Bluesky refused the app password. Reconnect the account. {accountsLink}</>,
 };
 
-const filters: { kind: Kind | "all"; label: string }[] = [
-  { kind: "all", label: "All kinds" },
-  { kind: "comment", label: "Comments" },
-  { kind: "mention", label: "Mentions" },
-  { kind: "dm", label: "DMs" },
+const kindOptions: { value: Kind | "all"; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "comment", label: "Comments" },
+  { value: "mention", label: "Mentions" },
+  { value: "dm", label: "DMs" },
 ];
 
 // Who the list shows: everyone's items, mine, or the ones nobody has. In the address as ?assigned=.
-const assignedChips = [
+const assignedOptions = [
   { value: "", label: "Anyone" },
   { value: "me", label: "Me" },
   { value: "none", label: "Unassigned" },
 ];
+
+const shortcuts: [string, string][] = [
+  ["J", "Next item"],
+  ["K", "Previous item"],
+  ["E", "Mark done and open the next one"],
+  ["R", "Write a reply"],
+  ["A", "Assign to me"],
+  ["/", "Search this inbox"],
+  ["?", "Show these shortcuts"],
+  ["Ctrl or Cmd + Enter", "Send the reply"],
+];
+
+// How long Mark done offers Undo.
+const UNDO_MS = 5_000;
+// A done item that left the list at once: where it was, and the PATCH still on its way.
+type Undo = { item: Item; row: Item | null; at: number; saved: Promise<Item | Failure>; problem?: Failure; undoing?: boolean };
+
+// A change to one item, laid over a list row or the open item of the same thread. A conversation's row is its
+// latest DM, so a change made through an older DM moves only what the whole conversation shares.
+const patched = (x: Item, i: Item): Item =>
+  x.id === i.id ? { ...i, conversation: x.conversation } : { ...x, state: i.state, assigned_to: i.assigned_to, contact_tags: i.contact_tags };
+
+const chip = "badge tone gap-1 pr-1 text-ink";
+const chipClear = "grid size-5 place-items-center rounded-full hover:bg-ink/10";
+
+// A small menu in the filter bar: the filter's name with a native select as its value.
+function FilterMenu<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: { value: T; label: string }[]; onChange: (v: T) => void }) {
+  return (
+    <label className="flex items-center gap-1 rounded-full border border-ink/15 py-1 pr-1 pl-3 text-sm text-ink-soft hover:border-ink/40 has-[:focus-visible]:border-ink">
+      {label}
+      <select className="cursor-pointer rounded-full bg-transparent py-0.5 pr-1 font-bold text-ink" value={value} onChange={(e) => onChange(e.target.value as T)}>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function ShortcutsDialog({ onClose }: { onClose: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    ref.current?.showModal();
+  }, []);
+  return (
+    <dialog ref={ref} aria-labelledby="shortcuts-title" onClose={onClose} className="m-auto w-[min(26rem,calc(100vw-2rem))] rounded-2xl bg-paper p-0 text-ink shadow-2xl backdrop:bg-ink/40">
+      <div className="grid gap-4 p-6">
+        <div className="flex items-center justify-between gap-3">
+          <h2 id="shortcuts-title" className="font-display text-xl font-extrabold tracking-tight">
+            Keyboard shortcuts
+          </h2>
+          <button type="button" className="icon-btn" aria-label="Close" onClick={() => ref.current?.close()}>
+            <Icon name="close" />
+          </button>
+        </div>
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 gap-y-2 text-sm">
+          {shortcuts.map(([keys, what]) => (
+            <div key={keys} className="contents">
+              <dt>
+                <kbd className="rounded-md border border-ink/20 bg-canvas px-1.5 py-0.5 font-mono text-xs font-bold">{keys}</kbd>
+              </dt>
+              <dd className="text-ink-soft">{what}</dd>
+            </div>
+          ))}
+        </dl>
+        <p className="hint">Shortcuts wait while you type in a box.</p>
+      </div>
+    </dialog>
+  );
+}
 const metaMessages: Partial<Record<Failure, ReactNode>> = {
   invalid_assignee: "That person is no longer in this team. Reload, then pick someone else.",
   invalid_contact: "That tag wasn't saved: a tag takes 1 to 30 characters and no commas, and a contact 20 tags.",
@@ -128,6 +205,9 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   const [editing, setEditing] = useState<InboxT | "new" | null>(null);
   const [opened, setOpened] = useState<string | null>(null);
   const [reloads, setReloads] = useState(0);
+  const [undo, setUndo] = useState<Undo | null>(null);
+  const [help, setHelp] = useState(false);
+  const rowsRef = useRef<HTMLUListElement>(null);
 
   useEffect(() => {
     listInboxes().then(setInboxes);
@@ -163,8 +243,16 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
       const next = f(l.page);
       return next ? { key, page: next } : l;
     });
-  const detail = itemId && shown?.id === itemId ? shown.item : null;
-  const setDetail = (i: Item) => setShown({ id: i.id, item: i });
+  const items = page && !isFailure(page) ? page.items : [];
+  // Until the item itself answers, its list row stands in, so a row opens at once.
+  const detail = !itemId ? null : shown?.id === itemId ? shown.item : (items.find((i) => i.id === itemId) ?? null);
+  // What is open, as the list knows it: a conversation matches its row whichever of its DMs the address names.
+  const openKey = detail && !isFailure(detail) ? threadKey(detail) : itemId;
+  const refreshCounts = () => listInboxes().then((l) => Array.isArray(l) && setInboxes(l));
+  const go = (id: string | null, how: "push" | "replace" = "replace") => {
+    if (id) setOpened(id);
+    router[how](href({ item: id }), { scroll: false });
+  };
 
   useEffect(() => {
     if (!currentId) return;
@@ -220,15 +308,82 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
     setPage((p) => (p && !isFailure(p) && p.next === cursor ? { items: [...p.items, ...r.items], next: r.next_cursor } : p));
   }
 
-  // A changed item: the detail shows it, the list keeps it only while it fits the tab.
+  // A changed item: the detail shows it, the list keeps its row only while it fits the tab.
   function changed(i: Item) {
-    setDetail(i);
+    const k = threadKey(i);
+    setShown((s) => (s && !isFailure(s.item) && threadKey(s.item) === k ? { id: s.id, item: patched(s.item, i) } : s));
     // Done or reopened: the open counts moved.
-    listInboxes().then((l) => Array.isArray(l) && setInboxes(l));
+    refreshCounts();
     setPage((p) =>
-      p && !isFailure(p) ? { ...p, items: i.state === state ? p.items.map((x) => (x.id === i.id ? i : x)) : p.items.filter((x) => x.id !== i.id) } : p,
+      p && !isFailure(p) ? { ...p, items: i.state === state ? p.items.map((x) => (threadKey(x) === k ? patched(x, i) : x)) : p.items.filter((x) => threadKey(x) !== k) } : p,
     );
   }
+
+  const putBack = (u: Undo) =>
+    setPage((p) => (u.row && p && !isFailure(p) && !p.items.some((x) => x.id === u.row!.id) ? { ...p, items: [...p.items.slice(0, u.at), u.row, ...p.items.slice(u.at)] } : p));
+
+  // Mark done: the row goes and the next item opens at once, the PATCH follows. A whole conversation for a DM.
+  function markDone(i: Item) {
+    const k = threadKey(i);
+    const at = items.findIndex((x) => threadKey(x) === k);
+    const row = state === "open" && at >= 0 ? items[at]! : null;
+    const saved = setItemState(i.id, "done", i.kind === "dm");
+    const u: Undo = { item: i, row, at, saved };
+    setUndo(u);
+    if (row) {
+      setPage((p) => (p && !isFailure(p) ? { ...p, items: p.items.filter((x) => x.id !== row.id) } : p));
+      go((items[at + 1] ?? items[at - 1])?.id ?? null);
+    }
+    saved.then((r) => {
+      if (isFailure(r)) {
+        putBack(u);
+        setUndo({ ...u, problem: r });
+        if (row) go(i.id);
+      } else if (row) refreshCounts();
+      else changed(r);
+    });
+  }
+
+  async function undoDone(u: Undo) {
+    setUndo(null);
+    // The done PATCH lands first, so the two can't cross.
+    await u.saved;
+    const r = await setItemState(u.item.id, "open", u.item.kind === "dm");
+    if (isFailure(r)) return setUndo({ ...u, problem: r, undoing: true });
+    putBack(u);
+    if (u.row) {
+      refreshCounts();
+      go(u.item.id);
+    } else changed(r);
+  }
+
+  useEffect(() => {
+    if (!undo || undo.problem) return;
+    const timer = setTimeout(() => setUndo(null), UNDO_MS);
+    return () => clearTimeout(timer);
+  }, [undo]);
+
+  // One-key shortcuts. Done, assign and reply act through the reader's own controls, so they do what a click does.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const s = shortcutFor(e);
+      if (!s || document.querySelector("dialog[open]")) return;
+      e.preventDefault();
+      if (s === "next" || s === "previous") {
+        const at = items.findIndex((x) => threadKey(x) === openKey || x.id === itemId);
+        const n = at < 0 ? 0 : at + (s === "next" ? 1 : -1);
+        if (!items[n]) return;
+        go(items[n].id, "push");
+        rowsRef.current?.children[n]?.scrollIntoView({ block: "nearest" });
+      } else if (s === "done") document.getElementById("mark-done")?.click();
+      else if (s === "assign") document.getElementById("assign-me")?.click();
+      else if (s === "reply") document.getElementById("reply-text")?.focus();
+      else if (s === "search") document.getElementById("inbox-search")?.focus();
+      else setHelp(true);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  });
 
   const loadMoreButton = page && !isFailure(page) && page.next && (
     <>
@@ -242,7 +397,6 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
       )}
     </>
   );
-  const items = page && !isFailure(page) ? page.items : [];
   const noAccounts = Array.isArray(accounts) && accounts.length === 0;
   const accountList = Array.isArray(accounts) ? accounts : [];
   // On small screens one pane shows at a time: inboxes, then items, then the item.
@@ -319,64 +473,58 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
         <h2 id="items-heading" className="font-display text-lg font-extrabold tracking-tight lg:mb-3">
           {current?.name ?? "Inbox"}
         </h2>
-        <div className="grid gap-3 lg:mb-3">
-          <label className="relative block">
-            <span className="sr-only">Search {current?.name ?? "this inbox"}</span>
-            <Icon name="search" className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-soft" />
-            <input type="search" maxLength={100} className="field w-full pl-9" placeholder="Search text or author" value={search} onChange={(e) => setSearch(e.target.value)} />
-          </label>
-          <nav aria-label="State" className="flex gap-1 rounded-full bg-ink/5 p-1">
-            {(["open", "done"] as const).map((s) => (
-              <Link
-                key={s}
-                aria-current={state === s ? "true" : undefined}
-                href={href({ state: s, item: itemId })}
-                className={`flex-1 rounded-full px-3 py-1.5 text-center text-sm font-bold ${state === s ? "bg-paper text-ink shadow-sm" : "text-ink-soft hover:text-ink"}`}
-              >
-                {s === "open" ? "Open" : "Done"}
-              </Link>
-            ))}
-          </nav>
-          <ul aria-label="Kind" className="flex flex-wrap gap-1.5">
-            {filters.map((f) => (
-              <li key={f.kind}>
-                <button
-                  type="button"
-                  aria-pressed={kind === f.kind}
-                  onClick={() => setKind(f.kind)}
-                  className={`rounded-full border px-3 py-1 text-sm font-bold ${
-                    kind === f.kind ? "border-ink bg-ink text-paper" : "border-ink/15 text-ink-soft hover:border-ink hover:text-ink"
-                  }`}
-                >
-                  {f.label}
-                </button>
-              </li>
-            ))}
-          </ul>
-          <ul aria-label="Assigned" className="flex flex-wrap items-center gap-1.5">
-            {assignedChips.map((c) => (
-              <li key={c.value}>
+        <div className="grid gap-2 lg:mb-3">
+          <div className="flex items-center gap-2">
+            <label className="relative block min-w-0 flex-1">
+              <span className="sr-only">Search {current?.name ?? "this inbox"}</span>
+              <Icon name="search" className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-soft" />
+              <input id="inbox-search" type="search" maxLength={100} className="field w-full py-1.5 pl-9" placeholder="Search text or author" value={search} onChange={(e) => setSearch(e.target.value)} />
+            </label>
+            <nav aria-label="State" className="flex shrink-0 gap-0.5 rounded-full bg-ink/5 p-1">
+              {(["open", "done"] as const).map((s) => (
                 <Link
-                  href={href({ assigned: c.value, item: itemId })}
-                  scroll={false}
-                  aria-current={assigned === c.value ? "true" : undefined}
-                  className={`block rounded-full border px-3 py-1 text-sm font-bold ${
-                    assigned === c.value ? "border-ink bg-ink text-paper" : "border-ink/15 text-ink-soft hover:border-ink hover:text-ink"
-                  }`}
+                  key={s}
+                  aria-current={state === s ? "true" : undefined}
+                  href={href({ state: s, item: itemId })}
+                  className={`rounded-full px-3 py-1 text-center text-sm font-bold ${state === s ? "bg-paper text-ink shadow-sm" : "text-ink-soft hover:text-ink"}`}
                 >
-                  {c.label}
+                  {s === "open" ? "Open" : "Done"}
                 </Link>
-              </li>
-            ))}
-            {tag && (
-              <li className="badge tone gap-1 pr-1 text-ink">
-                Tag: {tag}
-                <Link href={href({ tag: "", item: itemId })} scroll={false} aria-label={`Clear the tag filter ${tag}`} className="grid size-5 place-items-center rounded-full hover:bg-ink/10">
-                  <Icon name="close" className="size-3" />
-                </Link>
-              </li>
-            )}
-          </ul>
+              ))}
+            </nav>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <FilterMenu label="Kind" value={kind} options={kindOptions} onChange={setKind} />
+            <FilterMenu label="Assigned" value={assigned} options={assignedOptions} onChange={(v) => router.replace(href({ assigned: v, item: itemId }), { scroll: false })} />
+          </div>
+          {(kind !== "all" || assigned || tag) && (
+            <ul aria-label="Active filters" className="flex flex-wrap items-center gap-1.5">
+              {kind !== "all" && (
+                <li className={chip}>
+                  {kindOptions.find((o) => o.value === kind)?.label}
+                  <button type="button" aria-label="Clear the kind filter" className={chipClear} onClick={() => setKind("all")}>
+                    <Icon name="close" className="size-3" />
+                  </button>
+                </li>
+              )}
+              {assigned && (
+                <li className={chip}>
+                  Assigned: {assignedOptions.find((o) => o.value === assigned)?.label ?? "one person"}
+                  <Link href={href({ assigned: "", item: itemId })} scroll={false} aria-label="Clear the assigned filter" className={chipClear}>
+                    <Icon name="close" className="size-3" />
+                  </Link>
+                </li>
+              )}
+              {tag && (
+                <li className={chip}>
+                  Tag: {tag}
+                  <Link href={href({ tag: "", item: itemId })} scroll={false} aria-label={`Clear the tag filter ${tag}`} className={chipClear}>
+                    <Icon name="close" className="size-3" />
+                  </Link>
+                </li>
+              )}
+            </ul>
+          )}
         </div>
         {/* p-px keeps the card's 1px ring inside the scroller. */}
         <div className="grid content-start gap-3 lg:block lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain lg:p-px">
@@ -416,6 +564,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
           ) : (
             <>
               <ul
+                ref={rowsRef}
                 aria-label="Items"
                 className="card divide-y divide-ink/10 overflow-hidden"
                 // Up and Down move between rows; Enter opens one, as any link.
@@ -430,7 +579,10 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
                 }}
               >
                 {items.map((i) => {
-                  const selected = i.id === itemId;
+                  const selected = i.id === itemId || threadKey(i) === openKey;
+                  // A conversation row: its latest DM, with the count and whether anything in it is still open.
+                  const c = i.conversation;
+                  const dot = c ? (c.open_count > 0 ? "Unread" : null) : i.replied_at ? null : "Unanswered";
                   return (
                     <li key={i.id} className="relative">
                       <Link
@@ -443,22 +595,23 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
                         <AuthorAvatar author={i.author} size="size-9" />
                         <span className="grid min-w-0 flex-1 gap-0.5">
                           <span className="flex min-w-0 items-center gap-2">
-                            {!i.replied_at && (
+                            {dot && (
                               <>
-                                <span aria-hidden="true" className="size-2 shrink-0 rounded-full bg-signal" title="Unanswered" />
-                                <span className="sr-only">Unanswered:</span>
+                                <span aria-hidden="true" className="size-2 shrink-0 rounded-full bg-signal" title={dot} />
+                                <span className="sr-only">{dot}:</span>
                               </>
                             )}
                             <strong className="min-w-0 truncate">{authorName(i.author)}</strong>
                             {/* The handle gives way first when the row is narrow. */}
                             {i.author.handle && i.author.name && <span className="min-w-0 shrink-[4] truncate text-sm text-ink-soft">@{i.author.handle}</span>}
-                            <time dateTime={i.received_at} className="ml-auto shrink-0 text-xs text-ink-soft">
-                              {relativeTime(i.received_at)}
+                            <time dateTime={c?.last_at ?? i.received_at} className="ml-auto shrink-0 text-xs text-ink-soft">
+                              {relativeTime(c?.last_at ?? i.received_at)}
                             </time>
                           </span>
                           <span className="line-clamp-2 text-sm text-ink-soft">{i.text || "(no text)"}</span>
                           <span className="mt-0.5 flex items-center gap-2">
                             <KindBadge kind={i.kind} />
+                            {c && <span className="text-xs text-ink-soft">{messageCount(c.count)}</span>}
                             {i.assigned_to && (
                               <span className="ml-auto grid size-5 place-items-center rounded-full bg-ink text-[0.65rem] font-bold text-paper" title={`Assigned to ${i.assigned_to.name}`}>
                                 <span aria-hidden="true">{i.assigned_to.name.charAt(0).toUpperCase()}</span>
@@ -484,7 +637,15 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
           Back to {current?.name ?? "the inbox"}
         </Link>
         {!itemId ? (
-          <p className="hidden h-full place-items-center p-8 text-center text-sm text-ink-soft lg:grid">Pick an item to read it and reply.</p>
+          <div className="hidden h-full place-content-center justify-items-center gap-3 p-8 text-center text-sm text-ink-soft lg:grid">
+            <p>Pick an item to read it and reply.</p>
+            <p>
+              <Key>J</Key> and <Key>K</Key> move between items, <Key>E</Key> marks one done, <Key>R</Key> replies.
+            </p>
+            <button type="button" className="btn btn-quiet btn-sm" onClick={() => setHelp(true)}>
+              All shortcuts <Key>?</Key>
+            </button>
+          </div>
         ) : detail === null ? (
           <div role="status" className="h-80 rounded-2xl bg-ink/5 motion-safe:animate-pulse">
             <span className="sr-only">Loading the item...</span>
@@ -497,15 +658,36 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
           <Detail
             key={detail.id}
             item={detail}
+            row={items.find((x) => threadKey(x) === openKey)}
             focus={opened === detail.id}
             account={accountList.find((a) => a.id === detail.social_account_id)}
             me={user}
             members={members}
             tagOptions={tagOptions}
             onChange={changed}
+            onDone={markDone}
           />
         )}
       </section>
+
+      {undo && (
+        <div
+          role={undo.problem ? "alert" : "status"}
+          className="fixed inset-x-0 bottom-4 z-40 mx-auto flex w-fit max-w-[calc(100vw-2rem)] items-center gap-3 rounded-full bg-ink py-1.5 pr-1.5 pl-4 text-sm font-bold text-paper shadow-lg"
+        >
+          {undo.problem ? (
+            <span>
+              {undo.undoing ? "That couldn't be undone, so it is still done." : "That couldn't be marked done, so it is back in the list."} {problemText(undo.problem, inboxMessages)}
+            </span>
+          ) : (
+            "Marked done."
+          )}
+          <button type="button" className="rounded-full bg-paper/15 px-3 py-1 hover:bg-paper/25" onClick={() => (undo.problem ? setUndo(null) : undoDone(undo))}>
+            {undo.problem ? "Dismiss" : "Undo"}
+          </button>
+        </div>
+      )}
+      {help && <ShortcutsDialog onClose={() => setHelp(false)} />}
 
       {editing && (
         <InboxEditor
@@ -530,39 +712,90 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   );
 }
 
+const Key = ({ children }: { children: ReactNode }) => (
+  <kbd className="rounded-md border border-ink/20 bg-paper px-1.5 py-0.5 font-mono text-xs font-bold text-ink">{children}</kbd>
+);
+
+// The reply box grows with its text up to this height, then scrolls.
+const REPLY_MAX_PX = 192;
+// A reply shown in the thread before brain answered: on its way, or failed with why.
+type Pending = { id: number; text: string; failed?: ReactNode };
+
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 function Detail({
   item,
+  row,
   account,
   focus,
   me,
   members,
   tagOptions,
   onChange,
+  onDone,
 }: {
   item: Item;
+  // The list row of this item or, for a DM, of its conversation.
+  row?: Item;
   account?: Connection;
   focus: boolean;
   me: Person;
   members: Person[];
   tagOptions: string[];
   onChange: (i: Item) => void;
+  onDone: (i: Item) => void;
 }) {
+  const dm = item.kind === "dm";
   const [text, setText] = useState("");
-  const [sendError, setSendError] = useState<SendError | null>(null);
+  // A DM opens as its whole conversation: null while it loads.
+  const [convo, setConvo] = useState<ConversationPage | null>(null);
+  const [convoProblem, setConvoProblem] = useState<Failure | null>(null);
+  const [earlier, setEarlier] = useState<Failure | "loading" | null>(null);
+  const [pending, setPending] = useState<Pending[]>([]);
+  const [sent, setSent] = useState<{ text: string; n: number } | null>(null);
   // Saving the typed text as a saved reply: null, or the name being typed.
   const [naming, setNaming] = useState<string | null>(null);
   const [kept, setKept] = useState<Problem | "saved" | null>(null);
   const action = useAction();
-  const reply = useAction();
   const meta = useAction();
   const who = item.assigned_to ?? null;
   // The team's members, with me and whoever has the item even when the list did not load or they left.
   const people = [...members, me, ...(who ? [who] : [])].filter((p, i, all) => all.findIndex((x) => x.id === p.id) === i);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const threadRef = useRef<HTMLOListElement>(null);
+  const boxRef = useRef<HTMLTextAreaElement>(null);
+
+  // The newest page of the conversation, again whenever the list shows a newer DM in it.
+  const newest = row?.id;
+  useEffect(() => {
+    if (!dm) return;
+    let live = true;
+    getConversation(item.id).then((r) => {
+      if (!live) return;
+      setConvoProblem(isFailure(r) ? r : null);
+      // Without the conversation the reader still shows the message it was opened for.
+      if (isFailure(r)) return setConvo((c) => c ?? { items: [item], has_more: false });
+      const fresh = new Set(r.items.map((i) => i.id));
+      setConvo((c) => (c ? { items: [...c.items.filter((i) => !fresh.has(i.id)), ...r.items], has_more: c.has_more } : r));
+    });
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the item's other fields change without a new conversation
+  }, [dm, item.id, newest]);
+
+  const thread = dm ? (convo?.items ?? []) : [item];
+  // A reply goes to the latest message of a conversation.
+  const latest = thread.at(-1) ?? item;
+  const rows = chatRows(thread).filter((r) => dm || r.type !== "day");
+  const isOpen = item.state === "open" || (dm && ((row?.conversation?.open_count ?? 0) > 0 || thread.some((i) => i.state === "open")));
+  const max = maxFor(item.kind, account?.provider);
+  const platform = platformName(account?.provider ?? "bluesky");
+  const count = graphemes(text);
+  const sending = pending.some((p) => !p.failed);
 
   const assign = (id: string | null) =>
-    meta.run("assign", () => assignItem(item.id, id), (r) => {
+    meta.run("assign", () => assignItem(item.id, id, dm), (r) => {
       onChange(r);
       return r.assigned_to ? `Assigned to ${r.assigned_to.name}.` : "Unassigned.";
     });
@@ -578,47 +811,75 @@ function Detail({
     setKept(isProblem(r) ? r : "saved");
     if (!isProblem(r)) setNaming(null);
   }
-  const headingRef = useRef<HTMLHeadingElement>(null);
-  const max = maxFor(item.kind, account?.provider);
-  const platform = platformName(account?.provider ?? "bluesky");
-  const count = graphemes(text);
-  const dm = item.kind === "dm";
 
   // Opened from the list: focus moves here (on a phone the list is gone). A shared link leaves focus alone.
   useEffect(() => {
     if (focus) headingRef.current?.focus();
   }, [focus]);
 
-  async function onReply(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    // Ctrl+Enter submits even while the button is disabled.
-    if (reply.busy || !text.trim() || count > max) return;
-    setSendError(null);
-    await reply.run(
-      "reply",
-      async () => {
-        const r = await replyToItem(item.id, text);
-        if (typeof r === "object" && "code" in r) {
-          setSendError(r);
-          return "ok" as const;
-        }
-        return r;
-      },
-      (r) => {
-        if (r === "ok") return;
-        onChange(r as Item);
-        setText("");
-        return dm ? "DM sent." : "Reply sent.";
-      },
-    );
+  // A conversation opens at its newest message and follows each new one.
+  const lastKey = `${rows.at(-1)?.key}:${pending.length}`;
+  useEffect(() => {
+    const el = threadRef.current;
+    if (dm && el) el.scrollTop = el.scrollHeight;
+  }, [dm, lastKey]);
+
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    // 2px for the borders, which scrollHeight leaves out.
+    el.style.height = `${Math.min(el.scrollHeight + 2, REPLY_MAX_PX)}px`;
+  }, [text]);
+
+  async function loadEarlier() {
+    const first = convo?.items[0];
+    if (!first) return;
+    setEarlier("loading");
+    const r = await getConversation(item.id, first.id);
+    if (isFailure(r)) return setEarlier(r);
+    const el = threadRef.current;
+    const fromEnd = el ? el.scrollHeight - el.scrollTop : 0;
+    flushSync(() => {
+      setEarlier(null);
+      setConvo((c) => c && { items: [...r.items.filter((i) => !c.items.some((x) => x.id === i.id)), ...c.items], has_more: r.has_more });
+    });
+    // The messages on screen stay where they were.
+    if (el) el.scrollTop = el.scrollHeight - fromEnd;
   }
 
-  const toggle = () =>
-    action.run("state", () => setItemState(item.id, item.state === "open" ? "done" : "open"), (r) => {
+  // The reply is in the thread before brain answers; a refusal marks it failed, with why and Retry.
+  async function send(p: Pending) {
+    setSent(null);
+    setPending((l) => (l.some((x) => x.id === p.id) ? l.map((x) => (x.id === p.id ? { ...x, failed: undefined } : x)) : [...l, p]));
+    const r = await replyToItem(latest.id, p.text, dm);
+    if (isFailure(r) || "code" in r) {
+      const why = isFailure(r) ? problemText(r, replyMessages) : (sendMessages[r.code] ?? r.message);
+      return setPending((l) => l.map((x) => (x.id === p.id ? { ...x, failed: why } : x)));
+    }
+    setPending((l) => l.filter((x) => x.id !== p.id));
+    // The reply closed every open DM of the conversation.
+    if (dm) setConvo((c) => c && { ...c, items: c.items.map((i) => (i.id === r.id ? r : i.state === "open" ? { ...i, state: "done" } : i)) });
+    else setSent((d) => ({ text: "Reply sent.", n: (d?.n ?? 0) + 1 }));
+    onChange(r);
+  }
+
+  function onReply(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    // Ctrl+Enter submits even while the button is disabled.
+    if (sending || !text.trim() || count > max) return;
+    send({ id: Date.now(), text });
+    setText("");
+  }
+
+  const reopen = () =>
+    action.run("state", () => setItemState(item.id, "open", dm), (r) => {
+      if (dm) setConvo((c) => c && { ...c, items: c.items.map((i) => ({ ...i, state: "open" })) });
       onChange(r);
-      return r.state === "done" ? "Marked done." : "Reopened.";
+      return "Reopened.";
     });
 
+  const messages = row?.conversation?.count;
   return (
     // From lg up the card fills the reader: the thread scrolls and the reply box stays at the bottom.
     <article className="card grid grid-cols-[minmax(0,1fr)] gap-5 p-5 lg:h-full lg:grid-rows-[auto_minmax(6rem,1fr)] lg:gap-4">
@@ -631,7 +892,8 @@ function Detail({
           </h2>
           <p className="truncate text-sm text-ink-soft">
             {item.author.handle && item.author.name ? `@${item.author.handle}, ` : ""}
-            {kindName[item.kind]} to {account ? accountName(account) : "your account"}
+            {dm ? "DMs with" : `${kindName[item.kind]} to`} {account ? accountName(account) : "your account"}
+            {messages ? `, ${messageCount(messages)}` : ""}
           </p>
         </div>
         <KindBadge kind={item.kind} />
@@ -657,7 +919,7 @@ function Detail({
             </select>
           </label>
           {who?.id !== me.id && (
-            <button type="button" className="btn btn-quiet btn-sm" disabled={meta.busy !== null} onClick={() => assign(me.id)}>
+            <button id="assign-me" type="button" className="btn btn-quiet btn-sm" disabled={meta.busy !== null} onClick={() => assign(me.id)}>
               Assign to me
             </button>
           )}
@@ -665,35 +927,92 @@ function Detail({
         <Status problem={meta.problem} done={meta.done} overrides={metaMessages} />
       </header>
 
-      <ol className="grid grid-cols-[minmax(0,1fr)] content-start gap-3 lg:-m-1 lg:overflow-y-auto lg:overscroll-contain lg:p-1" aria-label="Thread">
-        <li className="grid justify-items-start gap-1">
-          <p className="max-w-[90%] whitespace-pre-wrap break-words rounded-2xl rounded-tl-md bg-canvas px-4 py-3">{item.text || "(no text)"}</p>
-          <p className="flex flex-wrap items-center gap-x-3 text-xs text-ink-soft">
-            <time dateTime={item.received_at}>{when(item.received_at)}</time>
-            {item.remote_url && (
-              <a href={item.remote_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 font-bold hover:text-ink">
-                View on {platform}
-                <Icon name="external" className="size-3.5" />
-              </a>
+      {/* A conversation scrolls in its own box on every screen, so it can open at the newest message. */}
+      <ol
+        ref={threadRef}
+        aria-label={dm ? "Conversation" : "Thread"}
+        aria-live="polite"
+        className={`grid grid-cols-[minmax(0,1fr)] content-start gap-3 lg:-m-1 lg:overflow-y-auto lg:overscroll-contain lg:p-1 ${dm ? "max-lg:max-h-[55dvh] max-lg:overflow-y-auto" : ""}`}
+      >
+        {dm && !convo && (
+          <li role="status" className="h-24 rounded-2xl bg-ink/5 motion-safe:animate-pulse">
+            <span className="sr-only">Loading the conversation...</span>
+          </li>
+        )}
+        {dm && convoProblem && (
+          <li role="alert" className="waitlist-error">
+            The rest of the conversation couldn&apos;t be loaded. {problemText(convoProblem)}
+          </li>
+        )}
+        {dm && convo?.has_more && (
+          <li className="grid justify-items-center gap-1">
+            <button type="button" className="btn btn-secondary btn-sm" disabled={earlier === "loading"} onClick={loadEarlier}>
+              {earlier === "loading" ? "Loading..." : "Load earlier"}
+            </button>
+            {isFailure(earlier) && (
+              <p role="alert" className="waitlist-error">
+                Earlier messages couldn&apos;t be loaded. {problemText(earlier)}
+              </p>
             )}
-          </p>
-        </li>
-        {item.replies.map((r) => (
-          <li key={r.id} className="grid justify-items-end gap-1">
-            <p className="max-w-[90%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-ink px-4 py-3 text-paper">{r.text}</p>
-            <p className="flex flex-wrap items-center justify-end gap-x-3 text-xs text-ink-soft">
-              <span>
-                {r.automation_id ? "Automation" : "Team"}, {r.kind === "dm" ? "DM" : "public reply"}
-              </span>
-              <time dateTime={r.created_at}>{when(r.created_at)}</time>
-              {r.remote_url && (
-                <a href={r.remote_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 font-bold hover:text-ink">
-                  View
-                  <Icon name="external" className="size-3.5" />
-                  <span className="sr-only">reply on {platform}</span>
-                </a>
-              )}
-            </p>
+          </li>
+        )}
+        {rows.map((r) =>
+          r.type === "day" ? (
+            <li key={r.key} data-row="day" className="flex items-center gap-3 text-xs font-bold text-ink-soft before:h-px before:flex-1 before:bg-ink/10 after:h-px after:flex-1 after:bg-ink/10">
+              {r.label}
+            </li>
+          ) : r.type === "them" ? (
+            <li key={r.key} data-row="them" className="grid justify-items-start gap-1">
+              <p className="max-w-[90%] whitespace-pre-wrap break-words rounded-2xl rounded-tl-md bg-canvas px-4 py-3">{r.text || "(no text)"}</p>
+              <p className="flex flex-wrap items-center gap-x-3 text-xs text-ink-soft">
+                <time dateTime={r.at}>{when(r.at)}</time>
+                {r.item.remote_url && (
+                  <a href={r.item.remote_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 font-bold hover:text-ink">
+                    View on {platform}
+                    <Icon name="external" className="size-3.5" />
+                  </a>
+                )}
+              </p>
+            </li>
+          ) : (
+            <li key={r.key} data-row="us" className="grid justify-items-end gap-1">
+              <p className="max-w-[90%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md bg-ink px-4 py-3 text-paper">{r.text}</p>
+              <p className="flex flex-wrap items-center justify-end gap-x-3 text-xs text-ink-soft">
+                <span>
+                  {r.reply.automation_id ? "Automation" : "Team"}, {r.reply.kind === "dm" ? "DM" : "public reply"}
+                </span>
+                <time dateTime={r.at}>{when(r.at)}</time>
+                {r.reply.remote_url && (
+                  <a href={r.reply.remote_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 font-bold hover:text-ink">
+                    View
+                    <Icon name="external" className="size-3.5" />
+                    <span className="sr-only">reply on {platform}</span>
+                  </a>
+                )}
+              </p>
+            </li>
+          ),
+        )}
+        {pending.map((p) => (
+          <li key={p.id} data-row="us" className="grid justify-items-end gap-1">
+            <p className={`max-w-[90%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md px-4 py-3 ${p.failed ? "bg-ink/10 text-ink" : "bg-ink/60 text-paper"}`}>{p.text}</p>
+            {p.failed ? (
+              <div className="grid max-w-[90%] justify-items-end gap-1 text-right text-xs">
+                <p role="alert" className="font-bold text-signal-deep">
+                  Not sent. {p.failed}
+                </p>
+                <p className="flex gap-3">
+                  <button type="button" className={linkButton} disabled={sending} onClick={() => send(p)}>
+                    Retry
+                  </button>
+                  <button type="button" className="font-bold text-ink-soft hover:text-ink" onClick={() => setPending((l) => l.filter((x) => x.id !== p.id))}>
+                    Discard
+                  </button>
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-ink-soft">Sending...</p>
+            )}
           </li>
         ))}
       </ol>
@@ -708,8 +1027,9 @@ function Detail({
         </div>
         <textarea
           id="reply-text"
-          rows={3}
-          className="field resize-y"
+          ref={boxRef}
+          rows={2}
+          className="field resize-none"
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
@@ -720,9 +1040,9 @@ function Detail({
           placeholder={dm ? `Message ${authorName(item.author)}` : `Reply to ${authorName(item.author)} on ${platform}`}
         />
         <div className="flex flex-wrap items-center gap-3">
-          <button type="submit" className="btn btn-primary" disabled={reply.busy !== null || !text.trim() || count > max}>
+          <button type="submit" className="btn btn-primary" disabled={sending || !text.trim() || count > max}>
             <Icon name="send" className="size-4" />
-            {reply.busy ? "Sending..." : dm ? "Send DM" : "Reply publicly"}
+            {dm ? "Send DM" : "Reply publicly"}
           </button>
           <button
             type="button"
@@ -776,20 +1096,20 @@ function Detail({
             </p>
           )
         )}
-        {sendError ? (
-          <p role="alert" className="waitlist-error">
-            {sendMessages[sendError.code] ?? sendError.message}
-          </p>
-        ) : (
-          <Status problem={reply.problem} done={reply.done} overrides={replyMessages} />
-        )}
+        <Status problem={null} done={sent} />
       </form>
 
       <div className="flex flex-wrap items-center gap-3 border-t border-ink/10 pt-4">
-        <button type="button" className="btn btn-secondary btn-sm" disabled={action.busy !== null} onClick={toggle}>
-          {action.busy ? "Saving..." : item.state === "open" ? "Mark done" : "Reopen"}
-        </button>
-        <span className="text-sm text-ink-soft">{item.state === "done" ? "Done." : item.replied_at ? `Answered ${relativeTime(item.replied_at)}.` : "Not answered yet."}</span>
+        {isOpen ? (
+          <button id="mark-done" type="button" className="btn btn-secondary btn-sm" onClick={() => onDone(item)}>
+            Mark done
+          </button>
+        ) : (
+          <button type="button" className="btn btn-secondary btn-sm" disabled={action.busy !== null} onClick={reopen}>
+            {action.busy ? "Saving..." : "Reopen"}
+          </button>
+        )}
+        <span className="text-sm text-ink-soft">{!isOpen ? "Done." : latest.replied_at ? `Answered ${relativeTime(latest.replied_at)}.` : "Not answered yet."}</span>
       </div>
       <Status problem={action.problem} done={action.done} overrides={inboxMessages} />
     </article>

@@ -262,20 +262,22 @@ test("an item is assigned to a member, to me and to nobody, and its row shows th
   await expect(row.getByText("Assigned to")).toHaveCount(0);
 });
 
-test("the Assigned chips and a tag from a contact filter the list through brain and stay in the address", async ({ page }) => {
+test("the Assigned menu and a tag from a contact filter the list through brain and stay in the address", async ({ page }) => {
   const state = await brain(page);
   state.items[1]!.assigned_to = { id: "u-me", name: "Mira" };
   await page.goto("/inbox");
   const rows = page.getByRole("list", { name: "Items" }).getByRole("listitem");
-  const chips = page.getByRole("list", { name: "Assigned" });
+  const chips = page.getByRole("list", { name: "Active filters" });
+  const menu = page.getByRole("combobox", { name: "Assigned" });
   await expect(rows).toHaveCount(2);
-  await expect(chips.getByRole("link", { name: "Anyone" })).toHaveAttribute("aria-current", "true");
+  await expect(menu.getByRole("option")).toHaveText(["Anyone", "Me", "Unassigned"]);
+  await expect(menu).toHaveValue("");
 
-  await chips.getByRole("link", { name: "Me", exact: true }).click();
+  await menu.selectOption({ label: "Me" });
   await expect(rows).toHaveText([/Second one/]);
   await expect.poll(() => query(page).get("assigned")).toBe("me");
   expect(state.itemQueries.some((q) => q.get("assigned") === "me")).toBe(true);
-  await chips.getByRole("link", { name: "Unassigned" }).click();
+  await menu.selectOption({ label: "Unassigned" });
   await expect(rows).toHaveText([/What is the price/]);
   await expect.poll(() => query(page).get("assigned")).toBe("none");
   expect(state.itemQueries.some((q) => q.get("assigned") === "none")).toBe(true);
