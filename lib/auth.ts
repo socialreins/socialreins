@@ -197,6 +197,16 @@ const codes = [
   "slug_changed_too_often",
   "invalid_contact",
   "invalid_assignee",
+  "invalid_broadcast",
+  "already_started",
+  "still_sending",
+  "audience_changed",
+  "another_sending",
+  "no_recipients",
+  "too_many_recipients",
+  "too_many_broadcasts",
+  "not_sending",
+  "not_paused",
 ] as const;
 export type Failure = (typeof codes)[number] | "rate_limited" | "signed_out" | "timeout" | "error";
 export type Passkey = { id: string; name: string; created_at: string; last_used_at: string | null };
