@@ -195,6 +195,18 @@ body { margin: 0; font-family: var(--font-body); font-size: 1.0625rem; line-heig
 .app-root .btn-danger-solid { box-shadow: 0 1px 1px rgb(0 0 0 / 0.12), inset 0 -1px 0 rgb(0 0 0 / 0.15); }
 .app-root .card-danger { box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-danger) 40%, transparent), 0 1px 2px rgb(0 0 0 / 0.04); }
 .app-root .badge { font-size: 0.75rem; padding: 0.05rem 0.5rem; border-radius: 0.25rem; }
+/* Feel, shared: a loading placeholder, content that fades in once it arrives and a card that lifts under the pointer.
+   Nothing moves for a reader who asks for no motion; the lift then only darkens the edge. */
+.skeleton { display: block; border-radius: 0.25rem; background: color-mix(in srgb, var(--color-ink) 8%, transparent); }
+.app-root .lift { transition: transform .15s ease-out, box-shadow .15s ease-out; }
+.app-root .lift:hover { box-shadow: 0 0 0 1px var(--edge), 0 4px 12px rgb(0 0 0 / 0.07); }
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton { animation: skeleton 1.4s ease-in-out infinite; }
+  .enter { animation: enter .15s ease-out both; }
+  .app-root .lift:hover { transform: translateY(-1px); }
+}
+@keyframes skeleton { 50% { opacity: 0.45; } }
+@keyframes enter { from { opacity: 0; } }
 .app-nav-link[aria-current="page"] { color: var(--color-ink); font-weight: 600; background: color-mix(in srgb, var(--color-ink) 7%, transparent); }
 .app-nav-link[aria-current="page"] svg { color: var(--color-signal-deep); }
 .app-nav-link svg { stroke-width: 2; }
