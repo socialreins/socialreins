@@ -188,7 +188,7 @@ function SenderForm({ onDone }: { onDone?: () => void }) {
         <label htmlFor="sender-logo" className="label">
           Logo <span className="font-normal text-ink-soft">(optional)</span>
         </label>
-        <input id="sender-logo" type="url" pattern="https://.+" title="A link that starts with https://" maxLength={MAX_LOGO} className="field" placeholder="https://example.com/logo.png" value={logo} onChange={(e) => setLogo(e.target.value)} {...bad("logo")} />
+        <input id="sender-logo" type="url" pattern="\s*https://.+" title="A link that starts with https://" maxLength={MAX_LOGO} className="field" placeholder="https://example.com/logo.png" value={logo} onChange={(e) => setLogo(e.target.value)} {...bad("logo")} />
         {err("logo") ?? <p className="hint">A link to your logo image (PNG or JPEG, https). Shown at the top of every newsletter. Leave empty to show the sender name instead.</p>}
       </div>
       {problem && !field && (
