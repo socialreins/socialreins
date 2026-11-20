@@ -166,6 +166,16 @@ body { margin: 0; font-family: var(--font-body); font-size: 1.0625rem; line-heig
   --line: #2c2a27; --line-soft: #22201e; --side: #121110; --faint: #8f8883; --nav: #d3cec9; --edge: #3d3a36;
   color-scheme: dark;
 }
+/* Native checkboxes and radios take the accent, in both themes (the browser's blue otherwise). */
+.app-root { accent-color: var(--color-signal-deep); }
+/* On dark, a veil made of ink is a light haze and a black drop shadow is invisible: dialogs get a dark veil and an edge.
+   The calendar's "+N more" list keeps its clear backdrop. Unlayered so it beats the backdrop and shadow utilities. */
+:root[data-theme="dark"] :is(.app-root dialog, dialog.app-root) { box-shadow: 0 0 0 1px var(--edge), 0 24px 60px rgb(0 0 0 / 0.6); }
+:root[data-theme="dark"] :is(.app-root dialog, dialog.app-root):not([class*="backdrop:bg-transparent"])::backdrop { background: rgb(0 0 0 / 0.6); }
+/* Switches on dark: an ink track with an orange knob reads as a white pill, and the off knob vanishes into its track. */
+:root[data-theme="dark"] .app-root button[role="switch"][aria-checked="true"] { background: var(--color-signal-deep); }
+:root[data-theme="dark"] .app-root button[role="switch"][aria-checked="true"] > span { background: var(--color-paper); }
+:root[data-theme="dark"] .app-root button[role="switch"][aria-checked="false"] > span { background: var(--color-ink-soft); }
 /* data-app is set by AppShell while it shows (an effect with cleanup), so the page background never stays dark on the landing page. */
 :root[data-theme="dark"][data-app] { background: #0d0c0b; color-scheme: dark; }
 /* The app reads in one UI face; the display face stays on the landing page and the logo. Unlayered so it beats the font-display utility. */
@@ -204,6 +214,21 @@ body { margin: 0; font-family: var(--font-body); font-size: 1.0625rem; line-heig
   .skeleton { animation: skeleton 1.4s ease-in-out infinite; }
   .enter { animation: enter .15s ease-out both; }
   .app-root .lift:hover { transform: translateY(-1px); }
+}
+/* A row that scrolls sideways (count chips, the composer's tabs) fades at the edge that hides more. The scroll timeline
+   is idle while nothing overflows, so a row that fits keeps both edges; a browser without it shows no fade. */
+@property --fade-start { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --fade-end { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@supports (animation-timeline: scroll()) {
+  .scroll-fade {
+    mask-image: linear-gradient(to right, transparent, #000 var(--fade-start), #000 calc(100% - var(--fade-end)), transparent);
+    animation: scroll-fade linear both; animation-timeline: scroll(self inline);
+  }
+}
+@keyframes scroll-fade {
+  0% { --fade-start: 0px; --fade-end: 1.5rem; }
+  5%, 95% { --fade-start: 1.5rem; --fade-end: 1.5rem; }
+  100% { --fade-start: 1.5rem; --fade-end: 0px; }
 }
 @keyframes skeleton { 50% { opacity: 0.45; } }
 @keyframes enter { from { opacity: 0; } }
