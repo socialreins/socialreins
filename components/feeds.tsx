@@ -34,7 +34,7 @@ import { platformName, platforms as allPlatforms } from "@/components/platform-i
 import { PlatformMark } from "@/components/posts";
 import { TeamLink as Link } from "@/components/team-link";
 import { linkButton, problemText } from "@/components/team-ui";
-import { Icon } from "@/components/ui";
+import { EmptyState, Icon, LoadFailed, Skeleton } from "@/components/ui";
 
 const say = (p: Problem): ReactNode => feedText(p, platformName) ?? problemText(p.code);
 const order = allPlatforms.map((p) => p.id);
@@ -58,6 +58,7 @@ export function FeedsPage() {
   const [note, setNote] = useState<{ id: string; text: ReactNode; bad: boolean } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [tries, setTries] = useState(0);
 
   useEffect(() => {
     // The sets and accounts only name things and fill the form, so a failed one still shows the feeds.
@@ -66,7 +67,7 @@ export function FeedsPage() {
       if (Array.isArray(a)) setAccounts(a);
       setFeeds(f);
     });
-  }, []);
+  }, [tries]);
 
   const put = (f: Feed) => setFeeds((l) => (Array.isArray(l) ? (l.some((x) => x.id === f.id) ? l.map((x) => (x.id === f.id ? f : x)) : [...l, f]) : l));
 
@@ -85,15 +86,31 @@ export function FeedsPage() {
 
   if (feeds === null)
     return (
-      <div role="status" className="h-40 rounded-2xl bg-ink/5 motion-safe:animate-pulse">
+      <div role="status" className="grid gap-3">
         <span className="sr-only">Loading feeds...</span>
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="card flex items-start gap-4 p-5">
+            <Skeleton className="size-10 shrink-0 rounded-xl" />
+            <span className="grid flex-1 gap-2.5 py-0.5">
+              <Skeleton className={`h-3.5 ${i % 2 ? "w-1/3" : "w-1/2"}`} />
+              <Skeleton className="h-3.5 w-2/3" />
+              <Skeleton className="h-3 w-1/4" />
+            </span>
+          </div>
+        ))}
       </div>
     );
   if (isProblem(feeds))
     return (
-      <p role="alert" className="waitlist-error">
+      <LoadFailed
+        what="feeds"
+        retry={() => {
+          setFeeds(null);
+          setTries((n) => n + 1);
+        }}
+      >
         Feeds couldn&apos;t be loaded. {say(feeds)}
-      </p>
+      </LoadFailed>
     );
 
   const setName = (id: string) => sets.find((s) => s.id === id)?.name ?? "A set that no longer exists";
@@ -121,12 +138,20 @@ export function FeedsPage() {
         </p>
       )}
       {feeds.length === 0 ? (
-        <div className="card p-6">
-          <strong className="block">No feeds yet</strong>
-          <span className="text-ink-soft">Add your blog&apos;s RSS link and every new article becomes a draft, a queued post or a post right away.</span>
-        </div>
+        <EmptyState
+          title="No feeds yet."
+          action={
+            canManage && (
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditing("new")}>
+                Add your first feed
+              </button>
+            )
+          }
+        >
+          Add your blog&apos;s RSS link and every new article becomes a draft, a queued post or a post right away.
+        </EmptyState>
       ) : (
-        <ul className="grid gap-3">
+        <ul className="enter grid gap-3">
           {feeds.map((f) => {
             const [host, rest] = feedHost(f.url);
             return (
