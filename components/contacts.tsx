@@ -12,7 +12,7 @@ import { platformOf, platformName, PlatformIcon, platforms } from "@/components/
 import { TagEditor } from "@/components/tag-editor";
 import { TeamLink as Link, useTeamRouter as useRouter } from "@/components/team-link";
 import { isFailure, problemText, Status, useAction, useSearchInUrl } from "@/components/team-ui";
-import { Icon } from "@/components/ui";
+import { EmptyState, Icon, LoadFailed, Skeleton } from "@/components/ui";
 
 export const contactMessages: Partial<Record<Failure, ReactNode>> = {
   invalid_contact: "That wasn't saved: a tag takes 1 to 30 characters and no commas, a contact 20 tags, and the notes 2000 characters.",
@@ -51,7 +51,9 @@ export function Contacts() {
   const [more, setMore] = useState<Failure | "loading" | null>(null);
   useSearchInUrl(search, q);
 
-  const key = JSON.stringify([q, tag, platform]);
+  // Retry asks again: a new key, so the placeholders show until the answer.
+  const [tries, setTries] = useState(0);
+  const key = JSON.stringify([q, tag, platform, tries]);
   const page = loaded?.key === key ? loaded.page : null;
   const href = (to: { tag?: string; platform?: string; contact?: string | null }) => {
     const s = new URLSearchParams();
@@ -133,20 +135,55 @@ export function Contacts() {
           </ul>
         )}
         {page === null ? (
-          <div role="status" className="h-64 rounded-2xl bg-ink/5 motion-safe:animate-pulse">
+          <div role="status" className="card divide-y divide-ink/10">
             <span className="sr-only">Loading contacts...</span>
+            {Array.from({ length: 6 }, (_, i) => (
+              <div key={i} className="flex h-16 items-center gap-3 px-3">
+                <Skeleton className="size-9 shrink-0 rounded-full" />
+                <span className="grid flex-1 gap-2">
+                  <Skeleton className={`h-3.5 ${i % 2 ? "w-1/4" : "w-1/3"}`} />
+                  <Skeleton className="h-3 w-1/2" />
+                </span>
+                <Skeleton className="h-3 w-16" />
+              </div>
+            ))}
           </div>
         ) : isFailure(page) ? (
-          <p role="alert" className="waitlist-error">
+          <LoadFailed what="contacts" retry={() => setTries((n) => n + 1)}>
             Contacts couldn&apos;t be loaded. {problemText(page)}
-          </p>
+          </LoadFailed>
         ) : page.items.length === 0 ? (
-          <p className="card p-5 text-ink-soft">
-            {q || tag || platform ? "No contacts match these filters." : "No contacts yet. Everyone who comments, mentions or messages one of your accounts shows up here."}
-          </p>
+          q || tag || platform ? (
+            <EmptyState
+              title="No contacts match these filters."
+              action={
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => {
+                    setSearch("");
+                    router.replace("/contacts", { scroll: false });
+                  }}
+                >
+                  Clear filters
+                </button>
+              }
+            />
+          ) : (
+            <EmptyState
+              title="No contacts yet."
+              action={
+                <Link href="/connections" className="btn btn-primary btn-sm">
+                  Connect an account
+                </Link>
+              }
+            >
+              Everyone who comments, mentions or messages one of your accounts shows up here.
+            </EmptyState>
+          )
         ) : (
           <>
-            <ul aria-label="Contact list" className="card divide-y divide-ink/10 overflow-hidden">
+            <ul aria-label="Contact list" className="enter card divide-y divide-ink/10 overflow-hidden">
               {page.items.map((c) => (
                 <li key={c.id}>
                   <Link
@@ -206,12 +243,13 @@ function ContactPanel({ id, suggestions, close, onSaved, onDeleted }: { id: stri
   const [notes, setNotes] = useState("");
   const [confirming, setConfirming] = useState(false);
   const { busy, problem, done, run } = useAction();
+  const [tries, setTries] = useState(0);
   useEffect(() => {
     getContact(id).then((r) => {
       setContact(r);
       if (!isFailure(r)) setNotes(r.notes ?? "");
     });
-  }, [id]);
+  }, [id, tries]);
 
   const back = (
     <Link href={close} scroll={false} className="flex items-center gap-1 text-sm font-bold text-ink-soft hover:text-ink">
@@ -223,17 +261,33 @@ function ContactPanel({ id, suggestions, close, onSaved, onDeleted }: { id: stri
   );
   if (contact === null)
     return (
-      <div role="status" className="h-80 rounded-2xl bg-ink/5 motion-safe:animate-pulse">
+      <div role="status" className="card grid h-80 content-start gap-4 p-5">
         <span className="sr-only">Loading the contact...</span>
+        <span className="flex items-center gap-3">
+          <Skeleton className="size-12 shrink-0 rounded-full" />
+          <span className="grid flex-1 gap-2">
+            <Skeleton className="h-4 w-1/2" />
+            <Skeleton className="h-3 w-1/3" />
+          </span>
+        </span>
+        <Skeleton className="h-3.5 w-2/3" />
+        <Skeleton className="h-20 w-full" />
+        <Skeleton className="h-3.5 w-1/2" />
       </div>
     );
   if (isFailure(contact))
     return (
       <div className="grid gap-3">
         {back}
-        <p role="alert" className="waitlist-error">
+        <LoadFailed
+          what="this contact"
+          retry={() => {
+            setContact(null);
+            setTries((n) => n + 1);
+          }}
+        >
           This contact couldn&apos;t be loaded. {problemText(contact, contactMessages)}
-        </p>
+        </LoadFailed>
       </div>
     );
 
