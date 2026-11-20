@@ -31,6 +31,7 @@ import {
 } from "@/lib/teams";
 import { subscribersCsv, type Subscriber } from "@/lib/newsletter";
 import { isFailure, problemText, roleName, Status, useAction } from "@/components/team-ui";
+import { LoadFailed, SkeletonRows } from "@/components/ui";
 
 const date = (iso: string) => new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
 
@@ -292,11 +293,18 @@ function Newsletter({ team, onChanged }: { team: Team; onChanged: (t: Team) => v
       <p className="hint pl-6">Visitors give their email and confirm it with a link we send. Nothing is sent to them yet: you get the list to use in your own mailing tool.</p>
       <Status problem={problem} done={done} />
       {list === null ? (
-        <p className="hint">Loading subscribers...</p>
+        <SkeletonRows label="Loading subscribers..." rows={2} className="" />
       ) : isFailure(list) ? (
-        <p role="alert" className="waitlist-error">
+        <LoadFailed
+          className=""
+          what="subscribers"
+          retry={() => {
+            setList(null);
+            listSubscribers().then((r) => setList(isFailure(r) ? r : r.subscribers));
+          }}
+        >
           Subscribers couldn&apos;t be loaded. {problemText(list)}
-        </p>
+        </LoadFailed>
       ) : list.length === 0 ? (
         <p className="hint">No subscribers yet.</p>
       ) : (
@@ -408,11 +416,18 @@ function Members({ me, mine, onChanged }: { me: User; mine: Role; onChanged: () 
     <Card id="members-heading" title="Members" help={manages(mine) ? "Everyone in the team. Change a role or remove someone." : "Everyone in the team."}>
       <Status problem={problem} done={done} />
       {members === null ? (
-        <p className="hint">Loading members...</p>
+        <SkeletonRows label="Loading members..." rows={3} tall className="" />
       ) : isFailure(members) ? (
-        <p role="alert" className="waitlist-error">
+        <LoadFailed
+          className=""
+          what="members"
+          retry={() => {
+            setMembers(null);
+            listMembers().then(setMembers);
+          }}
+        >
           Members couldn&apos;t be loaded. {problemText(members)}
-        </p>
+        </LoadFailed>
       ) : (
         <ul className="-my-3 divide-y divide-[var(--line)]">
           {members.map((m) => {
@@ -558,11 +573,18 @@ function Invitations({ version }: { version: number }) {
       </form>
       <Status problem={problem} done={done} />
       {list === null ? (
-        <p className="hint">Loading invitations...</p>
+        <SkeletonRows label="Loading invitations..." rows={1} className="" />
       ) : isFailure(list) ? (
-        <p role="alert" className="waitlist-error">
+        <LoadFailed
+          className=""
+          what="invitations"
+          retry={() => {
+            setList(null);
+            listInvitations().then(setList);
+          }}
+        >
           Invitations couldn&apos;t be loaded. {problemText(list)}
-        </p>
+        </LoadFailed>
       ) : list.length === 0 ? (
         <p className="hint">No pending invitations.</p>
       ) : (

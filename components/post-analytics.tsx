@@ -11,6 +11,7 @@ import { useCurrentSet } from "@/components/app-shell";
 import { platformName } from "@/components/platform-icons";
 import { PlatformMark, postMessages, snippet } from "@/components/posts";
 import { isFailure, problemText } from "@/components/team-ui";
+import { EmptyState, LoadFailed, Skeleton, SkeletonRows } from "@/components/ui";
 
 const statName: Record<Stat | "posts", string> = { posts: "Posts", likes: "Likes", comments: "Comments", shares: "Shares", views: "Views" };
 const names = (ids: string[]) => new Intl.ListFormat("en-GB").format(ids.map(platformName));
@@ -26,7 +27,9 @@ const Num = ({ n }: { n: number | null }) => (n === null ? <span title="Not give
 export function PostAnalytics() {
   const [setId] = useCurrentSet();
   const range = parseRange(useSearchParams().get("range"));
-  const key = `${setId} ${range}`;
+  // Retry asks again: a new key, so the placeholders show until the answer.
+  const [tries, setTries] = useState(0);
+  const key = `${setId} ${range} ${tries}`;
   // Kept with what was asked, so an older answer never shows under a newer range or set.
   const [got, setGot] = useState<{ key: string; data: Analytics | Failure } | null>(null);
   useEffect(() => {
@@ -60,20 +63,40 @@ export function PostAnalytics() {
         Stats come from {names(supported)}.{missing.length > 0 && ` ${names(missing)} ${missing.length === 1 ? "is" : "are"} not available yet.`} {REFRESH_NOTE}
       </p>
       {data === null ? (
-        <p role="status" className="text-ink-soft">
-          Loading the analytics...
-        </p>
+        <>
+          <p role="status" className="sr-only">
+            Loading the analytics...
+          </p>
+          <div aria-hidden="true" className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            {(["posts", ...STATS] as const).map((k) => (
+              <div key={k} className="card grid gap-1 px-4 py-3">
+                <span className="text-sm text-ink-soft">{statName[k]}</span>
+                <span className="flex h-[2.0625rem] items-center">
+                  <Skeleton className="h-6 w-12" />
+                </span>
+              </div>
+            ))}
+          </div>
+          <div aria-hidden="true" className="card grid h-56 content-end p-4">
+            <Skeleton className="h-2/3 w-full" />
+          </div>
+          <SkeletonRows rows={4} />
+        </>
       ) : isFailure(data) ? (
-        <p role="alert" className="waitlist-error">
+        <LoadFailed what="analytics" retry={() => setTries((n) => n + 1)}>
           The analytics couldn&apos;t be loaded. {problemText(data, { invalid_range: "That range isn't valid. Pick 7, 30 or 90 days." })}
-        </p>
+        </LoadFailed>
       ) : data.totals.posts === 0 ? (
-        <p className="card p-5 text-ink-soft">
-          No posts were published in the last {range} days.{" "}
-          <Link href="/posts/new" className="font-bold underline">
-            Write a post
-          </Link>
-        </p>
+        <EmptyState
+          title={`No posts were published in the last ${range} days.`}
+          action={
+            <Link href="/posts/new" className="btn btn-primary btn-sm">
+              Write a post
+            </Link>
+          }
+        >
+          Likes, comments and shares show up here once a post is out.
+        </EmptyState>
       ) : (
         <Report data={data} range={range} />
       )}
@@ -84,7 +107,7 @@ export function PostAnalytics() {
 function Report({ data, range }: { data: Analytics; range: number }) {
   return (
     <>
-      <dl aria-label="Totals" className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+      <dl aria-label="Totals" className="enter grid grid-cols-2 gap-3 sm:grid-cols-5">
         {(["posts", ...STATS] as const).map((k) => (
           <div key={k} className="card grid gap-1 px-4 py-3">
             <dt className="text-sm text-ink-soft">{statName[k]}</dt>

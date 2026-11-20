@@ -36,7 +36,7 @@ import { PlatformIcon, platformName, platformOf } from "@/components/platform-ic
 import { manages } from "@/lib/teams";
 import { isFailure, problemText, Status, useAction } from "@/components/team-ui";
 import { useCurrentSet, useSession } from "@/components/app-shell";
-import { Icon } from "@/components/ui";
+import { EmptyState, Icon, LoadFailed, Skeleton, SkeletonRows } from "@/components/ui";
 import { postTotals, statWords } from "@/lib/analytics";
 
 export const postMessages: Partial<Record<Failure, ReactNode>> = {
@@ -306,8 +306,11 @@ function DayMore({ day, list, hidden, onMove }: { day: Date; list: Post[][]; hid
     d.showModal();
     const b = e.currentTarget.getBoundingClientRect();
     const { width, height } = d.getBoundingClientRect();
-    d.style.left = `${Math.max(8, Math.min(b.left, innerWidth - width - 8))}px`;
-    d.style.top = `${b.bottom + height + 12 < innerHeight ? b.bottom + 4 : Math.max(8, b.top - height - 4)}px`;
+    // Beside the day, so its three chips stay in view; under or over the button when neither side has room.
+    const cell = e.currentTarget.closest("td")?.getBoundingClientRect();
+    const side = cell && (cell.right + 4 + width <= innerWidth - 8 ? cell.right + 4 : cell.left - width - 4 >= 8 ? cell.left - width - 4 : null);
+    d.style.left = `${side ?? Math.max(8, Math.min(b.left, innerWidth - width - 8))}px`;
+    d.style.top = `${side != null ? Math.max(8, Math.min(cell!.top, innerHeight - height - 8)) : b.bottom + height + 12 < innerHeight ? b.bottom + 4 : Math.max(8, b.top - height - 4)}px`;
   };
   return (
     <>
@@ -404,9 +407,9 @@ function MonthList({ posts, y, m, title }: { posts: Post[]; y: number; m: number
     const d = postDay(p)!;
     if (d.getFullYear() === y && d.getMonth() === m) days.set(d.getDate(), [...(days.get(d.getDate()) ?? []), p]);
   }
-  if (days.size === 0) return <p className="card p-5 text-ink-soft">Nothing scheduled or published in {title}.</p>;
+  if (days.size === 0) return <EmptyState title={`Nothing scheduled or published in ${title}.`} />;
   return (
-    <ol aria-label={`Posts in ${title}`} className="card divide-y divide-ink/10">
+    <ol aria-label={`Posts in ${title}`} className="enter card divide-y divide-ink/10">
       {[...days].map(([date, list]) => (
         <li key={date} className="grid gap-2 p-3">
           <p className="text-xs font-bold text-ink-soft">
@@ -531,14 +534,14 @@ function DayGroup({ date, list, today, review }: { date: Date; list: Post[][]; t
 // A row of toggle chips; `counts` is filled once the posts are in.
 function Chips<T extends string>({ label, value, options, onPick }: { label: string; value: T; options: { id: T; name: ReactNode; count?: number }[]; onPick: (v: T) => void }) {
   return (
-    <ul aria-label={label} className="flex flex-wrap gap-1.5">
+    <ul aria-label={label} className="flex gap-1.5 max-sm:-m-0.5 max-sm:overflow-x-auto max-sm:p-0.5 sm:flex-wrap">
       {options.map((o) => (
-        <li key={o.id}>
+        <li key={o.id} className="shrink-0">
           <button
             type="button"
             aria-pressed={value === o.id}
             onClick={() => onPick(o.id)}
-            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-bold ${
+            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1 text-sm font-bold ${
               value === o.id ? "border-ink bg-ink text-paper" : "border-ink/15 text-ink-soft hover:border-ink hover:text-ink"
             }`}
           >
@@ -559,7 +562,19 @@ function PostList({ rows: all, y, m, title, filters, onClear, review }: { rows: 
     const d = postDay(r[0]!)!;
     days.set(d.getDate(), [...(days.get(d.getDate()) ?? []), r]);
   }
-  if (all.length === 0) return <p className="card p-5 text-ink-soft">Nothing scheduled or published in {title}.</p>;
+  if (all.length === 0)
+    return (
+      <EmptyState
+        title={`Nothing scheduled or published in ${title}.`}
+        action={
+          <Link href="/posts/new" className="btn btn-primary btn-sm">
+            Write a post
+          </Link>
+        }
+      >
+        Posts you schedule for this month show up here by day.
+      </EmptyState>
+    );
   if (days.size === 0)
     return (
       <div className="card grid justify-items-start gap-3 p-5">
@@ -578,7 +593,7 @@ function PostList({ rows: all, y, m, title, filters, onClear, review }: { rows: 
   const group = ([d, list]: [number, Post[][]]) => <DayGroup key={d} date={new Date(y, m, d)} list={list} today={thisMonth && d === now.getDate()} review={review} />;
   const count = earlier.reduce((n, [, l]) => n + l.length, 0);
   return (
-    <div className="grid gap-4">
+    <div className="enter grid gap-4">
       {upcoming.length > 0 ? (
         <ol aria-label={`Posts in ${title}`} className="card overflow-hidden">
           {upcoming.map(group)}
@@ -619,6 +634,7 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
   const [picking, setPicking] = useState<Post[] | null>(null);
   const [moved, setMoved] = useState<{ ok: boolean; text: ReactNode } | null>(null);
   const [reload, setReload] = useState(0);
+  const [draftsReload, setDraftsReload] = useState(0);
   // Approvals: owners and admins approve a waiting row or ask for changes (the dialog is open for `rejecting`).
   const team = useSession().user.current_team;
   const requires = !!team.require_approval;
@@ -690,9 +706,13 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
     return () => {
       live = false;
     };
-  }, [setId, view]);
+  }, [setId, view, draftsReload]);
 
-  const step = (by: number) => setMonth(({ y, m }) => ({ y: m + by < 0 ? y - 1 : m + by > 11 ? y + 1 : y, m: (m + by + 12) % 12 }));
+  // Another month starts from the placeholders, not from "Nothing scheduled".
+  const step = (by: number) => {
+    setPosts(null);
+    setMonth(({ y, m }) => ({ y: m + by < 0 ? y - 1 : m + by > 11 ? y + 1 : y, m: (m + by + 12) % 12 }));
+  };
   const title = new Date(month.y, month.m, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
   // 1 January 2024 was a Monday, so these are Monday to Sunday in the browser's language.
   const weekdays = Array.from({ length: 7 }, (_, i) => new Date(2024, 0, 1 + i).toLocaleDateString(undefined, { weekday: "short" }));
@@ -802,21 +822,31 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
           </p>
         )}
         {picking && <MoveDialog key={picking[0]!.id} posts={picking} onClose={() => setPicking(null)} onMove={move} />}
-        {posts === null ? (
-          <div className="h-96 rounded-2xl bg-ink/5 motion-safe:animate-pulse" role="status">
-            <span className="sr-only">Loading posts...</span>
-          </div>
-        ) : isFailure(posts) ? (
-          <p role="alert" className="waitlist-error">
+        {isFailure(posts) ? (
+          <LoadFailed
+            what="posts"
+            retry={() => {
+              setPosts(null);
+              setReload((n) => n + 1);
+            }}
+          >
             Posts couldn&apos;t be loaded. {problemText(posts, postMessages)}
-          </p>
+          </LoadFailed>
+        ) : posts === null && view === "list" ? (
+          <SkeletonRows label="Loading posts..." rows={6} />
         ) : (
           <>
+            {/* The calendar keeps its grid while the month loads, so nothing jumps when the posts arrive. */}
+            {posts === null && (
+              <p role="status" className="sr-only max-lg:hidden">
+                Loading posts...
+              </p>
+            )}
             {view === "list" && <PostList rows={monthRows} y={month.y} m={month.m} title={title} filters={filters} onClear={clear} review={review} />}
             {/* Narrow screens get the month as a list of days; the grid needs about 46rem. */}
             {view === "calendar" && (
             <div className="lg:hidden">
-              <MonthList posts={calendarPosts} y={month.y} m={month.m} title={title} />
+              {posts === null ? <SkeletonRows label="Loading posts..." rows={5} /> : <MonthList posts={calendarPosts} y={month.y} m={month.m} title={title} />}
             </div>
             )}
             {view === "calendar" && (
@@ -874,8 +904,9 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
                                 >
                                   {day.getDate()}
                                 </p>
+                                {posts === null && (i + j) % 2 === 0 && <Skeleton className="mx-1.5 mt-1 h-3 w-3/4" />}
                                 {list.length > 0 && (
-                                  <ul className="grid gap-0.5">
+                                  <ul className="enter grid gap-0.5">
                                     {list.slice(0, 3).map((v) => (
                                       <GridChip key={v[0]!.id} posts={v} onDrag={setDragging} onMove={setPicking} />
                                     ))}
@@ -921,11 +952,25 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
           Drafts
         </h2>
         {drafts === null ? (
-          <p className="text-ink-soft">Loading drafts...</p>
+          <div role="status" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <span className="sr-only">Loading drafts...</span>
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="tone grid h-[5.5rem] content-start gap-2.5 rounded-2xl p-4" data-status="draft">
+                <Skeleton className="h-3.5 w-4/5" />
+                <Skeleton className="h-3.5 w-1/2" />
+              </div>
+            ))}
+          </div>
         ) : isFailure(drafts) ? (
-          <p role="alert" className="waitlist-error">
+          <LoadFailed
+            what="drafts"
+            retry={() => {
+              setDrafts(null);
+              setDraftsReload((n) => n + 1);
+            }}
+          >
             Drafts couldn&apos;t be loaded. {problemText(drafts, postMessages)}
-          </p>
+          </LoadFailed>
         ) : drafts.length === 0 ? (
           <p className="text-ink-soft">No drafts. Posts you save without scheduling show up here.</p>
         ) : shownDrafts.length === 0 ? (
@@ -938,7 +983,7 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
             )}
           </div>
         ) : (
-          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <ul className="enter grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {shownDrafts.map((v) => {
               const p = v[0]!;
               return (
