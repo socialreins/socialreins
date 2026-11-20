@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 
-const publicPages = ["/", "/contact", "/privacy", "/terms", "/data-deletion", "/post-types", "/socials", "/features/automations", "/features/inboxes", "/pricing", "/docs", "/docs/self-hosted", "/docs/self-hosted/use", "/docs/self-hosted/ai", "/docs/cloud", "/docs/cloud/use", "/docs/cloud/ai", "/bluesky", "/threads", "/linkedin", "/facebook", "/instagram", "/youtube", "/x", "/tiktok", "/compare", "/compare/postsyncer", "/compare/manychat", "/compare/buffer", "/compare/hootsuite", "/compare/later", "/compare/postiz", "/compare/publer", "/compare/socialbee", "/compare/metricool", "/compare/sprout-social"];
+const publicPages = ["/", "/contact", "/privacy", "/terms", "/data-deletion", "/post-types", "/socials", "/features", "/features/automations", "/features/inboxes", "/pricing", "/docs", "/docs/self-hosted", "/docs/self-hosted/use", "/docs/self-hosted/ai", "/docs/cloud", "/docs/cloud/use", "/docs/cloud/ai", "/bluesky", "/threads", "/linkedin", "/facebook", "/instagram", "/youtube", "/x", "/tiktok", "/compare", "/compare/postsyncer", "/compare/manychat", "/compare/buffer", "/compare/hootsuite", "/compare/later", "/compare/postiz", "/compare/publer", "/compare/socialbee", "/compare/metricool", "/compare/sprout-social"];
 const hiddenPages = ["/login", "/login/email", "/signup", "/signup/email", "/welcome", "/admin/waitlist", "/home", "/posts"];
 const noindex = /<meta name="robots" content="noindex"/;
 // lib/seo.ts repeats this alt text (a page-level openGraph replaces the file-based image). Next uses the .alt.txt files verbatim, so they must not end with a newline.

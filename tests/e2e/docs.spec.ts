@@ -41,3 +41,26 @@ test("the install guide has the commands, and a docs page fits a phone", async (
   // The header still fits with the Docs link in it.
   await expect(page.locator("header").first().getByRole("link", { name: "Get started" })).toBeInViewport({ ratio: 1 });
 });
+
+test("the use guide has a how-to for each part of the app, in both versions", async ({ page }) => {
+  const parts = { queue: "Set up the queue", csv: "Upload posts from a CSV file", recurring: "Repeat a post", feeds: "Post from an RSS or Atom feed", approvals: "Approve posts before they go out", library: "Keep media and text in the library", inbox: "Answer comments and DMs in the inbox", automations: "Build an automation or a flow", broadcasts: "Send a broadcast", newsletters: "Send a newsletter", analytics: "Read your analytics", "team-address": "Give your team its own address" };
+  for (const mode of ["self-hosted", "cloud"]) {
+    await page.goto(`/docs/${mode}/use`);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
+    const article = page.getByRole("article");
+    for (const [id, name] of Object.entries(parts)) {
+      await expect(article.getByRole("heading", { level: 2, name })).toHaveAttribute("id", id);
+      await expect(article.getByRole("navigation", { name: "How to" }).locator(`a[href="#${id}"]`)).toBeVisible();
+    }
+  }
+  const article = page.getByRole("article");
+  // The words are the app's own: the button, the columns, the rules and the networks.
+  await expect(article).toContainText("Add to queue");
+  await expect(article).toContainText("text,networks,media,time,first_comment");
+  await expect(article).toContainText('Anyone who replies "stop" is opted out');
+  await expect(article).toContainText("Send a test to your own email");
+  await expect(article).toContainText("shares on Bluesky and Facebook, and views on YouTube");
+  await expect(article).toContainText("Facebook Pages and Instagram are in testing");
+  await page.setViewportSize({ width: 320, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});

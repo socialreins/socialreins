@@ -210,4 +210,20 @@ export const networks: Network[] = [
   },
 ];
 
+// What works on a network beyond posting, for its page and /post-types. The same facts as `us` in lib/compare.ts
+// and the groups in lib/features.ts: stats on four networks (each gives its own numbers), no TikTok in a CSV or a repeat (each TikTok post needs
+// a person's choices), no feeds for the two video-only networks. Inbox and automation states come from lib/features.ts.
+const STATS: Record<string, string> = { bluesky: "likes, comments and shares", facebook: "likes, comments and shares", instagram: "likes and comments", youtube: "views, likes and comments" };
+export function beyondPosting(slug: string, name: string, support: (feature: string) => string): [string, string][] {
+  const tiktok = slug === "tiktok";
+  return [
+    ["Bulk upload from a CSV file", tiktok ? "No. Every TikTok post needs its own privacy and disclosure choices, so post from the composer." : "Yes."],
+    ["Recurring posts", tiktok ? "No. TikTok needs a person to confirm each post." : "Yes: daily, weekly or monthly."],
+    ["Posts from an RSS or Atom feed", tiktok ? "No. Feeds are not offered for TikTok." : slug === "youtube" ? "No. YouTube takes video only." : slug === "instagram" ? "Yes. A feed item needs an image to go to Instagram." : "Yes."],
+    ["Post analytics", STATS[slug] ? `Yes: ${STATS[slug]} for each post.` : "No."],
+    ["Inbox", support("inboxes")],
+    ["Automations", support("automations")],
+  ];
+}
+
 export const network = (slug: string) => networks.find((n) => n.slug === slug);
