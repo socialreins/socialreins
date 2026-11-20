@@ -66,7 +66,7 @@ function Network({ id }: { id: string }) {
 }
 
 // The tones of globals.css: a draft is dashed, sending blue, paused amber, sent green, cancelled plain.
-function StatusBadge({ status }: { status: Broadcast["status"] }) {
+export function StatusBadge({ status }: { status: Broadcast["status"] }) {
   const tone = { draft: "draft", sending: "running", sent: "sent", paused: undefined, cancelled: undefined }[status];
   return (
     <span className="badge tone" data-status={tone} data-approval={status === "paused" ? "pending" : undefined}>
@@ -88,13 +88,13 @@ const Audience = ({ b }: { b: Pick<Broadcast, "tag" | "platform"> }) => (
 const barTone = { sent: "bg-[#2f9e5b]", skipped: "bg-ink/25", failed: "bg-[#d63a2f]", pending: "" };
 const partName = { sent: "Sent", skipped: "Skipped", failed: "Failed", pending: "Waiting" };
 
-// Sent, skipped, failed and waiting as numbers and as one bar of their shares.
-function Progress({ counts }: { counts: Counts }) {
+// Sent, skipped, failed and waiting as numbers and as one bar of their shares. `parts`: the ones this kind of send has.
+export function Progress({ counts, parts = PARTS }: { counts: Counts; parts?: readonly (typeof PARTS)[number][] }) {
   const share = progress(counts);
   return (
     <div className="grid gap-2">
       <dl aria-label="Progress" className="flex flex-wrap gap-x-5 gap-y-1">
-        {PARTS.map((k) => (
+        {parts.map((k) => (
           <div key={k}>
             <dt className="text-xs text-ink-soft">{partName[k]}</dt>
             <dd className={`font-bold tabular-nums ${k === "failed" && counts.failed ? "text-signal-deep" : ""}`}>{counts[k]}</dd>
@@ -107,10 +107,10 @@ function Progress({ counts }: { counts: Counts }) {
       </dl>
       <div
         role="img"
-        aria-label={share ? `${share.done}% done: ${counts.sent} sent, ${counts.skipped} skipped, ${counts.failed} failed, ${counts.pending} waiting` : "Nobody yet"}
+        aria-label={share ? `${share.done}% done: ${parts.map((k) => `${counts[k]} ${partName[k].toLowerCase()}`).join(", ")}` : "Nobody yet"}
         className="flex h-2 gap-px overflow-hidden rounded-full bg-ink/10"
       >
-        {share && PARTS.map((k) => k !== "pending" && share[k] > 0 && <span key={k} data-part={k} className={`min-w-1 ${barTone[k]}`} style={{ width: `${share[k]}%` }} />)}
+        {share && parts.map((k) => k !== "pending" && share[k] > 0 && <span key={k} data-part={k} className={`min-w-1 ${barTone[k]}`} style={{ width: `${share[k]}%` }} />)}
       </div>
     </div>
   );
@@ -125,7 +125,7 @@ const Rules = () => (
 );
 
 // A question asked in place, before something that can't be taken back. The safe answer takes focus.
-function Confirm({ id, title, about, yes, no, busy, danger, onYes, onNo }: { id: string; title: string; about: string; yes: string; no: string; busy: boolean; danger?: boolean; onYes: () => void; onNo: () => void }) {
+export function Confirm({ id, title, about, yes, no, busy, danger, onYes, onNo }: { id: string; title: string; about: string; yes: string; no: string; busy: boolean; danger?: boolean; onYes: () => void; onNo: () => void }) {
   return (
     <div role="alertdialog" aria-labelledby={`${id}-title`} aria-describedby={`${id}-about`} className="grid gap-2">
       <strong id={`${id}-title`}>{title}</strong>

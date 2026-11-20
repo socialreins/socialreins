@@ -4,7 +4,7 @@ import { gaId, tracked } from "@/lib/ga";
 describe("ga", () => {
   it("tracks public marketing pages only", () => {
     for (const p of ["/", "/pricing", "/compare/buffer", "/docs", "/privacy", "/login", "/signup", "/post-types"]) expect(tracked(p)).toBe(true);
-    for (const p of ["/t/abc123/home", "/app", "/app/posts", "/admin", "/admin/users", "/p/abcdefghjk", "/profile", "/security", "/welcome", "/invitations/tok", "/newsletter/verify", "/waitlist/verify", "/billing", "/login/email", "/signup/email"])
+    for (const p of ["/t/abc123/home", "/app", "/app/posts", "/admin", "/admin/users", "/p/abcdefghjk", "/profile", "/security", "/welcome", "/invitations/tok", "/newsletter/verify", "/newsletter/unsubscribe", "/waitlist/verify", "/billing", "/login/email", "/signup/email"])
       expect(tracked(p)).toBe(false);
   });
 

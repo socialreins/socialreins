@@ -25,7 +25,8 @@ export function useSession() {
 }
 
 // set: the set picked in the top bar changes what this page shows, so the top bar offers the switcher there.
-export type NavItem = { href: string; label: string; icon: IconName; set?: true };
+// manage: only owners and admins see the link.
+export type NavItem = { href: string; label: string; icon: IconName; set?: true; manage?: true };
 type NavGroup = { label: string; items: NavItem[] };
 const nav: NavGroup[] = [
   { label: "", items: [{ href: "/home", label: "Home", icon: "home", set: true }] },
@@ -47,6 +48,7 @@ const nav: NavGroup[] = [
       { href: "/inbox", label: "Inbox", icon: "inbox" },
       { href: "/contacts", label: "Contacts", icon: "user" },
       { href: "/broadcasts", label: "Broadcasts", icon: "send" },
+      { href: "/newsletters", label: "Newsletters", icon: "mention", manage: true },
       { href: "/automations", label: "Automations", icon: "automations" },
     ],
   },
@@ -174,7 +176,8 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
   }, [urlTeam, router, admin]);
 
   const user = typeof me === "object" && me ? me.user : null;
-  const groups = admin ? adminNav : nav;
+  const member = !user || user.current_team.role === "member";
+  const groups = admin ? adminNav : nav.map((g) => ({ ...g, items: g.items.filter((i) => !i.manage || !member) }));
   const session: Session | null = user && {
     user,
     setUser: (u) => setMe({ user: u }),
