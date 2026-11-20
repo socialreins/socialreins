@@ -39,7 +39,7 @@ import { manages } from "@/lib/teams";
 import { PlatformIcon, platformOf, platforms } from "@/components/platform-icons";
 import { PlatformMark } from "@/components/posts";
 import { isFailure, problemText, Status, useAction } from "@/components/team-ui";
-import { Icon } from "@/components/ui";
+import { EmptyState, Icon, LoadFailed, SkeletonRows } from "@/components/ui";
 
 const heading = "font-display text-xl font-extrabold tracking-tight";
 const date = (iso: string) => new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
@@ -274,22 +274,37 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
       {picking && <MetaPicker team={team} onConnected={() => connectedTo("facebook")} />}
       <Status problem={problem} done={done} overrides={connectMessages} />
       {list === null ? (
-        <div role="status" className="h-28 rounded-2xl bg-ink/5 motion-safe:animate-pulse">
-          <span className="sr-only">Loading accounts...</span>
-        </div>
+        <SkeletonRows label="Loading accounts..." rows={3} tall />
       ) : isFailure(list) ? (
-        <p role="alert" className="waitlist-error">
+        <LoadFailed
+          what="accounts"
+          retry={() => {
+            setList(null);
+            listConnections().then(setList);
+          }}
+        >
           Accounts couldn&apos;t be loaded. {problemText(list)}
-        </p>
+        </LoadFailed>
       ) : list.length === 0 ? (
-        <p className="card p-5 text-ink-soft">No accounts connected yet.{canManage ? " Use Add account to connect one." : ""}</p>
+        <EmptyState
+          title="No accounts connected yet."
+          action={
+            canManage && (
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setAdding(true)}>
+                Connect an account
+              </button>
+            )
+          }
+        >
+          {canManage ? "Posts go out through the accounts you connect here." : "A team owner or admin can connect one."}
+        </EmptyState>
       ) : !group ? (
         <p className="card p-5 text-ink-soft">
           No accounts in the {picked?.name} set yet.
           {canManage ? ` Use Add account to connect one to it${everything ? `, or pick ${everything} at the top and add an existing account from the account's settings` : ""}.` : ""}
         </p>
       ) : (
-        <div className="grid gap-4">
+        <div className="enter grid gap-4">
           <div role="tablist" aria-label="Networks" className="flex gap-1 overflow-x-auto border-b border-[var(--line)]" onKeyDown={onTabKey}>
             {groups.map((g) => {
               const platform = platformOf(g.id);
