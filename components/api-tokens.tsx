@@ -10,6 +10,7 @@ import { manages } from "@/lib/teams";
 import { apiUrl } from "@/lib/waitlist";
 import { WebhookSection } from "@/components/webhook";
 import { isFailure, linkButton, problemText, Status, useAction } from "@/components/team-ui";
+import { EmptyState, LoadFailed, Skeleton } from "@/components/ui";
 
 const heading = "font-display text-xl font-extrabold tracking-tight";
 const date = (d: string) => new Date(d).toLocaleDateString(undefined, { dateStyle: "medium" });
@@ -173,15 +174,38 @@ function TokensPage() {
         </div>
       )}
       {tokens === null ? (
-        <p className="text-ink-soft">Loading tokens...</p>
+        <div role="status" className="grid gap-2">
+          <span className="sr-only">Loading tokens...</span>
+          {[0, 1].map((i) => (
+            <div key={i} className="grid gap-2.5 border-l-4 border-ink/15 bg-paper px-4 py-3.5">
+              <Skeleton className="h-3.5 w-1/4" />
+              <Skeleton className="h-3 w-1/2" />
+            </div>
+          ))}
+        </div>
       ) : isFailure(tokens) ? (
-        <p role="alert" className="waitlist-error">
+        <LoadFailed
+          what="tokens"
+          retry={() => {
+            setTokens(null);
+            listTokens().then(setTokens);
+          }}
+        >
           Tokens couldn&apos;t be loaded. {problemText(tokens)}
-        </p>
+        </LoadFailed>
       ) : tokens.length === 0 ? (
-        <p>No API tokens yet.</p>
+        <EmptyState
+          title="No API tokens yet."
+          action={
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => document.getElementById("token-name")?.focus()}>
+              Name a token
+            </button>
+          }
+        >
+          A token lets a script or another tool post for this team.
+        </EmptyState>
       ) : (
-        <ul className="grid gap-2">
+        <ul className="enter grid gap-2">
           {tokens.map((t) => (
             <li key={t.id} className="grid gap-1 border-l-4 border-ink bg-paper px-4 py-3">
               <p className="font-bold">{t.name}</p>
