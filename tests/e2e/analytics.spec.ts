@@ -1,5 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 
+// The month the list asks for starts at local midnight: pin the zone so it is the same everywhere.
+test.use({ timezoneId: "Europe/Berlin" });
+
 const me = { id: "u-me", email: "me@example.com", name: "Mira", username: null, current_team: { id: "t1", name: "Acme", code: "acme22", role: "owner" } };
 const sets = [{ id: "d", name: "All sets", is_default: true, account_ids: ["c1"], account_count: 1, created_at: "2026-10-01T10:00:00Z", deleted_at: null }];
 const alice = { id: "c1", provider: "bluesky", external_id: "did:plc:alice", handle: "alice.bsky.social", display_name: "Alice", avatar_url: null, token_expires_at: null, set_ids: ["d"], created_at: "2026-10-20T10:00:00Z" };
