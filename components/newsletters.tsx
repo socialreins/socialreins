@@ -57,15 +57,22 @@ const Sent = ({ n }: { n: Newsletter }) => <Progress counts={{ ...n.counts, skip
 function useAudience() {
   const [count, setCount] = useState<number | Failure | null>(null);
   const [tries, setTries] = useState(0);
+  // brain lists at most the newest 5000 sign-ups: at that many the count here can't be trusted.
+  const [capped, setCapped] = useState(false);
   useEffect(() => {
     let live = true;
-    listSubscribers().then((r) => live && setCount(isFailure(r) ? r : r.subscribers.filter(reachable).length));
+    listSubscribers().then((r) => {
+      if (!live) return;
+      setCapped(!isFailure(r) && r.subscribers.length >= 5000);
+      setCount(isFailure(r) ? r : r.subscribers.filter(reachable).length);
+    });
     return () => {
       live = false;
     };
   }, [tries]);
   return {
     count,
+    capped,
     again: () => {
       setCount(null);
       setTries((n) => n + 1);
@@ -523,12 +530,16 @@ function SendSteps({ n, dirty, onChange, onStale, onDeleted }: { n: Newsletter; 
         ? null
         : total === null
           ? null
-          : total === 0
+          : audience.capped
+            ? "This list has more sign-ups than this page can count (5,000), so sending from here is not available for it yet."
+            : total === 0
             ? "Nobody has a confirmed subscription yet, so there is nobody to send to."
             : total > MAX_RECIPIENTS
               ? newsletterText("too_many_recipients")
               : null;
-  const ready = !dirty && !!n.tested_at && !!sender && total !== null && total > 0 && total <= MAX_RECIPIENTS;
+  const ready = !dirty && !!n.tested_at && !!sender && !audience.capped && total !== null && total > 0 && total <= MAX_RECIPIENTS;
+  // A confirm must come from a fresh click on this very test: an edit and a new test ask again.
+  const [askedFor, setAskedFor] = useState<string | null>(null);
 
   return (
     <section aria-label="Send" className="card grid gap-4 p-5">
@@ -583,7 +594,7 @@ function SendSteps({ n, dirty, onChange, onStale, onDeleted }: { n: Newsletter; 
           {dirty ? <p className="text-sm text-ink-soft">Save the draft to review what will be sent.</p> : <EmailPreview label="What will be sent" subject={n.subject} body={n.body} />}
         </Step>
         <Step n={3} title="Send">
-          {asking === "send" && ready ? (
+          {asking === "send" && ready && askedFor === n.tested_at ? (
             <Confirm
               id="newsletter-send"
               title={`Send to ${people(total)}?`}
@@ -595,7 +606,12 @@ function SendSteps({ n, dirty, onChange, onStale, onDeleted }: { n: Newsletter; 
               onNo={() => setAsking(null)}
             />
           ) : (
-            <button type="button" className="btn btn-primary justify-self-start" disabled={!ready || busy !== null} aria-describedby={blocked ? "newsletter-blocked" : undefined} onClick={() => setAsking("send")}>
+            <button type="button" className="btn btn-primary justify-self-start" disabled={!ready || busy !== null} aria-describedby={blocked ? "newsletter-blocked" : undefined}
+              onClick={() => {
+                setAskedFor(n.tested_at);
+                setAsking("send");
+              }}
+            >
               <Icon name="send" className="size-4" />
               {total === null ? "Send" : `Send to ${people(total)}`}
             </button>
