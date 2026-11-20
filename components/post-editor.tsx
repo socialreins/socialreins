@@ -1018,7 +1018,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     save(mode || "draft");
   }
 
-  // Ctrl or Cmd + S saves the draft (never the browser's Save dialog); Ctrl or Cmd + Enter in a text box schedules
+  // Ctrl or Cmd + S saves (never the browser's Save dialog); Ctrl or Cmd + Enter in a text box schedules
   // when a time is set and otherwise moves to the Publish at field. A held key and a save on its way do nothing more.
   function onKeys(e: KeyboardEvent<HTMLFormElement>) {
     if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
@@ -1026,7 +1026,8 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     if (key !== "s" && !(key === "enter" && e.target instanceof HTMLTextAreaElement)) return;
     e.preventDefault();
     if (e.repeat || busy !== null) return;
-    if (key === "s") return void save("draft");
+    // A scheduled post keeps its time: saving it as a draft here would silently unschedule it.
+    if (key === "s") return void save(status === "scheduled" && at ? "schedule" : "draft");
     if (at) return void save("schedule");
     flushSync(() => setScheduleOpen(true));
     document.getElementById("post-at")?.focus();
@@ -1138,7 +1139,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
         />
         <Counts id="post-count" text={body} platforms={mainPlatforms} xLong={xLong} alerts />
         <p id="post-keys" className="hint text-xs max-sm:hidden">
-          <kbd className="font-sans font-bold">Ctrl</kbd> or <kbd className="font-sans font-bold">Cmd</kbd> + <kbd className="font-sans font-bold">Enter</kbd> schedules, + <kbd className="font-sans font-bold">S</kbd> saves the draft.
+          <kbd className="font-sans font-bold">Ctrl</kbd> or <kbd className="font-sans font-bold">Cmd</kbd> + <kbd className="font-sans font-bold">Enter</kbd> schedules, + <kbd className="font-sans font-bold">S</kbd> saves.
         </p>
         {!tabbed && selected[0] === "youtube" && <YouTubeNote />}
         {customized.length > 0 && (
