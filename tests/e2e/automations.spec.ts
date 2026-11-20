@@ -813,6 +813,40 @@ test("the switch flips at once and goes back when brain refuses", async ({ page 
   await expect(card.getByRole("status").filter({ hasText: "Price to DM is off." })).toBeAttached();
   await expect(card.getByRole("alert")).toHaveCount(0);
   expect(state.list[0]!.active).toBe(false);
+  // The menu closed on the choice, so focus is back on its button.
+  await expect(card.getByLabel("Actions for Price to DM")).toBeFocused();
+});
+
+test("under the On filter a switched card stays until brain answers, and a refusal shows on it", async ({ page }) => {
+  const state = await brain(page, "owner");
+  for (let n = 2; n <= 7; n++) state.list.push(automation(`x${n}`, `Extra ${n}`));
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  await page.route(/\/v1\/automations\/a1\/disable$/, async (route) => {
+    await gate;
+    await route.fulfill({ status: 500, json: { error: "internal" } });
+  });
+  await page.goto("/automations");
+  await page.getByRole("list", { name: "Show" }).getByRole("button", { name: "On" }).click();
+  const cards = page.locator("ul > li.card");
+  const card = cards.filter({ hasText: "Price to DM" });
+  const toggle = card.getByRole("switch", { name: "Price to DM" });
+  await toggle.click();
+  // Off, and still in the list of the ones that are on, while brain has not answered.
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
+  await expect(cards).toHaveCount(7);
+  release();
+  await expect(card.getByRole("alert")).toContainText("Not switched.");
+  await expect(toggle).toHaveAttribute("aria-checked", "true");
+  expect(state.list[0]!.active).toBe(true);
+
+  // brain takes it this time: the card leaves the filter and the page says what happened.
+  await page.unroute(/\/v1\/automations\/a1\/disable$/);
+  await toggle.click();
+  await expect(card).toHaveCount(0);
+  await expect(cards).toHaveCount(6);
+  await expect(page.getByRole("status").filter({ hasText: "Price to DM is off." })).toBeAttached();
+  expect(state.list[0]!.active).toBe(false);
 });
 
 test("a card's menu closes on Escape, duplicates into a prefilled builder that saves a new one switched off, and deletes after a confirm", async ({ page }) => {
@@ -851,6 +885,12 @@ test("a card's menu closes on Escape, duplicates into a prefilled builder that s
   expect(state.list.map((a) => a.id)).toEqual(["a1", "flow", "a2"]);
 
   await page.goto("/automations");
+  // Cancelling the confirm hands focus back to the menu's button.
+  await menu.click();
+  await card.getByRole("button", { name: "Delete" }).click();
+  await card.getByRole("button", { name: "Cancel" }).click();
+  await expect(card.getByRole("button", { name: "Yes, delete" })).toHaveCount(0);
+  await expect(menu).toBeFocused();
   await menu.click();
   await card.getByRole("button", { name: "Delete" }).click();
   await expect(card.getByRole("button", { name: "Yes, delete" })).toBeFocused();
@@ -967,6 +1007,15 @@ test("saving changed steps asks first when people wait in the flow, and only the
   await ask.getByRole("button", { name: "Save and stop them" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Automation saved." })).toBeVisible();
   expect(state.bodies[1]).toMatchObject({ steps: [{}, {}, {}, { type: "send_dm", text: "Still there, {name}?" }] });
+
+  // Those runs were stopped, so nobody waits any more and the next change of steps saves without asking.
+  await expect(page.getByRole("region", { name: "Guide flow 2" }).getByRole("term").filter({ hasText: "Waiting" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Edit" }).click();
+  await step(page, 4).getByLabel("DM text").fill("Anyone?");
+  await page.getByRole("button", { name: "Save automation" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Automation saved." })).toBeVisible();
+  await expect(ask).toHaveCount(0);
+  expect(state.bodies).toHaveLength(3);
 });
 
 test("a flow nobody waits in saves changed steps without asking", async ({ page }) => {

@@ -21,6 +21,7 @@ import {
   reason,
   reasonWhy,
   RUN_FILTERS,
+  sameSteps,
   switchAutomation,
   TEMPLATE_GROUPS,
   templates,
@@ -83,12 +84,14 @@ function Chips<T extends string>({ label, value, options, onPick }: { label: str
 }
 
 // Switching on or off shows at once and goes back if brain refuses. `onChange` gets the new state, then brain's answer.
-function useSwitch(a: Automation, onChange: (a: Automation) => void) {
+// `onSettled` runs once brain has answered, with what to say when it worked.
+function useSwitch(a: Automation, onChange: (a: Automation) => void, onSettled?: (said?: string) => void) {
   const { busy, problem, done, run } = useAction();
-  const toggle = () => {
+  const toggle = async () => {
     const to = !a.active;
+    let said: string | undefined;
     onChange({ ...a, active: to });
-    return run(
+    await run(
       "switch",
       async () => {
         const r = await switchAutomation(a.id, to);
@@ -97,9 +100,10 @@ function useSwitch(a: Automation, onChange: (a: Automation) => void) {
       },
       (r) => {
         onChange(r);
-        return `${r.name} is ${r.active ? "on" : "off"}.`;
+        return (said = `${r.name} is ${r.active ? "on" : "off"}.`);
       },
     );
+    onSettled?.(said);
   };
   return { toggle, busy: busy !== null, problem, done };
 }
@@ -278,13 +282,20 @@ const triggerShort: Record<Trigger, string> = { comment_received: "Comments", dm
 type ListFilter = "all" | "on" | "off" | Trigger;
 
 // One automation on the list: what starts it, what it does, its switch, its numbers and a menu.
-function AutomationCard({ automation: a, canManage, accounts, sets, onChange, onDeleted }: { automation: Automation; canManage: boolean; accounts: Connection[]; sets: SocialSet[]; onChange: (a: Automation) => void; onDeleted: () => void }) {
-  const state = useSwitch(a, onChange);
+function AutomationCard({ automation: a, canManage, accounts, sets, onChange, onSwitching, onDeleted }: { automation: Automation; canManage: boolean; accounts: Connection[]; sets: SocialSet[]; onChange: (a: Automation) => void; onSwitching: (on: boolean, said?: string) => void; onDeleted: () => void }) {
+  const state = useSwitch(a, onChange, (said) => onSwitching(false, said));
   const del = useAction();
   const [confirming, setConfirming] = useState(false);
+  const ref = useRef<HTMLLIElement>(null);
   const failed = a.runs?.failed ?? 0;
+  const toggle = () => {
+    onSwitching(true);
+    return state.toggle();
+  };
+  // The menu closes on a choice and the confirm goes away, so focus goes back to the menu's button.
+  const focusMenu = () => ref.current?.querySelector("summary")?.focus();
   return (
-    <li className="card enter grid gap-3 p-4 sm:p-5">
+    <li ref={ref} className="card enter grid gap-3 p-4 sm:p-5">
       <div className="flex items-start gap-3">
         <span className={`hidden size-10 shrink-0 place-items-center rounded-xl sm:grid ${a.active ? "bg-signal/10 text-signal-deep" : "bg-ink/5 text-ink-soft"}`}>
           <Icon name={triggerIcon[a.trigger] ?? "automations"} />
@@ -306,7 +317,7 @@ function AutomationCard({ automation: a, canManage, accounts, sets, onChange, on
           <Summary automation={a} accounts={accounts} sets={sets} />
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <ActiveSwitch automation={a} canManage={canManage} state={state} />
+          <ActiveSwitch automation={a} canManage={canManage} state={{ ...state, toggle }} />
           {canManage && (
             <ActionMenu label={`Actions for ${a.name}`} className="icon-btn" trigger={<Icon name="more" />}>
               {canEdit(a) && (
@@ -321,7 +332,15 @@ function AutomationCard({ automation: a, canManage, accounts, sets, onChange, on
                   </Link>
                 </>
               )}
-              <button type="button" className={menuItem} disabled={state.busy} onClick={state.toggle}>
+              <button
+                type="button"
+                className={menuItem}
+                disabled={state.busy}
+                onClick={() => {
+                  focusMenu();
+                  toggle();
+                }}
+              >
                 <Icon name="automations" className="size-4 text-ink-soft" />
                 Turn {a.active ? "off" : "on"}
               </button>
@@ -350,7 +369,14 @@ function AutomationCard({ automation: a, canManage, accounts, sets, onChange, on
           <button id={`delete-${a.id}`} type="button" className="btn btn-primary btn-sm" aria-describedby={`delete-${a.id}-q`} disabled={del.busy !== null} onClick={() => del.run("delete", () => deleteAutomation(a.id), onDeleted)}>
             {del.busy ? "Deleting..." : "Yes, delete"}
           </button>
-          <button type="button" className="btn btn-quiet btn-sm" onClick={() => setConfirming(false)}>
+          <button
+            type="button"
+            className="btn btn-quiet btn-sm"
+            onClick={() => {
+              flushSync(() => setConfirming(false));
+              focusMenu();
+            }}
+          >
             Cancel
           </button>
         </div>
@@ -366,6 +392,8 @@ export function Automations() {
   const [list, setList] = useState<Automation[] | Failure | null>(null);
   const [filter, setFilter] = useState<ListFilter>("all");
   const [said, setSaid] = useState("");
+  // Cards whose switch waits for brain: they stay in view under any filter, so a refusal shows on the card.
+  const [switching, setSwitching] = useState<string[]>([]);
   const { accounts, sets } = useScopeData();
 
   useEffect(() => {
@@ -376,7 +404,7 @@ export function Automations() {
   const replace = (a: Automation) => setList((l) => (Array.isArray(l) ? l.map((x) => (x.id === a.id ? { ...a, runs: x.runs } : x)) : l));
   const all = Array.isArray(list) ? list : [];
   const fits = (a: Automation, f: ListFilter) => f === "all" || (f === "on" ? a.active : f === "off" ? !a.active : a.trigger === f);
-  const shown = all.filter((a) => fits(a, filter));
+  const shown = all.filter((a) => fits(a, filter) || switching.includes(a.id));
   const chip = (id: ListFilter, name: string) => ({ id, name, count: all.filter((a) => fits(a, id)).length });
 
   return (
@@ -443,6 +471,11 @@ export function Automations() {
                 accounts={accounts}
                 sets={sets}
                 onChange={replace}
+                onSwitching={(on, text) => {
+                  setSwitching((ids) => (on ? [...ids, a.id] : ids.filter((x) => x !== a.id)));
+                  // Under On or Off a switched card leaves the list, and its own status with it.
+                  if (text && (filter === "on" || filter === "off")) setSaid(text);
+                }}
                 onDeleted={() => {
                   setList((l) => (Array.isArray(l) ? l.filter((x) => x.id !== a.id) : l));
                   setSaid(`${a.name} was deleted.`);
@@ -577,7 +610,11 @@ export function AutomationDetail({ id }: { id: string }) {
           sets={sets}
           onCancel={close}
           onSaved={(saved) => {
-            setA((cur) => ({ ...saved, runs: cur && !isFailure(cur) ? cur.runs : undefined }));
+            // brain stops the runs that wait when the steps change, so nobody waits after such a save.
+            setA((cur) => {
+              const runs = cur && !isFailure(cur) ? cur.runs : undefined;
+              return { ...saved, runs: runs && !sameSteps(cur && !isFailure(cur) ? cur.steps : null, saved.steps) ? { ...runs, waiting: 0 } : runs };
+            });
             close();
             setSaved((n) => ({ text: "Automation saved.", n: (n?.n ?? 0) + 1 }));
           }}
@@ -775,11 +812,13 @@ export function NewAutomation() {
   const params = useSearchParams();
   const template = params.get("template");
   const from = params.get("from");
-  const [source, setSource] = useState<Automation | Failure | null>(null);
+  // Kept with the id it was read for, so another ?from in place loads again and never shows the old copy.
+  const [loaded, setLoaded] = useState<{ from: string; source: Automation | Failure } | null>(null);
+  const source = loaded?.from === from ? loaded.source : null;
   const { accounts, ready, sets } = useScopeData();
   const canManage = manages(user.current_team.role);
   useEffect(() => {
-    if (from && canManage) getAutomation(from).then(setSource);
+    if (from && canManage) getAutomation(from).then((source) => setLoaded({ from, source }));
   }, [from, canManage]);
 
   if (!canManage) return <p className="text-ink-soft">Only team owners and admins can create automations.</p>;
