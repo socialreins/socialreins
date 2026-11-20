@@ -11,6 +11,8 @@ export type Contact = {
   avatar_url: string | null;
   tags: string[];
   notes: string | null;
+  // Kept out of every broadcast: set by a "stop" DM or by hand, cleared by "start".
+  opted_out?: boolean;
   first_seen_at: string;
   last_seen_at: string;
   items_count: number;
@@ -45,8 +47,8 @@ export function listContacts({ q, tag, platform }: ContactQuery, cursor?: string
   return api<ContactPage>(`/v1/contacts${p.size ? `?${p}` : ""}`);
 }
 export const getContact = (id: string) => api<ContactDetail>(`/v1/contacts/${enc(id)}`);
-// `tags` replaces the whole set; `notes` null clears them.
-export const updateContact = (id: string, patch: { notes?: string | null; tags?: string[] }) => api<Contact>(`/v1/contacts/${enc(id)}`, "PATCH", patch);
+// `tags` replaces the whole set; `notes` null clears them. Any member sets `opted_out`; only owners and admins clear it.
+export const updateContact = (id: string, patch: { notes?: string | null; tags?: string[]; opted_out?: boolean }) => api<Contact>(`/v1/contacts/${enc(id)}`, "PATCH", patch);
 // Owners and admins only. The contact's name, tags and notes go; its items stay in the inbox.
 export const deleteContact = (id: string) => api(`/v1/contacts/${enc(id)}`, "DELETE");
 export const listContactTags = () => api<TagCount[]>("/v1/contact-tags");

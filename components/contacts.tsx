@@ -17,7 +17,7 @@ import { EmptyState, Icon, LoadFailed, Skeleton } from "@/components/ui";
 export const contactMessages: Partial<Record<Failure, ReactNode>> = {
   invalid_contact: "That wasn't saved: a tag takes 1 to 30 characters and no commas, a contact 20 tags, and the notes 2000 characters.",
   not_found: "This contact is no longer there. Reload to see the latest.",
-  forbidden: "Only team owners and admins can delete a contact.",
+  forbidden: "Only team owners and admins can do that to a contact.",
 };
 
 const enc = encodeURIComponent;
@@ -205,6 +205,11 @@ export function Contacts() {
                             {t}
                           </span>
                         ))}
+                        {c.opted_out && (
+                          <span className="badge tone" data-approval="pending">
+                            Opted out
+                          </span>
+                        )}
                       </span>
                     </span>
                     <span className="grid shrink-0 justify-items-end gap-0.5 text-xs text-ink-soft">
@@ -292,7 +297,7 @@ function ContactPanel({ id, suggestions, close, onSaved, onDeleted }: { id: stri
     );
 
   const c = contact;
-  const save = (patch: { tags?: string[]; notes?: string | null }, said: string) =>
+  const save = (patch: { tags?: string[]; notes?: string | null; opted_out?: boolean }, said: string) =>
     run("save", () => updateContact(c.id, patch), (r) => {
       setContact({ ...c, ...r });
       onSaved(r);
@@ -329,6 +334,30 @@ function ContactPanel({ id, suggestions, close, onSaved, onDeleted }: { id: stri
         <button type="button" className="btn btn-primary btn-sm justify-self-start" disabled={busy !== null || notes === (c.notes ?? "")} onClick={() => save({ notes: notes.trim() || null }, "Notes saved.")}>
           {busy ? "Saving..." : "Save notes"}
         </button>
+      </div>
+      <div className="grid gap-1.5">
+        <div className="flex items-center justify-between gap-3">
+          <span id="contact-opt-out" className="label">
+            Opted out of broadcasts
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={!!c.opted_out}
+            aria-labelledby="contact-opt-out"
+            aria-describedby="contact-opt-out-about"
+            disabled={busy !== null || (!!c.opted_out && !canDelete)}
+            onClick={() => save({ opted_out: !c.opted_out }, c.opted_out ? "They can get broadcasts again." : "They are opted out of broadcasts.")}
+            className={`relative h-7 w-12 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${c.opted_out ? "bg-ink" : "bg-ink/20"}`}
+          >
+            <span aria-hidden="true" className={`absolute top-1 left-1 size-5 rounded-full bg-paper transition-transform motion-reduce:transition-none ${c.opted_out ? "translate-x-5 bg-signal" : ""}`} />
+          </button>
+        </div>
+        <p id="contact-opt-out-about" className="hint">
+          {c.opted_out && !canDelete
+            ? "Only team owners and admins can turn this off."
+            : "On: they get no broadcasts. A message that says stop turns it on, and one that says start turns it off. Replies by hand and automations still reach them."}
+        </p>
       </div>
       <Status problem={problem} done={done} overrides={contactMessages} />
 
