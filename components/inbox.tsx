@@ -208,6 +208,8 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   const [undo, setUndo] = useState<Undo | null>(null);
   const [help, setHelp] = useState(false);
   const rowsRef = useRef<HTMLUListElement>(null);
+  // The item a key press just went to, until the address has it: J pressed twice fast moves two rows.
+  const heading = useRef<string | null>(null);
 
   useEffect(() => {
     listInboxes().then(setInboxes);
@@ -251,6 +253,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   const refreshCounts = () => listInboxes().then((l) => Array.isArray(l) && setInboxes(l));
   const go = (id: string | null, how: "push" | "replace" = "replace") => {
     if (id) setOpened(id);
+    heading.current = id;
     router[how](href({ item: id }), { scroll: false });
   };
 
@@ -289,6 +292,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   }, [currentId, key]);
 
   useEffect(() => {
+    heading.current = null;
     if (!itemId) return;
     let live = true;
     getItem(itemId).then((r) => live && setShown({ id: itemId, item: r }));
@@ -370,7 +374,8 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
       if (!s || document.querySelector("dialog[open]")) return;
       e.preventDefault();
       if (s === "next" || s === "previous") {
-        const at = items.findIndex((x) => threadKey(x) === openKey || x.id === itemId);
+        const from = heading.current;
+        const at = items.findIndex((x) => (from ? x.id === from : threadKey(x) === openKey || x.id === itemId));
         const n = at < 0 ? 0 : at + (s === "next" ? 1 : -1);
         if (!items[n]) return;
         go(items[n].id, "push");
@@ -931,7 +936,6 @@ function Detail({
       <ol
         ref={threadRef}
         aria-label={dm ? "Conversation" : "Thread"}
-        aria-live="polite"
         className={`grid grid-cols-[minmax(0,1fr)] content-start gap-3 lg:-m-1 lg:overflow-y-auto lg:overscroll-contain lg:p-1 ${dm ? "max-lg:max-h-[55dvh] max-lg:overflow-y-auto" : ""}`}
       >
         {dm && !convo && (
@@ -1011,7 +1015,9 @@ function Detail({
                 </p>
               </div>
             ) : (
-              <p className="text-xs text-ink-soft">Sending...</p>
+              <p role="status" className="text-xs text-ink-soft">
+                Sending...
+              </p>
             )}
           </li>
         ))}
