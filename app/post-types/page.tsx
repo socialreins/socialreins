@@ -96,6 +96,16 @@ export default function PostTypes() {
           Instagram has no API for live or motion photos. Post the clip as an MP4 instead: on its own it goes out as a Reel, and with
           other photos or videos it becomes a carousel item.
         </p>
+        <h2>Beyond posting</h2>
+        <ul>
+          <li>Post analytics: likes and comments on Bluesky, Facebook, Instagram and YouTube, shares on Bluesky and Facebook, and views on YouTube. Nothing is read on the other networks.</li>
+          <li>Bulk upload from a CSV file and recurring posts work on every network except TikTok, where each post needs a person&apos;s own choices.</li>
+          <li>RSS and Atom feeds post to every network except TikTok and YouTube, and an item needs an image to go to Instagram.</li>
+          <li>The inbox and automations are live on Bluesky. Facebook Pages and Instagram are in testing.</li>
+        </ul>
+        <p>
+          The <Link href="/features" className="font-bold underline decoration-signal decoration-2 underline-offset-4 hover:text-signal-deep">features page</Link> lists everything else.
+        </p>
         <h2>Each network on its own page</h2>
         <ul>
           {pages.map((n) => (

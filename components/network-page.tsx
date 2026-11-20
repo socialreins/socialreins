@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { SiteHeader, sitePage } from "@/components/site-header";
-import { network, networks } from "@/lib/networks";
+import { feature } from "@/lib/features";
+import { beyondPosting, network, networks } from "@/lib/networks";
 import { publicPage } from "@/lib/seo";
 
 // One public page per network: app/<slug>/page.tsx is two lines that call these with its slug.
@@ -18,6 +19,10 @@ const link = "font-bold underline decoration-signal decoration-2 underline-offse
 
 export function NetworkPage({ slug }: { slug: string }) {
   const n = network(slug)!;
+  const more = beyondPosting(n.slug, n.name, (f) => {
+    const state = feature(f)?.support[n.slug] ?? "Not yet";
+    return state === "Yes" ? "Yes." : `${state}.`;
+  });
   return (
     <main className={sitePage}>
       <SiteHeader />
@@ -56,6 +61,33 @@ export function NetworkPage({ slug }: { slug: string }) {
         </table>
       </div>
 
+      <div className="min-w-0 overflow-x-auto rounded-lg border border-ink/10 bg-paper">
+        <table className="w-full border-collapse text-left text-[0.95rem] leading-snug">
+          <thead>
+            <tr>
+              <th scope="col" className="px-3 py-3 font-display font-extrabold">
+                Beyond posting
+              </th>
+              <th scope="col" className="px-3 py-3 font-display font-extrabold">
+                Supported
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {more.map(([what, value]) => (
+              <tr key={what}>
+                <th scope="row" className="w-2/5 border-t border-r border-ink/10 px-3 py-2.5 align-top font-bold">
+                  {what}
+                </th>
+                <td className={`border-t border-ink/10 px-3 py-2.5 align-top ${value.startsWith("Yes") || value.startsWith("In testing") ? "font-semibold" : "text-ink-soft"}`}>
+                  {value}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
       <div className="legal grid max-w-3xl gap-4 leading-relaxed">
         {n.sections.map((s) => (
           <section key={s.heading} className="grid gap-4">
@@ -74,6 +106,10 @@ export function NetworkPage({ slug }: { slug: string }) {
           See every network side by side on{" "}
           <Link href="/post-types" className={link}>
             What you can post where
+          </Link>
+          , and everything else SocialReins does on{" "}
+          <Link href="/features" className={link}>
+            Features
           </Link>
           .
         </p>

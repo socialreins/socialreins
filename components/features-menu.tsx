@@ -2,9 +2,9 @@ import Link from "next/link";
 import { Menu } from "@/components/menu";
 import { features } from "@/lib/features";
 
-const items = [{ href: "/socials", name: "Social media", short: "Every network you can post to" }, ...features.map((f) => ({ href: `/features/${f.slug}`, name: f.name, short: f.short }))];
+const items = [{ href: "/features", name: "All features", short: "Everything SocialReins does today" }, { href: "/socials", name: "Social media", short: "Every network you can post to" }, ...features.map((f) => ({ href: `/features/${f.slug}`, name: f.name, short: f.short }))];
 
-// The header's "Features" menu: the networks index and one page per feature.
+// The header's "Features" menu: every feature, the networks index and one page per feature.
 export function FeaturesMenu({ className }: { className: string }) {
   return (
     <Menu summary="Features" className={className}>

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { SiteHeader, sitePage } from "@/components/site-header";
+import { RULES } from "@/lib/broadcasts";
 import { publicPage } from "@/lib/seo";
 
 // The docs live in this app for now: one guide per page, written once for both ways of running SocialReins.
@@ -29,8 +30,8 @@ const descriptions: Record<Guide, Record<Mode, string>> = {
     cloud: "SocialReins Cloud is not open yet. Join the waitlist to hear when it opens, or self-host SocialReins for free today with the same features.",
   },
   use: {
-    "self-hosted": "How to use your own SocialReins install: connect social accounts, group them into sets, write and schedule posts, and invite your team.",
-    cloud: "How SocialReins Cloud works once you have an account: connect social accounts, group them into sets, write and schedule posts, invite a team.",
+    "self-hosted": "How to use your own SocialReins install: connect accounts, schedule posts, set up the queue, feeds, approvals, the inbox, automations and more.",
+    cloud: "How SocialReins Cloud works once you have an account: connect accounts, schedule posts, set up the queue, feeds, approvals, the inbox and more.",
   },
   ai: {
     "self-hosted": "Connect Claude or another AI assistant to your own SocialReins install through its MCP server, using an API token you create in the app.",
@@ -186,6 +187,36 @@ function Start({ mode }: { mode: Mode }) {
   );
 }
 
+// The how-to parts of the Use guide, by the id of their heading. Labels follow the app: components/queue.tsx,
+// bulk-upload.tsx, repeat.tsx, feeds.tsx, team.tsx, library.tsx, inbox.tsx, automation-form.tsx, broadcasts.tsx,
+// newsletters.tsx and post-analytics.tsx. Change a label there and here together.
+const howTos: [string, string][] = [
+  ["queue", "Queue"],
+  ["csv", "CSV upload"],
+  ["recurring", "Recurring posts"],
+  ["feeds", "Feeds"],
+  ["approvals", "Approvals"],
+  ["library", "Library"],
+  ["inbox", "Inbox"],
+  ["automations", "Automations"],
+  ["broadcasts", "Broadcasts"],
+  ["newsletters", "Newsletters"],
+  ["analytics", "Analytics"],
+  ["team-address", "Team address"],
+];
+
+// The same keys as `shortcuts` in components/inbox.tsx.
+const shortcuts: [string, string][] = [
+  ["J", "next item"],
+  ["K", "previous item"],
+  ["E", "mark done and open the next one"],
+  ["R", "write a reply"],
+  ["A", "assign to me"],
+  ["/", "search this inbox"],
+  ["?", "show the shortcuts"],
+  ["Ctrl or Cmd + Enter", "send the reply"],
+];
+
 function Use({ mode }: { mode: Mode }) {
   const { web } = modes[mode];
   return (
@@ -207,12 +238,147 @@ function Use({ mode }: { mode: Mode }) {
       <p>A set is a group of accounts you post to together, such as one brand or one client. Every team starts with one set that holds every account, named All sets until you rename it. Open Sets to add more and choose which accounts belong to each.</p>
       <h2>3. Write a post</h2>
       <p>
-        Open Posts and write a post. Under Post to, pick the networks. Add your text, photos or a video, and a first comment or a thread where the network allows one. Then publish now or pick a time to schedule it. The <Link href="/post-types" className={link}>post types page</Link> lists what each network accepts.
+        Open Posts and write a post. Under Post to, pick the networks. Add your text, photos or a video, and a first comment or a thread where the network allows one. With two or more networks ticked, each has its own tab where you can give it a different text and different media. Then publish now or pick a time to schedule it. The <Link href="/post-types" className={link}>post types page</Link> lists what each network accepts.
       </p>
       <h2>4. Check and take down</h2>
-      <p>Calendar shows what is scheduled. A published post shows a result for each account, with the reason when a network refused it. Taking a published post down removes it from its network, and a post sent to several networks has Take down all. It stays in SocialReins, marked as taken down.</p>
+      <p>Calendar shows what is scheduled, and you can drag a scheduled post to another day or use its Move to button. Duplicate on a saved post copies it into a new one. A published post shows a result for each account, with the reason when a network refused it. Taking a published post down removes it from its network, and a post sent to several networks has Take down all. It stays in SocialReins, marked as taken down.</p>
       <h2>5. Invite your team</h2>
       <p>Open Team to invite people by email as an admin or a member. Lists group posts into an ordered series.</p>
+
+      <h2 id="how-to">How to</h2>
+      <p>Each part below is one page of the app, named as it is in the sidebar.</p>
+      <nav aria-label="How to">
+        <ul className="!flex !list-none flex-wrap !gap-x-4 !gap-y-1 !pl-0">
+          {howTos.map(([id, name]) => (
+            <li key={id}>
+              <a href={`#${id}`} className={link}>
+                {name}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </nav>
+
+      <h2 id="queue">Set up the queue</h2>
+      <p>A queue is a set&apos;s weekly posting times. A queued post takes the next free one, so you never pick a time by hand.</p>
+      <ol>
+        <li>Open Queue. It shows the queue of the set picked in the top bar.</li>
+        <li>Pick the time zone.</li>
+        <li>Under Add time, choose a time and tick its days. Weekdays and Every day tick them for you.</li>
+        <li>Choose Save queue. Next free slots then lists the times the coming posts will take.</li>
+        <li>On a new post, choose Add to queue in place of a time. The button shows the next slot, and the post takes it.</li>
+      </ol>
+
+      <h2 id="csv">Upload posts from a CSV file</h2>
+      <p>Open Posts and choose Upload CSV. A file holds up to 200 posts and 1 MB. Its first line names the columns, in any order:</p>
+      <ul>
+        <li>
+          <C>text</C>: required. The post. On YouTube the first line is the title.
+        </li>
+        <li>
+          <C>networks</C>: optional. Network names separated by spaces or commas, such as <C>bluesky linkedin</C>. Empty means every network the set has, leaving out Instagram and YouTube on a row without media.
+        </li>
+        <li>
+          <C>media</C>: optional. Public https links to images or a video, separated by spaces.
+        </li>
+        <li>
+          <C>time</C>: optional. A time in your own time zone written as <C>YYYY-MM-DD HH:MM</C>, or <C>queue</C> for the set&apos;s next free queue time. Empty saves a draft.
+        </li>
+        <li>
+          <C>first_comment</C>: optional. Posted right after the post on Facebook, Instagram, LinkedIn and YouTube.
+        </li>
+      </ul>
+      <Code>{`text,networks,media,time,first_comment\n"Our new guide is out",bluesky linkedin,https://example.com/cover.jpg,queue,"The link is in this comment"`}</Code>
+      <p>
+        Every row is checked before anything is created, and a row with a problem says what is wrong. The Schedule button then creates the rows that are ready, and the rows with problems download as a CSV with an <C>error</C> column. TikTok is not taken from a file, because every TikTok post needs its own privacy and disclosure choices: post to TikTok from the composer.
+      </p>
+
+      <h2 id="recurring">Repeat a post</h2>
+      <p>
+        When you schedule a post or add it to the queue, the Repeat control beside the time offers Does not repeat, Every day, Every week, Every month and Custom. Choose whether it ends never, after a number of posts or on a date. Each time the post goes out, the next copy is scheduled. A repeating post shows a Repeats badge in Posts. TikTok posts cannot repeat, because TikTok needs a person to confirm each post.
+      </p>
+
+      <h2 id="feeds">Post from an RSS or Atom feed</h2>
+      <ol>
+        <li>Open Feeds and choose Add feed.</li>
+        <li>Paste the feed&apos;s link, and pick the set and its networks. TikTok and YouTube are not offered, and an item needs an image to go to Instagram.</li>
+        <li>Choose what a new item becomes: Save a draft, Add to the queue or Post right away.</li>
+        <li>
+          Write the post text. <C>{"{title}"}</C>, <C>{"{link}"}</C> and <C>{"{summary}"}</C> are filled in from each item.
+        </li>
+      </ol>
+      <p>Each feed has an On and Off switch and Check now, and shows when it was last checked and how many posts it made.</p>
+
+      <h2 id="approvals">Approve posts before they go out</h2>
+      <p>
+        An owner or admin opens Team and, under Approvals, ticks &quot;Members&apos; posts need an owner or admin to approve them before they go out&quot;. From then on a member&apos;s scheduled post shows as Needs approval in Posts and is held. An owner or admin chooses Approve, or Request changes with a note for the author. Posts by owners and admins go out as before.
+      </p>
+
+      <h2 id="library">Keep media and text in the library</h2>
+      <p>
+        Open Library. The Media tab keeps links to images and videos, each with a name. The Snippets tab keeps Captions, Hashtag groups and Saved replies. In the composer, Add from library fills the media of a post and Insert snippet puts a caption or a hashtag group at the cursor.
+      </p>
+
+      <h2 id="inbox">Answer comments and DMs in the inbox</h2>
+      <p>
+        Open Inbox. Comments and DMs arrive in one list, and DMs with one person are grouped into one conversation that opens as a chat. Search the list by text or author, switch between Open and Done, and filter with the Kind and Assigned menus. In the reader you reply, choose Mark done, assign the item to a teammate and insert a saved reply. The inbox is live on Bluesky; Facebook Pages and Instagram are in testing.
+      </p>
+      <p>Keyboard shortcuts, which wait while you type in a box:</p>
+      <ul>
+        {shortcuts.map(([key, what]) => (
+          <li key={key}>
+            <C>{key}</C>: {what}
+          </li>
+        ))}
+      </ul>
+      <p>Contacts lists everyone who wrote to your accounts. Open a contact to give it tags and notes.</p>
+
+      <h2 id="automations">Build an automation or a flow</h2>
+      <ol>
+        <li>Open Automations and choose New automation, then pick a template, such as Comment to DM or Welcome message, or start from scratch.</li>
+        <li>Under When, pick the trigger: a comment keyword, a DM keyword, a first message, a new follower (Bluesky), a mention, a story reply or a button tap.</li>
+        <li>Under Only if, narrow it to keywords, accounts or posts.</li>
+        <li>Under Do this, choose One reply (a DM, a public reply, or both) or A flow of steps. A flow has up to 10 steps: a DM with up to 3 buttons, a public reply, a wait, or Tag the contact.</li>
+        <li>Save it and switch it on. Its page lists every run with what was sent and, when something was skipped or refused, the reason.</li>
+      </ol>
+      <p>Automations are live on Bluesky; Facebook and Instagram are in testing.</p>
+
+      <h2 id="broadcasts">Send a broadcast</h2>
+      <ol>
+        <li>Tag the contacts you want to reach, on Contacts or with an automation.</li>
+        <li>
+          Open Broadcasts and choose New broadcast. Give it a name, pick the tag and, if you want, one network, and write the message. <C>{"{name}"}</C> becomes each person&apos;s name.
+        </li>
+        <li>Choose Save draft. Nothing is sent: the review shows how many people will get it, who will not and why.</li>
+        <li>Choose Send, then confirm the number once more. Only owners and admins write, review and send a broadcast and see who got it. Members can see the list of broadcasts.</li>
+      </ol>
+      <p>The rules of every broadcast:</p>
+      <ul>
+        {RULES.map((r) => (
+          <li key={r}>{r}</li>
+        ))}
+      </ul>
+
+      <h2 id="newsletters">Send a newsletter</h2>
+      <p>A newsletter is one email to the people who signed up on your public post pages. Owners and admins write and send it.</p>
+      <ol>
+        <li>Open Team and, under Sharing, switch on Public pages and tick &quot;Public pages offer a newsletter sign-up&quot;. People who sign up confirm their email through a link.</li>
+        <li>Open Newsletters and fill in Sender details: the sender&apos;s name and postal address, which end every email.</li>
+        <li>Choose New newsletter, write the subject and the body, and choose Save draft. The preview shows the email as it will arrive.</li>
+        <li>Send a test to your own email. A newsletter cannot be sent before a test of the saved text.</li>
+        <li>Review who it goes to, choose Send, then confirm the number once more.</li>
+      </ol>
+      <p>Every email ends with an Unsubscribe link. Someone who unsubscribes gets no more newsletters.</p>
+
+      <h2 id="analytics">Read your analytics</h2>
+      <p>
+        Open Analytics and pick the last 7, 30 or 90 days. It shows the totals, engagement by day, a table by network and your top posts, for the set picked in the top bar. It reads likes and comments on Bluesky, Facebook, Instagram and YouTube, shares on Bluesky and Facebook, and views on YouTube; the other networks say Not available yet. A published post&apos;s own page shows the numbers of each account, with Refresh stats. There are no reach, audience or follower reports yet.
+      </p>
+
+      <h2 id="team-address">Give your team its own address</h2>
+      <p>
+        Every page of a team lives under <C>/t/</C> and a short code. An owner or admin opens Team and, under General, types a Team address of 3 to 30 lower-case letters, digits and hyphens. Links with the old code keep working, and Use the default address goes back to the code.
+      </p>
     </>
   );
 }
