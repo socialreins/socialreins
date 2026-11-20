@@ -9,8 +9,9 @@ export default function Privacy() {
   return (
     <LegalPage title="Privacy Policy">
       <p>
-        SocialReins is an open-source social media manager made by Bytech. This page explains what the hosted service at
-        socialreins.com stores about you, why, and how to have it deleted. If you have a question, <ContactLink />.
+        SocialReins is an open-source social media manager. The hosted service at socialreins.com is operated by Binary Labs
+        LLC, a company in Wyoming, United States, and built and supported by Bytech, a company in Bangladesh, which controls
+        the data on the service. This page explains what the service stores about you, why, and how to have it deleted. In this policy, &quot;we&quot; means Binary Labs LLC and Bytech together. If you have a question, <ContactLink />.
       </p>
 
       <h2>What we store</h2>
@@ -91,7 +92,7 @@ export default function Privacy() {
       <h2>Self-hosted SocialReins</h2>
       <p>
         SocialReins is open source, so anyone can run their own copy. A self-hosted instance is controlled by its
-        operator, not by Bytech, and this policy does not cover it. Ask that operator how they handle your data.
+        operator, not by Binary Labs LLC or Bytech, and this policy does not cover it. Ask that operator how they handle your data.
       </p>
 
       <h2>Changes</h2>

@@ -7,9 +7,9 @@ export const metadata: Metadata = { title: "Terms of Service: SocialReins", ...p
 
 export default function Terms() {
   return (
-    <LegalPage title="Terms of Service" updated="14 November 2026">
+    <LegalPage title="Terms of Service" updated="20 November 2026">
       <p>
-        These terms cover the hosted SocialReins service at socialreins.com, run by Bytech. By creating an account or
+        These terms cover the hosted SocialReins service at socialreins.com, run by Binary Labs LLC, a company in Wyoming, United States, and built and supported by Bytech, a company in Bangladesh. In these terms, &quot;we&quot; means Binary Labs LLC. By creating an account or
         using the service, you agree to them. If you have a question, <ContactLink />.
       </p>
 
