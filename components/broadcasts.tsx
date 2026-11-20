@@ -536,6 +536,7 @@ function Review({ b, canManage, onStarted, onDeleted }: { b: Broadcast; canManag
   const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Failure | null>(null);
+  const [edited, setEdited] = useState(false);
   useEffect(() => {
     if (!canManage) return;
     let live = true;
@@ -565,7 +566,19 @@ function Review({ b, canManage, onStarted, onDeleted }: { b: Broadcast; canManag
       setProblem(null);
       setBusy(true);
     });
-    const r = await sendBroadcast(b.id, n);
+    // brain checks only the count: make sure the draft is still the one reviewed here.
+    const fresh = await getBroadcast(b.id);
+    if (!isFailure(fresh) && (fresh.status !== "draft" || fresh.text !== b.text || fresh.tag !== b.tag || fresh.platform !== b.platform)) {
+      setBusy(false);
+      setAsking(false);
+      onStarted(fresh);
+      if (fresh.status === "draft") {
+        setEdited(true);
+        again();
+      }
+      return;
+    }
+    const r = isFailure(fresh) ? { code: fresh } : await sendBroadcast(b.id, n);
     setBusy(false);
     setAsking(false);
     if (!isProblem(r)) return onStarted(r);
@@ -573,6 +586,9 @@ function Review({ b, canManage, onStarted, onDeleted }: { b: Broadcast; canManag
       setPreview(r.preview);
       return setChanged(true);
     }
+    // An unclear failure may still have started it: show what brain has now.
+    const now = await getBroadcast(b.id);
+    if (!isFailure(now) && now.status !== "draft") return onStarted(now);
     setProblem(r.code);
   }
 
@@ -672,6 +688,11 @@ function Review({ b, canManage, onStarted, onDeleted }: { b: Broadcast; canManag
         {blocked && (
           <p id="broadcast-blocked" className="text-sm font-bold text-signal-deep">
             {blocked}
+          </p>
+        )}
+        {edited && (
+          <p role="alert" className="waitlist-error">
+            Someone changed this draft while you were reviewing it. Nothing was sent. Read the message again, then send.
           </p>
         )}
         {problem && (
