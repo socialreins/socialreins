@@ -1,11 +1,9 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 
-// A header dropdown. A native <details> opens and closes by keyboard; the effect adds Escape and a click elsewhere.
-// On a phone the panel spans the header, so the header must be `relative`.
-export function Menu({ summary, className, children }: { summary: ReactNode; className: string; children: ReactNode }) {
-  const ref = useRef<HTMLDetailsElement>(null);
+// Escape and a click elsewhere close an open <details>, which opens and closes by keyboard on its own.
+function useDismiss(ref: RefObject<HTMLDetailsElement | null>) {
   useEffect(() => {
     const close = (e: Event) => {
       const el = ref.current;
@@ -23,7 +21,13 @@ export function Menu({ summary, className, children }: { summary: ReactNode; cla
       document.removeEventListener("click", close);
       document.removeEventListener("keydown", close);
     };
-  }, []);
+  }, [ref]);
+}
+
+// A header dropdown. On a phone the panel spans the header, so the header must be `relative`.
+export function Menu({ summary, className, children }: { summary: ReactNode; className: string; children: ReactNode }) {
+  const ref = useRef<HTMLDetailsElement>(null);
+  useDismiss(ref);
 
   return (
     <details ref={ref} className="group sm:relative">
@@ -40,6 +44,28 @@ export function Menu({ summary, className, children }: { summary: ReactNode; cla
       >
         {children}
       </ul>
+    </details>
+  );
+}
+
+export const menuItem = "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm font-medium whitespace-nowrap hover:bg-ink/5 disabled:opacity-50";
+
+// A small menu inside the app, on a card or between two rows: the same <details>, closed by Escape, a click elsewhere or a choice.
+// Its items are plain buttons and links with `menuItem`.
+export function ActionMenu({ label, className, side = "right", children, trigger }: { label: string; className: string; side?: "left" | "right"; trigger: ReactNode; children: ReactNode }) {
+  const ref = useRef<HTMLDetailsElement>(null);
+  useDismiss(ref);
+  return (
+    <details ref={ref} className="relative">
+      <summary aria-label={label} title={label} className={`${className} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}>
+        {trigger}
+      </summary>
+      <div
+        className={`absolute z-20 mt-1 grid min-w-40 gap-0.5 rounded-lg bg-paper p-1 shadow-[0_0_0_1px_var(--line),0_10px_30px_rgb(0_0_0/0.12)] ${side === "right" ? "right-0" : "left-0"}`}
+        onClick={() => ref.current?.removeAttribute("open")}
+      >
+        {children}
+      </div>
     </details>
   );
 }

@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+test.use({ timezoneId: "Europe/Berlin" });
+
 type Role = "owner" | "admin" | "member";
 const me = (role: Role) => ({
   id: "u-me",
@@ -176,7 +178,8 @@ for (const t of templates) {
     await page.getByRole("link", { name: "New automation" }).click();
     await expect(page).toHaveURL("/t/acme22/automations/new");
     await expect(page.getByRole("heading", { name: "Start from a template" })).toBeVisible();
-    await expect(page.getByRole("region", { name: "Start from a template" }).getByRole("link")).toHaveCount(7);
+    // Seven templates and Start from scratch.
+    await expect(page.getByRole("region", { name: "Start from a template" }).getByRole("link")).toHaveCount(8);
     await page.getByRole("link", { name: t.title }).click();
     await expect(page.getByLabel("Name")).toHaveValue(t.title);
     await page.getByRole("button", { name: "Create automation" }).click();
@@ -501,7 +504,7 @@ test("builds a flow of three steps with a wait and buttons, and saves steps with
   expect(state.bodies[0]).not.toHaveProperty("fallback_public_reply");
   const summary = page.getByRole("region", { name: "Price flow" });
   await expect(summary).toContainText("3 steps: DM, wait 2 hours, DM.");
-  await expect(summary.getByRole("list", { name: "Steps" })).toContainText("2. Wait 2 hours");
+  await expect(summary.getByRole("list", { name: "Steps" })).toContainText("Wait 2 hours");
 });
 
 test("a flow says what is wrong before it saves, and maps brain's refusals", async ({ page }) => {
@@ -628,7 +631,7 @@ test("a flow shows its steps on the card, opens in the editor and saves unchange
   await card.getByRole("link", { name: "Guide flow" }).click();
   const summary = page.getByRole("region", { name: "Guide flow" });
   await expect(summary.getByRole("note")).toHaveCount(0);
-  await expect(summary.getByRole("list", { name: "Steps" }).locator("> li")).toHaveText([/1\. Send a DM.*Want the guide, \{name\}\?.*Yes please.*No/, /2\. Reply publicly/, "3. Wait 1 day", /4\. Send a DM.*Still there\?/]);
+  await expect(summary.getByRole("list", { name: "Steps" }).locator("> li")).toHaveText([/Send a DM.*Want the guide, \{name\}\?.*Yes please.*No/, /Reply publicly/, "Wait 1 day", /Send a DM.*Still there\?/]);
   await page.getByRole("button", { name: "Edit" }).click();
   const doThis = page.getByRole("group", { name: "Do this" });
   await expect(doThis.getByRole("radio", { name: "A flow of steps" })).toBeChecked();
@@ -643,6 +646,8 @@ test("a flow shows its steps on the card, opens in the editor and saves unchange
   await page.getByRole("button", { name: "Edit" }).click();
   await step(page, 1).getByLabel("Button 1 label").fill("Send it");
   await page.getByRole("button", { name: "Save automation" }).click();
+  // Two people wait in this flow, and a new label is a new step.
+  await page.getByRole("alertdialog").getByRole("button", { name: "Save and stop them" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Automation saved." })).toBeVisible();
   expect(state.bodies[1]).toMatchObject({ steps: [{ buttons: [{ label: "Send it", payload: "guide_yes" }, { label: "No", payload: "no" }] }, {}, {}, {}] });
 });
@@ -754,4 +759,304 @@ test("run history says in plain words what happened to a tag", async ({ page }) 
     "Tag: skipped (There is no contact behind this item to tag)",
   ])
     await expect(history.getByRole("listitem").filter({ hasText: said })).toHaveCount(1);
+});
+
+test("the list shows skeleton cards while it loads, then the cards with a bar of the shares", async ({ page }) => {
+  await brain(page, "owner");
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  await page.route("**/v1/automations", async (route) => {
+    await gate;
+    await route.fallback();
+  });
+  await page.goto("/automations");
+  await expect(page.getByRole("status").filter({ hasText: "Loading automations..." })).toBeAttached();
+  await expect(page.locator(".skeleton").first()).toBeVisible();
+  await expect(page.getByText("Price to DM")).toHaveCount(0);
+  release();
+  const card = page.getByRole("listitem").filter({ hasText: "Price to DM" });
+  await expect(card).toBeVisible();
+  await expect(page.locator(".skeleton")).toHaveCount(0);
+  await expect(card.getByRole("img", { name: "75% sent, 19% skipped, 6% failed" })).toBeVisible();
+  await expect(card.locator("time")).toHaveAttribute("datetime", stats.last_at);
+  // A failure in its runs marks the card, with a way to the failed runs.
+  await card.getByRole("link", { name: "1 failed run: see why" }).click();
+  await expect(page).toHaveURL("/t/acme22/automations/a1?runs=failed");
+  await expect(page.getByRole("list", { name: "Show runs" }).getByRole("button", { name: "Failed" })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("the switch flips at once and goes back when brain refuses", async ({ page }) => {
+  const state = await brain(page, "owner");
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  await page.route(/\/v1\/automations\/a1\/disable$/, async (route) => {
+    await gate;
+    await route.fulfill({ status: 500, json: { error: "internal" } });
+  });
+  await page.goto("/automations");
+  const card = page.getByRole("listitem").filter({ hasText: "Price to DM" });
+  const toggle = card.getByRole("switch", { name: "Price to DM" });
+  await toggle.click();
+  // Off on screen while brain has not answered yet.
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
+  await expect(card.getByRole("alert")).toHaveCount(0);
+  release();
+  await expect(toggle).toHaveAttribute("aria-checked", "true");
+  await expect(card.getByRole("alert")).toContainText("Not switched.");
+  expect(state.list[0]!.active).toBe(true);
+
+  // The menu's Turn off is the same switch, and this time brain takes it.
+  await page.unroute(/\/v1\/automations\/a1\/disable$/);
+  await card.getByLabel("Actions for Price to DM").click();
+  await card.getByRole("button", { name: "Turn off" }).click();
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
+  await expect(card.getByRole("status").filter({ hasText: "Price to DM is off." })).toBeAttached();
+  await expect(card.getByRole("alert")).toHaveCount(0);
+  expect(state.list[0]!.active).toBe(false);
+});
+
+test("a card's menu closes on Escape, duplicates into a prefilled builder that saves a new one switched off, and deletes after a confirm", async ({ page }) => {
+  const state = await brain(page, "owner");
+  state.list.push(guideFlow({ runs: stats }));
+  await page.goto("/automations");
+  // The copy made below is called "Guide flow (copy)", so the original goes by its exact name.
+  const card = page.getByRole("listitem").filter({ has: page.getByRole("link", { name: "Guide flow", exact: true }) });
+  const menu = card.getByLabel("Actions for Guide flow", { exact: true });
+  await menu.focus();
+  await page.keyboard.press("Enter");
+  await expect(card.getByRole("link", { name: "Edit" })).toHaveAttribute("href", "/t/acme22/automations/flow?edit=1");
+  await page.keyboard.press("Escape");
+  await expect(card.getByRole("link", { name: "Duplicate" })).toBeHidden();
+  await expect(menu).toBeFocused();
+
+  await menu.click();
+  await card.getByRole("link", { name: "Duplicate" }).click();
+  await expect(page).toHaveURL("/t/acme22/automations/new?from=flow");
+  await expect(page.getByLabel("Name")).toHaveValue("Guide flow (copy)");
+  await expect(page.getByRole("switch", { name: "On" })).toHaveAttribute("aria-checked", "false");
+  await expect(step(page, 1).getByLabel("Button 1 label")).toHaveValue("Yes please");
+  await expect(step(page, 3).getByLabel("Wait for")).toHaveValue("1");
+  await page.getByRole("button", { name: "Create automation" }).click();
+  await expect(page).toHaveURL("/t/acme22/automations/a2");
+  // One save, a create: the original is untouched and the copy's buttons have payloads of their own.
+  expect(state.bodies).toEqual([
+    {
+      name: "Guide flow (copy)",
+      trigger: "comment_received",
+      conditions: flowConditions,
+      steps: [{ ...flowSteps[0], buttons: [{ label: "Yes please", payload: "guide_yes-2" }, { label: "No", payload: "no-2" }] }, ...flowSteps.slice(1)],
+      active: false,
+    },
+  ]);
+  expect(state.list.map((a) => a.id)).toEqual(["a1", "flow", "a2"]);
+
+  await page.goto("/automations");
+  await menu.click();
+  await card.getByRole("button", { name: "Delete" }).click();
+  await expect(card.getByRole("button", { name: "Yes, delete" })).toBeFocused();
+  expect(state.list).toHaveLength(3);
+  await page.keyboard.press("Enter");
+  await expect(card).toHaveCount(0);
+  expect(state.list.map((a) => a.id)).toEqual(["a1", "a2"]);
+});
+
+test("more than six automations get filter chips: all, on, off and by trigger", async ({ page }) => {
+  const state = await brain(page, "owner");
+  await page.goto("/automations");
+  await expect(page.getByRole("list", { name: "Show" })).toHaveCount(0);
+  for (let n = 2; n <= 7; n++) state.list.push(automation(`x${n}`, `Extra ${n}`, n === 7 ? { active: false, trigger: "dm_received", conditions: { ...noScope, keywords: [], first_message: false } } : {}));
+  await page.reload();
+  const chips = page.getByRole("list", { name: "Show" });
+  await expect(chips.getByRole("button")).toHaveText(["All7", "On6", "Off1", "Comments6", "DMs1"]);
+  const cards = page.locator("ul > li.card");
+  await expect(cards).toHaveCount(7);
+  await chips.getByRole("button", { name: "Off" }).click();
+  await expect(cards).toHaveText([/Extra 7/]);
+  await chips.getByRole("button", { name: "Comments" }).click();
+  await expect(cards).toHaveCount(6);
+});
+
+test("the gallery groups the templates, marks the popular ones and the networks, and starts from scratch", async ({ page }) => {
+  const state = await brain(page, "owner");
+  state.list = [];
+  // With no automation yet the list page is the gallery itself.
+  await page.goto("/automations");
+  await expect(page.getByText("No automations yet")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Start from scratch" })).toBeVisible();
+
+  await page.goto("/automations/new");
+  const groups = { "Reply to comments": ["Comment to DM"], "Reply to DMs": ["DM keyword reply", "Welcome message"], Grow: ["New follower DM", "Mention reply", "Story reply"], "Follow up": ["Button follow-up"] };
+  await expect(page.getByRole("heading", { level: 3 })).toHaveText([...Object.keys(groups), "Your own"]);
+  for (const [group, titles] of Object.entries(groups)) await expect(page.getByRole("region", { name: group }).getByRole("link").locator("strong")).toHaveText(titles);
+  await expect(page.getByRole("link").filter({ hasText: "Popular" }).locator("strong")).toHaveText(["Comment to DM", "Welcome message"]);
+  await expect(page.getByRole("link", { name: "Story reply" })).toContainText("Works on Instagram");
+  await expect(page.getByRole("link", { name: "Button follow-up" })).toContainText("Works on Facebook, Instagram");
+
+  await page.getByRole("link", { name: "Start from scratch" }).click();
+  await expect(page).toHaveURL("/t/acme22/automations/new?template=blank");
+  await expect(page.getByLabel("Name")).toHaveValue("");
+  await expect(page.getByRole("radio", { name: "When someone comments" })).toBeChecked();
+  // The bar counts what is missing and jumps to the first of it.
+  await page.getByRole("button", { name: "2 problems" }).click();
+  await expect(page.getByLabel("Name")).toBeFocused();
+  await page.getByLabel("Name").fill("My own");
+  await page.getByRole("button", { name: "1 problem" }).click();
+  await expect(page.getByLabel("DM text")).toBeFocused();
+  await page.getByLabel("DM text").fill("Hello {name}");
+  await expect(page.getByRole("button", { name: /problem/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Create automation" }).click();
+  await expect(page).toHaveURL("/t/acme22/automations/a2");
+  expect(state.bodies[0]).toMatchObject({ name: "My own", trigger: "comment_received", actions: [{ type: "send_dm", text: "Hello {name}" }], active: true });
+});
+
+test("a step inserted between two steps is saved at that place", async ({ page }) => {
+  const state = await brain(page, "owner");
+  state.list.push(guideFlow());
+  await page.goto("/automations/flow?edit=1");
+  const doThis = page.getByRole("group", { name: "Do this" });
+  await expect(doThis.getByRole("listitem", { name: /^Step \d+:/ })).toHaveCount(4);
+  // After the last step there is the Add step row, so no insert there.
+  await expect(doThis.getByLabel(/^Insert a step after step/)).toHaveCount(3);
+  await doThis.getByLabel("Insert a step after step 1").click();
+  await doThis.getByRole("button", { name: "Tag the contact" }).first().click();
+  await expect(step(page, 2)).toHaveAccessibleName("Step 2: Tag the contact");
+  await expect(step(page, 2).getByLabel("Tag")).toBeFocused();
+  await page.keyboard.type("Asked");
+  await expect(step(page, 3)).toHaveAccessibleName("Step 3: Reply publicly");
+  await page.getByRole("button", { name: "Save automation" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Automation saved." })).toBeVisible();
+  expect((state.bodies[0] as { steps: unknown[] }).steps).toEqual([flowSteps[0], { type: "tag_contact", tag: "asked" }, flowSteps[1], flowSteps[2], flowSteps[3]]);
+  // The saved flow reads as a timeline: the trigger, then each step, the wait as a pill.
+  await expect(page.getByRole("region", { name: "Guide flow" }).getByRole("list", { name: "Steps" }).locator("> li")).toHaveText([/Send a DM/, /Tag the contact.*asked/, /Reply publicly/, "Wait 1 day", /Send a DM/]);
+});
+
+test("a problem shows on its step and in the summary under the flow", async ({ page }) => {
+  await brain(page, "owner");
+  await page.goto("/automations/new?template=dm-keyword");
+  const doThis = page.getByRole("group", { name: "Do this" });
+  await doThis.getByRole("radio", { name: "A flow of steps" }).check();
+  await doThis.getByRole("button", { name: "Tag the contact", exact: true }).click();
+  await page.getByRole("button", { name: "1 problem" }).click();
+  await expect(step(page, 2).getByRole("alert")).toHaveText("Write the tag: 1 to 30 characters, no commas.");
+  await expect(step(page, 2).getByLabel("Tag")).toBeFocused();
+  await step(page, 1).getByLabel("DM text").focus();
+  await doThis.getByRole("list", { name: "Problems in the steps" }).getByRole("button", { name: "Step 2: Write the tag: 1 to 30 characters, no commas." }).click();
+  await expect(step(page, 2).getByLabel("Tag")).toBeFocused();
+});
+
+test("saving changed steps asks first when people wait in the flow, and only then", async ({ page }) => {
+  const state = await brain(page, "owner");
+  state.list.push(guideFlow({ runs: { ...stats, waiting: 2 } }));
+  await page.goto("/automations/flow?edit=1");
+  // A new name leaves the steps alone, so nothing is asked.
+  await page.getByLabel("Name").fill("Guide flow 2");
+  await page.getByRole("button", { name: "Save automation" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Automation saved." })).toBeVisible();
+  expect(state.bodies).toHaveLength(1);
+
+  await page.getByRole("button", { name: "Edit" }).click();
+  await step(page, 4).getByLabel("DM text").fill("Still there, {name}?");
+  await page.getByRole("button", { name: "Save automation" }).click();
+  const ask = page.getByRole("alertdialog");
+  await expect(ask).toContainText("2 people are waiting in this flow. Saving new steps stops those runs.");
+  await expect(ask.getByRole("button", { name: "Save and stop them" })).toBeFocused();
+  expect(state.bodies).toHaveLength(1);
+  await ask.getByRole("button", { name: "Keep editing" }).click();
+  await expect(ask).toHaveCount(0);
+  await page.getByRole("button", { name: "Save automation" }).click();
+  await ask.getByRole("button", { name: "Save and stop them" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Automation saved." })).toBeVisible();
+  expect(state.bodies[1]).toMatchObject({ steps: [{}, {}, {}, { type: "send_dm", text: "Still there, {name}?" }] });
+});
+
+test("a flow nobody waits in saves changed steps without asking", async ({ page }) => {
+  const state = await brain(page, "owner");
+  state.list.push(guideFlow({ runs: stats }));
+  await page.goto("/automations/flow?edit=1");
+  await step(page, 4).getByLabel("DM text").fill("Hello again");
+  await page.getByRole("button", { name: "Save automation" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Automation saved." })).toBeVisible();
+  expect(state.bodies).toHaveLength(1);
+});
+
+test("leaving the builder with unsaved changes asks first", async ({ page }) => {
+  await brain(page, "owner");
+  await page.goto("/automations/new?template=welcome");
+  const unload = () =>
+    page.evaluate(() => {
+      const e = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(e);
+      return e.defaultPrevented;
+    });
+  await expect(page.getByLabel("Name")).toHaveValue("Welcome message");
+  expect(await unload()).toBe(false);
+  await page.getByLabel("Name").fill("Hello there");
+  expect(await unload()).toBe(true);
+
+  const asked: string[] = [];
+  page.once("dialog", (d) => {
+    asked.push(d.message());
+    d.dismiss();
+  });
+  await page.getByRole("main").getByRole("link", { name: "Templates" }).click();
+  expect(asked).toEqual(["Leave without saving? Your changes to this automation will be lost."]);
+  await expect(page).toHaveURL("/t/acme22/automations/new?template=welcome");
+  await expect(page.getByLabel("Name")).toHaveValue("Hello there");
+
+  // Cancel asks the same, and a yes leaves.
+  page.once("dialog", (d) => d.dismiss());
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByLabel("Name")).toHaveValue("Hello there");
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("main").getByRole("link", { name: "Templates" }).click();
+  await expect(page.getByRole("heading", { name: "Start from a template" })).toBeVisible();
+});
+
+test("run history filters the loaded runs by chips and says why where it can", async ({ page }) => {
+  await brain(page, "owner");
+  await page.goto("/automations/a1");
+  const history = page.getByRole("region", { name: "Run history" });
+  const chips = history.getByRole("list", { name: "Show runs" });
+  const rows = history.getByRole("row");
+  await expect(chips.getByRole("button")).toHaveText(["All3", "Sent1", "Skipped2", "Failed0", "Waiting0"]);
+  await expect(rows.nth(1)).toContainText("Why: This person does not accept DMs from accounts they don't follow.");
+  await expect(rows.nth(3)).toContainText("Why: A team's automations run at most 500 times a day.");
+  await chips.getByRole("button", { name: "Skipped" }).click();
+  await expect(rows).toHaveCount(3);
+  await expect(rows.nth(1)).toContainText("Reconnect with an app password that allows DMs");
+  await chips.getByRole("button", { name: "Failed" }).click();
+  await expect(history.getByText("No failed runs among the 3 loaded. Load more to look further back.")).toBeVisible();
+  await expect(history.getByRole("table")).toBeHidden();
+  // The filter stays as more runs load.
+  await history.getByRole("button", { name: "Load more" }).click();
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(1)).toContainText("Meta refused it");
+  // A reason with nothing more to say has no hint.
+  await expect(rows.nth(1)).not.toContainText("Why:");
+  await expect(chips.getByRole("button", { name: "All" })).toHaveText("All4");
+});
+
+test("the automation pages have no sideways scroll on a 375 wide phone", async ({ page }) => {
+  const state = await brain(page, "owner");
+  state.list.push(guideFlow({ runs: { ...stats, waiting: 2 } }));
+  await page.setViewportSize({ width: 375, height: 800 });
+  const fits = async () => expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(375);
+  await page.goto("/automations");
+  await expect(page.getByText("Guide flow")).toBeVisible();
+  await fits();
+  await page.getByLabel("Actions for Guide flow").click();
+  await expect(page.getByRole("link", { name: "Duplicate" })).toBeVisible();
+  await fits();
+  await page.goto("/automations/new");
+  await expect(page.getByRole("link", { name: "Start from scratch" })).toBeVisible();
+  await fits();
+  await page.goto("/automations/flow");
+  await expect(page.getByRole("heading", { name: "Run history" })).toBeVisible();
+  await fits();
+  await page.goto("/automations/flow?edit=1");
+  await expect(step(page, 3).getByLabel("Wait for")).toBeVisible();
+  await fits();
+  await page.getByLabel("Insert a step after step 1").click();
+  await expect(page.getByRole("button", { name: "Tag the contact" }).first()).toBeVisible();
+  await fits();
 });

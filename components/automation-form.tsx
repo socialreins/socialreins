@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import type { Failure } from "@/lib/auth";
 import {
@@ -8,11 +8,14 @@ import {
   changeTrigger,
   createAutomation,
   draftOf,
+  duplicateDraft,
   flowProblems,
   MAX_TAG_ACTIONS,
   postIds,
   sample,
+  sameSteps,
   slug,
+  templateLength,
   toFlow,
   toSimple,
   TRIGGERS,
@@ -64,11 +67,13 @@ const incoming: Record<Trigger, { did: string; text: string | null }> = {
   button_clicked: { did: "tapped a button", text: null },
 };
 
+const leaveQuestion = "Leave without saving? Your changes to this automation will be lost.";
 const cardTitle = "px-1 font-display text-lg font-extrabold tracking-tight";
 
 // The builder over brain's trigger, conditions and actions: When, Only if, Do this, and a preview.
 export function AutomationForm({
   automation: a,
+  copyOf,
   template,
   payload,
   startScope,
@@ -79,6 +84,8 @@ export function AutomationForm({
   onCancel,
 }: {
   automation?: Automation;
+  // Another automation to start a new one from (Duplicate): saving creates, never updates.
+  copyOf?: Automation;
   // A template id from `templates`, for a new automation.
   template?: string | null;
   // From a button's follow-up link, for a new automation: the payload to listen for and the flow's scope.
@@ -91,8 +98,14 @@ export function AutomationForm({
   onSaved: (a: Automation) => void;
   onCancel?: () => void;
 }) {
-  const [d, setD] = useState<Draft>(() => draftOf(a, template, payload));
-  const [scope, setScope] = useState(scopeOf(a?.conditions ?? startScope ?? { account_ids: [] }));
+  const [d, setD] = useState<Draft>(() => (copyOf ? duplicateDraft(copyOf) : draftOf(a, template, payload)));
+  const [scope, setScope] = useState(scopeOf((a ?? copyOf)?.conditions ?? startScope ?? { account_ids: [] }));
+  // What the form opened with, to tell whether leaving would lose anything.
+  const now = JSON.stringify([d, scope]);
+  const [opened] = useState(now);
+  const dirty = now !== opened;
+  // A save that would stop waiting runs, waiting for a yes.
+  const [stopping, setStopping] = useState(false);
   // A switch between One reply and A flow that would drop something, waiting for a yes.
   const [pending, setPending] = useState<{ patch: Partial<Draft>; dropped: string[] } | null>(null);
   // A save was tried, so the flow's and the payloads' problems show.
@@ -110,6 +123,38 @@ export function AutomationForm({
   const tagsAlone = !d.flow && d.tags.length > 0 && !hasDm && !(t.publicReply && d.publicReply.trim());
   const sam = incoming[d.trigger];
   const problems = d.flow ? flowProblems(d.steps, d.trigger) : [];
+  const waiting = a?.runs?.waiting ?? 0;
+  // Everything that stops a save, with the field to fix it in, for the bar's count.
+  const issues: { text: string; field: string }[] = [
+    ...(d.name.trim() ? [] : [{ text: "Give it a name.", field: "automation-name" }]),
+    ...(t.payloads && !d.payloads.length ? [{ text: "Add at least one button payload.", field: "automation-payloads" }] : []),
+    ...(d.flow
+      ? problems.map((p) => ({ text: p.step === null ? p.text : `Step ${p.step + 1}: ${p.text}`, field: p.step === null ? "automation-flow-add" : `step-${d.steps[p.step]!.id}-field` }))
+      : [
+          ...(hasDm || (t.publicReply && d.publicReply.trim()) ? [] : [{ text: t.publicReply ? "Write a DM text or a public reply." : "Write the DM text.", field: "automation-dm" }]),
+          ...(templateLength(d.dm) > MAX_DM ? [{ text: "The DM text is too long.", field: "automation-dm" }] : []),
+          ...(t.publicReply && templateLength(d.publicReply) > MAX_PUBLIC ? [{ text: "The public reply is too long.", field: "automation-public-reply" }] : []),
+        ]),
+  ];
+
+  // shortcut: guards a reload, a closed tab and a click on any link of the app; the browser's Back button inside the app is not caught. Upgrade if Next gets a navigation guard.
+  useEffect(() => {
+    if (!dirty) return;
+    const unload = (e: BeforeUnloadEvent) => e.preventDefault();
+    const click = (e: MouseEvent) => {
+      const link = e.target instanceof Element ? e.target.closest("a[href]") : null;
+      if (!link || link.getAttribute("target") === "_blank" || link.getAttribute("href")!.startsWith("#") || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      if (window.confirm(leaveQuestion)) return;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    window.addEventListener("beforeunload", unload);
+    document.addEventListener("click", click, true);
+    return () => {
+      window.removeEventListener("beforeunload", unload);
+      document.removeEventListener("click", click, true);
+    };
+  }, [dirty]);
 
   function onMode(flow: boolean) {
     if (flow === d.flow) return;
@@ -142,10 +187,15 @@ export function AutomationForm({
     setPending(null);
   }
 
-  async function onSubmit(e: FormEvent<HTMLFormElement>) {
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    save(false);
+  }
+
+  // `sure`: the yes to stopping the runs that wait in the flow.
+  async function save(sure: boolean) {
     const specific = t.posts && d.specific;
-    const uris = specific ? postIds(lines, a?.conditions.post_remote_ids ?? [], accounts) : [];
+    const uris = specific ? postIds(lines, (a ?? copyOf)?.conditions.post_remote_ids ?? [], accounts) : [];
     const bad = specific ? lines.filter((_, i) => !uris[i]) : [];
     setBadLinks(bad);
     if (bad.length || (specific && !lines.length)) {
@@ -168,6 +218,12 @@ export function AutomationForm({
       return;
     }
     const input = automationInput(d, scopeBody(scope), uris as string[]);
+    if (a && waiting > 0 && !sure && !sameSteps(a.steps, input.steps)) {
+      flushSync(() => setStopping(true));
+      document.getElementById("automation-stop-yes")?.focus();
+      return;
+    }
+    setStopping(false);
     await run("save", () => (a ? updateAutomation(a.id, input) : createAutomation(input)), (saved) => {
       onSaved(saved);
       return a ? "Automation saved." : undefined;
@@ -416,20 +472,68 @@ export function AutomationForm({
           )}
         </fieldset>
 
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={d.active} onChange={(e) => set({ active: e.target.checked })} />
-          On: act from now on
-        </label>
-        <Status problem={problem} done={done} overrides={automationMessages} />
-        <div className="flex flex-wrap gap-2">
-          <button type="submit" className="btn btn-primary" disabled={busy !== null || !ready}>
-            {busy ? "Saving..." : a ? "Save automation" : "Create automation"}
-          </button>
-          {onCancel && (
-            <button type="button" className="btn btn-quiet" disabled={busy !== null} onClick={onCancel}>
-              Cancel
-            </button>
+        <div id="automation-bar" className="sticky bottom-3 z-10 grid gap-2 rounded-lg bg-paper/95 p-3 shadow-[0_0_0_1px_var(--line),0_-6px_20px_rgb(0_0_0/0.07)] backdrop-blur sm:px-4">
+          <Status problem={problem} done={done} overrides={automationMessages} />
+          {stopping && (
+            <div role="alertdialog" aria-labelledby="automation-stop-q" className="flex flex-wrap items-center gap-2 rounded-lg bg-canvas p-3">
+              <p id="automation-stop-q" className="basis-full text-sm font-bold">
+                {waiting === 1 ? "1 person is" : `${waiting} people are`} waiting in this flow. Saving new steps stops those runs.
+              </p>
+              <button id="automation-stop-yes" type="button" className="btn btn-primary btn-sm" disabled={busy !== null} onClick={() => save(true)}>
+                Save and stop them
+              </button>
+              <button type="button" className="btn btn-quiet btn-sm" onClick={() => setStopping(false)}>
+                Keep editing
+              </button>
+            </div>
           )}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <strong className="min-w-0 flex-1 basis-28 truncate" title={d.name}>
+              {d.name.trim() || "Untitled automation"}
+            </strong>
+            {issues.length > 0 && (
+              <button
+                type="button"
+                className="btn btn-quiet btn-sm text-signal-deep"
+                title={issues[0]!.text}
+                onClick={() => {
+                  flushSync(() => setTried(true));
+                  const el = document.getElementById(issues[0]!.field);
+                  el?.scrollIntoView({ block: "center" });
+                  el?.focus({ preventScroll: true });
+                }}
+              >
+                <span aria-hidden="true" className="size-1.5 rounded-full bg-current" />
+                {issues.length} {issues.length === 1 ? "problem" : "problems"}
+              </button>
+            )}
+            <span className="flex items-center gap-2">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={d.active}
+                aria-label="On"
+                title={d.active ? "On: it acts as soon as it is saved" : "Off: saved, but it does nothing yet"}
+                onClick={() => set({ active: !d.active })}
+                className={`relative h-6 w-10 shrink-0 rounded-full transition-colors motion-reduce:transition-none ${d.active ? "bg-ink" : "bg-ink/20"}`}
+              >
+                <span aria-hidden="true" className={`absolute top-1 left-1 size-4 rounded-full bg-paper transition-transform motion-reduce:transition-none ${d.active ? "translate-x-4 bg-signal" : ""}`} />
+              </button>
+              <span aria-hidden="true" className="w-6 text-sm font-bold">
+                {d.active ? "On" : "Off"}
+              </span>
+            </span>
+            <span className="flex gap-2">
+              {onCancel && (
+                <button type="button" className="btn btn-quiet" disabled={busy !== null} onClick={() => (!dirty || window.confirm(leaveQuestion)) && onCancel()}>
+                  Cancel
+                </button>
+              )}
+              <button type="submit" className="btn btn-primary" disabled={busy !== null || !ready}>
+                {busy ? "Saving..." : a ? "Save automation" : "Create automation"}
+              </button>
+            </span>
+          </div>
         </div>
       </form>
 

@@ -121,11 +121,13 @@ export type Capability = {
   publicReply: boolean;
   payloads: boolean;
   note: string | null;
+  // The networks it runs on, as ids of `platforms`, for the marks in the template gallery.
+  networks: string[];
 };
 export const triggers: Record<Trigger, Capability> = {
-  comment_received: { label: "When someone comments", keywords: true, posts: true, firstPerAuthor: true, firstMessage: false, publicReply: true, payloads: false, note: null },
-  dm_received: { label: "When someone sends a DM", keywords: true, posts: false, firstPerAuthor: false, firstMessage: true, publicReply: false, payloads: false, note: null },
-  mention_received: { label: "When someone mentions you", keywords: true, posts: false, firstPerAuthor: false, firstMessage: false, publicReply: true, payloads: false, note: null },
+  comment_received: { label: "When someone comments", keywords: true, posts: true, firstPerAuthor: true, firstMessage: false, publicReply: true, payloads: false, note: null, networks: ["bluesky", "facebook", "instagram"] },
+  dm_received: { label: "When someone sends a DM", keywords: true, posts: false, firstPerAuthor: false, firstMessage: true, publicReply: false, payloads: false, note: null, networks: ["bluesky", "facebook", "instagram"] },
+  mention_received: { label: "When someone mentions you", keywords: true, posts: false, firstPerAuthor: false, firstMessage: false, publicReply: true, payloads: false, note: null, networks: ["bluesky"] },
   new_follower: {
     label: "When someone follows you",
     keywords: false,
@@ -135,6 +137,7 @@ export const triggers: Record<Trigger, Capability> = {
     publicReply: false,
     payloads: false,
     note: "Bluesky only. Each follower gets the DM once, and only if they take DMs from accounts they don't follow.",
+    networks: ["bluesky"],
   },
   story_reply: {
     label: "When someone replies to your story",
@@ -145,6 +148,7 @@ export const triggers: Record<Trigger, Capability> = {
     publicReply: false,
     payloads: false,
     note: "Instagram only, and still in testing.",
+    networks: ["instagram"],
   },
   button_clicked: {
     label: "When someone taps a button",
@@ -155,6 +159,7 @@ export const triggers: Record<Trigger, Capability> = {
     publicReply: false,
     payloads: true,
     note: "Facebook and Instagram only. It runs when someone taps a button that a flow's DM showed them.",
+    networks: ["facebook", "instagram"],
   },
 };
 export const TRIGGERS = Object.keys(triggers) as Trigger[];
@@ -396,45 +401,57 @@ const empty: Draft = {
   payloads: [],
 };
 
-export const templates: { id: string; title: string; about: string; draft: Partial<Draft> }[] = [
+// The gallery's groups, in order, and the id that opens the builder empty.
+export const TEMPLATE_GROUPS = ["Reply to comments", "Reply to DMs", "Grow", "Follow up"] as const;
+export const BLANK = "blank";
+export const templates: { id: string; title: string; about: string; group: (typeof TEMPLATE_GROUPS)[number]; popular?: boolean; draft: Partial<Draft> }[] = [
   {
     id: "comment-to-dm",
+    group: "Reply to comments",
+    popular: true,
     title: "Comment to DM",
     about: "Send a DM to everyone who comments a keyword on your posts.",
     draft: { name: "Comment to DM", trigger: "comment_received", keywords: ["link"], dm: "Hi {name}, thanks for your comment! Here is the link: " },
   },
   {
     id: "dm-keyword",
+    group: "Reply to DMs",
     title: "DM keyword reply",
     about: "Answer a DM that holds a keyword, like \"price\" or \"hours\".",
     draft: { name: "DM keyword reply", trigger: "dm_received", keywords: ["price"], dm: "Hi {name}, thanks for asking! Here are our prices: " },
   },
   {
     id: "welcome",
+    group: "Reply to DMs",
+    popular: true,
     title: "Welcome message",
     about: "Greet someone the first time they send you a DM.",
     draft: { name: "Welcome message", trigger: "dm_received", firstMessage: true, dm: "Hi {name}, thanks for your message! We will get back to you soon." },
   },
   {
     id: "new-follower",
+    group: "Grow",
     title: "New follower DM",
     about: "Thank each new follower with a DM. Bluesky only.",
     draft: { name: "New follower DM", trigger: "new_follower", dm: "Hi {name}, thanks for following!" },
   },
   {
     id: "mention-reply",
+    group: "Grow",
     title: "Mention reply",
     about: "Reply under a post that mentions you.",
     draft: { name: "Mention reply", trigger: "mention_received", publicReply: "Thanks for the mention, {name}!" },
   },
   {
     id: "story-reply",
+    group: "Grow",
     title: "Story reply",
     about: "Send a DM to people who reply to your story. Instagram only.",
     draft: { name: "Story reply", trigger: "story_reply", dm: "Thanks for replying to our story, {name}!" },
   },
   {
     id: "button-follow-up",
+    group: "Follow up",
     title: "Button follow-up",
     about: "Answer a tap on a button that a flow's DM showed. Facebook and Instagram only.",
     draft: { name: "Button follow-up", trigger: "button_clicked", dm: "Thanks, {name}! Here is more: " },
@@ -467,6 +484,32 @@ export function draftOf(a?: Automation, templateId?: string | null, payload?: st
     steps: (a.steps ?? []).map(stepDraft),
     payloads: c.payloads ?? [],
   };
+}
+
+// A copy to start a new automation from: switched off, named "<name> (copy)" within the 60 characters a name takes,
+// and every button with a payload of its own, so a follow-up that listens for the original's buttons does not answer
+// the copy's. Conditions (a button automation's payloads too), steps and tags come over as they are.
+export function duplicateDraft(a: Automation): Draft {
+  const d = draftOf(a);
+  const taken = d.steps.flatMap((s) => (s.type === "send_dm" ? s.buttons.map((b) => b.payload) : []));
+  const own = (b: ButtonDraft) => {
+    const payload = uniquePayload(b.payload, taken);
+    taken.push(payload);
+    return { ...b, payload };
+  };
+  return {
+    ...d,
+    name: `${a.name.slice(0, 60 - " (copy)".length).trimEnd()} (copy)`,
+    active: false,
+    steps: d.steps.map((s) => (s.type === "send_dm" ? { ...s, buttons: s.buttons.map(own) } : s)),
+  };
+}
+
+// Whether two flows are the same steps, whatever order brain wrote a step's keys in. No steps equals no steps.
+export function sameSteps(a: Step[] | null | undefined, b: Step[] | null | undefined) {
+  const flat = (steps: Step[] | null | undefined) =>
+    JSON.stringify((steps ?? []).map((s) => (s.type === "wait" ? [s.type, s.minutes] : s.type === "tag_contact" ? [s.type, s.tag] : [s.type, s.text, ...("buttons" in s ? (s.buttons ?? []) : []).flatMap((x) => [x.label, x.payload])])));
+  return flat(a) === flat(b);
 }
 
 // The draft under another trigger: what the new trigger takes stays, the rest goes and is named.
@@ -551,6 +594,16 @@ export const reasonText: Record<string, string> = {
   no_contact: "There is no contact behind this item to tag",
   automation_changed: "Stopped: the automation was changed or switched off before the flow finished",
 };
+// Why it happened and what helps, for the reasons that have more to say than their name.
+export const reasonWhy: Record<string, string> = {
+  dm_not_allowed: "This person does not accept DMs from accounts they don't follow.",
+  outside_window: "Meta closes a conversation 24 hours after the person's last message. A shorter wait in the flow keeps it open.",
+  already_replied: "Meta allows one private reply per comment, and this comment already had it.",
+  no_dm_access: "The account's Bluesky app password was made without access to DMs. Make one that allows DMs and reconnect.",
+  no_public_page: "{page} is the link to the post's public page, so the text can go only under posts made here whose public page is open.",
+  automation_changed: "Saving new steps or switching the automation off stops the runs that are waiting.",
+  daily_cap: "A team's automations run at most 500 times a day.",
+};
 export const reason = (code: string | null) => (code ? (reasonText[code] ?? code.replaceAll("_", " ")) : null);
 
 export const actionName: Record<ActionResult["type"], string> = {
@@ -580,4 +633,17 @@ export function actionsSummary(a: Pick<Automation, "actions" | "fallback_public_
   if (!has("send_dm")) return `Replies publicly${tags}`;
   if (has("reply_publicly")) return `Sends a DM and replies publicly${tags}`;
   return `${a.fallback_public_reply ? "Sends a DM, or replies publicly if it can't" : "Sends a DM"}${tags}`;
+}
+
+// The run history's filter chips, applied to the runs already loaded.
+export const RUN_FILTERS = ["all", "sent", "skipped", "failed", "waiting"] as const;
+export type RunFilter = (typeof RUN_FILTERS)[number];
+export const filterRuns = (runs: Run[], filter: RunFilter) => (filter === "all" ? runs : runs.filter((r) => r.status === filter));
+
+// Sent, skipped and failed as percents of the three together, for the thin bar. null when nothing ran yet.
+export function proportions(r: Pick<RunStats, "sent" | "skipped" | "failed">) {
+  const total = r.sent + r.skipped + r.failed;
+  if (!(total > 0)) return null;
+  const of = (n: number) => (Math.max(0, n) / total) * 100;
+  return { sent: of(r.sent), skipped: of(r.skipped), failed: of(r.failed) };
 }

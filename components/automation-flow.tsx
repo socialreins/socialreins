@@ -29,7 +29,8 @@ import {
 import { cleanTag, MAX_TAG } from "@/lib/contacts";
 import { MAX_DM, MAX_PUBLIC } from "@/lib/inbox";
 import { TeamLink as Link } from "@/components/team-link";
-import { Icon } from "@/components/ui";
+import { ActionMenu, menuItem } from "@/components/menu";
+import { Icon, type IconName } from "@/components/ui";
 
 // A text with its placeholder insert buttons and character count.
 export function TextField({
@@ -106,6 +107,72 @@ export function TextField({
 
 const iconButton = "btn btn-quiet btn-sm px-2";
 
+// The timeline, shared by the editor and the read-only view: a line down the left with a node per step.
+const rail = "relative grid grid-cols-[2rem_minmax(0,1fr)] gap-x-3 before:absolute before:top-0 before:bottom-0 before:left-4 before:w-px before:-translate-x-1/2 before:bg-ink/15";
+const node = "relative grid size-8 place-items-center rounded-full bg-paper text-ink-soft shadow-[0_0_0_1px_var(--edge)]";
+// A wait sits on the line itself.
+const pill = "relative col-span-2 flex items-center gap-2 justify-self-start rounded-2xl bg-paper px-3 text-sm shadow-[0_0_0_1px_var(--edge)]";
+export const stepIcon: Record<Step["type"], IconName> = { send_dm: "send", reply_publicly: "comment", wait: "clock", tag_contact: "tag" };
+
+// A step that was added or moved slides into place from where it was. Nothing moves for a reader who asks for no motion.
+function settle(id: number, fromTop?: number) {
+  const el = document.getElementById(`step-${id}`);
+  if (!el || typeof el.animate !== "function" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const from = fromTop === undefined ? { transform: "translateY(-8px)", opacity: 0 } : { transform: `translateY(${fromTop - el.getBoundingClientRect().top}px)`, opacity: 1 };
+  el.animate([from, { transform: "none", opacity: 1 }], { duration: 200, easing: "ease-out" });
+}
+
+// A saved automation as the same timeline, read-only: the trigger, then each step, a wait as a pill on the line.
+// `fallback` is One reply's public reply for a DM that can't go, shown under the DM.
+export function FlowTimeline({ icon, trigger, steps, fallback }: { icon: IconName; trigger: string; steps: Step[]; fallback?: string | null }) {
+  return (
+    <div>
+      <p className={`${rail} items-center pb-4`}>
+        <span className={`${node} text-signal-deep`}>
+          <Icon name={icon} className="size-4" />
+        </span>
+        <strong>{trigger}</strong>
+      </p>
+      <ol aria-label="Steps">
+        {steps.map((s, i) => (
+          <li key={i} className={`${rail} ${i === steps.length - 1 ? "before:hidden" : "pb-4"}`}>
+            {s.type === "wait" ? (
+              <span className={`${pill} py-1 font-bold`}>
+                <Icon name="clock" className="size-4 text-ink-soft" />
+                Wait {waitText(s.minutes)}
+              </span>
+            ) : (
+              <>
+                <span className={node}>
+                  <Icon name={stepIcon[s.type]} className="size-4" />
+                </span>
+                <div className="grid min-w-0 gap-1 pt-1">
+                  <strong className="text-sm">{stepName[s.type]}</strong>
+                  <span className="whitespace-pre-wrap break-words">{s.type === "tag_contact" ? s.tag : s.text}</span>
+                  {s.type === "send_dm" && s.buttons && s.buttons.length > 0 && (
+                    <ul aria-label="Buttons" className="flex flex-wrap gap-1.5">
+                      {s.buttons.map((b) => (
+                        <li key={b.payload} className="badge tone text-ink">
+                          {b.label}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {s.type === "send_dm" && fallback && (
+                    <span className="text-sm text-ink-soft">
+                      If the DM can&apos;t go, replies publicly: <span className="whitespace-pre-wrap break-words text-ink">{fallback}</span>
+                    </span>
+                  )}
+                </div>
+              </>
+            )}
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 // A flow's steps in order: add, remove, move up and down, and each step's own fields.
 export function FlowEditor({
   steps,
@@ -133,16 +200,20 @@ export function FlowEditor({
     const next = [...steps];
     const [s] = next.splice(i, 1);
     next.splice(i + by, 0, s!);
+    const top = document.getElementById(`step-${s!.id}`)?.getBoundingClientRect().top;
     flushSync(() => onChange(next));
+    settle(s!.id, top);
     setSaid(`${stepName[s!.type]} moved to step ${i + by + 1} of ${next.length}.`);
     // At the top or the bottom the button just pressed is disabled, so the other one takes the focus.
     const edge = i + by === (by < 0 ? 0 : next.length - 1);
     document.getElementById(`step-${s!.id}-${by < 0 !== edge ? "up" : "down"}`)?.focus();
   }
-  function add(type: Step["type"]) {
+  // At the end, or before the step now at `at`.
+  function add(type: Step["type"], at = steps.length) {
     const s = newStep(type);
-    flushSync(() => onChange([...steps, s]));
-    setSaid(`${stepName[type]} added as step ${steps.length + 1}.`);
+    flushSync(() => onChange([...steps.slice(0, at), s, ...steps.slice(at)]));
+    settle(s.id);
+    setSaid(`${stepName[type]} added as step ${at + 1}.`);
     document.getElementById(`step-${s.id}-field`)?.focus();
   }
   function remove(i: number) {
@@ -151,178 +222,214 @@ export function FlowEditor({
     document.getElementById("automation-flow-add")?.focus();
   }
 
+  const types = ["send_dm", ...(t.publicReply ? (["reply_publicly"] as const) : []), "wait", "tag_contact"] as const;
   const whole = problems.filter((p) => p.step === null);
+  const inSteps = problems.filter((p) => p.step !== null && steps[p.step]);
   return (
     <div id="automation-flow" className="grid gap-4">
-      <ol aria-label="Steps" className="grid gap-3">
-        {steps.map((s, i) => {
-          const mine = problems.filter((p) => p.step === i);
-          const field = `step-${s.id}-field`;
-          return (
-            <li key={s.id} aria-label={`Step ${i + 1}: ${stepName[s.type]}`} className="grid gap-3 rounded-xl border border-ink/15 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <strong className="flex items-center gap-2">
-                  <span aria-hidden="true" className="grid size-6 place-items-center rounded-full bg-ink text-xs text-paper">
-                    {i + 1}
-                  </span>
-                  {stepName[s.type]}
-                </strong>
-                <span className="flex gap-1">
-                  <button id={`step-${s.id}-up`} type="button" className={iconButton} disabled={i === 0} aria-label={`Move step ${i + 1} up`} title="Move up" onClick={() => move(i, -1)}>
-                    <Icon name="down" className="size-4 rotate-180" />
-                  </button>
-                  <button id={`step-${s.id}-down`} type="button" className={iconButton} disabled={i === steps.length - 1} aria-label={`Move step ${i + 1} down`} title="Move down" onClick={() => move(i, 1)}>
-                    <Icon name="down" className="size-4" />
-                  </button>
-                  <button type="button" className={`${iconButton} btn-danger`} aria-label={`Remove step ${i + 1}`} title="Remove" onClick={() => remove(i)}>
-                    <Icon name="trash" className="size-4" />
-                  </button>
-                </span>
-              </div>
-
-              {s.type === "wait" ? (
-                <div className="grid gap-1.5">
-                  <label htmlFor={field} className="label">
-                    Wait for
-                  </label>
-                  <div className="flex gap-2">
+      <div>
+        <ol aria-label="Steps">
+          {steps.map((s, i) => {
+            const mine = problems.filter((p) => p.step === i);
+            const field = `step-${s.id}-field`;
+            const controls = (
+              <span className="flex gap-0.5">
+                <button id={`step-${s.id}-up`} type="button" className={iconButton} disabled={i === 0} aria-label={`Move step ${i + 1} up`} title="Move up" onClick={() => move(i, -1)}>
+                  <Icon name="down" className="size-4 rotate-180" />
+                </button>
+                <button id={`step-${s.id}-down`} type="button" className={iconButton} disabled={i === steps.length - 1} aria-label={`Move step ${i + 1} down`} title="Move down" onClick={() => move(i, 1)}>
+                  <Icon name="down" className="size-4" />
+                </button>
+                <button type="button" className={`${iconButton} btn-danger`} aria-label={`Remove step ${i + 1}`} title="Remove" onClick={() => remove(i)}>
+                  <Icon name="trash" className="size-4" />
+                </button>
+              </span>
+            );
+            return (
+              <li key={s.id} id={`step-${s.id}`} aria-label={`Step ${i + 1}: ${stepName[s.type]}`} className={rail}>
+                {s.type === "wait" ? (
+                  <div className={`${pill} flex-wrap gap-1.5 py-1 pr-1 [&_.btn]:px-1.5`}>
+                    <Icon name="clock" className="size-4 text-ink-soft" />
+                    <span className="font-bold">Wait</span>
                     <input
                       id={field}
                       inputMode="numeric"
-                      className="field w-24"
+                      className="field w-12 px-1 py-0.5 text-center"
+                      aria-label="Wait for"
                       value={s.amount}
                       onChange={(e) => patch(i, { amount: e.target.value })}
                       aria-describedby={`${field}-hint`}
                       aria-invalid={waitMinutes(s.amount, s.unit) === null || undefined}
                     />
-                    <select className="field w-auto" aria-label="Unit" value={s.unit} onChange={(e) => patch(i, { unit: e.target.value as WaitUnit })}>
+                    <select className="field w-auto px-2 py-0.5" aria-label="Unit" value={s.unit} onChange={(e) => patch(i, { unit: e.target.value as WaitUnit })}>
                       {WAIT_UNITS.map((u) => (
                         <option key={u}>{u}</option>
                       ))}
                     </select>
+                    <span id={`${field}-hint`} className="sr-only">
+                      1 minute to 7 days. The next step goes out when the time is up.
+                    </span>
+                    {controls}
                   </div>
-                  <p id={`${field}-hint`} className="hint">
-                    1 minute to 7 days. The next step goes out when the time is up.
-                  </p>
-                </div>
-              ) : s.type === "tag_contact" ? (
-                <div className="grid gap-1.5">
-                  <label htmlFor={field} className="label">
-                    Tag
-                  </label>
-                  <input id={field} className="field" maxLength={MAX_TAG} placeholder="vip" value={s.tag} onChange={(e) => patch(i, { tag: e.target.value })} aria-describedby={`${field}-hint`} />
-                  <p id={`${field}-hint`} className="hint">
-                    Put on the contact when the flow gets here. Saved in lower case. It sends nothing.
-                  </p>
-                </div>
-              ) : (
-                <TextField
-                  id={field}
-                  label={s.type === "send_dm" ? "DM text" : "Public reply"}
-                  value={s.text}
-                  onChange={(text) => patch(i, { text })}
-                  max={s.type === "send_dm" ? MAX_DM : MAX_PUBLIC}
-                  tokens={tokens}
-                  placeholder={s.type === "send_dm" ? "Hi {name}, here is the link you asked for: ..." : "Sent you a DM, {name}!"}
-                  length={templateLength(numbered(s.text, s.type === "send_dm" ? s.buttons : []))}
-                  hint={s.type === "send_dm" && s.buttons.length ? "The button labels count too." : undefined}
-                />
-              )}
-
-              {s.type === "send_dm" && (
-                <fieldset className="grid gap-3">
-                  <legend className="label mb-1">
-                    Buttons <span className="font-normal text-ink-soft">(optional, up to {MAX_BUTTONS})</span>
-                  </legend>
-                  {s.buttons.map((b, j) => {
-                    const set = (next: ButtonDraft) => patch(i, { buttons: s.buttons.map((x, at) => (at === j ? next : x)) });
-                    return (
-                      <div key={j} className="grid gap-1.5 rounded-xl bg-canvas p-3">
-                        <div className="flex gap-2">
-                          <input
-                            id={`step-${s.id}-button-${j}`}
-                            className="field min-w-0 flex-1"
-                            aria-label={`Button ${j + 1} label`}
-                            placeholder="Yes, send it"
-                            value={b.label}
-                            onChange={(e) => set({ ...b, label: e.target.value, payload: b.own ? b.payload : uniquePayload(slug(e.target.value) || "button", taken(b)) })}
-                          />
-                          <button type="button" className={iconButton} aria-label={`Remove button ${j + 1}`} title="Remove" onClick={() => patch(i, { buttons: s.buttons.filter((_, at) => at !== j) })}>
-                            <Icon name="close" className="size-4" />
-                          </button>
-                        </div>
-                        <details>
-                          <summary className="cursor-pointer text-sm font-bold text-ink-soft">Advanced</summary>
-                          <div className="mt-2 grid gap-1.5">
-                            <label htmlFor={`step-${s.id}-payload-${j}`} className="label">
-                              Payload
-                            </label>
-                            <input
-                              id={`step-${s.id}-payload-${j}`}
-                              className="field font-mono"
-                              maxLength={64}
-                              value={b.payload}
-                              onChange={(e) => set({ ...b, payload: e.target.value, own: true })}
-                              aria-invalid={!payloadOk(b.payload) || undefined}
-                              aria-describedby={`step-${s.id}-payload-${j}-hint`}
-                            />
-                            <p id={`step-${s.id}-payload-${j}-hint`} className="hint">
-                              What a tap on this button sends, made from the label: lower-case letters, digits, - and _, its own within the flow. A follow-up automation listens for it.
-                            </p>
-                          </div>
-                        </details>
-                        {payloadOk(b.payload) && b.label.trim() && (
-                          <Link href={followUp(b.payload)} target="_blank" className="justify-self-start text-sm font-bold underline decoration-signal decoration-2 underline-offset-4">
-                            When clicked: create a follow-up automation
-                            <span className="sr-only">
-                              {" "}
-                              for {b.label.trim()} (opens in a new tab)
-                            </span>
-                          </Link>
-                        )}
+                ) : (
+                  <>
+                    <span className={`${node} ${mine.length ? "text-signal-deep shadow-[0_0_0_1.5px_var(--color-signal-deep)]" : ""}`}>
+                      <Icon name={stepIcon[s.type]} className="size-4" />
+                    </span>
+                    <div className={`grid min-w-0 gap-3 rounded-lg border p-3 sm:p-4 ${mine.length ? "border-signal-deep/60" : "border-ink/15"}`}>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <strong>
+                          {stepName[s.type]} <span className="font-normal text-ink-soft">Step {i + 1}</span>
+                        </strong>
+                        {controls}
                       </div>
-                    );
-                  })}
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm justify-self-start"
-                    disabled={s.buttons.length >= MAX_BUTTONS}
-                    onClick={() => {
-                      flushSync(() => patch(i, { buttons: [...s.buttons, { label: "", payload: uniquePayload("button", taken()), own: false }] }));
-                      document.getElementById(`step-${s.id}-button-${s.buttons.length}`)?.focus();
-                    }}
-                  >
-                    <Icon name="plus" className="size-4" />
-                    Add a button
-                  </button>
-                </fieldset>
-              )}
 
-              {mine.length > 0 && (
-                <ul role="alert" className="waitlist-error grid gap-0.5">
-                  {mine.map((p) => (
-                    <li key={p.text}>{p.text}</li>
-                  ))}
-                </ul>
-              )}
-            </li>
-          );
-        })}
-      </ol>
+                      {s.type === "tag_contact" ? (
+                        <div className="grid gap-1.5">
+                          <label htmlFor={field} className="label">
+                            Tag
+                          </label>
+                          <input id={field} className="field" maxLength={MAX_TAG} placeholder="vip" value={s.tag} onChange={(e) => patch(i, { tag: e.target.value })} aria-describedby={`${field}-hint`} />
+                          <p id={`${field}-hint`} className="hint">
+                            Put on the contact when the flow gets here. Saved in lower case. It sends nothing.
+                          </p>
+                        </div>
+                      ) : (
+                        <TextField
+                          id={field}
+                          label={s.type === "send_dm" ? "DM text" : "Public reply"}
+                          value={s.text}
+                          onChange={(text) => patch(i, { text })}
+                          max={s.type === "send_dm" ? MAX_DM : MAX_PUBLIC}
+                          tokens={tokens}
+                          placeholder={s.type === "send_dm" ? "Hi {name}, here is the link you asked for: ..." : "Sent you a DM, {name}!"}
+                          length={templateLength(numbered(s.text, s.type === "send_dm" ? s.buttons : []))}
+                          hint={s.type === "send_dm" && s.buttons.length ? "The button labels count too." : undefined}
+                        />
+                      )}
 
-      <div role="group" aria-labelledby="automation-flow-add-label" className="flex flex-wrap items-center gap-2">
-        <span id="automation-flow-add-label" className="label">
-          Add step
-        </span>
-        {(["send_dm", ...(t.publicReply ? (["reply_publicly"] as const) : []), "wait", "tag_contact"] as const).map((type, at) => (
-          <button key={type} id={at === 0 ? "automation-flow-add" : undefined} type="button" className="btn btn-secondary btn-sm" disabled={full} onClick={() => add(type)}>
+                      {s.type === "send_dm" && (
+                        <fieldset className="grid gap-3">
+                          <legend className="label mb-1">
+                            Buttons <span className="font-normal text-ink-soft">(optional, up to {MAX_BUTTONS})</span>
+                          </legend>
+                          {s.buttons.map((b, j) => {
+                            const set = (next: ButtonDraft) => patch(i, { buttons: s.buttons.map((x, at) => (at === j ? next : x)) });
+                            return (
+                              <div key={j} className="grid gap-1.5 rounded-xl bg-canvas p-3">
+                                <div className="flex gap-2">
+                                  <input
+                                    id={`step-${s.id}-button-${j}`}
+                                    className="field min-w-0 flex-1"
+                                    aria-label={`Button ${j + 1} label`}
+                                    placeholder="Yes, send it"
+                                    value={b.label}
+                                    onChange={(e) => set({ ...b, label: e.target.value, payload: b.own ? b.payload : uniquePayload(slug(e.target.value) || "button", taken(b)) })}
+                                  />
+                                  <button type="button" className={iconButton} aria-label={`Remove button ${j + 1}`} title="Remove" onClick={() => patch(i, { buttons: s.buttons.filter((_, at) => at !== j) })}>
+                                    <Icon name="close" className="size-4" />
+                                  </button>
+                                </div>
+                                <details>
+                                  <summary className="cursor-pointer text-sm font-bold text-ink-soft">Advanced</summary>
+                                  <div className="mt-2 grid gap-1.5">
+                                    <label htmlFor={`step-${s.id}-payload-${j}`} className="label">
+                                      Payload
+                                    </label>
+                                    <input
+                                      id={`step-${s.id}-payload-${j}`}
+                                      className="field font-mono"
+                                      maxLength={64}
+                                      value={b.payload}
+                                      onChange={(e) => set({ ...b, payload: e.target.value, own: true })}
+                                      aria-invalid={!payloadOk(b.payload) || undefined}
+                                      aria-describedby={`step-${s.id}-payload-${j}-hint`}
+                                    />
+                                    <p id={`step-${s.id}-payload-${j}-hint`} className="hint">
+                                      What a tap on this button sends, made from the label: lower-case letters, digits, - and _, its own within the flow. A follow-up automation listens for it.
+                                    </p>
+                                  </div>
+                                </details>
+                                {payloadOk(b.payload) && b.label.trim() && (
+                                  <Link href={followUp(b.payload)} target="_blank" className="justify-self-start text-sm font-bold underline decoration-signal decoration-2 underline-offset-4">
+                                    When clicked: create a follow-up automation
+                                    <span className="sr-only">
+                                      {" "}
+                                      for {b.label.trim()} (opens in a new tab)
+                                    </span>
+                                  </Link>
+                                )}
+                              </div>
+                            );
+                          })}
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm justify-self-start"
+                            disabled={s.buttons.length >= MAX_BUTTONS}
+                            onClick={() => {
+                              flushSync(() => patch(i, { buttons: [...s.buttons, { label: "", payload: uniquePayload("button", taken()), own: false }] }));
+                              document.getElementById(`step-${s.id}-button-${s.buttons.length}`)?.focus();
+                            }}
+                          >
+                            <Icon name="plus" className="size-4" />
+                            Add a button
+                          </button>
+                        </fieldset>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {mine.length > 0 && (
+                  <ul role="alert" className={`waitlist-error relative mt-1.5 grid gap-0.5 bg-paper ${s.type === "wait" ? "col-span-2 justify-self-start py-0.5" : "col-start-2"}`}>
+                    {mine.map((p) => (
+                      <li key={p.text}>{p.text}</li>
+                    ))}
+                  </ul>
+                )}
+
+                {/* The gap to the next step, with a way to put a step into it. */}
+                <div className="col-span-2 flex h-9 items-center pl-1.5">
+                  {i < steps.length - 1 && !full && (
+                    <ActionMenu
+                      label={`Insert a step after step ${i + 1}`}
+                      side="left"
+                      className="relative grid size-5 place-items-center rounded-full bg-paper text-ink-soft shadow-[0_0_0_1px_var(--edge)] hover:text-ink hover:shadow-[0_0_0_1px_var(--color-ink)]"
+                      trigger={<Icon name="plus" className="size-3" />}
+                    >
+                      {types.map((type) => (
+                        <button key={type} type="button" className={menuItem} onClick={() => add(type, i + 1)}>
+                          <Icon name={stepIcon[type]} className="size-4 text-ink-soft" />
+                          {stepName[type]}
+                        </button>
+                      ))}
+                    </ActionMenu>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+
+        <div role="group" aria-labelledby="automation-flow-add-label" className="grid grid-cols-[2rem_minmax(0,1fr)] items-start gap-x-3">
+          <span className={`${node} border border-dashed border-ink/30 shadow-none`}>
             <Icon name="plus" className="size-4" />
-            {stepName[type]}
-          </button>
-        ))}
-        <span className="hint">
-          {steps.length} of {MAX_STEPS} steps
-        </span>
+          </span>
+          <div className="flex min-h-8 flex-wrap items-center gap-2">
+            <span id="automation-flow-add-label" className="label">
+              Add step
+            </span>
+            {types.map((type, at) => (
+              <button key={type} id={at === 0 ? "automation-flow-add" : undefined} type="button" className="btn btn-secondary btn-sm" disabled={full} onClick={() => add(type)}>
+                <Icon name={stepIcon[type]} className="size-4" />
+                {stepName[type]}
+              </button>
+            ))}
+            <span className="hint">
+              {steps.length} of {MAX_STEPS} steps
+            </span>
+          </div>
+        </div>
       </div>
       <p role="status" className="sr-only">
         {said}
@@ -331,6 +438,17 @@ export function FlowEditor({
         <ul role="alert" className="waitlist-error grid gap-0.5">
           {whole.map((p) => (
             <li key={p.text}>{p.text}</li>
+          ))}
+        </ul>
+      )}
+      {inSteps.length > 0 && (
+        <ul aria-label="Problems in the steps" className="waitlist-error grid gap-0.5">
+          {inSteps.map((p) => (
+            <li key={`${p.step} ${p.text}`}>
+              <button type="button" className="text-left font-bold underline underline-offset-2" onClick={() => document.getElementById(`step-${steps[p.step!]!.id}-field`)?.focus()}>
+                Step {p.step! + 1}: {p.text}
+              </button>
+            </li>
           ))}
         </ul>
       )}
