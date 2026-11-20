@@ -4,7 +4,7 @@ import { Fragment, useEffect, useId, useRef, useState, type FormEvent, type Keyb
 import { createPortal, flushSync } from "react-dom";
 import { TeamLink as Link } from "@/components/team-link";
 import { problemText } from "@/components/team-ui";
-import { Icon } from "@/components/ui";
+import { EmptyState, Icon, LoadFailed, Skeleton } from "@/components/ui";
 import { pageMedia } from "@/lib/posts";
 import {
   addMedia,
@@ -119,8 +119,11 @@ function useMedia(limit = 24) {
   const [loading, setLoading] = useState(true);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [q, setQ] = useState("");
+  // What was asked last, so Retry asks for the same page again.
+  const last = useRef<[string, string | null]>(["", null]);
 
   async function load(query: string, after: string | null) {
+    last.current = [query, after];
     setLoading(true);
     setProblem(null);
     const r = await listMedia(query, after, limit);
@@ -147,6 +150,7 @@ function useMedia(limit = 24) {
       return load(query, null);
     },
     more: () => load(q, cursor),
+    retry: () => load(...last.current),
   };
 }
 
@@ -247,20 +251,42 @@ function MediaPanel() {
           </p>
         )}
         {lib.problem && (
-          <p role="alert" className="waitlist-error">
+          <LoadFailed what="the library" retry={lib.retry}>
             The library couldn&apos;t be loaded. {say(lib.problem)}
-          </p>
+          </LoadFailed>
         )}
-        {lib.items.length === 0 && !lib.loading && !lib.problem ? (
-          <p className="rounded-md bg-ink/[0.03] p-4 text-sm text-ink-soft">{lib.q ? `Nothing matches "${lib.q}".` : "No media yet. Add a link above to reuse it in posts."}</p>
-        ) : (
-          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        {lib.items.length > 0 ? (
+          <ul className="enter grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {lib.items.map((item) => (
               <MediaCard key={item.id} item={item} onRenamed={(n) => lib.setItems((list) => list.map((x) => (x.id === n.id ? n : x)))} onDeleted={() => removed(item)} />
             ))}
           </ul>
+        ) : lib.loading || lib.problem ? null : lib.q ? (
+          <EmptyState title={`Nothing matches "${lib.q}".`}>Try another word, or clear the search to see everything.</EmptyState>
+        ) : (
+          <EmptyState
+            title="No media yet."
+            action={
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => document.getElementById("library-url")?.focus()}>
+                Add media
+              </button>
+            }
+          >
+            Add a link above to reuse it in posts.
+          </EmptyState>
         )}
-        {lib.loading && <p className="text-ink-soft">Loading media...</p>}
+        {lib.loading && (
+          <div role="status" className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            <span className="sr-only">Loading media...</span>
+            {Array.from({ length: lib.items.length ? 4 : 8 }, (_, i) => (
+              <div key={i} className="card grid content-start gap-2 p-2">
+                <Skeleton className="aspect-square w-full rounded-md" />
+                <Skeleton className="mx-1 my-[0.1875rem] h-3.5 w-2/3" />
+                <Skeleton className="mx-1 mb-1 h-6 w-1/2" />
+              </div>
+            ))}
+          </div>
+        )}
         {lib.cursor && !lib.loading && (
           <button type="button" className="btn btn-secondary justify-self-center" onClick={lib.more}>
             Load more
@@ -408,9 +434,10 @@ function SnippetSection({ kind }: { kind: SnippetKind }) {
   const [problem, setProblem] = useState<Problem | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const headingId = `snippets-${kind}`;
+  const [tries, setTries] = useState(0);
   useEffect(() => {
     listSnippets(kind).then((r) => setItems(isProblem(r) ? r : r.items));
-  }, [kind]);
+  }, [kind, tries]);
 
   const list = Array.isArray(items) ? items : [];
   const put = (s: Snippet) => setItems([...list.filter((x) => x.id !== s.id), s].sort(byName));
@@ -436,11 +463,26 @@ function SnippetSection({ kind }: { kind: SnippetKind }) {
         </p>
       )}
       {items === null ? (
-        <p className="text-ink-soft">Loading...</p>
+        <div role="status" className="grid gap-2">
+          <span className="sr-only">Loading {kindTitle[kind].toLowerCase()}...</span>
+          {[0, 1].map((i) => (
+            <div key={i} className="grid gap-2 rounded-md border border-[var(--line)] p-3">
+              <Skeleton className="h-3.5 w-1/4" />
+              <Skeleton className="h-3.5 w-3/4" />
+            </div>
+          ))}
+        </div>
       ) : isProblem(items) ? (
-        <p role="alert" className="waitlist-error">
+        <LoadFailed
+          className=""
+          what={kindTitle[kind].toLowerCase()}
+          retry={() => {
+            setItems(null);
+            setTries((n) => n + 1);
+          }}
+        >
           The {kindTitle[kind].toLowerCase()} couldn&apos;t be loaded. {say(items)}
-        </p>
+        </LoadFailed>
       ) : list.length === 0 ? (
         <p className="text-sm text-ink-soft">No {kindTitle[kind].toLowerCase()} yet.</p>
       ) : (
