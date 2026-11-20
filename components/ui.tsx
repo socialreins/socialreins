@@ -66,6 +66,47 @@ export function Icon({ name, className = "size-5" }: { name: IconName; className
 // A loading placeholder the size its classes give it (`.skeleton` in globals.css). Decorative: say "Loading" beside it.
 export const Skeleton = ({ className = "" }: { className?: string }) => <span aria-hidden="true" className={`skeleton ${className}`} />;
 
+// Placeholder rows while a list loads: `rows` lines the height of the real ones (`tall`: two lines each), named for screen readers by `label`.
+// Without a label they are decoration, for a page that says "Loading" once for several blocks.
+export function SkeletonRows({ label, rows = 4, tall, className = "card" }: { label?: string; rows?: number; tall?: boolean; className?: string }) {
+  return (
+    <div role={label ? "status" : undefined} aria-hidden={label ? undefined : true} className={`${className} divide-y divide-[var(--line-soft)]`}>
+      {label && <span className="sr-only">{label}</span>}
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} className={`grid content-center gap-2 px-4 ${tall ? "h-16" : "h-11"}`}>
+          <Skeleton className={`h-3.5 ${i % 2 ? "w-1/2" : "w-2/3"}`} />
+          {tall && <Skeleton className="h-3.5 w-4/5" />}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// A load that failed: what failed in plain words (the children) and Retry, named by `what` for screen readers ("Retry posts").
+export function LoadFailed({ what, retry, children, className = "card px-4 py-3" }: { what: string; retry: () => void; children: ReactNode; className?: string }) {
+  return (
+    <div role="alert" className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-2 ${className}`}>
+      <p className="waitlist-error">{children}</p>
+      <button type="button" className="btn btn-secondary btn-sm" onClick={retry}>
+        Retry<span className="sr-only"> {what}</span>
+      </button>
+    </div>
+  );
+}
+
+// Nothing to show yet: one sentence in bold, an optional line of help and the page's main action.
+export function EmptyState({ title, children, action, className = "card p-5" }: { title: ReactNode; children?: ReactNode; action?: ReactNode; className?: string }) {
+  return (
+    <div className={`enter flex flex-wrap items-center justify-between gap-x-4 gap-y-3 ${className}`}>
+      <p className="min-w-0 flex-1 basis-60">
+        <strong className="block">{title}</strong>
+        {children && <span className="text-ink-soft">{children}</span>}
+      </p>
+      {action}
+    </div>
+  );
+}
+
 // A page's title, shown in the top bar (`PageTitle`), with its main action on the right of the page.
 // `back` is the page one level up: a crumb in the top bar, and a link on the page on phones, where the bar has no room for it.
 export function PageHeader({ title, back, children }: { title: string; back?: { href: string; label: string }; children?: ReactNode }) {
