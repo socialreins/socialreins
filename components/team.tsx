@@ -29,8 +29,9 @@ import {
   type Invitation,
   type Member,
 } from "@/lib/teams";
-import { subscribersCsv, type Subscriber } from "@/lib/newsletter";
-import { isFailure, problemText, roleName, Status, useAction } from "@/components/team-ui";
+import { reachable, subscribersCsv, type Subscriber } from "@/lib/newsletter";
+import { TeamLink as Link } from "@/components/team-link";
+import { isFailure, linkButton, problemText, roleName, Status, useAction } from "@/components/team-ui";
 import { LoadFailed, SkeletonRows } from "@/components/ui";
 
 const date = (iso: string) => new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
@@ -260,7 +261,8 @@ function Newsletter({ team, onChanged }: { team: Team; onChanged: (t: Team) => v
     listSubscribers().then((r) => setList(isFailure(r) ? r : r.subscribers));
   }, []);
 
-  const confirmed = Array.isArray(list) ? list.filter((s) => s.confirmed).length : 0;
+  const confirmed = Array.isArray(list) ? list.filter(reachable).length : 0;
+  const unsubscribed = Array.isArray(list) ? list.filter((s) => s.unsubscribed_at).length : 0;
 
   function download() {
     if (!Array.isArray(list)) return;
@@ -290,7 +292,12 @@ function Newsletter({ team, onChanged }: { team: Team; onChanged: (t: Team) => v
         />
         Public pages offer a newsletter sign-up
       </label>
-      <p className="hint pl-6">Visitors give their email and confirm it with a link we send. Nothing is sent to them yet: you get the list to use in your own mailing tool.</p>
+      <p className="hint pl-6">Visitors give their email and confirm it with a link we send. Write to the confirmed ones from{" "}
+        <Link href="/newsletters" className={linkButton}>
+          Newsletters
+        </Link>
+        , or download the list for your own mailing tool.
+      </p>
       <Status problem={problem} done={done} />
       {list === null ? (
         <SkeletonRows label="Loading subscribers..." rows={2} className="" />
@@ -311,7 +318,7 @@ function Newsletter({ team, onChanged }: { team: Team; onChanged: (t: Team) => v
         <>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p>
-              {confirmed} confirmed, {list.length - confirmed} waiting for the email link.
+              {confirmed} confirmed, {list.filter((s) => !s.confirmed && !s.unsubscribed_at).length} waiting for the email link{unsubscribed > 0 && `, ${unsubscribed} unsubscribed`}.
             </p>
             <button type="button" className="btn btn-secondary btn-sm" disabled={confirmed === 0} onClick={download}>
               Download the confirmed ones (CSV)
@@ -325,8 +332,8 @@ function Newsletter({ team, onChanged }: { team: Team; onChanged: (t: Team) => v
                   <p className="hint">Signed up {date(s.subscribed_at)}</p>
                 </div>
                 <div className="ml-auto flex items-center gap-2">
-                  <span className="badge tone" data-status={s.confirmed ? "verified" : undefined}>
-                    {s.confirmed ? "Confirmed" : "Not confirmed yet"}
+                  <span className="badge tone" data-status={reachable(s) ? "verified" : undefined}>
+                    {s.unsubscribed_at ? "Unsubscribed" : s.confirmed ? "Confirmed" : "Not confirmed yet"}
                   </span>
                   {confirming !== s.id && (
                     <button type="button" className="btn btn-quiet btn-danger btn-sm" disabled={busy !== null} aria-label={`Remove ${s.email}`} onClick={() => setConfirming(s.id)}>

@@ -32,7 +32,8 @@ export type Preview = {
   sample: { contact_id: string; display_name: string | null; platform: string }[];
 };
 
-export type RecipientStatus = "pending" | "sending" | "sent" | "skipped" | "failed";
+// `delivering`: the send to this person has started.
+export type RecipientStatus = "pending" | "sending" | "delivering" | "sent" | "skipped" | "failed";
 // The contact's fields are null once it was deleted.
 export type Recipient = {
   id: string;
@@ -139,7 +140,7 @@ const reasons: Record<string, string> = {
 export const reasonText = (reason: string | null) => (reason ? (reasons[reason] ?? `The network refused it (${reason.replaceAll("_", " ")})`) : "");
 
 export const statusName: Record<BroadcastStatus, string> = { draft: "Draft", sending: "Sending", paused: "Paused", sent: "Sent", cancelled: "Cancelled" };
-export const recipientStatusName: Record<RecipientStatus, string> = { pending: "Waiting", sending: "Sending", sent: "Sent", skipped: "Skipped", failed: "Failed" };
+export const recipientStatusName: Record<RecipientStatus, string> = { pending: "Waiting", sending: "Sending", delivering: "Sending", sent: "Sent", skipped: "Skipped", failed: "Failed" };
 
 export const PARTS = ["sent", "skipped", "failed", "pending"] as const;
 // Sent, skipped, failed and pending as percents of the total, and `done`: the whole percent no longer waiting.
