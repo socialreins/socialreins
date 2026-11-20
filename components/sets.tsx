@@ -10,7 +10,7 @@ import { manages } from "@/lib/teams";
 import { accountName, NetworkAvatar } from "@/components/connections";
 import { platformName, platforms } from "@/components/platform-icons";
 import { isFailure, problemText, Status, useAction } from "@/components/team-ui";
-import { Icon } from "@/components/ui";
+import { Icon, LoadFailed, SkeletonRows } from "@/components/ui";
 
 const date = (d: string | Date) => new Date(d).toLocaleDateString(undefined, { dateStyle: "medium" });
 const count = (n: number) => `${n} ${n === 1 ? "account" : "accounts"}`;
@@ -171,13 +171,19 @@ function SetsPage({ canManage }: { canManage: boolean }) {
         )}
         <Status problem={main.problem} done={main.done} />
         {live === null ? (
-          <p className="text-ink-soft">Loading sets...</p>
+          <SkeletonRows label="Loading sets..." rows={3} tall />
         ) : isFailure(live) ? (
-          <p role="alert" className="waitlist-error">
+          <LoadFailed
+            what="sets"
+            retry={() => {
+              setLive(null);
+              listSets().then(setLive);
+            }}
+          >
             Sets couldn&apos;t be loaded. {problemText(live)}
-          </p>
+          </LoadFailed>
         ) : (
-          <ul className="card divide-y divide-[var(--line)]">
+          <ul className="enter card divide-y divide-[var(--line)]">
             {live.map((s) => {
               const members = s.account_ids.flatMap((id) => byId.get(id) ?? []).sort((a, b) => networkOrder(a) - networkOrder(b));
               const list = (
@@ -313,11 +319,18 @@ function SetsPage({ canManage }: { canManage: boolean }) {
         <p className="hint">A deleted set can be restored for {RESTORE_DAYS} days.</p>
         <Status problem={bin.problem} done={bin.done} />
         {deleted === null ? (
-          <p className="text-sm text-ink-soft">Loading deleted sets...</p>
+          <SkeletonRows label="Loading deleted sets..." rows={1} className="border-y border-[var(--line)]" />
         ) : isFailure(deleted) ? (
-          <p role="alert" className="waitlist-error">
+          <LoadFailed
+            className=""
+            what="deleted sets"
+            retry={() => {
+              setDeleted(null);
+              listSets(true).then(setDeleted);
+            }}
+          >
             Deleted sets couldn&apos;t be loaded. {problemText(deleted)}
-          </p>
+          </LoadFailed>
         ) : deleted.length === 0 ? (
           <p className="text-sm text-ink-soft">No recently deleted sets.</p>
         ) : (
