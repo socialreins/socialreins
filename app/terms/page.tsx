@@ -54,7 +54,7 @@ export default function Terms() {
         <Link href="/privacy" className="font-bold underline decoration-signal decoration-2 underline-offset-4 hover:text-signal-deep">
           Privacy Policy
         </Link>{" "}
-        explains how we handle your data.
+        explains how your data is handled, including by Bytech.
       </p>
     </LegalPage>
   );
