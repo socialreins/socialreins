@@ -298,7 +298,7 @@ function AutomationCard({ automation: a, canManage, accounts, sets, onChange, on
               <Link href={`/automations/${a.id}?runs=failed`} title={`${failed} failed ${failed === 1 ? "run" : "runs"}: see why`} className="shrink-0 rounded text-signal-deep hover:text-ink">
                 <Icon name="warning" className="size-4" />
                 <span className="sr-only">
-                  {failed} failed {failed === 1 ? "run" : "runs"} of {a.name}: see why
+                  {failed} failed {failed === 1 ? "run" : "runs"}: see why
                 </span>
               </Link>
             )}

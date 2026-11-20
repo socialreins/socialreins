@@ -6,6 +6,11 @@ import {
   changeTrigger,
   conditionNotes,
   draftOf,
+  duplicateDraft,
+  filterRuns,
+  proportions,
+  sameSteps,
+  TEMPLATE_GROUPS,
   flowOutline,
   flowProblems,
   newStep,
@@ -29,6 +34,7 @@ import {
   TRIGGERS,
   triggers,
   type Automation,
+  type Run,
   type Draft,
   type StepDraft,
 } from "@/lib/automations";
@@ -452,5 +458,102 @@ describe("tag the contact", () => {
     expect(toSimple(flow.steps)).toMatchObject({ tags: ["vip", "lead"], dropped: [] });
     const many = [newStep("send_dm", "Hi"), ...["a", "b", "c", "d", "a"].map((t) => newStep("tag_contact", t))];
     expect(toSimple(many)).toMatchObject({ tags: ["a", "b", "c"], dropped: ["1 more tag"] });
+  });
+});
+
+describe("duplicateDraft", () => {
+  const source = (extra: Partial<Automation>): Automation => ({
+    id: "a1",
+    name: "Guide flow",
+    active: true,
+    activated_at: "",
+    trigger: "comment_received",
+    conditions: { social_set_id: null, account_ids: ["c1"], keywords: ["guide"], post_remote_ids: [], first_per_author: true },
+    actions: [],
+    fallback_public_reply: null,
+    created_by: null,
+    created_at: "",
+    updated_at: "",
+    ...extra,
+  });
+  const payloads = (d: Draft) => d.steps.flatMap((s) => (s.type === "send_dm" ? s.buttons.map((b) => b.payload) : []));
+
+  it("is switched off and named as a copy, within the 60 characters a name takes", () => {
+    const d = duplicateDraft(source({ actions: [{ type: "send_dm", text: "Hi" }, { type: "tag_contact", tag: "vip" }], fallback_public_reply: "Check your DMs" }));
+    expect(d).toMatchObject({ name: "Guide flow (copy)", active: false, flow: false, dm: "Hi", tags: ["vip"], fallbackOn: true, fallback: "Check your DMs", keywords: ["guide"], firstPerAuthor: true });
+    const long = duplicateDraft(source({ name: "n".repeat(60), actions: [{ type: "send_dm", text: "Hi" }] }));
+    expect(long.name).toBe(`${"n".repeat(53)} (copy)`);
+    expect(long.name).toHaveLength(60);
+  });
+
+  it("copies the steps and gives every button a payload no button of the original or the copy has", () => {
+    const steps = [
+      { type: "send_dm" as const, text: "Want it?", buttons: [{ label: "Yes", payload: "yes" }, { label: "Yes!", payload: "yes-2" }] },
+      { type: "wait" as const, minutes: 60 },
+      { type: "send_dm" as const, text: "Sure?", buttons: [{ label: "No", payload: "no" }] },
+      { type: "tag_contact" as const, tag: "asked" },
+    ];
+    const d = duplicateDraft(source({ steps }));
+    expect(d.flow).toBe(true);
+    expect(payloads(d)).toEqual(["yes-3", "yes-2-2", "no-2"]);
+    expect(new Set([...payloads(d), "yes", "yes-2", "no"]).size).toBe(6);
+    expect(payloads(d).every(payloadOk)).toBe(true);
+    // Nothing the form refuses, and everything else as it was.
+    expect(flowProblems(d.steps, "comment_received")).toEqual([]);
+    expect(stepsBody(d.steps).map((s) => (s.type === "send_dm" ? { ...s, buttons: s.buttons?.map((b) => b.label) } : s))).toEqual([
+      { type: "send_dm", text: "Want it?", buttons: ["Yes", "Yes!"] },
+      { type: "wait", minutes: 60 },
+      { type: "send_dm", text: "Sure?", buttons: ["No"] },
+      { type: "tag_contact", tag: "asked" },
+    ]);
+  });
+
+  it("keeps the payloads a button automation listens for", () => {
+    const d = duplicateDraft(source({ trigger: "button_clicked", conditions: { social_set_id: null, account_ids: [], payloads: ["yes"] }, actions: [{ type: "send_dm", text: "Hi" }] }));
+    expect(d.payloads).toEqual(["yes"]);
+  });
+});
+
+describe("sameSteps", () => {
+  it("compares steps whatever the order of their keys, and no buttons with none", () => {
+    expect(sameSteps([{ type: "send_dm", text: "Hi", buttons: [] }, { type: "wait", minutes: 5 }], [{ text: "Hi", type: "send_dm" }, { minutes: 5, type: "wait" }])).toBe(true);
+    expect(sameSteps([{ type: "send_dm", text: "Hi" }], [{ type: "send_dm", text: "Hi!" }])).toBe(false);
+    expect(sameSteps([{ type: "send_dm", text: "Hi" }], [{ type: "reply_publicly", text: "Hi" }])).toBe(false);
+    expect(sameSteps([{ type: "send_dm", text: "Hi", buttons: [{ label: "Yes", payload: "yes" }] }], [{ type: "send_dm", text: "Hi", buttons: [{ label: "Yes", payload: "y" }] }])).toBe(false);
+    expect(sameSteps(null, undefined)).toBe(true);
+    expect(sameSteps(null, [{ type: "send_dm", text: "Hi" }])).toBe(false);
+  });
+});
+
+describe("filterRuns", () => {
+  const run = (id: string, status: Run["status"]) => ({ id, status }) as Run;
+  const runs = [run("1", "sent"), run("2", "failed"), run("3", "skipped"), run("4", "waiting"), run("5", "running"), run("6", "failed")];
+  it("keeps every run under All and only its own status under a chip", () => {
+    expect(filterRuns(runs, "all")).toBe(runs);
+    expect(filterRuns(runs, "failed").map((r) => r.id)).toEqual(["2", "6"]);
+    expect(filterRuns(runs, "waiting").map((r) => r.id)).toEqual(["4"]);
+    expect(filterRuns(runs, "sent").map((r) => r.id)).toEqual(["1"]);
+    expect(filterRuns([], "skipped")).toEqual([]);
+  });
+});
+
+describe("proportions", () => {
+  it("is null when nothing ran, so the bar stays empty", () => {
+    expect(proportions({ sent: 0, skipped: 0, failed: 0 })).toBeNull();
+  });
+  it("shares 100 percent between sent, skipped and failed", () => {
+    expect(proportions({ sent: 12, skipped: 3, failed: 1 })).toEqual({ sent: 75, skipped: 18.75, failed: 6.25 });
+    expect(proportions({ sent: 0, skipped: 0, failed: 2 })).toEqual({ sent: 0, skipped: 0, failed: 100 });
+    const p = proportions({ sent: 1, skipped: 1, failed: 1 })!;
+    expect(p.sent + p.skipped + p.failed).toBeCloseTo(100);
+  });
+});
+
+describe("the template gallery", () => {
+  it("puts every template in a group, and marks two as popular", () => {
+    expect(templates.every((t) => TEMPLATE_GROUPS.includes(t.group))).toBe(true);
+    expect(TEMPLATE_GROUPS.every((g) => templates.some((t) => t.group === g))).toBe(true);
+    expect(templates.filter((t) => t.popular).map((t) => t.id)).toEqual(["comment-to-dm", "welcome"]);
+    expect(TRIGGERS.every((t) => triggers[t].networks.length > 0)).toBe(true);
   });
 });
