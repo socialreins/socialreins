@@ -157,7 +157,7 @@ async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items
   return state;
 }
 
-test("sidebar lists Home, Posts, Calendar, Queue, Lists, Library, Feeds and Analytics, then Inbox, Contacts, Broadcasts and Automations", async ({ page }) => {
+test("sidebar lists Home, Posts, Calendar, Queue, Lists, Library, Feeds and Analytics, then Inbox, Contacts, Broadcasts, Newsletters and Automations", async ({ page }) => {
   await brain(page, "owner");
   await page.goto("/posts");
   const links = page.getByRole("navigation", { name: "App" }).getByRole("link");
@@ -172,7 +172,8 @@ test("sidebar lists Home, Posts, Calendar, Queue, Lists, Library, Feeds and Anal
   await expect(links.nth(8)).toHaveText("Inbox");
   await expect(links.nth(9)).toHaveText("Contacts");
   await expect(links.nth(10)).toHaveText("Broadcasts");
-  await expect(links.nth(11)).toHaveText("Automations");
+  await expect(links.nth(11)).toHaveText("Newsletters");
+  await expect(links.nth(12)).toHaveText("Automations");
 });
 
 test("inbox lists items, filters by kind, and opens one by URL", async ({ page }) => {
