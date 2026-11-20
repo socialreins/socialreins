@@ -56,25 +56,25 @@ for (const size of [{ width: 1280, height: 720 }, { width: 390, height: 700 }])
     // The last field of the form: LinkedIn takes a first comment.
     const last = page.getByLabel("First comment", { exact: true });
     await expect(last).toBeVisible();
-    await page.mouse.wheel(0, 20000);
-    await page.locator("#main").evaluate((el) => {
-      for (let n: Element | null = el; n; n = n.parentElement) n.scrollTop = n.scrollHeight;
-      window.scrollTo(0, document.body.scrollHeight);
-    });
+    const scrollTo = (end: boolean) =>
+      page.locator("#main").evaluate((el, end) => {
+        for (let n: Element | null = el; n; n = n.parentElement) n.scrollTop = end ? n.scrollHeight : 0;
+      }, end);
     const bar = page.getByRole("button", { name: "Save draft" }).locator("xpath=ancestor::div[contains(@class,'sticky')][1]");
-    await expect(async () => {
+    // How far the field's lower edge is under the bar's upper edge: above zero, the bar covers it (or it is further down).
+    const under = async () => {
       const [field, box] = await Promise.all([last.boundingBox(), bar.boundingBox()]);
-      expect(field!.y + field!.height).toBeLessThanOrEqual(box!.y);
-    }).toPass();
+      return field!.y + field!.height - box!.y;
+    };
+    await scrollTo(true);
+    await expect.poll(under).toBeLessThanOrEqual(0);
     await expect(last).toBeInViewport();
-    // Reached from the top by the keyboard, the field the browser scrolls to clears the bar too.
-    await page.getByLabel("Set", { exact: true }).focus();
-    await expect(last).not.toBeInViewport();
+    // From the top, where the bar floats over the form, the field the keyboard reaches clears the bar too.
+    await scrollTo(false);
+    await expect.poll(under).toBeGreaterThan(0);
     await last.focus();
-    await expect(async () => {
-      const [field, box] = await Promise.all([last.boundingBox(), bar.boundingBox()]);
-      expect(field!.y + field!.height).toBeLessThanOrEqual(box!.y);
-    }).toPass();
+    await expect.poll(under).toBeLessThanOrEqual(0);
+    await expect(last).toBeInViewport();
   });
 
 test("Ctrl or Cmd + S saves the draft once and stops the browser's dialog", async ({ page }) => {
