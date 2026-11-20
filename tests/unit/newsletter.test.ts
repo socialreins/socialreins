@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { draftProblem, length, linkCount, MAX_BODY, MAX_LINKS, MAX_SUBJECT, newsletterText, reachable, renderBody, subscribe, subscribersCsv, unsubscribe, verifyNewsletter, type Subscriber } from "@/lib/newsletter";
+import { draftProblem, length, linkCount, MAX_BODY, MAX_LINKS, MAX_SUBJECT, newsletterText, reachable, renderBody, subscribe, subscribers, subscribersCsv, unsubscribe, verifyNewsletter, type Subscriber } from "@/lib/newsletter";
 import { apiUrl } from "@/lib/waitlist";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -28,6 +28,13 @@ describe("subscribersCsv", () => {
 
   it("is only the header with nobody confirmed", () => {
     expect(subscribersCsv([row("a@b.co", false)])).toBe("email,subscribed_at\r\n");
+  });
+});
+
+describe("subscribers", () => {
+  it("says at least when the list was cut off, so the number is only a lower bound", () => {
+    expect(subscribers(1)).toBe("1 confirmed subscriber");
+    expect(subscribers(4200, true)).toBe("at least 4200 confirmed subscribers");
   });
 });
 

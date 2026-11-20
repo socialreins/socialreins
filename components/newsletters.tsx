@@ -57,7 +57,8 @@ const Sent = ({ n }: { n: Newsletter }) => <Progress counts={{ ...n.counts, skip
 function useAudience() {
   const [count, setCount] = useState<number | Failure | null>(null);
   const [tries, setTries] = useState(0);
-  // brain lists at most the newest 5000 sign-ups: at that many the count here can't be trusted.
+  // brain lists at most the newest 5000 sign-ups and has no count: at that many the count here is a lower bound,
+  // and brain's own number arrives with its answer to a send (`audience_changed`).
   const [capped, setCapped] = useState(false);
   useEffect(() => {
     let live = true;
@@ -218,7 +219,7 @@ function SenderCard() {
 }
 
 // Who gets a newsletter, and where to switch the sign-up on when it is off.
-function Audience({ count, again }: ReturnType<typeof useAudience>) {
+function Audience({ count, capped, again }: ReturnType<typeof useAudience>) {
   const team = useTeam();
   if (isFailure(count))
     return (
@@ -228,7 +229,7 @@ function Audience({ count, again }: ReturnType<typeof useAudience>) {
     );
   return (
     <p data-testid="audience" className="text-sm text-ink-soft">
-      {count === null ? "Counting subscribers..." : <strong className="text-ink">{subscribers(count)}.</strong>}{" "}
+      {count === null ? "Counting subscribers..." : <strong className="text-ink">{subscribers(count, capped)}.</strong>}{" "}
       {team.public_pages && team.newsletter ? (
         "People sign up on your public pages and confirm their email."
       ) : (
@@ -467,6 +468,9 @@ function SendSteps({ n, dirty, onChange, onStale, onDeleted }: { n: Newsletter; 
   if (n.tested_at && !wasTested) setWasTested(true);
 
   const total = newTotal ?? (typeof audience.count === "number" ? audience.count : null);
+  // The list was cut off, so `total` is a lower bound until brain answers a send with its own count.
+  const orMore = audience.capped && newTotal === null;
+  const atLeast = orMore ? "at least " : "";
 
   async function test() {
     flushSync(() => {
@@ -530,14 +534,12 @@ function SendSteps({ n, dirty, onChange, onStale, onDeleted }: { n: Newsletter; 
         ? null
         : total === null
           ? null
-          : audience.capped
-            ? "This list has more sign-ups than this page can count (5,000), so sending from here is not available for it yet."
-            : total === 0
+          : total === 0 && !orMore
             ? "Nobody has a confirmed subscription yet, so there is nobody to send to."
             : total > MAX_RECIPIENTS
               ? newsletterText("too_many_recipients")
               : null;
-  const ready = !dirty && !!n.tested_at && !!sender && !audience.capped && total !== null && total > 0 && total <= MAX_RECIPIENTS;
+  const ready = !dirty && !!n.tested_at && !!sender && total !== null && (total > 0 || orMore) && total <= MAX_RECIPIENTS;
   // A confirm must come from a fresh click on this very test: an edit and a new test ask again.
   const [askedFor, setAskedFor] = useState<string | null>(null);
 
@@ -574,12 +576,17 @@ function SendSteps({ n, dirty, onChange, onStale, onDeleted }: { n: Newsletter; 
             </LoadFailed>
           ) : (
             <p data-testid="reach" className="font-display text-xl font-extrabold tracking-tight">
-              {total === null ? "Counting subscribers..." : `This goes to ${subscribers(total)}`}
+              {total === null ? "Counting subscribers..." : `This goes to ${subscribers(total, orMore)}`}
+            </p>
+          )}
+          {orMore && total !== null && (
+            <p data-testid="reach-note" className="text-sm text-ink-soft">
+              This list has more sign-ups than this page can count. The exact number is counted when you send, and you are asked again with it before anything goes out.
             </p>
           )}
           {newTotal !== null && (
             <p role="alert" className="tone rounded-lg px-3 py-2 text-sm font-bold" data-approval="pending">
-              The number of confirmed subscribers changed while you were looking, so nothing was sent. It is now {newTotal}. Check it, then send again.
+              {audience.capped ? "The confirmed subscribers are counted now" : "The number of confirmed subscribers changed while you were looking"}, so nothing was sent. It is now {newTotal}. Check it, then send again.
             </p>
           )}
           {!sender && (
@@ -597,9 +604,9 @@ function SendSteps({ n, dirty, onChange, onStale, onDeleted }: { n: Newsletter; 
           {asking === "send" && ready && askedFor === n.tested_at ? (
             <Confirm
               id="newsletter-send"
-              title={`Send to ${people(total)}?`}
-              about={`Each of the ${subscribers(total)} gets this email, starting now. A sent email can't be taken back.`}
-              yes={`Yes, send to ${people(total)}`}
+              title={`Send to ${atLeast}${people(total)}?`}
+              about={`Each of the ${subscribers(total, orMore)} gets this email, starting now. A sent email can't be taken back.`}
+              yes={`Yes, send to ${atLeast}${people(total)}`}
               no="Not yet"
               busy={busy === "send"}
               onYes={() => send(total)}
@@ -613,7 +620,7 @@ function SendSteps({ n, dirty, onChange, onStale, onDeleted }: { n: Newsletter; 
               }}
             >
               <Icon name="send" className="size-4" />
-              {total === null ? "Send" : `Send to ${people(total)}`}
+              {total === null ? "Send" : `Send to ${atLeast}${people(total)}`}
             </button>
           )}
           {blocked && (

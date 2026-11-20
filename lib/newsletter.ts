@@ -183,7 +183,8 @@ export const draftProblem = (subject: string, body: string): "subject" | "body" 
 // brain's footer line, word for word: the team name keeps only letters, digits, spaces, _ ' and -.
 export const footerWhy = (team: string) => `You get this because you signed up on a ${team.replace(/[^\p{L}\p{N} _'-]/gu, " ").trim()} page.`;
 
-export const subscribers = (n: number) => `${n} confirmed ${n === 1 ? "subscriber" : "subscribers"}`;
+// `orMore`: the list was cut off at brain's limit, so `n` is only a lower bound.
+export const subscribers = (n: number, orMore = false) => `${orMore ? "at least " : ""}${n} confirmed ${n === 1 ? "subscriber" : "subscribers"}`;
 
 const invalid: Record<string, string> = {
   subject: `Write a subject of 1 to ${MAX_SUBJECT} characters, on one line.`,

@@ -1061,6 +1061,48 @@ test("leaving the builder with unsaved changes asks first", async ({ page }) => 
   await expect(page.getByRole("heading", { name: "Start from a template" })).toBeVisible();
 });
 
+test("the browser's Back button asks before unsaved changes are lost, and only then", async ({ page }) => {
+  await brain(page, "owner");
+  const asked: string[] = [];
+  const gallery = page.getByRole("heading", { name: "Start from a template" });
+  const open = async () => {
+    await page.goto("/automations/new");
+    await page.getByRole("main").getByRole("link", { name: /Welcome message/ }).first().click();
+    await expect(page.getByLabel("Name")).toHaveValue("Welcome message");
+  };
+
+  // Nothing changed: Back just goes back.
+  await open();
+  page.on("dialog", (d) => {
+    asked.push(d.message());
+    return asked.length === 1 ? d.dismiss() : d.accept();
+  });
+  await page.goBack();
+  await expect(gallery).toBeVisible();
+  expect(asked).toEqual([]);
+
+  // Changed: a no keeps the page and what was typed, as often as Back is pressed; a yes leaves.
+  await open();
+  await page.getByLabel("Name").fill("Hello there");
+  await page.goBack();
+  await expect.poll(() => asked).toHaveLength(1);
+  await expect(page).toHaveURL("/t/acme22/automations/new?template=welcome");
+  await expect(page.getByLabel("Name")).toHaveValue("Hello there");
+  await page.goBack();
+  await expect(gallery).toBeVisible();
+  expect(asked).toEqual(Array(2).fill("Leave without saving? Your changes to this automation will be lost."));
+
+  // Saved: Back never asks.
+  await open();
+  await page.getByLabel("Name").fill("Hello there");
+  await page.getByRole("button", { name: "Create automation" }).click();
+  await expect(page).toHaveURL(/\/automations\/(?!new)[^/?]+$/);
+  await page.goBack();
+  await page.goBack();
+  await expect(page).toHaveURL(/\/automations\/new/);
+  expect(asked).toHaveLength(2);
+});
+
 test("run history filters the loaded runs by chips and says why where it can", async ({ page }) => {
   await brain(page, "owner");
   await page.goto("/automations/a1");
