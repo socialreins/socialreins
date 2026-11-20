@@ -38,6 +38,7 @@ const nav: NavGroup[] = [
       { href: "/lists", label: "Lists", icon: "lists", set: true },
       { href: "/library", label: "Library", icon: "library" },
       { href: "/feeds", label: "Feeds", icon: "rss" },
+      { href: "/analytics", label: "Analytics", icon: "chart", set: true },
     ],
   },
   {
@@ -298,7 +299,8 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
                 </Suspense>
               </nav>
               {/* minmax(0,1fr): a long name or email truncates instead of widening the sidebar. */}
-              <div className="mt-auto grid grid-cols-[minmax(0,1fr)] gap-2">
+              {/* Sticky: the theme and account rows stay in reach when the nav is taller than a phone's screen. */}
+              <div className="sticky bottom-0 -mb-3 mt-auto grid grid-cols-[minmax(0,1fr)] gap-2 bg-[var(--side)] pt-2 pb-3">
                 <ThemeSwitch collapsed={collapsed} />
                 {session ? <Account collapsed={collapsed} /> : <div className="h-10 rounded-md bg-ink/5 motion-safe:animate-pulse" />}
               </div>

@@ -68,6 +68,8 @@ import { accountName, Avatar } from "@/components/connections";
 import { platformName } from "@/components/platform-icons";
 import { AccountNote, ApprovalBadge, ChangesDialog, PlatformMark, postMessages, snippet, StatusBadge, statusName } from "@/components/posts";
 import { isFailure, problemText, Status, useAction } from "@/components/team-ui";
+import { RefreshStats, TargetStats } from "@/components/post-analytics";
+import { hasStats } from "@/lib/analytics";
 import { useCurrentSet, useSession } from "@/components/app-shell";
 import { ReconnectNotice } from "@/components/connections";
 import { TikTokConsent, TikTokPanel } from "@/components/tiktok-settings";
@@ -949,9 +951,12 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
           )}
           {post.targets.length > 0 && (
             <section aria-labelledby="targets-heading" className="grid gap-3">
-              <h2 id="targets-heading" className="font-display text-lg font-extrabold tracking-tight">
-                Accounts
-              </h2>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 id="targets-heading" className="font-display text-lg font-extrabold tracking-tight">
+                  Accounts
+                </h2>
+                {post.status === "published" && hasStats(post.platform) && <RefreshStats post={post} onPost={setPost} />}
+              </div>
               <ul className="card divide-y divide-ink/10">
                 {post.targets.map((t) => {
                   const a = t.social_account_id ? byId.get(t.social_account_id) : undefined;
@@ -968,6 +973,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
                           <Icon name="external" className="size-4" />
                         </a>
                       )}
+                      {t.status === "published" && <TargetStats platform={post.platform} metrics={t.metrics} />}
                       {t.cover_error && (
                         <span className="basis-full text-ink-soft" data-cover-error>
                           Cover image: {t.cover_error} It is not tried again: set the cover on the platform yourself.

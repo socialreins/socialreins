@@ -123,6 +123,8 @@ const codes = [
   "public_pages_off",
   "not_deletable",
   "publish_quota",
+  "refreshed_recently",
+  "invalid_range",
   "media_required",
   "thread_not_supported",
   "first_comment_not_supported",

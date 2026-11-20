@@ -4,8 +4,12 @@ import { CONNECT_TIMEOUT_MS } from "@/lib/connections";
 import { apiUrl } from "@/lib/waitlist";
 
 export type PostStatus = "draft" | "scheduled" | "queued" | "published" | "failed" | "deleted";
+// What a network reports for a published post, as brain last read it. A null number is one that network does not give.
+export type Metrics = { likes: number | null; comments: number | null; shares: number | null; views: number | null; fetched_at: string };
 export type Target = {
   id: string;
+  // null until brain has read the numbers, and on a network it has no stats for.
+  metrics?: Metrics | null;
   social_account_id: string | null;
   status: "pending" | "publishing" | "published" | "failed" | "deleted";
   remote_id: string | null;
