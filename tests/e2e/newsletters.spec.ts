@@ -33,7 +33,7 @@ type Options = { role?: string; list?: ReturnType<typeof newsletter>[]; team?: R
 // A small in-memory brain for newsletters.
 async function brain(page: Page, { role = "owner", list = [draft, tested, sending, paused, sent], team = {} }: Options = {}) {
   const state = {
-    team: { id: "t1", name: "Acme", code: "acme22", role, public_pages: true, newsletter: true, newsletter_sender: sender as typeof sender | null, ...team },
+    team: { id: "t1", name: "Acme", code: "acme22", role, public_pages: true, newsletter: true, newsletter_sender: sender as (typeof sender & { logo?: string | null }) | null, ...team },
     newsletters: list.map((n) => ({ ...n })),
     // ann and bob get it; cy has not confirmed and dee unsubscribed.
     subs: [sub("ann"), sub("bob"), sub("cy", { confirmed: false }), sub("dee", { unsubscribed_at: "2026-11-19T08:00:00Z" })],
@@ -189,7 +189,7 @@ test("the sender form shows until it is set, sends name and address, and puts br
   await expect(card).toContainText("Acme Bakery");
   await expect(card).toContainText("12 Mill Lane");
   expect(state.patches).toHaveLength(3);
-  expect(state.patches[2]).toEqual({ newsletter_sender: { name: "Acme Bakery", address: "12 Mill Lane\n10115 Berlin" } });
+  expect(state.patches[2]).toEqual({ newsletter_sender: { name: "Acme Bakery", address: "12 Mill Lane\n10115 Berlin", logo: null } });
 
   // Editable later.
   await card.getByRole("button", { name: "Edit sender details" }).click();
@@ -197,7 +197,64 @@ test("the sender form shows until it is set, sends name and address, and puts br
   await page.getByLabel("Sender name").fill("Acme");
   await page.getByRole("button", { name: "Save sender details" }).click();
   await expect(card.getByRole("button", { name: "Edit sender details" })).toBeVisible();
-  expect(state.patches[3]).toEqual({ newsletter_sender: { name: "Acme", address: "12 Mill Lane\n10115 Berlin" } });
+  expect(state.patches[3]).toEqual({ newsletter_sender: { name: "Acme", address: "12 Mill Lane\n10115 Berlin", logo: null } });
+});
+
+test("the logo is saved with the sender, sent again on every save, refused under its field, and heads the preview", async ({ page }) => {
+  const logo = "https://cdn.example/logo.png";
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+  await page.route("https://cdn.example/**", (route) => (route.request().url() === logo ? route.fulfill({ contentType: "image/png", body: png }) : route.fulfill({ status: 404 })));
+  const state = await brain(page);
+  await page.goto("/newsletters");
+  const card = page.getByRole("region", { name: "Sender" });
+  await expect(card.getByRole("img")).toHaveCount(0);
+  await card.getByRole("button", { name: "Edit sender details" }).click();
+  await expect(page.getByLabel("Logo")).toHaveValue("");
+  await expect(card).toContainText("Leave empty to show the sender name instead.");
+
+  // Not https: the browser stops it, like the other fields' own limits.
+  await page.getByLabel("Logo").fill("http://cdn.example/logo.png");
+  await page.getByRole("button", { name: "Save sender details" }).click();
+  expect(await page.getByLabel("Logo").evaluate((el: HTMLInputElement) => el.validity.patternMismatch)).toBe(true);
+  expect(state.patches).toEqual([]);
+
+  await page.getByLabel("Logo").fill(` ${logo} `);
+  state.refuse = { status: 422, json: { error: "invalid_sender", field: "logo" } };
+  await page.getByRole("button", { name: "Save sender details" }).click();
+  await expect(alert(page)).toHaveText("The logo must be a public https link to an image.");
+  await expect(page.getByLabel("Logo")).toHaveAttribute("aria-invalid", "true");
+
+  await page.getByRole("button", { name: "Save sender details" }).click();
+  await expect(card.getByRole("img", { name: "Acme Bakery logo" })).toHaveAttribute("src", logo);
+  expect(state.patches.at(-1)).toEqual({ newsletter_sender: { ...sender, logo } });
+
+  // Only the name changes: the logo goes along, or brain would drop it.
+  await card.getByRole("button", { name: "Edit sender details" }).click();
+  await expect(page.getByLabel("Logo")).toHaveValue(logo);
+  await page.getByLabel("Sender name").fill("Acme");
+  await page.getByRole("button", { name: "Save sender details" }).click();
+  await expect(card.getByRole("img", { name: "Acme logo" })).toBeVisible();
+  expect(state.patches.at(-1)).toEqual({ newsletter_sender: { ...sender, name: "Acme", logo } });
+
+  // The preview is headed by the logo, and by the name when the image does not load.
+  await page.goto("/newsletters/new");
+  const head = preview(page).getByTestId("preview-header");
+  await expect(head.getByRole("img", { name: "Acme" })).toHaveAttribute("src", logo);
+  await expect(head).toHaveText("");
+  state.team.newsletter_sender = { ...sender, logo: "https://cdn.example/gone.png" };
+  await page.reload();
+  await expect(head).toHaveText("Acme Bakery");
+  await expect(head.getByRole("img")).toHaveCount(0);
+
+  // Emptied: sent as no logo.
+  await page.goto("/newsletters");
+  await expect(card).toContainText("Acme Bakery");
+  await expect(card.getByRole("img")).toHaveCount(0);
+  await card.getByRole("button", { name: "Edit sender details" }).click();
+  await page.getByLabel("Logo").fill("");
+  await page.getByRole("button", { name: "Save sender details" }).click();
+  await expect(card.getByRole("button", { name: "Edit sender details" })).toBeVisible();
+  expect(state.patches.at(-1)).toEqual({ newsletter_sender: { ...sender, logo: null } });
 });
 
 test("compose shows the email as it will read, counts as you type, and saves a draft", async ({ page }) => {
@@ -208,6 +265,8 @@ test("compose shows the email as it will read, counts as you type, and saves a d
   await page.getByRole("textbox", { name: "Newsletter" }).fill('Hello <b>readers</b> <img src=x onerror="window.pwned=1">\n\nOur **spring menu** is live:\nhttps://acme.example/menu.\n\nNot links: http://plain.example javascript:alert(1)');
 
   await expect(preview(page).getByTestId("preview-subject")).toHaveText("Spring menu");
+  // No logo: the sender's name heads the email.
+  await expect(preview(page).getByTestId("preview-header")).toHaveText("Acme Bakery");
   const body = preview(page).getByTestId("preview-body");
   await expect(body.locator("p")).toHaveCount(3);
   // HTML is shown as typed, never run.

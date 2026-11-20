@@ -8,7 +8,7 @@ export type Role = "owner" | "admin" | "member";
 // picked for itself, shown instead of the code when set; brain takes either in X-Team and ?team=.
 // `public_pages`: posts of the team may have a public page (`/p/<code>`); `newsletter`: those pages offer a sign-up;
 // `require_approval`: a member's post waits for an owner or admin to approve it.
-export type Team = { id: string; name: string; code: string; slug?: string | null; role: Role; public_pages?: boolean; newsletter?: boolean; newsletter_sender?: { name: string; address: string } | null; require_approval?: boolean };
+export type Team = { id: string; name: string; code: string; slug?: string | null; role: Role; public_pages?: boolean; newsletter?: boolean; newsletter_sender?: { name: string; address: string; logo?: string | null } | null; require_approval?: boolean };
 export type User = {
   id: string;
   email: string;
