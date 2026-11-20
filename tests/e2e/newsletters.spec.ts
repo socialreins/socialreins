@@ -332,6 +332,29 @@ test("when the audience changed, nothing is sent, the new number shows and the q
   expect(state.sends).toEqual([{ confirm_total: 2 }, { confirm_total: 3 }]);
 });
 
+test("a list cut off at 5000 sign-ups shows at least N, and sends after brain's own count is confirmed", async ({ page }) => {
+  const state = await brain(page);
+  // 5000 rows is brain's limit: 4999 of them confirmed, and more that this page never sees.
+  state.subs = [sub("cy", { confirmed: false }), ...Array.from({ length: 4999 }, (_, i) => sub(`s${i}`))];
+  await page.goto("/newsletters");
+  await expect(page.getByTestId("audience")).toContainText("at least 4999 confirmed subscribers.");
+
+  await page.goto("/newsletters/n-tested");
+  await expect(step(page, 2).getByTestId("reach")).toHaveText("This goes to at least 4999 confirmed subscribers");
+  await expect(step(page, 2).getByTestId("reach-note")).toContainText("The exact number is counted when you send");
+  state.refuse = { status: 409, json: { error: "audience_changed", total: 5000 } };
+  await sendButton(page).click();
+  await page.getByRole("button", { name: "Yes, send to at least 4999 people" }).click();
+  await expect(alert(page)).toContainText("The confirmed subscribers are counted now, so nothing was sent. It is now 5000.");
+  await expect(step(page, 2).getByTestId("reach")).toHaveText("This goes to 5000 confirmed subscribers");
+  await expect(step(page, 2).getByTestId("reach-note")).toHaveCount(0);
+
+  await sendButton(page).click();
+  await page.getByRole("alertdialog", { name: "Send to 5000 people?" }).getByRole("button", { name: "Yes, send to 5000 people" }).click();
+  await expect(page.getByRole("region", { name: "Status" })).toBeVisible();
+  expect(state.sends).toEqual([{ confirm_total: 4999 }, { confirm_total: 5000 }]);
+});
+
 const refusals: [number, string, RegExp][] = [
   [422, "sender_required", /Add your sender name and postal address first/],
   [422, "test_required", /Send yourself a test of this exact text first/],
