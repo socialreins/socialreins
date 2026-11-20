@@ -248,17 +248,17 @@ test("a member's Publish now that brain refuses explains the approval", async ({
   await expect(page.getByRole("alert").filter({ hasText: "This team's posts need an owner or admin to approve them before they go out." })).toBeVisible();
 });
 
-test("home lists the posts waiting for approval for an owner, not for a member", async ({ page }) => {
+test("home has one row for the posts waiting for approval for an owner, none for a member", async ({ page }) => {
   await brain(page, me("owner"));
   await page.route("**/v1/inboxes", (r) => r.fulfill({ json: [] }));
   await page.goto("/t/acme22/home");
   const card = page.getByRole("region", { name: "Needs attention" });
-  await expect(card.getByRole("link", { name: "3 posts need approval" })).toHaveAttribute("href", "/t/acme22/posts?approval=pending");
-  await expect(card.getByRole("link", { name: /Launch day/ })).toHaveAttribute("href", "/t/acme22/posts/p1");
-  await expect(card.getByText("Needs approval")).toHaveCount(3);
+  // One row for all of them: the single post and the group of two that is approved as one.
+  await expect(card.getByRole("link", { name: "2 posts need approval" })).toHaveAttribute("href", "/t/acme22/posts?approval=pending");
+  await expect(card.getByRole("listitem")).toHaveCount(1);
 
   await page.route("**/auth/me", (r) => r.fulfill({ json: me("member") }));
   await page.reload();
-  await expect(page.getByRole("region", { name: "Up next" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Today and next" }).getByRole("link", { name: /Launch day/ })).toBeVisible();
   await expect(page.getByRole("region", { name: "Needs attention" })).toHaveCount(0);
 });

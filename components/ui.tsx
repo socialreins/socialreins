@@ -60,6 +60,9 @@ export function Icon({ name, className = "size-5" }: { name: IconName; className
   );
 }
 
+// A loading placeholder the size its classes give it (`.skeleton` in globals.css). Decorative: say "Loading" beside it.
+export const Skeleton = ({ className = "" }: { className?: string }) => <span aria-hidden="true" className={`skeleton ${className}`} />;
+
 // A page's title, shown in the top bar (`PageTitle`), with its main action on the right of the page.
 // `back` is the page one level up: a crumb in the top bar, and a link on the page on phones, where the bar has no room for it.
 export function PageHeader({ title, back, children }: { title: string; back?: { href: string; label: string }; children?: ReactNode }) {

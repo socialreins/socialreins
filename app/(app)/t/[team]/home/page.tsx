@@ -1,20 +1,14 @@
 import type { Metadata } from "next";
-import { TeamLink as Link } from "@/components/team-link";
 import { Dashboard } from "@/components/dashboard";
-import { Icon, PageHeader } from "@/components/ui";
+import { PageHeader } from "@/components/ui";
 
 export const metadata: Metadata = { title: "SocialReins" };
 
-// The app's landing page; brain's emailed sign-in link lands here.
+// The app's landing page; brain's emailed sign-in link lands here. Its actions sit in the Dashboard's own header row.
 export default function AppHome() {
   return (
     <>
-      <PageHeader title="Home">
-        <Link href="/posts/new" className="btn btn-primary">
-          <Icon name="plus" className="size-4" />
-          New post
-        </Link>
-      </PageHeader>
+      <PageHeader title="Home" />
       <Dashboard />
     </>
   );
