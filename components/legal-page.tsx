@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { SiteHeader, sitePage } from "@/components/site-header";
 
-export const updated = "29 October 2026";
+export const updated = "20 November 2026";
 
 // Shared frame for /privacy and /terms: plain reading text, one column.
 // A page whose text changed later passes its own date.

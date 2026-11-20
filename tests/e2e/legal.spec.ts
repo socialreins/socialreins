@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 test("privacy policy covers Google user data and is dated", async ({ page }) => {
   await page.goto("/privacy");
   await expect(page.getByRole("heading", { name: "Privacy Policy", level: 1 })).toBeVisible();
-  await expect(page.getByText("Last updated 29 October 2026")).toBeVisible();
+  await expect(page.getByText("Last updated 20 November 2026")).toBeVisible();
   await expect(page.getByText(/openid, email and profile/)).toBeVisible();
   await expect(page.getByText(/including the Limited Use requirements/)).toBeVisible();
   await expect(page.getByRole("link", { name: "Google API Services User Data Policy" })).toHaveAttribute(
@@ -17,7 +17,7 @@ test("privacy policy covers Google user data and is dated", async ({ page }) => 
 test("terms are dated and link the privacy policy", async ({ page }) => {
   await page.goto("/terms");
   await expect(page.getByRole("heading", { name: "Terms of Service", level: 1 })).toBeVisible();
-  await expect(page.getByText("Last updated 14 November 2026")).toBeVisible();
+  await expect(page.getByText("Last updated 20 November 2026")).toBeVisible();
   // The hosted service is not open, and the terms must not say it is free to use now.
   await expect(page.getByRole("main")).toContainText("not open to new accounts yet");
   await expect(page.getByRole("main")).not.toContainText("free for now");
