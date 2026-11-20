@@ -37,6 +37,7 @@ import { manages } from "@/lib/teams";
 import { isFailure, problemText, Status, useAction } from "@/components/team-ui";
 import { useCurrentSet, useSession } from "@/components/app-shell";
 import { Icon } from "@/components/ui";
+import { postTotals, statWords } from "@/lib/analytics";
 
 export const postMessages: Partial<Record<Failure, ReactNode>> = {
   too_long:
@@ -85,6 +86,7 @@ export const postMessages: Partial<Record<Failure, ReactNode>> = {
   not_scheduled: "Only a scheduled post can repeat. Schedule it first.",
   repeat_not_supported: "TikTok posts can't repeat: TikTok needs a person to confirm each post.",
   invalid_repeat: "That repeat isn't valid. Repeat every 1 to 12 days, weeks or months, and end it never, after 1 to 100 more posts or on a date after the post's own.",
+  refreshed_recently: "The stats were refreshed less than a minute ago. Wait a minute, then try again.",
   too_many_repeats: "Too many repeating posts. Turn the repeat off on another post first.",
 };
 
@@ -434,6 +436,9 @@ function PostRow({ posts, onMove, review }: { posts: Post[]; onMove?: (posts: Po
   const approval = approvalState(p);
   const remote = posts.flatMap((v) => v.targets.filter((t) => t.remote_url && t.status === "published").map((t) => ({ ...t, platform: v.platform })));
   const error = p.status === "failed" ? failText(posts) : undefined;
+  // A published row's likes and comments over all its networks, once brain has read any.
+  const totals = p.status === "published" ? postTotals(posts) : null;
+  const stats = totals && statWords(totals, ["likes", "comments"]);
   return (
     <li className="relative flex flex-wrap items-start gap-x-3 gap-y-0.5 px-3 py-2.5 hover:bg-ink/[0.03] sm:items-center sm:px-4">
       <Link href={`/posts/${p.id}`} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-sm after:absolute after:inset-0 sm:flex-nowrap">
@@ -448,6 +453,11 @@ function PostRow({ posts, onMove, review }: { posts: Post[]; onMove?: (posts: Po
           {p.body.trim().slice(0, 200) || "(images only)"}
         </span>
       </Link>
+      {stats && (
+        <span className="text-xs text-ink-soft tabular-nums" data-row-stats>
+          {stats}
+        </span>
+      )}
       <StatusBadge status={p.status} />
       <ApprovalBadge post={p} />
       <RepeatBadge post={p} />
