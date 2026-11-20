@@ -910,6 +910,8 @@ test("X counts its own way, takes four images and a thread", async ({ page }) =>
   await expect(page.getByText("X 282/280")).toBeVisible();
   await body.fill("日".repeat(140));
   await expect(page.getByText("X 280/280")).toBeVisible();
+  // With one network the media rules sit in the same disclosure as with tabs.
+  await page.getByText("What each network takes").click();
   await expect(page.getByText(/X takes up to 4 JPEG, PNG or WebP images, or one GIF or MP4 or MOV video\./)).toBeVisible();
 
   // Four images at most.
@@ -951,6 +953,8 @@ test("YouTube needs one video and takes its title from the first line", async ({
   await expect(warning("YouTube needs a title: write it as the first line of the post.")).toBeVisible();
   await expect(warning("YouTube needs one MP4 or MOV video: add its link.")).toBeVisible();
   await expect(page.getByText("until Google has audited the YouTube API project behind this server, YouTube keeps new uploads private")).toBeVisible();
+  // With one network the media rules sit in the same disclosure as with tabs.
+  await page.getByText("What each network takes").click();
   await expect(page.getByText("YouTube takes exactly one MP4 or MOV video.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Add to thread" })).toHaveCount(0);
 
