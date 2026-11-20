@@ -18,10 +18,12 @@ import {
   listInboxes,
   listItems,
   maxFor,
+  mergeConversation,
   mergeFresh,
   messageCount,
   relativeTime,
   replyToItem,
+  sentAlready,
   setItemState,
   shortcutFor,
   threadKey,
@@ -95,8 +97,14 @@ const shortcuts: [string, string][] = [
 
 // How long Mark done offers Undo.
 const UNDO_MS = 5_000;
-// A done item that left the list at once: where it was, and the PATCH still on its way.
-type Undo = { item: Item; row: Item | null; at: number; saved: Promise<Item | Failure>; problem?: Failure; undoing?: boolean };
+// A done item that left the list at once: where it was, and the PATCH still on its way. Each has its own
+// line, so a second Mark done never takes the first one's Undo away.
+type Undo = { id: number; item: Item; row: Item | null; saved: Promise<Item | Failure>; problem?: Failure; undoing?: boolean };
+// A reply shown in the thread before brain answered: on its way, refused (`failed` says why), or `unsure`,
+// when no clear answer came and it may have gone out. Kept by the Inbox per thread, so it survives opening another item.
+type Pending = { id: number; thread: string; itemId: string; name: string; text: string; failed?: ReactNode; unsure?: boolean };
+const settled = (p: Pending) => p.failed !== undefined || p.unsure === true;
+let lastId = 0;
 
 // A change to one item, laid over a list row or the open item of the same thread. A conversation's row is its
 // latest DM, so a change made through an older DM moves only what the whole conversation shares.
@@ -205,7 +213,10 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   const [editing, setEditing] = useState<InboxT | "new" | null>(null);
   const [opened, setOpened] = useState<string | null>(null);
   const [reloads, setReloads] = useState(0);
-  const [undo, setUndo] = useState<Undo | null>(null);
+  const [undos, setUndos] = useState<Undo[]>([]);
+  const [outbox, setOutbox] = useState<Pending[]>([]);
+  // Threads with a state PATCH on its way: a second Mark done for one waits its turn by not happening.
+  const patching = useRef(new Set<string>());
   const [help, setHelp] = useState(false);
   const rowsRef = useRef<HTMLUListElement>(null);
   // The item a key press just went to, until the address has it: J pressed twice fast moves two rows.
@@ -236,7 +247,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   const kindQ = kind === "all" ? null : kind;
   const key = JSON.stringify([currentId, state, kind, q, assigned, tag]);
   // Every list call, the poll and Load more included, carries the same filters.
-  const fetchItems = (id: string, cursor?: string | null) => listItems(id, state, cursor, kindQ, q, { assigned, tag });
+  const fetchItems = (id: string, cursor?: string | null) => listItems(id, state, cursor, kindQ, q, { assigned, tag, conversations: true });
   const page = loaded?.key === key ? loaded.page : null;
   const setPage = (f: (p: Page | Failure | null) => Page | Failure | null) =>
     // A late answer for another inbox or tab leaves the newer page alone.
@@ -323,49 +334,59 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
     );
   }
 
+  // Back in its place, unless the list already holds its thread: a poll may have brought a newer row of the conversation.
   const putBack = (u: Undo) =>
-    setPage((p) => (u.row && p && !isFailure(p) && !p.items.some((x) => x.id === u.row!.id) ? { ...p, items: [...p.items.slice(0, u.at), u.row, ...p.items.slice(u.at)] } : p));
+    setPage((p) => {
+      const row = u.row;
+      if (!row || !p || isFailure(p) || p.items.some((x) => threadKey(x) === threadKey(row))) return p;
+      // By its time, as the list is ordered: an index from before would be off once other rows came or went.
+      const older = p.items.findIndex((x) => x.received_at < row.received_at);
+      const at = older < 0 ? p.items.length : older;
+      return { ...p, items: [...p.items.slice(0, at), row, ...p.items.slice(at)] };
+    });
+  const failUndo = (u: Undo, problem: Failure, undoing = false) => setUndos((l) => [...l.filter((x) => x.id !== u.id), { ...u, problem, undoing }]);
 
   // Mark done: the row goes and the next item opens at once, the PATCH follows. A whole conversation for a DM.
   function markDone(i: Item) {
     const k = threadKey(i);
+    if (patching.current.has(k)) return;
+    patching.current.add(k);
     const at = items.findIndex((x) => threadKey(x) === k);
     const row = state === "open" && at >= 0 ? items[at]! : null;
     const saved = setItemState(i.id, "done", i.kind === "dm");
-    const u: Undo = { item: i, row, at, saved };
-    setUndo(u);
+    const u: Undo = { id: ++lastId, item: i, row, saved };
+    setUndos((l) => [...l, u]);
+    // A line that turned into a failure stays until dismissed.
+    setTimeout(() => setUndos((l) => l.filter((x) => x.id !== u.id || x.problem)), UNDO_MS);
     if (row) {
       setPage((p) => (p && !isFailure(p) ? { ...p, items: p.items.filter((x) => x.id !== row.id) } : p));
       go((items[at + 1] ?? items[at - 1])?.id ?? null);
     }
     saved.then((r) => {
+      patching.current.delete(k);
       if (isFailure(r)) {
         putBack(u);
-        setUndo({ ...u, problem: r });
-        if (row) go(i.id);
+        failUndo(u, r);
       } else if (row) refreshCounts();
       else changed(r);
     });
   }
 
   async function undoDone(u: Undo) {
-    setUndo(null);
+    const k = threadKey(u.item);
+    setUndos((l) => l.filter((x) => x.id !== u.id));
     // The done PATCH lands first, so the two can't cross.
     await u.saved;
+    patching.current.add(k);
     const r = await setItemState(u.item.id, "open", u.item.kind === "dm");
-    if (isFailure(r)) return setUndo({ ...u, problem: r, undoing: true });
+    patching.current.delete(k);
+    if (isFailure(r)) return failUndo(u, r, true);
     putBack(u);
     if (u.row) {
       refreshCounts();
       go(u.item.id);
     } else changed(r);
   }
-
-  useEffect(() => {
-    if (!undo || undo.problem) return;
-    const timer = setTimeout(() => setUndo(null), UNDO_MS);
-    return () => clearTimeout(timer);
-  }, [undo]);
 
   // One-key shortcuts. Done, assign and reply act through the reader's own controls, so they do what a click does.
   useEffect(() => {
@@ -380,7 +401,10 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
         if (!items[n]) return;
         go(items[n].id, "push");
         rowsRef.current?.children[n]?.scrollIntoView({ block: "nearest" });
-      } else if (s === "done") document.getElementById("mark-done")?.click();
+      } else if (s === "done") {
+        // A held key marks one item, not the whole list.
+        if (!e.repeat) document.getElementById("mark-done")?.click();
+      }
       else if (s === "assign") document.getElementById("assign-me")?.click();
       else if (s === "reply") document.getElementById("reply-text")?.focus();
       else if (s === "search") document.getElementById("inbox-search")?.focus();
@@ -402,6 +426,8 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
       )}
     </>
   );
+  // Replies that did not clearly go out, one line per thread, for the threads not on screen.
+  const stuck = outbox.filter((p, n) => settled(p) && p.thread !== openKey && outbox.findIndex((x) => settled(x) && x.thread === p.thread) === n);
   const noAccounts = Array.isArray(accounts) && accounts.length === 0;
   const accountList = Array.isArray(accounts) ? accounts : [];
   // On small screens one pane shows at a time: inboxes, then items, then the item.
@@ -531,6 +557,13 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
             </ul>
           )}
         </div>
+        {stuck.map((p) => (
+          <p key={p.thread} role="alert" className="waitlist-error lg:mb-3">
+            <button type="button" className={linkButton} onClick={() => go(p.itemId, "push")}>
+              A reply to {p.name} {p.unsure ? "may not have been sent" : "was not sent"}
+            </button>
+          </p>
+        ))}
         {/* p-px keeps the card's 1px ring inside the scroller. */}
         <div className="grid content-start gap-3 lg:block lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain lg:p-px">
           {noAccounts ? (
@@ -669,27 +702,37 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
             me={user}
             members={members}
             tagOptions={tagOptions}
+            pending={outbox.filter((p) => p.thread === openKey)}
+            setPending={setOutbox}
             onChange={changed}
             onDone={markDone}
           />
         )}
       </section>
 
-      {undo && (
-        <div
-          role={undo.problem ? "alert" : "status"}
-          className="fixed inset-x-0 bottom-4 z-40 mx-auto flex w-fit max-w-[calc(100vw-2rem)] items-center gap-3 rounded-full bg-ink py-1.5 pr-1.5 pl-4 text-sm font-bold text-paper shadow-lg"
-        >
-          {undo.problem ? (
-            <span>
-              {undo.undoing ? "That couldn't be undone, so it is still done." : "That couldn't be marked done, so it is back in the list."} {problemText(undo.problem, inboxMessages)}
-            </span>
-          ) : (
-            "Marked done."
-          )}
-          <button type="button" className="rounded-full bg-paper/15 px-3 py-1 hover:bg-paper/25" onClick={() => (undo.problem ? setUndo(null) : undoDone(undo))}>
-            {undo.problem ? "Dismiss" : "Undo"}
-          </button>
+      {undos.length > 0 && (
+        <div className="fixed inset-x-0 bottom-4 z-40 mx-auto grid w-fit max-w-[calc(100vw-2rem)] justify-items-center gap-2">
+          {undos.map((u) => (
+            <div key={u.id} role={u.problem ? "alert" : "status"} className="flex items-center gap-3 rounded-full bg-ink py-1.5 pr-1.5 pl-4 text-sm font-bold text-paper shadow-lg">
+              {u.problem ? (
+                <span>
+                  {authorName(u.item.author)} {u.undoing ? "couldn't be reopened, so it is still done." : "couldn't be marked done, so it is back in the list."} {problemText(u.problem, inboxMessages)}
+                </span>
+              ) : (
+                <span>
+                  Marked done. <span className="font-normal opacity-80">{authorName(u.item.author)}</span>
+                </span>
+              )}
+              <button
+                type="button"
+                className="rounded-full bg-paper/15 px-3 py-1 hover:bg-paper/25"
+                aria-label={u.problem ? undefined : `Undo marking ${authorName(u.item.author)} done`}
+                onClick={() => (u.problem ? setUndos((l) => l.filter((x) => x.id !== u.id)) : undoDone(u))}
+              >
+                {u.problem ? "Dismiss" : "Undo"}
+              </button>
+            </div>
+          ))}
         </div>
       )}
       {help && <ShortcutsDialog onClose={() => setHelp(false)} />}
@@ -723,9 +766,6 @@ const Key = ({ children }: { children: ReactNode }) => (
 
 // The reply box grows with its text up to this height, then scrolls.
 const REPLY_MAX_PX = 192;
-// A reply shown in the thread before brain answered: on its way, or failed with why.
-type Pending = { id: number; text: string; failed?: ReactNode };
-
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 function Detail({
@@ -736,6 +776,8 @@ function Detail({
   me,
   members,
   tagOptions,
+  pending,
+  setPending,
   onChange,
   onDone,
 }: {
@@ -747,6 +789,9 @@ function Detail({
   me: Person;
   members: Person[];
   tagOptions: string[];
+  // This thread's replies not yet confirmed, and the Inbox's setter over all of them.
+  pending: Pending[];
+  setPending: (f: (l: Pending[]) => Pending[]) => void;
   onChange: (i: Item) => void;
   onDone: (i: Item) => void;
 }) {
@@ -756,7 +801,9 @@ function Detail({
   const [convo, setConvo] = useState<ConversationPage | null>(null);
   const [convoProblem, setConvoProblem] = useState<Failure | null>(null);
   const [earlier, setEarlier] = useState<Failure | "loading" | null>(null);
-  const [pending, setPending] = useState<Pending[]>([]);
+  // The unsure reply whose Send again waits for a yes.
+  const [confirming, setConfirming] = useState<number | null>(null);
+  const [reloads, setReloads] = useState(0);
   const [sent, setSent] = useState<{ text: string; n: number } | null>(null);
   // Saving the typed text as a saved reply: null, or the name being typed.
   const [naming, setNaming] = useState<string | null>(null);
@@ -778,16 +825,13 @@ function Detail({
     getConversation(item.id).then((r) => {
       if (!live) return;
       setConvoProblem(isFailure(r) ? r : null);
-      // Without the conversation the reader still shows the message it was opened for.
-      if (isFailure(r)) return setConvo((c) => c ?? { items: [item], has_more: false });
-      const fresh = new Set(r.items.map((i) => i.id));
-      setConvo((c) => (c ? { items: [...c.items.filter((i) => !fresh.has(i.id)), ...r.items], has_more: c.has_more } : r));
+      if (!isFailure(r)) setConvo((c) => mergeConversation(c, r));
     });
     return () => {
       live = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- the item's other fields change without a new conversation
-  }, [dm, item.id, newest]);
+    // Read again too when a reply of this thread settles: it may have gone out while another item was open.
+  }, [dm, item.id, newest, reloads, pending.length]);
 
   const thread = dm ? (convo?.items ?? []) : [item];
   // A reply goes to the latest message of a conversation.
@@ -797,7 +841,7 @@ function Detail({
   const max = maxFor(item.kind, account?.provider);
   const platform = platformName(account?.provider ?? "bluesky");
   const count = graphemes(text);
-  const sending = pending.some((p) => !p.failed);
+  const sending = pending.some((p) => !settled(p));
 
   const assign = (id: string | null) =>
     meta.run("assign", () => assignItem(item.id, id, dm), (r) => {
@@ -853,27 +897,39 @@ function Detail({
     if (el) el.scrollTop = el.scrollHeight - fromEnd;
   }
 
-  // The reply is in the thread before brain answers; a refusal marks it failed, with why and Retry.
-  async function send(p: Pending) {
-    setSent(null);
-    setPending((l) => (l.some((x) => x.id === p.id) ? l.map((x) => (x.id === p.id ? { ...x, failed: undefined } : x)) : [...l, p]));
-    const r = await replyToItem(latest.id, p.text, dm);
-    if (isFailure(r) || "code" in r) {
-      const why = isFailure(r) ? problemText(r, replyMessages) : (sendMessages[r.code] ?? r.message);
-      return setPending((l) => l.map((x) => (x.id === p.id ? { ...x, failed: why } : x)));
-    }
-    setPending((l) => l.filter((x) => x.id !== p.id));
-    // The reply closed every open DM of the conversation.
+  const change = (id: number, to: Partial<Pending>) => setPending((l) => l.map((x) => (x.id === id ? { ...x, ...to } : x)));
+  const drop = (id: number) => setPending((l) => l.filter((x) => x.id !== id));
+  // A reply that went out: the thread shows it, and for a DM it closed every open DM of the conversation.
+  function wentOut(p: Pending, r: Item) {
+    drop(p.id);
     if (dm) setConvo((c) => c && { ...c, items: c.items.map((i) => (i.id === r.id ? r : i.state === "open" ? { ...i, state: "done" } : i)) });
     else setSent((d) => ({ text: "Reply sent.", n: (d?.n ?? 0) + 1 }));
     onChange(r);
+  }
+
+  // The reply is in the thread before brain answers. A refusal marks it Not sent with Retry. No clear answer
+  // is not a refusal: brain may have sent it, so the thread is read again and only a confirmed Send again resends.
+  async function send(p: Pending) {
+    setSent(null);
+    setConfirming(null);
+    setPending((l) => (l.some((x) => x.id === p.id) ? l.map((x) => (x.id === p.id ? { ...x, failed: undefined, unsure: false } : x)) : [...l, p]));
+    const r = await replyToItem(latest.id, p.text, dm);
+    if (!isFailure(r) && "id" in r) return wentOut(p, r);
+    if (isFailure(r)) return change(p.id, { failed: problemText(r, replyMessages) });
+    if ("code" in r) return change(p.id, { failed: sendMessages[r.code] ?? r.message });
+    const again = dm ? await getConversation(item.id) : await getItem(item.id);
+    const got = isFailure(again) ? [] : "items" in again ? again.items : [again];
+    const there = sentAlready(got, p.text);
+    if (!there) return change(p.id, { unsure: true });
+    if (!isFailure(again) && "items" in again) setConvo((c) => mergeConversation(c, again));
+    wentOut(p, there);
   }
 
   function onReply(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     // Ctrl+Enter submits even while the button is disabled.
     if (sending || !text.trim() || count > max) return;
-    send({ id: Date.now(), text });
+    send({ id: ++lastId, thread: threadKey(item), itemId: item.id, name: authorName(item.author), text });
     setText("");
   }
 
@@ -938,14 +994,26 @@ function Detail({
         aria-label={dm ? "Conversation" : "Thread"}
         className={`grid grid-cols-[minmax(0,1fr)] content-start gap-3 lg:-m-1 lg:overflow-y-auto lg:overscroll-contain lg:p-1 ${dm ? "max-lg:max-h-[55dvh] max-lg:overflow-y-auto" : ""}`}
       >
-        {dm && !convo && (
+        {dm && !convo && !convoProblem && (
           <li role="status" className="h-24 rounded-2xl bg-ink/5 motion-safe:animate-pulse">
             <span className="sr-only">Loading the conversation...</span>
           </li>
         )}
         {dm && convoProblem && (
-          <li role="alert" className="waitlist-error">
-            The rest of the conversation couldn&apos;t be loaded. {problemText(convoProblem)}
+          <li className="grid justify-items-start gap-1">
+            <p role="alert" className="waitlist-error">
+              {convo ? "The conversation couldn't be read again." : "The conversation couldn't be loaded."} {problemText(convoProblem)}
+            </p>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => {
+                setConvoProblem(null);
+                setReloads((n) => n + 1);
+              }}
+            >
+              Retry
+            </button>
           </li>
         )}
         {dm && convo?.has_more && (
@@ -999,20 +1067,33 @@ function Detail({
         )}
         {pending.map((p) => (
           <li key={p.id} data-row="us" className="grid justify-items-end gap-1">
-            <p className={`max-w-[90%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md px-4 py-3 ${p.failed ? "bg-ink/10 text-ink" : "bg-ink/60 text-paper"}`}>{p.text}</p>
-            {p.failed ? (
+            <p className={`max-w-[90%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md px-4 py-3 ${settled(p) ? "bg-ink/10 text-ink" : "bg-ink/60 text-paper"}`}>{p.text}</p>
+            {settled(p) ? (
               <div className="grid max-w-[90%] justify-items-end gap-1 text-right text-xs">
                 <p role="alert" className="font-bold text-signal-deep">
-                  Not sent. {p.failed}
+                  {p.unsure ? "This may have been sent. Check the conversation before sending again." : <>Not sent. {p.failed}</>}
                 </p>
-                <p className="flex gap-3">
-                  <button type="button" className={linkButton} disabled={sending} onClick={() => send(p)}>
-                    Retry
-                  </button>
-                  <button type="button" className="font-bold text-ink-soft hover:text-ink" onClick={() => setPending((l) => l.filter((x) => x.id !== p.id))}>
-                    Discard
-                  </button>
-                </p>
+                {confirming === p.id ? (
+                  <p className="flex flex-wrap items-center justify-end gap-3">
+                    <span id={`again-${p.id}`}>It may have been sent already. Send again?</span>
+                    <button type="button" className={linkButton} aria-describedby={`again-${p.id}`} autoFocus disabled={sending} onClick={() => send(p)}>
+                      Yes, send again
+                    </button>
+                    <button type="button" className="font-bold text-ink-soft hover:text-ink" onClick={() => setConfirming(null)}>
+                      Cancel
+                    </button>
+                  </p>
+                ) : (
+                  <p className="flex gap-3">
+                    {/* Only a refusal gets a plain Retry. */}
+                    <button type="button" className={linkButton} disabled={sending} onClick={() => (p.unsure ? setConfirming(p.id) : send(p))}>
+                      {p.unsure ? "Send again" : "Retry"}
+                    </button>
+                    <button type="button" className="font-bold text-ink-soft hover:text-ink" onClick={() => drop(p.id)}>
+                      Discard
+                    </button>
+                  </p>
+                )}
               </div>
             ) : (
               <p role="status" className="text-xs text-ink-soft">

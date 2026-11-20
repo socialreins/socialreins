@@ -604,7 +604,6 @@ test.describe("conversations", () => {
     await expect(page.getByRole("alert").filter({ hasText: "couldn't be marked done, so it is back in the list" })).toBeVisible();
     await expect(rows(page)).toHaveCount(5);
     await expect(rows(page).nth(1)).toContainText("I would like two of them");
-    await expect.poll(() => query(page).get("item")).toBe("b4");
     await page.getByRole("button", { name: "Dismiss" }).click();
     await expect(page.getByRole("alert").filter({ hasText: "marked done" })).toHaveCount(0);
   });
@@ -735,5 +734,183 @@ test.describe("conversations", () => {
     await expect(thread.getByRole("listitem")).toHaveText([/What is the price\?/, /Ten euros\..*Team, public reply/]);
     expect(state.replies).toEqual([{ id: "m1", body: { text: "Ten euros." } }]);
     expect(state.convos).toEqual([]);
+  });
+
+  // What brain does when it sends: the reply is on the item and the conversation is done.
+  const delivered = (state: Awaited<ReturnType<typeof brain>>, id: string, text: string) => {
+    const to = state.items.find((i) => i.id === id)!;
+    to.replied_at = NOW;
+    to.replies = [...to.replies, { id: `late-${id}`, kind: "dm", text, remote_id: null, remote_url: null, sent_by: "u-me", automation_id: null, created_at: NOW }];
+    for (const i of state.items) if (i.kind === "dm" && i.author.id === to.author.id) i.state = "done";
+  };
+
+  test("a reply with no clear answer is never retried blindly: the conversation is read again, and Send again asks first", async ({ page }) => {
+    const state = await brain(page, "owner", { items: mixed() });
+    // brain answers 500 each time; the first time it had sent the DM before failing.
+    let mode: "sent" | "lost" | "ok" = "sent";
+    const tries: string[] = [];
+    await page.route(/\/v1\/inbox-items\/[^/]+\/reply$/, (route) => {
+      const id = new URL(route.request().url()).pathname.split("/")[3]!;
+      tries.push(id);
+      if (mode === "ok") return route.fallback();
+      if (mode === "sent") delivered(state, id, route.request().postDataJSON().text);
+      return route.fulfill({ status: 500, json: { error: "server_error" } });
+    });
+    await page.goto("/inbox?item=b4");
+    await expect(bubbles(page).last()).toContainText("I would like two of them.");
+    await reader(page).getByLabel("Send DM").fill("Two it is!");
+    await reader(page).getByRole("button", { name: "Send DM" }).click();
+    // Read again, the conversation holds the reply: it shows as sent, with nothing to send again.
+    await expect(bubbles(page).last()).toContainText("Two it is!");
+    await expect(bubbles(page).last()).toContainText("Team, DM");
+    await expect(chat(page).getByText("Two it is!")).toHaveCount(1);
+    await expect(reader(page).getByRole("button", { name: /Send again|Retry/ })).toHaveCount(0);
+    await expect(reader(page).getByRole("alert")).toHaveCount(0);
+    expect(tries).toEqual(["b4"]);
+    expect(state.convos.filter((c) => c.id === "b4" && !c.before).length).toBeGreaterThan(1);
+
+    // The same failure with nothing sent: it may have gone out, so no plain Retry.
+    mode = "lost";
+    await rows(page).filter({ hasText: "Cara" }).getByRole("link").click();
+    await expect(bubbles(page).last()).toContainText("For 50 euros.");
+    await reader(page).getByLabel("Send DM").fill("Yes we do");
+    await reader(page).getByRole("button", { name: "Send DM" }).click();
+    const stuck = bubbles(page).last();
+    await expect(stuck.getByRole("alert")).toHaveText("This may have been sent. Check the conversation before sending again.");
+    await expect(stuck).toContainText("Yes we do");
+    await expect(stuck.getByRole("button", { name: "Retry" })).toHaveCount(0);
+    expect(state.convos.filter((c) => c.id === "k2" && !c.before).length).toBeGreaterThan(1);
+    expect(tries).toEqual(["b4", "k2"]);
+
+    // Send again asks first, and Cancel sends nothing.
+    await stuck.getByRole("button", { name: "Send again" }).click();
+    await expect(stuck).toContainText("It may have been sent already. Send again?");
+    await stuck.getByRole("button", { name: "Cancel" }).click();
+    await expect(stuck).not.toContainText("Send again?");
+    expect(tries).toEqual(["b4", "k2"]);
+    mode = "ok";
+    await stuck.getByRole("button", { name: "Send again" }).click();
+    expect(tries).toEqual(["b4", "k2"]);
+    await stuck.getByRole("button", { name: "Yes, send again" }).click();
+    await expect(chat(page).getByRole("alert")).toHaveCount(0);
+    await expect(bubbles(page).last()).toContainText("Yes we do");
+    await expect(bubbles(page).last()).toContainText("Team, DM");
+    await expect(chat(page).getByText("Yes we do")).toHaveCount(1);
+    expect(tries).toEqual(["b4", "k2", "k2"]);
+  });
+
+  test("a reply on its way or not sent stays with its conversation while another item is open", async ({ page }) => {
+    const state = await brain(page, "owner", { items: mixed() });
+    // Bob refuses DMs; the DM to Cara waits until the test lets it through.
+    let release = () => {};
+    const held = new Promise<void>((done) => (release = done));
+    await page.route(/\/v1\/inbox-items\/[^/]+\/reply$/, async (route) => {
+      if (route.request().url().includes("/b4/")) return route.fulfill({ status: 422, json: { error: "dm_not_allowed", message: "Not taken." } });
+      await held;
+      return route.fallback();
+    });
+    await page.goto("/inbox?item=b4");
+    await expect(bubbles(page).last()).toContainText("I would like two of them.");
+    await reader(page).getByLabel("Send DM").fill("Two it is!");
+    await reader(page).getByRole("button", { name: "Send DM" }).click();
+    await expect(bubbles(page).last().getByRole("alert")).toContainText("Not sent.");
+    const lines = page.getByRole("region", { name: "All" }).getByRole("alert");
+    // Open, it needs no line in the list.
+    await expect(lines).toHaveCount(0);
+
+    await rows(page).filter({ hasText: "Cara" }).getByRole("link").click();
+    await expect(bubbles(page).last()).toContainText("For 50 euros.");
+    await expect(chat(page)).not.toContainText("Two it is!");
+    await expect(lines).toHaveText(["A reply to Bob was not sent"]);
+    await reader(page).getByLabel("Send DM").fill("Yes we do");
+    await reader(page).getByRole("button", { name: "Send DM" }).click();
+    await expect(bubbles(page).last()).toContainText("Sending...");
+
+    // Back at Bob through the line: the failed reply is still there, with its Retry.
+    await lines.getByRole("button", { name: "A reply to Bob was not sent" }).click();
+    await expect.poll(() => query(page).get("item")).toBe("b4");
+    await expect(bubbles(page).last()).toContainText("Two it is!");
+    await expect(bubbles(page).last().getByRole("button", { name: "Retry" })).toBeVisible();
+    await expect(lines).toHaveCount(0);
+
+    // And at Cara the one on its way still shows, then lands.
+    await rows(page).filter({ hasText: "Cara" }).getByRole("link").click();
+    await expect(bubbles(page).last()).toContainText("Yes we do");
+    await expect(bubbles(page).last()).toContainText("Sending...");
+    release();
+    await expect(chat(page).getByText("Sending...")).toHaveCount(0);
+    await expect(bubbles(page).last()).toContainText("Yes we do");
+    await expect(bubbles(page).last()).toContainText("Team, DM");
+    expect(state.replies).toEqual([{ id: "k2", body: { text: "Yes we do", conversation: true } }]);
+    await expect(lines).toHaveText(["A reply to Bob was not sent"]);
+  });
+
+  test("a held E marks one item done, and each done keeps its own Undo", async ({ page }) => {
+    const state = await brain(page, "owner", { items: mixed() });
+    const done = () => state.patches.filter((p) => p.body.state === "done").map((p) => p.id);
+    await page.goto("/inbox?item=b4");
+    await expect(bubbles(page).last()).toContainText("I would like two of them.");
+    await reader(page).getByRole("heading", { name: "Bob" }).focus();
+    // The key held down: one press and its repeats.
+    await page.keyboard.down("e");
+    await page.keyboard.down("e");
+    await page.keyboard.down("e");
+    await page.keyboard.up("e");
+    await expect(rows(page)).toHaveCount(4);
+    await expect(reader(page).getByRole("heading", { name: "Cara" })).toBeFocused();
+    // The keys after it were handled too, and marked nothing.
+    await page.keyboard.press("?");
+    await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeVisible();
+    await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
+    expect(done()).toEqual(["b4"]);
+
+    // A second done right after: two lines, each with its own Undo.
+    await reader(page).getByRole("heading", { name: "Cara" }).focus();
+    await page.keyboard.press("e");
+    await expect(rows(page)).toHaveText([/What is the price/, /Great post/, /Where is the shop/]);
+    expect(done()).toEqual(["b4", "k2"]);
+    const lines = page.getByRole("status").filter({ hasText: "Marked done." });
+    await expect(lines).toHaveText([/Bob/, /Cara/]);
+    await page.getByRole("button", { name: "Undo marking Bob done" }).click();
+    await expect(rows(page)).toHaveText([/What is the price/, /I would like two of them/, /Great post/, /Where is the shop/]);
+    await page.getByRole("button", { name: "Undo marking Cara done" }).click();
+    await expect(rows(page)).toHaveText([/What is the price/, /I would like two of them/, /For 50 euros/, /Great post/, /Where is the shop/]);
+    expect(state.patches.filter((p) => p.body.state === "open").map((p) => p.id).sort()).toEqual(["b4", "k2"]);
+    await expect(lines).toHaveCount(0);
+  });
+
+  test("Undo never doubles a conversation that a newer DM already brought back", async ({ page }) => {
+    const state = await brain(page, "owner", { items: mixed() });
+    await page.goto("/inbox?item=b4");
+    await expect(bubbles(page).last()).toContainText("I would like two of them.");
+    await reader(page).getByRole("button", { name: "Mark done" }).click();
+    await expect(rows(page)).toHaveCount(4);
+    await expect.poll(() => state.patches.length).toBe(1);
+    // Bob writes again, and the list's check picks his conversation up under its new latest DM.
+    state.items.push(item("b5", "dm", "One more thing.", { received_at: NOW }));
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    await expect(rows(page).first()).toContainText("One more thing.");
+    await expect(rows(page)).toHaveCount(5);
+    await page.getByRole("button", { name: "Undo marking Bob done" }).click();
+    await expect.poll(() => state.patches.length).toBe(2);
+    await expect.poll(() => query(page).get("item")).toBe("b4");
+    await expect(bubbles(page).last()).toContainText("One more thing.");
+    await expect(rows(page).filter({ hasText: "messages" }).filter({ hasText: "Bob" })).toHaveCount(1);
+    await expect(rows(page)).toHaveCount(5);
+  });
+
+  test("a conversation that can't be loaded says so with Retry, and Load earlier is there once it loads", async ({ page }) => {
+    await brain(page, "owner", { items: mixed(), convoPage: 2 });
+    let down = true;
+    await page.route(/\/v1\/inbox-items\/[^/]+\/conversation(\?.*)?$/, (route) => (down ? route.fulfill({ status: 500, json: { error: "server_error" } }) : route.fallback()));
+    await page.goto("/inbox?item=b4");
+    await expect(chat(page).getByRole("alert")).toContainText("The conversation couldn't be loaded.");
+    await expect(bubbles(page)).toHaveCount(0);
+    await expect(chat(page).getByRole("button", { name: "Load earlier" })).toHaveCount(0);
+    down = false;
+    await chat(page).getByRole("button", { name: "Retry" }).click();
+    await expect(bubbles(page)).toHaveText(["Today", /Still there\?/, /I would like two of them\./]);
+    await expect(chat(page).getByRole("alert")).toHaveCount(0);
+    await expect(chat(page).getByRole("button", { name: "Load earlier" })).toBeVisible();
   });
 });

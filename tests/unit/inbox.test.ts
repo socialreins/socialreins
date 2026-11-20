@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { assignItem, chatRows, dayLabel, getConversation, listItems, maxFor, mergeFresh, messageCount, relativeTime, replyToItem, setItemState, threadKey, type Item } from "@/lib/inbox";
+import { assignItem, chatRows, dayLabel, getConversation, listItems, maxFor, mergeConversation, mergeFresh, messageCount, relativeTime, replyToItem, sentAlready, setItemState, threadKey, type Item } from "@/lib/inbox";
 import { apiUrl } from "@/lib/waitlist";
 
 const call = (fetch: ReturnType<typeof vi.fn>) => fetch.mock.calls[0] as unknown as [string, RequestInit];
@@ -11,9 +11,18 @@ describe("inbox requests", () => {
     const fetch = vi.fn(async () => Response.json({ items: [], next_cursor: null }));
     vi.stubGlobal("fetch", fetch);
     await listItems("i 1", "done", "c9");
-    expect(call(fetch)[0]).toBe(`${apiUrl}/v1/inboxes/i%201/items?state=done&group=conversations&cursor=c9`);
+    expect(call(fetch)[0]).toBe(`${apiUrl}/v1/inboxes/i%201/items?state=done&cursor=c9`);
     await listItems("all", "open", null, "dm", "price list");
-    expect((fetch.mock.calls[1] as unknown as [string])[0]).toBe(`${apiUrl}/v1/inboxes/all/items?state=open&group=conversations&kind=dm&q=price+list`);
+    expect((fetch.mock.calls[1] as unknown as [string])[0]).toBe(`${apiUrl}/v1/inboxes/all/items?state=open&kind=dm&q=price+list`);
+  });
+
+  it("asks for conversations only when told to, so Home keeps plain rows", async () => {
+    const fetch = vi.fn(async () => Response.json({ items: [], next_cursor: null }));
+    vi.stubGlobal("fetch", fetch);
+    await listItems("all", "open");
+    expect(call(fetch)[0]).not.toContain("group");
+    await listItems("all", "open", "c9", null, "", { conversations: true, assigned: "me" });
+    expect((fetch.mock.calls[1] as unknown as [string])[0]).toBe(`${apiUrl}/v1/inboxes/all/items?state=open&group=conversations&assigned=me&cursor=c9`);
   });
 
   it("patches the state", async () => {
@@ -52,6 +61,23 @@ describe("inbox requests", () => {
     expect(await replyToItem("p1", "hi")).toBe("rate_limited");
     vi.stubGlobal("fetch", vi.fn(async () => Response.json({ error: "invalid_text" }, { status: 422 })));
     expect(await replyToItem("p1", "hi")).toBe("invalid_text");
+  });
+
+  it("calls a reply unsure, never refused, when brain may have sent it", async () => {
+    const unsure = { unsure: true };
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ error: "server_error" }, { status: 500 })));
+    expect(await replyToItem("p1", "hi")).toEqual(unsure);
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ error: "bad_gateway" }, { status: 502 })));
+    expect(await replyToItem("p1", "hi")).toEqual(unsure);
+    vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new TypeError("Failed to fetch"))));
+    expect(await replyToItem("p1", "hi")).toEqual(unsure);
+    vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new DOMException("slow", "TimeoutError"))));
+    expect(await replyToItem("p1", "hi")).toEqual(unsure);
+    // A 4xx brain gives no known code for, and a 201 that can't be read.
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ error: "something_new" }, { status: 400 })));
+    expect(await replyToItem("p1", "hi")).toEqual(unsure);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("not json", { status: 201 })));
+    expect(await replyToItem("p1", "hi")).toEqual(unsure);
   });
 });
 
@@ -131,6 +157,26 @@ describe("conversations", () => {
     expect(new Set(rows.map((r) => r.key)).size).toBe(rows.length);
     expect(chatRows([])).toEqual([]);
     vi.unstubAllEnvs();
+  });
+
+  it("finds a reply that went out after all, by its text and the last two minutes", () => {
+    const now = Date.parse("2026-11-12T12:00:00Z");
+    const items = [dm("a", "2026-11-12T11:00:00Z"), dm("b", "2026-11-12T11:30:00Z", [{ id: "r1", created_at: "2026-11-12T11:59:00Z", text: "Two it is! " }])];
+    expect(sentAlready(items, "Two it is!", now)?.id).toBe("b");
+    expect(sentAlready(items, "Something else", now)).toBeUndefined();
+    // The same words sent an hour ago are another message.
+    expect(sentAlready(items, "Two it is!", now + 3_600_000)).toBeUndefined();
+  });
+
+  it("keeps earlier pages and their has_more under a fresh newest page, and takes the fresh one otherwise", () => {
+    const [a, b, c, d] = ["a", "b", "c", "d"].map((id, n) => dm(id, `2026-11-1${n}T10:00:00Z`));
+    expect(mergeConversation(null, { items: [c!, d!], has_more: true })).toEqual({ items: [c, d], has_more: true });
+    // Earlier pages were loaded to the start: a newer page changes nothing about that.
+    expect(mergeConversation({ items: [a!, b!, c!], has_more: false }, { items: [c!, d!], has_more: true })).toEqual({ items: [a, b, c, d], has_more: false });
+    // The fresh page reaches as far back as what is loaded: its has_more is the true one.
+    expect(mergeConversation({ items: [c!], has_more: false }, { items: [c!, d!], has_more: true })).toEqual({ items: [c, d], has_more: true });
+    // Nothing shared: a gap, so start over from the fresh page.
+    expect(mergeConversation({ items: [a!], has_more: false }, { items: [c!, d!], has_more: true })).toEqual({ items: [c, d], has_more: true });
   });
 
   it("drops a conversation's old row when its latest DM changed", () => {
