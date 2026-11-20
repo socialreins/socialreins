@@ -23,7 +23,7 @@ export const features: Feature[] = [
     slug: "automations",
     name: "Automations",
     short: "Keyword triggers and flows",
-    description: "Automations in SocialReins: triggers for comments, DMs, mentions and more, and flows of steps with waits and buttons. See which networks work.",
+    description: "Automations in SocialReins: triggers for comments, DMs, mentions and more, flows of steps with waits and buttons, and contact tags. See which networks work.",
     intro: "An automation watches for something and then acts on it for you. For example, comment to DM: someone comments a keyword on your post, and SocialReins sends them a DM.",
     support,
     sections: [
@@ -32,6 +32,7 @@ export const features: Feature[] = [
         bullets: [
           "Triggers: a comment keyword, a DM keyword, a first message (welcome), a new follower (Bluesky), a mention, a story reply and a button tap.",
           "A flow runs several steps in turn, with waits and buttons.",
+          "An automation can also tag the contact, so you can find those people later or send them a broadcast.",
         ],
       },
       {
@@ -62,7 +63,7 @@ export const features: Feature[] = [
     slug: "inboxes",
     name: "Inboxes",
     short: "Comments, mentions and DMs in one place",
-    description: "Inboxes in SocialReins: comments, mentions and DMs from your accounts in one place, split into custom inboxes you define. See which networks work.",
+    description: "Inboxes in SocialReins: comments, mentions and DMs in one place, DMs as conversations, with search, assigning and saved replies. See which networks work.",
     intro: "Comments, mentions and DMs from your connected accounts arrive in one place, and you answer them there. Make as many custom inboxes as you need, each showing only what you choose.",
     support,
     sections: [
@@ -79,14 +80,137 @@ export const features: Feature[] = [
         heading: "Answering",
         bullets: [
           "Reply under a comment or mention, and answer a DM in its conversation, without leaving SocialReins.",
+          "DMs with one person are grouped into one conversation, shown as a chat.",
+          "Search an inbox by text or by author.",
+          "Assign an item to a teammate, or to yourself.",
+          "Keep saved replies and insert one into the reply box.",
+          "Keyboard shortcuts move between items, mark one done, assign it and start a reply.",
           "New items are fetched about once a minute, and an open inbox refreshes by itself.",
           "On Bluesky, DMs are read only when the app password allows them.",
         ],
       },
       {
+        heading: "Contacts",
+        bullets: ["Everyone who wrote to your accounts is listed under Contacts.", "Give a contact tags and notes, and filter the inbox by a tag."],
+      },
+      {
         heading: "Why not every network",
         text: "Each network decides what an app may read. A network moves to Yes here when its comments and messages arrive and can be answered end to end.",
       },
+    ],
+  },
+];
+
+// The public /features page and the home page's "What it does" cards: every feature in seven groups, one
+// sentence each. Facts and wording follow the `us` object in lib/compare.ts; change the two together.
+export type Group = {
+  id: string;
+  name: string;
+  // One or two sentences for the home page card.
+  summary: string;
+  // Replaces "Live now" where the group is not live on every network.
+  pill?: string;
+  // Where the group is live, said once under its heading.
+  note?: string;
+  // Its own page, when it has one.
+  href?: string;
+  items: { name: string; text: string }[];
+};
+
+const TESTING = "Live on Bluesky. Facebook Pages and Instagram are in testing.";
+
+export const groups: Group[] = [
+  {
+    id: "publish",
+    name: "Publish",
+    summary: "One post to eight networks, with a separate caption and media for each, a first comment, threads and carousels. Take it down everywhere in one step.",
+    href: "/socials",
+    items: [
+      { name: "Eight networks", text: "Post to Facebook Pages, Instagram, Threads, LinkedIn, Bluesky, X, TikTok and YouTube from one place." },
+      { name: "A caption and media for each network", text: "Give each network its own text and its own images or video inside one post." },
+      { name: "First comment", text: "Add a comment that goes out right after the post on Facebook, Instagram, LinkedIn and YouTube." },
+      { name: "Threads", text: "Write a chain of follow-up posts for Bluesky, Threads and X." },
+      { name: "Carousels", text: "Post several photos and videos as one post to swipe through on Instagram and Threads." },
+      { name: "Public post pages", text: "Give a post its own public page with its text, its media and a link to each live post." },
+      { name: "Take down everywhere", text: "Take a published post down from every network it went out on, in one step." },
+    ],
+  },
+  {
+    id: "plan",
+    name: "Plan and schedule",
+    summary: "A calendar you drag posts around, a queue with weekly time slots, bulk upload from a CSV file, recurring posts and RSS feeds.",
+    items: [
+      { name: "Calendar", text: "See the month and drag a scheduled post to another day, or move it with a date picker." },
+      { name: "Queue", text: "Set weekly time slots for a set of accounts, and a new post takes the next free one." },
+      { name: "Bulk upload", text: "Schedule many posts at once from a CSV file. TikTok is posted from the composer, not from a file." },
+      { name: "Recurring posts", text: "Repeat a post every day, week or month, forever or until an end you set. Not for TikTok." },
+      { name: "Feeds", text: "An RSS or Atom feed turns each new item into a draft, a queued post or a post. Not for TikTok or YouTube, which take video only." },
+      { name: "Duplicate a post", text: "Copy a post with its text, media and network settings, and schedule it again." },
+      { name: "Library", text: "Keep media links, saved captions and hashtag groups, and drop them into a post." },
+    ],
+  },
+  {
+    id: "engage",
+    name: "Engage",
+    summary: "Comments and DMs in one inbox, contacts with tags and notes, broadcasts to a tag and email newsletters.",
+    pill: "Live on Bluesky",
+    note: `Inbox, contacts and broadcasts: ${TESTING} Newsletters go by email and work today.`,
+    href: "/features/inboxes",
+    items: [
+      { name: "One inbox", text: "Comments and DMs from your accounts arrive in one inbox, with search." },
+      { name: "Conversations", text: "DMs with one person are grouped into one conversation, shown as a chat." },
+      { name: "Assign and saved replies", text: "Assign an item to a teammate, and answer faster with saved replies and keyboard shortcuts." },
+      { name: "Contacts", text: "Everyone who wrote to you is a contact, with tags and notes." },
+      { name: "Broadcasts", text: "Send one message to the contacts with a tag. Replying stop opts a person out, and each network's own limits are respected." },
+      { name: "Newsletters", text: "Email the people who signed up on your public pages, with one-click unsubscribe." },
+    ],
+  },
+  {
+    id: "automate",
+    name: "Automate",
+    summary: "Triggers for comments, DMs, mentions and more start a reply or a flow of several steps with waits and buttons.",
+    pill: "Live on Bluesky",
+    note: TESTING,
+    href: "/features/automations",
+    items: [
+      { name: "Triggers", text: "Start from a comment keyword, a DM keyword, a first message, a new follower (Bluesky), a mention, a story reply or a button tap." },
+      { name: "Flows", text: "Run several steps in turn, with waits between them and buttons the person can tap." },
+      { name: "Tag contacts", text: "Have an automation tag the contact, so you can find those people later or send them a broadcast." },
+    ],
+  },
+  {
+    id: "team",
+    name: "Team",
+    summary: "Owner, admin and member roles, an approval step for members' posts, and a custom address for the team.",
+    items: [
+      { name: "Roles", text: "Invite people as an owner, an admin or a member." },
+      { name: "Approvals", text: "Hold a member's post until an owner or admin approves it or asks for changes." },
+      { name: "Custom team address", text: "Give the team its own address, which starts every link to it." },
+    ],
+  },
+  {
+    id: "measure",
+    name: "Measure",
+    summary: "Likes, comments, shares and views for each post on Bluesky, Facebook, Instagram and YouTube.",
+    pill: "On 4 networks",
+    note: "On Bluesky, Facebook, Instagram and YouTube. Not on the other networks yet.",
+    items: [
+      { name: "Post analytics", text: "See likes, comments, shares and views for each post on Bluesky, Facebook, Instagram and YouTube." },
+      { name: "Not yet", text: "There are no reach, audience or follower reports yet." },
+    ],
+  },
+  {
+    id: "build",
+    name: "Build on it",
+    summary: "Open source and self-hostable, with a REST API, an MCP server and signed webhooks for your own tools and AI agents.",
+    href: "/docs/self-hosted/ai",
+    items: [
+      { name: "Open source", text: "The code is open under the AGPL-3.0 license." },
+      { name: "Self-hostable", text: "Run it on your own server, free, with every feature." },
+      { name: "REST API", text: "Read and create posts from your own scripts and tools with an API token." },
+      { name: "MCP server", text: "Connect an AI assistant, which can then read your accounts and create and schedule posts." },
+      { name: "Signed webhooks", text: "Get a signed call at your own address when a post is published or fails." },
+      { name: "No built-in AI writer", text: "SocialReins does not write posts for you. Your own AI agents can post through the API or the MCP server." },
     ],
   },
 ];

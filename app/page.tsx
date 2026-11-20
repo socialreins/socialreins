@@ -6,51 +6,18 @@ import { PlatformIcon, platforms } from "@/components/platform-icons";
 import { Reins } from "@/components/reins";
 import { SiteHeader } from "@/components/site-header";
 import { WaitlistForm } from "@/components/waitlist-form";
+import { groups } from "@/lib/features";
 import { org } from "@/lib/github";
 
 const repo = "https://github.com/socialreins/socialreins";
 
 const headerLink = "whitespace-nowrap font-bold underline decoration-signal decoration-2 underline-offset-4 hover:text-signal-deep";
 
-// `href` links a card to its own page; `pill` replaces "Live now" where a feature is not live on every network.
-const features: { title: string; body: string; href?: string; pill?: string }[] = [
-  {
-    title: "Publish and schedule",
-    body: "Write once and send it to every account in a set, now or at a time you pick.",
-    href: "/socials",
-  },
-  {
-    title: "A caption for each platform",
-    body: "Give X a short line, LinkedIn a longer one and a PDF, and the rest your images, in one post.",
-  },
-  {
-    title: "Take posts down everywhere",
-    body: "Pull a published post back from every platform it went out on, in one step.",
-  },
-  {
-    title: "Sets and lists",
-    body: "Group accounts into sets, like one per language or brand, and posts into ordered lists.",
-  },
-  {
-    title: "Inboxes",
-    body: "Comments, mentions and DMs in one place, split into custom inboxes you define.",
-    href: "/features/inboxes",
-    pill: "Live on Bluesky",
-  },
-  {
-    title: "Automations",
-    body: "Comment to DM: someone comments your keyword, and they get your DM.",
-    href: "/features/automations",
-    pill: "Live on Bluesky",
-  },
-  {
-    title: "Teams",
-    body: "Invite people as admins or members. Sign in with Google, an email link or a passkey.",
-  },
-  {
-    title: "Built for AI agents",
-    body: "A REST API and an MCP server let your agents post for you, limited to the sets you choose.",
-  },
+// The seven feature groups of /features (lib/features.ts), one card each, then a card for the full list.
+// `pill` replaces "Live now" where a group is not live on every network.
+const features: { title: string; body: string; href: string; pill?: string }[] = [
+  ...groups.map((g) => ({ title: g.name, body: g.summary, href: g.href ?? `/features#${g.id}`, pill: g.pill })),
+  { title: "Every feature", body: "The full list, one line for each feature, with what is still in testing.", href: "/features", pill: "Full list" },
 ];
 
 const compose = `git clone --recurse-submodules https://github.com/socialreins/socialreins
@@ -88,7 +55,8 @@ export default function Home() {
             </h1>
             <p className="max-w-[34rem] text-lg text-ink-soft">
               SocialReins is an open-source social media manager. It publishes and schedules your posts to eight
-              platforms from one place, and pulls a post back from all of them when you need to. You can run it on your
+              platforms from one place, with a calendar, a queue and an approval step for your team, and pulls a post
+              back from all of them when you need to. You can run it on your
               own server today, free. SocialReins Cloud, where we run it for you, is not open yet: join the waitlist
               and we email you when it is.
             </p>
@@ -135,13 +103,11 @@ export default function Home() {
                   {f.title}
                 </dt>
                 <dd className="mt-2 text-ink-soft">{f.body}</dd>
-                {f.href && (
-                  <dd className="mt-3">
-                    <Link href={f.href} aria-label={`${f.title}: learn more`} className={headerLink}>
-                      Learn more
-                    </Link>
-                  </dd>
-                )}
+                <dd className="mt-3">
+                  <Link href={f.href} aria-label={`${f.title}: learn more`} className={headerLink}>
+                    Learn more
+                  </Link>
+                </dd>
               </div>
             ))}
           </dl>
@@ -202,6 +168,9 @@ export default function Home() {
           </Link>
           <Link href="/docs" className={headerLink}>
             Docs
+          </Link>
+          <Link href="/features" className={headerLink}>
+            Features
           </Link>
           <Link href="/pricing" className={headerLink}>
             Pricing

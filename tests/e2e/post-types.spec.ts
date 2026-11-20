@@ -21,3 +21,32 @@ test("on a phone the post types table says it scrolls sideways, and the page doe
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect(hint).toBeHidden();
 });
+
+test("each network page says what works there beyond posting", async ({ page }) => {
+  const cell = (row: string) => page.getByRole("row", { name: new RegExp(`^${row}`) }).getByRole("cell");
+  await page.goto("/tiktok");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
+  await expect(cell("Bulk upload from a CSV file")).toContainText("No.");
+  await expect(cell("Recurring posts")).toContainText("No.");
+  await expect(cell("Posts from an RSS or Atom feed")).toContainText("No.");
+  await expect(cell("Post analytics")).toHaveText("Not yet.");
+  await expect(cell("Inbox")).toHaveText("Not yet.");
+  await page.goto("/youtube");
+  await expect(cell("Posts from an RSS or Atom feed")).toContainText("No.");
+  await expect(cell("Post analytics")).toContainText("Yes");
+  await expect(cell("Recurring posts")).toContainText("Yes");
+  await page.goto("/instagram");
+  await expect(cell("Inbox")).toHaveText("In testing.");
+  await expect(cell("Automations")).toHaveText("In testing.");
+  await expect(cell("Post analytics")).toContainText("Yes");
+  await page.goto("/bluesky");
+  await expect(cell("Inbox")).toHaveText("Yes.");
+  await expect(cell("Automations")).toHaveText("Yes.");
+  for (const slug of ["x", "linkedin", "threads"]) {
+    await page.goto(`/${slug}`);
+    await expect(cell("Post analytics")).toHaveText("Not yet.");
+    await expect(cell("Bulk upload from a CSV file")).toHaveText("Yes.");
+  }
+  await page.goto("/post-types");
+  await expect(page.getByRole("main")).toContainText("Bulk upload from a CSV file and recurring posts work on every network except TikTok");
+});

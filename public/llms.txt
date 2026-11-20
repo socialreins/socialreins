@@ -9,8 +9,9 @@
 - [Data Deletion](https://socialreins.com/data-deletion)
 - [What you can post where](https://socialreins.com/post-types): post types each network supports
 - [Supported social media](https://socialreins.com/socials): every network, each linking to its own page
-- [Automations](https://socialreins.com/features/automations): comment to DM by keyword, and which networks support it
-- [Inboxes](https://socialreins.com/features/inboxes): comments, mentions and DMs in custom inboxes, and which networks support them
+- [Features](https://socialreins.com/features): everything it does today, in seven groups: publish, plan and schedule, engage, automate, team, measure, build on it
+- [Automations](https://socialreins.com/features/automations): keyword triggers and flows with waits and buttons, and which networks support them
+- [Inboxes](https://socialreins.com/features/inboxes): comments, mentions and DMs in one place, DMs as conversations, and which networks support them
 - [What you can post to Bluesky](https://socialreins.com/bluesky): post types and limits on Bluesky
 - [What you can post to Threads](https://socialreins.com/threads): post types and limits on Threads
 - [What you can post to LinkedIn](https://socialreins.com/linkedin): post types and limits on LinkedIn
@@ -22,10 +23,10 @@
 - [Pricing](https://socialreins.com/pricing): self-hosting is free; the cloud version is not open yet and has no price set
 - [Docs](https://socialreins.com/docs): guides for the self-hosted and cloud versions
 - [Install SocialReins on your own server](https://socialreins.com/docs/self-hosted): Docker Compose install, domains, platform apps, updates
-- [Connect accounts and publish, self-hosted](https://socialreins.com/docs/self-hosted/use)
+- [Connect accounts and publish, self-hosted](https://socialreins.com/docs/self-hosted/use): accounts, posts, the queue, CSV upload, recurring posts, feeds, approvals, the library, inbox, automations, broadcasts, newsletters, analytics
 - [Connect an AI assistant to your own SocialReins](https://socialreins.com/docs/self-hosted/ai): MCP server and API tokens
 - [Get started with SocialReins Cloud](https://socialreins.com/docs/cloud): not open yet, waitlist
-- [Connect accounts and publish on SocialReins Cloud](https://socialreins.com/docs/cloud/use)
+- [Connect accounts and publish on SocialReins Cloud](https://socialreins.com/docs/cloud/use): the same guide for the cloud version
 - [Connect an AI assistant to SocialReins Cloud](https://socialreins.com/docs/cloud/ai): MCP server and API tokens
 - [Compare SocialReins](https://socialreins.com/compare): SocialReins next to other tools
 - [SocialReins vs PostSyncer](https://socialreins.com/compare/postsyncer)

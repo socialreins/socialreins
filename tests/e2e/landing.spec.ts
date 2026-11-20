@@ -133,12 +133,44 @@ test("on a phone the header fits and the page never scrolls sideways", async ({ 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
-test("the home page lists Inboxes and Automations and links each to its page", async ({ page }) => {
+test("the home page lists the seven feature groups and links each to its page", async ({ page }) => {
   await page.goto("/");
   const section = page.getByRole("region", { name: "What it does" });
-  await expect(section.getByRole("link", { name: "Inboxes: learn more" })).toHaveAttribute("href", "/features/inboxes");
-  await expect(section.getByRole("link", { name: "Automations: learn more" })).toHaveAttribute("href", "/features/automations");
-  await expect(section.getByRole("link", { name: "Publish and schedule: learn more" })).toHaveAttribute("href", "/socials");
-  // Neither is live on every network, so neither card may say "Live now".
+  for (const name of ["Publish", "Plan and schedule", "Engage", "Automate", "Team", "Measure", "Build on it"]) {
+    await expect(section.getByRole("term").filter({ hasText: name })).toBeVisible();
+  }
+  await expect(section.getByRole("link", { name: "Engage: learn more" })).toHaveAttribute("href", "/features/inboxes");
+  await expect(section.getByRole("link", { name: "Automate: learn more" })).toHaveAttribute("href", "/features/automations");
+  await expect(section.getByRole("link", { name: "Publish: learn more" })).toHaveAttribute("href", "/socials");
+  await expect(section.getByRole("link", { name: "Plan and schedule: learn more" })).toHaveAttribute("href", "/features#plan");
+  await expect(section.getByRole("link", { name: "Every feature: learn more" })).toHaveAttribute("href", "/features");
+  // The inbox and automations are not live on every network, so neither card may say "Live now".
   await expect(section.getByText("Live on Bluesky")).toHaveCount(2);
+  // The old undersold claims are gone: approvals and analytics exist, and nothing is promised beyond them.
+  await expect(section).toContainText("approval step");
+  await expect(section).toContainText("Likes, comments, shares and views");
+  await expect(page.getByRole("main")).not.toContainText(/AI writer|WhatsApp|mobile app/i);
+});
+
+test("the features page groups every feature and marks what is in testing", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("contentinfo").getByRole("link", { name: "Features", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Features", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
+  for (const name of ["Publish", "Plan and schedule", "Engage", "Automate", "Team", "Measure", "Build on it"]) {
+    await expect(page.getByRole("region", { name, exact: true }).getByRole("term").first()).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Feature groups" }).getByRole("link", { name, exact: true })).toBeVisible();
+  }
+  for (const name of ["Engage", "Automate"]) {
+    await expect(page.getByRole("region", { name, exact: true })).toContainText("Facebook Pages and Instagram are in testing.");
+  }
+  const measure = page.getByRole("region", { name: "Measure", exact: true });
+  await expect(measure).toContainText("Bluesky, Facebook, Instagram and YouTube");
+  await expect(measure).toContainText("no reach, audience or follower reports yet");
+  await expect(page.getByRole("region", { name: "Plan and schedule" })).toContainText("Not for TikTok or YouTube");
+  await expect(page.getByRole("region", { name: "Build on it" })).toContainText("SocialReins does not write posts for you.");
+  // No price and no em dash anywhere on the page.
+  await expect(page.getByRole("main")).not.toContainText(/[$€£]\s?\d|\u2014/);
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
