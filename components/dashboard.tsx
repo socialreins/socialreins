@@ -116,7 +116,7 @@ export function Dashboard() {
   const slot = queue !== null && !isFailure(queue) && queue.slots?.length > 0 ? queue.next?.[0] : undefined;
   const hour = new Date(now).getHours();
   const firstName = user.name.trim().split(/\s+/)[0];
-  const calm = Array.isArray(posts) && accounts !== null && failures.length === 0 && waiting === 0 && reconnect.length === 0;
+  const calm = Array.isArray(posts) && Array.isArray(accounts) && failures.length === 0 && waiting === 0 && reconnect.length === 0;
 
   return (
     <div className="grid gap-6">
