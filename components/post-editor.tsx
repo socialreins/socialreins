@@ -1018,6 +1018,20 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     save(mode || "draft");
   }
 
+  // Ctrl or Cmd + S saves the draft (never the browser's Save dialog); Ctrl or Cmd + Enter in a text box schedules
+  // when a time is set and otherwise moves to the Publish at field. A held key and a save on its way do nothing more.
+  function onKeys(e: KeyboardEvent<HTMLFormElement>) {
+    if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
+    const key = e.key.toLowerCase();
+    if (key !== "s" && !(key === "enter" && e.target instanceof HTMLTextAreaElement)) return;
+    e.preventDefault();
+    if (e.repeat || busy !== null) return;
+    if (key === "s") return void save("draft");
+    if (at) return void save("schedule");
+    flushSync(() => setScheduleOpen(true));
+    document.getElementById("post-at")?.focus();
+  }
+
   function addPart() {
     flushSync(() => setThread((list) => [...list, { body: "", media: [] }]));
     partRefs.current[thread.length]?.focus();
@@ -1120,9 +1134,12 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
           value={body}
           onChange={(e) => setBody(e.target.value)}
           aria-invalid={mainPlatforms.some((p) => overLimit(p, body, xLong)) || undefined}
-          aria-describedby="post-count"
+          aria-describedby="post-count post-keys"
         />
         <Counts id="post-count" text={body} platforms={mainPlatforms} xLong={xLong} alerts />
+        <p id="post-keys" className="hint text-xs max-sm:hidden">
+          <kbd className="font-sans font-bold">Ctrl</kbd> or <kbd className="font-sans font-bold">Cmd</kbd> + <kbd className="font-sans font-bold">Enter</kbd> schedules, + <kbd className="font-sans font-bold">S</kbd> saves the draft.
+        </p>
         {!tabbed && selected[0] === "youtube" && <YouTubeNote />}
         {customized.length > 0 && (
           <ul className="flex flex-wrap gap-1.5">
@@ -1137,7 +1154,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
           </ul>
         )}
       </div>
-      <ImageLinks media={media} max={cap(mediaMain)} platforms={mediaMain} rule={tabbed ? undefined : selected[0]} onChange={setMedia} />
+      <ImageLinks media={media} max={cap(mediaMain)} platforms={mediaMain} onChange={setMedia} />
       {issueList(issues.filter((i) => i.inline && i.tab === "all"))}
       {coverShown && (
         <fieldset className="grid gap-2">
@@ -1402,7 +1419,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
           <ChangesDialog posts={[post, ...group.filter((g) => g.id !== post.id)]} onClose={() => setRejecting(false)} onSend={(_, note) => decide("reject", note)} />
         )}
         {/* Save draft is the first submit button, so Enter in a field saves rather than publishes. */}
-        <form onSubmit={onSubmit} className="grid grid-cols-[minmax(0,1fr)] gap-4">
+        <form onSubmit={onSubmit} onKeyDown={onKeys} className="grid grid-cols-[minmax(0,1fr)] gap-4">
           <div className="card grid gap-4 p-4 sm:p-5">
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="grid content-start gap-1.5">
@@ -1502,7 +1519,9 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
           </div>
           <div className="card">
             {tabbed && (
-              <div role="tablist" aria-label="Post versions" onKeyDown={onTabKey} className="sticky top-[3.0625rem] z-[4] flex gap-1 overflow-x-auto rounded-t-lg border-b border-[var(--line)] bg-paper p-2 md:top-12">
+              // The strip keeps its paper while the list inside fades at the edge it scrolls past.
+              <div className="sticky top-[3.0625rem] z-[4] rounded-t-lg border-b border-[var(--line)] bg-paper p-2 md:top-12">
+              <div role="tablist" aria-label="Post versions" onKeyDown={onTabKey} className="scroll-fade flex gap-1 overflow-x-auto">
                 {(["all", ...selected] as Tab[]).map((k) => {
                   const bad = k === "all" ? 0 : issues.filter((i) => i.platform === k).length;
                   return (
@@ -1527,6 +1546,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
                     </button>
                   );
                 })}
+              </div>
               </div>
             )}
             <div id="post-panel" role={tabbed ? "tabpanel" : undefined} aria-labelledby={tabbed ? `tab-${active}` : undefined} className="grid grid-cols-[minmax(0,1fr)] gap-5 p-4 sm:p-5">
@@ -1687,7 +1707,7 @@ function Counts({ id, text, platforms, xLong = false, alerts }: { id: string; te
 // One scrolling line of small count chips, e.g. "Bluesky 9/300", those near or over a limit first so they always show.
 function CountChips({ id, counts }: { id: string; counts: { key: string; name: string; n: number; max: number; unit: string }[] }) {
   return (
-    <ul id={id} className="flex gap-1 overflow-x-auto text-xs whitespace-nowrap tabular-nums">
+    <ul id={id} className="scroll-fade flex gap-1 overflow-x-auto text-xs whitespace-nowrap tabular-nums">
       {[...counts].sort((a, b) => Number(b.n > b.max - 20) - Number(a.n > a.max - 20) || Number(b.n > b.max) - Number(a.n > a.max)).map(({ key, name, n, max, unit }) => (
         <li
           key={key}
@@ -1740,7 +1760,7 @@ const mediaRule = (p: Platform) => `${mediaRules[p] ?? `${platformName(p)} takes
 // The image links of one post. `post` is its number in a thread; the first post leaves it out.
 // `post` is a thread part's number; `own` is the one platform these files go to in place of the shared ones.
 // `rule` is the one platform of a post for one platform, whose media rule the shared hint then says.
-function ImageLinks({ media, max, post, own, platforms, rule, onChange, onClose }: { media: string[]; max: number; post?: number; own?: Platform; platforms?: Platform[]; rule?: Platform; onChange: (media: string[]) => void; onClose?: () => void }) {
+function ImageLinks({ media, max, post, own, platforms, onChange, onClose }: { media: string[]; max: number; post?: number; own?: Platform; platforms?: Platform[]; onChange: (media: string[]) => void; onClose?: () => void }) {
   const addRef = useRef<HTMLButtonElement>(null);
   const imageRefs = useRef<(HTMLInputElement | null)[]>([]);
   const [saved, setSaved] = useState<{ text: string; ok: boolean } | null>(null);
@@ -1777,9 +1797,9 @@ function ImageLinks({ media, max, post, own, platforms, rule, onChange, onClose 
       {!post && !own && (
         <div className="grid gap-1">
           <p className="hint">
-            Up to {max}. Public https links, or Google Drive or Dropbox share links; nothing is uploaded to SocialReins.{rule ? ` ${mediaRule(rule)}` : ""}
+            Up to {max}. Public https links, or Google Drive or Dropbox share links; nothing is uploaded to SocialReins.
           </p>
-          {!rule && platforms && platforms.length > 0 && (
+          {platforms && platforms.length > 0 && (
             <details className="hint">
               <summary className="cursor-pointer select-none font-bold">What each network takes</summary>
               <ul className="mt-1 grid list-disc gap-0.5 pl-5">
