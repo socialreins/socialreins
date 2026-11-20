@@ -180,7 +180,8 @@ export const draftProblem = (subject: string, body: string): "subject" | "body" 
   length(subject) < 1 || length(subject) > MAX_SUBJECT || /[\r\n]/.test(subject.trim()) ? "subject" : length(body) < 1 || length(body) > MAX_BODY ? "body" : linkCount(body) > MAX_LINKS ? "links" : null;
 
 // The foot of every newsletter email: who sent it, their postal address, why the reader gets it, and Unsubscribe.
-export const footerWhy = (team: string) => `You get this email because you signed up for the newsletter of ${team}.`;
+// brain's footer line, word for word: the team name keeps only letters, digits, spaces, _ ' and -.
+export const footerWhy = (team: string) => `You get this because you signed up on a ${team.replace(/[^\p{L}\p{N} _'-]/gu, " ").trim()} page.`;
 
 export const subscribers = (n: number) => `${n} confirmed ${n === 1 ? "subscriber" : "subscribers"}`;
 

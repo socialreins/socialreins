@@ -832,7 +832,7 @@ function Recipients({ b }: { b: Broadcast }) {
     setMore(null);
     setLoaded((l) => (l && "items" in l && l.filter === filter ? { filter, items: [...l.items, ...r.items], next: r.next_cursor, more: true } : l));
   }
-  const count = (f: RecipientStatus | null) => (f === null ? b.counts.total : f === "sending" ? 0 : b.counts[f]);
+  const count = (f: RecipientStatus | null) => (f === null ? b.counts.total : f === "sending" || f === "delivering" ? 0 : b.counts[f]);
 
   return (
     <section aria-label="Recipients" className="grid gap-3">
@@ -897,7 +897,7 @@ function Recipients({ b }: { b: Broadcast }) {
                       )}
                     </td>
                     <td className="px-4 py-2">
-                      <span className="badge tone" data-status={{ sent: "sent", failed: "failed", sending: "running", pending: undefined, skipped: undefined }[r.status]}>
+                      <span className="badge tone" data-status={{ sent: "sent", failed: "failed", sending: "running", delivering: "running", pending: undefined, skipped: undefined }[r.status]}>
                         {recipientStatusName[r.status]}
                       </span>
                     </td>

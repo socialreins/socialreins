@@ -221,7 +221,7 @@ test("compose shows the email as it will read, counts as you type, and saves a d
 
   // The foot, as it will read.
   const foot = preview(page).getByTestId("preview-footer");
-  await expect(foot.locator("span")).toHaveText(["Acme Bakery", "12 Mill Lane\n10115 Berlin\nGermany", "You get this email because you signed up for the newsletter of Acme.", "Unsubscribe"], { useInnerText: true });
+  await expect(foot.locator("span")).toHaveText(["Acme Bakery", "12 Mill Lane\n10115 Berlin\nGermany", "You get this because you signed up on a Acme page.", "Unsubscribe"], { useInnerText: true });
 
   await expect(page.getByLabel("Subject characters")).toHaveText("11 / 150");
   await expect(page.getByLabel("Links", { exact: true })).toHaveText("1 / 20");
