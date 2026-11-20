@@ -23,7 +23,7 @@ import {
   type Slot,
 } from "@/lib/queue";
 import { isFailure, problemText, Status, useAction } from "@/components/team-ui";
-import { Icon } from "@/components/ui";
+import { EmptyState, Icon, LoadFailed, Skeleton } from "@/components/ui";
 
 export const queueMessages: Partial<Record<Failure, ReactNode>> = {
   invalid_time_zone: "That time zone isn't one brain knows. Pick another from the list.",
@@ -46,10 +46,30 @@ export function QueuePage() {
         Add to queue in the composer schedules a post at the next free time below{name ? `, for ${name}` : ""}.
       </p>
       {/* "" until the top bar picks the Default set; keyed so a set switch starts from that set's saved queue. */}
-      {setId ? <QueueEditor key={setId} setId={setId} /> : <p className="text-ink-soft">Loading the queue...</p>}
+      {setId ? <QueueEditor key={setId} setId={setId} /> : <QueueSkeleton />}
     </div>
   );
 }
+
+// The editor's two cards while the queue loads.
+const QueueSkeleton = () => (
+  <div role="status" className="grid gap-6">
+    <span className="sr-only">Loading the queue...</span>
+    <div className="card grid gap-5 p-5">
+      <span className="grid gap-2">
+        <Skeleton className="h-4 w-32" />
+        <Skeleton className="h-3.5 w-72 max-w-full" />
+      </span>
+      <Skeleton className="h-9 w-full sm:max-w-sm" />
+      <Skeleton className="h-40 w-full" />
+    </div>
+    <div className="card grid gap-3 p-5">
+      <Skeleton className="h-4 w-32" />
+      <Skeleton className="h-3.5 w-2/3" />
+      <Skeleton className="h-3.5 w-1/2" />
+    </div>
+  </div>
+);
 
 function QueueEditor({ setId }: { setId: string }) {
   const [saved, setSaved] = useState<Queue | Failure | null>(null);
@@ -70,12 +90,18 @@ function QueueEditor({ setId }: { setId: string }) {
     getQueue(setId).then(load);
   }, [setId]);
 
-  if (saved === null) return <p className="text-ink-soft">Loading the queue...</p>;
+  if (saved === null) return <QueueSkeleton />;
   if (isFailure(saved))
     return (
-      <p role="alert" className="waitlist-error">
+      <LoadFailed
+        what="the queue"
+        retry={() => {
+          setSaved(null);
+          getQueue(setId).then(load);
+        }}
+      >
         The queue couldn&apos;t be loaded. {problemText(saved, queueMessages)}
-      </p>
+      </LoadFailed>
     );
 
   const dirty = zone !== saved.time_zone || !sameSlots(slots, saved.slots);
@@ -112,7 +138,7 @@ function QueueEditor({ setId }: { setId: string }) {
 
   return (
     <>
-      <section aria-labelledby="queue-times" className="card grid min-w-0 gap-5 p-5">
+      <section aria-labelledby="queue-times" className="enter card grid min-w-0 gap-5 p-5">
         <div className="grid gap-0.5">
           <h2 id="queue-times" className="text-base font-semibold">
             Weekly times
@@ -132,7 +158,17 @@ function QueueEditor({ setId }: { setId: string }) {
           </select>
         </div>
         {times.length === 0 ? (
-          <p className="rounded-md bg-ink/[0.03] p-4 text-sm text-ink-soft">No times yet. Add one below, then save.</p>
+          <EmptyState
+            className="rounded-md bg-ink/[0.03] p-4"
+            title="No times yet."
+            action={
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => document.getElementById("queue-time")?.focus()}>
+                Pick a time
+              </button>
+            }
+          >
+            Add one below, then save.
+          </EmptyState>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full table-fixed border-collapse text-sm">
@@ -225,7 +261,7 @@ function QueueEditor({ setId }: { setId: string }) {
           {dirty && <p className="hint">Unsaved changes.</p>}
         </div>
       </section>
-      <section aria-labelledby="queue-next" className="card grid min-w-0 gap-3 p-5">
+      <section aria-labelledby="queue-next" className="enter card grid min-w-0 gap-3 p-5">
         <div className="grid gap-0.5">
           <h2 id="queue-next" className="text-base font-semibold">
             Next free slots
