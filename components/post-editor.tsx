@@ -1139,7 +1139,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
         />
         <Counts id="post-count" text={body} platforms={mainPlatforms} xLong={xLong} alerts />
         <p id="post-keys" className="hint text-xs max-sm:hidden">
-          <kbd className="font-sans font-bold">Ctrl</kbd> or <kbd className="font-sans font-bold">Cmd</kbd> + <kbd className="font-sans font-bold">Enter</kbd> schedules, + <kbd className="font-sans font-bold">S</kbd> saves.
+          <kbd className="font-sans font-bold">Ctrl</kbd> or <kbd className="font-sans font-bold">Cmd</kbd> + <kbd className="font-sans font-bold">Enter</kbd> schedules, + <kbd className="font-sans font-bold">S</kbd> saves the draft.
         </p>
         {!tabbed && selected[0] === "youtube" && <YouTubeNote />}
         {customized.length > 0 && (
