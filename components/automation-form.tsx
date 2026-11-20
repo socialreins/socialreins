@@ -137,10 +137,27 @@ export function AutomationForm({
         ]),
   ];
 
-  // shortcut: guards a reload, a closed tab and a click on any link of the app; the browser's Back button inside the app is not caught. Upgrade if Next gets a navigation guard.
+  // Guards a reload, a closed tab, a click on any link of the app and the browser's Back button. Back can't be
+  // refused, so a second history entry of this same page takes it: Back lands on the first one, the form stays, and a
+  // no puts the second entry back while a yes goes back once more.
+  // shortcut: that entry stays after a save or Cancel, so one Back press there does nothing. Upgrade if Next gets a navigation guard.
   useEffect(() => {
     if (!dirty) return;
-    const unload = (e: BeforeUnloadEvent) => e.preventDefault();
+    let leaving = false;
+    const unload = (e: BeforeUnloadEvent) => {
+      if (!leaving) e.preventDefault();
+    };
+    // Next's own history state passes through its pushState untouched, so the router sees the same page.
+    const hold = () => window.history.state?.unsaved || window.history.pushState({ ...window.history.state, unsaved: true }, "", window.location.href);
+    const back = () => {
+      if (window.history.state?.unsaved) return;
+      if (!window.confirm(leaveQuestion)) return hold();
+      // The yes is given: neither this listener nor `unload` asks a second time.
+      leaving = true;
+      window.removeEventListener("popstate", back);
+      window.history.back();
+    };
+    hold();
     const click = (e: MouseEvent) => {
       const link = e.target instanceof Element ? e.target.closest("a[href]") : null;
       if (!link || link.getAttribute("target") === "_blank" || link.getAttribute("href")!.startsWith("#") || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
@@ -149,9 +166,11 @@ export function AutomationForm({
       e.stopPropagation();
     };
     window.addEventListener("beforeunload", unload);
+    window.addEventListener("popstate", back);
     document.addEventListener("click", click, true);
     return () => {
       window.removeEventListener("beforeunload", unload);
+      window.removeEventListener("popstate", back);
       document.removeEventListener("click", click, true);
     };
   }, [dirty]);
