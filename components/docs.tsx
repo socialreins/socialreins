@@ -363,7 +363,7 @@ function Use({ mode }: { mode: Mode }) {
       <p>A newsletter is one email to the people who signed up on your public post pages. Owners and admins write and send it.</p>
       <ol>
         <li>Open Team and, under Sharing, switch on Public pages and tick &quot;Public pages offer a newsletter sign-up&quot;. People who sign up confirm their email through a link.</li>
-        <li>Open Newsletters and fill in Sender details: the sender&apos;s name and postal address, which end every email.</li>
+        <li>Open Newsletters and fill in Sender details: the sender&apos;s name and postal address, which end every email, and if you like a link to your logo, shown at the top instead of the name.</li>
         <li>Choose New newsletter, write the subject and the body, and choose Save draft. The preview shows the email as it will arrive.</li>
         <li>Send a test to your own email. A newsletter cannot be sent before a test of the saved text.</li>
         <li>Review who it goes to, choose Send, then confirm the number once more.</li>

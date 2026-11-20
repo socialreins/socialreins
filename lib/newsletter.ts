@@ -81,7 +81,8 @@ export async function unsubscribe(token: string): Promise<"ok" | "rate_limited" 
 }
 
 // Sending: one email to every confirmed subscriber. Owners and admins only, session only.
-export type Sender = { name: string; address: string };
+// `logo`: a public https image link, or null for none. brain replaces the sender whole, so every save sends it.
+export type Sender = { name: string; address: string; logo: string | null };
 export type NewsletterStatus = "draft" | "sending" | "paused" | "sent" | "cancelled";
 export type NewsletterCounts = { total: number; sent: number; failed: number; pending: number };
 export type Newsletter = {
@@ -133,6 +134,7 @@ export const resumeNewsletter = (id: string) => api<Newsletter>(`${one(id)}/resu
 export const MAX_SENDER_NAME = 80;
 export const MIN_ADDRESS = 10;
 export const MAX_ADDRESS = 300;
+export const MAX_LOGO = 2000;
 export const MAX_SUBJECT = 150;
 export const MAX_BODY = 20_000;
 export const MAX_LINKS = 20;
@@ -192,6 +194,7 @@ const invalid: Record<string, string> = {
   links: `A newsletter can hold at most ${MAX_LINKS} links. Take some out.`,
   name: `Give the sender a name of 1 to ${MAX_SENDER_NAME} characters.`,
   address: `Write a postal address of ${MIN_ADDRESS} to ${MAX_ADDRESS} characters.`,
+  logo: "The logo must be a public https link to an image.",
 };
 
 // What a newsletter's own refusals mean; null for the rest, which the shared messages in team-ui cover.

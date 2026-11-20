@@ -139,6 +139,7 @@ describe("newsletter counters", () => {
     for (const code of ["invalid_newsletter", "invalid_sender", "sender_required", "test_required", "no_recipients", "audience_changed", "too_many_newsletters", "too_many_recipients", "already_started"] as const)
       expect(newsletterText(code), code).toBeTruthy();
     expect(newsletterText("invalid_sender", "address")).toMatch(/10 to 300/);
+    expect(newsletterText("invalid_sender", "logo")).toBe("The logo must be a public https link to an image.");
     expect(newsletterText("invalid_newsletter", "subject")).toMatch(/1 to 150/);
     expect(newsletterText("error")).toBeNull();
   });

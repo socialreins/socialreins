@@ -18,6 +18,7 @@ import {
   MAX_ADDRESS,
   MAX_BODY,
   MAX_LINKS,
+  MAX_LOGO,
   MAX_RECIPIENTS,
   MAX_SENDER_NAME,
   MAX_SUBJECT,
@@ -81,44 +82,52 @@ function useAudience() {
   };
 }
 
-// The email as its reader sees it: the body by brain's rules and the foot of every newsletter.
+// The sender's logo. A link that is not https or does not load shows `children` instead.
+function SenderLogo({ src, alt, className, children = null }: { src?: string | null; alt: string; className: string; children?: ReactNode }) {
+  const [broken, setBroken] = useState<string | null>(null);
+  if (!src?.startsWith("https://") || broken === src) return children;
+  // eslint-disable-next-line @next/next/no-img-element -- any https host, which next/image would need listed
+  return <img src={src} alt={alt} referrerPolicy="no-referrer" onError={() => setBroken(src)} className={className} />;
+}
+
+// The email as its reader sees it, laid out as brain's `compose` does: the logo (else the sender's name), a card
+// with the subject and the body by brain's rules, and the foot of every newsletter.
 export function EmailPreview({ subject, body, label = "Email preview" }: { subject: string; body: string; label?: string }) {
   const team = useTeam();
   const sender = team.newsletter_sender;
+  const name = sender?.name ?? "Your sender name";
   const paragraphs = renderBody(body);
   return (
-    <section aria-label={label} className="grid content-start gap-3 rounded-lg border border-ink/15 bg-paper p-4 text-sm">
-      <dl className="grid gap-0.5 border-b border-ink/10 pb-3">
-        <div className="flex gap-2">
-          <dt className="text-ink-soft">From</dt>
-          <dd className="min-w-0 font-bold break-words">{sender?.name ?? "Your sender name"}</dd>
-        </div>
-        <div className="flex gap-2">
-          <dt className="text-ink-soft">Subject</dt>
-          <dd data-testid="preview-subject" className="min-w-0 font-bold break-words">
-            {subject.trim() || "Your subject"}
-          </dd>
-        </div>
-      </dl>
-      <div data-testid="preview-body" className="grid gap-3 break-words">
-        {paragraphs.length === 0 && <p className="text-ink-soft">Your newsletter shows here as you type.</p>}
-        {paragraphs.map((pieces, i) => (
-          <p key={i} className="whitespace-pre-line">
-            {pieces.map((p, j) => {
-              const text = p.href ? (
-                <a href={p.href} target="_blank" rel="noopener noreferrer nofollow" className="underline">
-                  {p.text}
-                </a>
-              ) : (
-                p.text
-              );
-              return p.bold ? <strong key={j}>{text}</strong> : <span key={j}>{text}</span>;
-            })}
-          </p>
-        ))}
+    <section aria-label={label} className="grid content-start gap-3 rounded-lg border border-ink/15 bg-canvas p-4 text-sm">
+      <div data-testid="preview-header" className="px-1 font-display text-lg font-extrabold tracking-tight break-words">
+        <SenderLogo src={sender?.logo} alt={name} className="h-10 w-auto max-w-60">
+          {name}
+        </SenderLogo>
       </div>
-      <footer data-testid="preview-footer" className="grid gap-0.5 border-t border-ink/10 pt-3 text-xs text-ink-soft">
-        <span className="font-bold">{sender?.name ?? "Your sender name"}</span>
+      <div className="grid gap-3 rounded-2xl border border-ink/10 bg-paper p-5">
+        <h3 data-testid="preview-subject" className="font-display text-xl font-extrabold tracking-tight break-words">
+          {subject.trim() || "Your subject"}
+        </h3>
+        <div data-testid="preview-body" className="grid gap-3 break-words">
+          {paragraphs.length === 0 && <p className="text-ink-soft">Your newsletter shows here as you type.</p>}
+          {paragraphs.map((pieces, i) => (
+            <p key={i} className="whitespace-pre-line">
+              {pieces.map((p, j) => {
+                const text = p.href ? (
+                  <a href={p.href} target="_blank" rel="noopener noreferrer nofollow" className="underline">
+                    {p.text}
+                  </a>
+                ) : (
+                  p.text
+                );
+                return p.bold ? <strong key={j}>{text}</strong> : <span key={j}>{text}</span>;
+              })}
+            </p>
+          ))}
+        </div>
+      </div>
+      <footer data-testid="preview-footer" className="grid gap-0.5 px-1 text-xs text-ink-soft">
+        <span>{name}</span>
         <span className="whitespace-pre-line">{sender?.address ?? "Your postal address"}</span>
         <span>{footerWhy(team.name)}</span>
         {/* Not a link here: the real one carries each reader's own token. */}
@@ -134,6 +143,7 @@ function SenderForm({ onDone }: { onDone?: () => void }) {
   const saved = useTeam().newsletter_sender;
   const [name, setName] = useState(saved?.name ?? "");
   const [address, setAddress] = useState(saved?.address ?? "");
+  const [logo, setLogo] = useState(saved?.logo ?? "");
   const [problem, setProblem] = useState<Problem | null>(null);
   const [busy, setBusy] = useState(false);
   async function onSave(e: FormEvent<HTMLFormElement>) {
@@ -142,7 +152,7 @@ function SenderForm({ onDone }: { onDone?: () => void }) {
       setProblem(null);
       setBusy(true);
     });
-    const r = await setSender({ name: name.trim(), address: address.trim() });
+    const r = await setSender({ name: name.trim(), address: address.trim(), logo: logo.trim() || null });
     setBusy(false);
     // A team has a `code` of its own, so tell the two apart by the id.
     if (!("id" in r)) return setProblem(r);
@@ -173,6 +183,13 @@ function SenderForm({ onDone }: { onDone?: () => void }) {
         </label>
         <textarea id="sender-address" required rows={3} minLength={MIN_ADDRESS} maxLength={MAX_ADDRESS} className="field resize-y" placeholder={"12 Mill Lane\n10115 Berlin\nGermany"} value={address} onChange={(e) => setAddress(e.target.value)} {...bad("address")} />
         {err("address") ?? <p className="hint">A real address where mail reaches you or your business. Readers see it at the foot of every email.</p>}
+      </div>
+      <div className="grid gap-1.5">
+        <label htmlFor="sender-logo" className="label">
+          Logo <span className="font-normal text-ink-soft">(optional)</span>
+        </label>
+        <input id="sender-logo" type="url" pattern="\s*https://.+" title="A link that starts with https://" maxLength={MAX_LOGO} className="field" placeholder="https://example.com/logo.png" value={logo} onChange={(e) => setLogo(e.target.value)} {...bad("logo")} />
+        {err("logo") ?? <p className="hint">A link to your logo image (PNG or JPEG, https). Shown at the top of every newsletter. Leave empty to show the sender name instead.</p>}
       </div>
       {problem && !field && (
         <p role="alert" className="waitlist-error">
@@ -205,10 +222,13 @@ function SenderCard() {
         <SenderForm onDone={() => setEditing(false)} />
       ) : (
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <p className="min-w-0 text-sm break-words">
-            <strong className="block">{sender.name}</strong>
-            <span className="whitespace-pre-line text-ink-soft">{sender.address}</span>
-          </p>
+          <div className="grid min-w-0 gap-2">
+            <SenderLogo src={sender.logo} alt={`${sender.name} logo`} className="h-8 w-auto max-w-48 justify-self-start" />
+            <p className="text-sm break-words">
+              <strong className="block">{sender.name}</strong>
+              <span className="whitespace-pre-line text-ink-soft">{sender.address}</span>
+            </p>
+          </div>
           <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditing(true)}>
             Edit sender details
           </button>
