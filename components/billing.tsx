@@ -75,6 +75,10 @@ function PlanSection({ polling }: { polling: boolean }) {
   const { user } = useSession();
   const owner = user.current_team.role === "owner";
   const action = useAction();
+  // The key of the button that sent the browser to Stripe: its buttons stay off until the page is shown again from history.
+  const [leaving, setLeaving] = useState<string | null>(null);
+  // Back from checkout and polling ended without a live plan.
+  const [gaveUp, setGaveUp] = useState(false);
   const [data, setData] = useState<{ billing: Billing; credits: Credits | Failure } | Failure | null>(null);
   const load = useCallback(async () => {
     setData(null);
@@ -94,14 +98,24 @@ function PlanSection({ polling }: { polling: boolean }) {
         b = next;
         setData((d) => (d && !isFailure(d) ? { ...d, billing: next } : d));
       }
+      if (polling && !stop && !isFailure(b) && !isLive(b.plan)) setGaveUp(true);
     })();
     return () => {
       stop = true;
     };
   }, [load, polling]);
-  // Both buttons end on a Stripe page: send the browser there.
+  // Back or forward from Stripe can restore this page from the browser's cache with the buttons still off.
+  useEffect(() => {
+    const show = (e: PageTransitionEvent) => e.persisted && setLeaving(null);
+    window.addEventListener("pageshow", show);
+    return () => window.removeEventListener("pageshow", show);
+  }, []);
+  const off = action.busy !== null || leaving !== null;
+  const label = (key: string, text: string) => (action.busy === key || leaving === key ? "Opening..." : text);
+  // Both buttons end on a Stripe page: send the browser there, and keep the buttons off meanwhile so a second click can't start a second session.
   const go = (key: string, call: () => Promise<{ url: string } | Failure>) =>
     action.run(key, call, ({ url }) => {
+      setLeaving(key);
       window.location.assign(url);
     });
 
@@ -140,14 +154,16 @@ function PlanSection({ polling }: { polling: boolean }) {
           <p>No plan</p>
         )}
         {isLive(plan) && owner && (
-          <button type="button" className="btn btn-primary justify-self-start" disabled={action.busy !== null} onClick={() => go("portal", openPortal)}>
-            {action.busy === "portal" ? "Opening..." : "Manage billing"}
+          <button type="button" className="btn btn-primary justify-self-start" disabled={off} onClick={() => go("portal", openPortal)}>
+            {label("portal", "Manage billing")}
           </button>
         )}
         {!owner && <p className="text-ink-soft">Only the team owner can change the plan.</p>}
         <Status problem={action.problem} done={action.done} overrides={planOverrides} />
       </section>
-      {owner && !isLive(plan) && (
+      {owner && polling && !isLive(plan) && <p role="status">{gaveUp ? "Still confirming. Refresh in a minute." : "Confirming your payment..."}</p>}
+      {/* While the payment is being confirmed the plan may already be paid: no cards, or a second subscription could be started. */}
+      {owner && !polling && !isLive(plan) && (
         <section aria-labelledby="choose-heading" className="grid gap-3">
           <h2 id="choose-heading" className={heading}>
             Choose a plan
@@ -163,8 +179,8 @@ function PlanSection({ polling }: { polling: boolean }) {
                     ))}
                   </ul>
                 </div>
-                <button type="button" className="btn btn-primary justify-self-start" disabled={action.busy !== null} onClick={() => go(c.plan, () => startCheckout(c.plan))} aria-label={`Choose ${c.name}`}>
-                  {action.busy === c.plan ? "Opening..." : "Choose"}
+                <button type="button" className="btn btn-primary justify-self-start" disabled={off} onClick={() => go(c.plan, () => startCheckout(c.plan))} aria-label={`Choose ${c.name}`}>
+                  {label(c.plan, "Choose")}
                 </button>
               </div>
             ))}

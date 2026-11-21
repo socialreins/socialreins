@@ -52,7 +52,8 @@ test("a self-hosted install says nothing is capped and offers no plan or upgrade
 });
 
 const noPlan = { enabled: true, plan: null, limits: { accounts: 0, members: 0, automation: false, contacts: 0 }, usage: { accounts: 0, members: 1 } };
-const stripe = "https://checkout.stripe.test/c/pay_123";
+const stripe = "https://checkout.stripe.com/c/pay_123";
+const portal = "https://billing.stripe.com/p/session/abc";
 
 // Brain's checkout and portal answers: `status` and `json` for the next call, every body kept.
 async function stripeRoutes(page: Page, answer: { status: number; json: object } = { status: 200, json: { url: stripe } }) {
@@ -65,7 +66,7 @@ async function stripeRoutes(page: Page, answer: { status: number; json: object }
     state.portal++;
     return route.fulfill(state.answer);
   });
-  await page.route(stripe, (route) => route.fulfill({ contentType: "text/html", body: "<title>Stripe</title>" }));
+  for (const url of [stripe, portal]) await page.route(url, (route) => route.fulfill({ contentType: "text/html", body: "<title>Stripe</title>" }));
   return state;
 }
 
@@ -121,9 +122,9 @@ test("Manage billing opens the portal for an owner with a live plan, and a failu
   await expect(page.getByRole("button", { name: /Choose/ })).toHaveCount(0);
   await page.getByRole("button", { name: "Manage billing" }).click();
   await expect(page.locator("p.waitlist-error")).toContainText("no billing account yet");
-  state.answer = { status: 200, json: { url: stripe } };
+  state.answer = { status: 200, json: { url: portal } };
   await page.getByRole("button", { name: "Manage billing" }).click();
-  await expect(page).toHaveURL(stripe);
+  await expect(page).toHaveURL(portal);
   expect(state.portal).toBe(2);
 });
 
@@ -135,11 +136,51 @@ test("coming back from checkout shows a banner and looks again until the plan ap
     return route.fulfill({ json: calls < 3 ? noPlan : { enabled: true, plan: trial, limits, usage: { accounts: 0, members: 1 } } });
   });
   await page.goto("/billing?checkout=success");
-  await expect(page.getByRole("status")).toHaveText("Thanks. Your plan will show here in a moment.");
+  await expect(page.getByText("Thanks. Your plan will show here in a moment.")).toBeVisible();
   await expect(page.getByText("Growth", { exact: true })).toBeVisible({ timeout: 10_000 });
   expect(calls).toBe(3);
   await expect(page.getByRole("button", { name: "Manage billing" })).toBeVisible();
   await expect(page).not.toHaveURL(/checkout=/);
+});
+
+test("while a payment is being confirmed there are no plan cards, and giving up says so", async ({ page }) => {
+  test.setTimeout(30_000);
+  await brain(page, "owner", noPlan);
+  await page.goto("/billing?checkout=success");
+  await expect(page.getByText("Confirming your payment...")).toBeVisible();
+  await expect(page.getByRole("button", { name: /Choose/ })).toHaveCount(0);
+  await expect(page.getByText("Still confirming. Refresh in a minute.")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("button", { name: /Choose/ })).toHaveCount(0);
+});
+
+test("a url that is not a Stripe page is not followed", async ({ page }) => {
+  await brain(page, "owner", noPlan);
+  const bad = ["https://evil.example/pay", "http://checkout.stripe.com/c/1", "https://checkout.stripe.com.evil.example/c/1", "javascript:alert(1)"];
+  const state = await stripeRoutes(page);
+  for (const url of [...bad, undefined]) {
+    state.answer = { status: 200, json: url ? { url } : {} };
+    await page.goto("/billing");
+    await page.getByRole("button", { name: "Choose Scheduler", exact: true }).click();
+    await expect(page.locator("p.waitlist-error")).toHaveText("Payment page could not be opened. Try again.");
+    await expect(page).toHaveURL(/\/billing$/);
+  }
+});
+
+test("a double click on Choose starts one checkout, and the buttons stay off while Stripe loads", async ({ page }) => {
+  await brain(page, "owner", noPlan);
+  const state = await stripeRoutes(page);
+  await page.unroute(stripe);
+  await page.route(stripe, async (route) => {
+    await new Promise((r) => setTimeout(r, 500));
+    await route.fulfill({ contentType: "text/html", body: "<title>Stripe</title>" });
+  });
+  await page.goto("/billing");
+  const choose = page.getByRole("button", { name: "Choose Scheduler", exact: true });
+  await choose.dblclick();
+  await expect(choose).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Choose Scheduler and Automation" })).toBeDisabled();
+  await expect(page).toHaveURL(stripe);
+  expect(state.checkout).toEqual([{ plan: "scheduler" }]);
 });
 
 test("coming back from a canceled checkout says so and offers the plans again", async ({ page }) => {
