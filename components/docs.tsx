@@ -450,7 +450,7 @@ const networkApps: { name: string; where: string; url: string; steps: ReactNode[
     where: "Meta for Developers",
     url: "https://developers.facebook.com/apps",
     steps: [
-      "Create an app of the Business type and add the Facebook Login for Business product.",
+      "Create an app of the Business type and add the Facebook Login product.",
       "Under Facebook Login settings, add the redirect address below as a valid OAuth redirect URI.",
       "Add the Webhooks product. Set the callback URL to the webhook address below and the verify token to any long random string; put the same string in META_WEBHOOK_VERIFY_TOKEN. brain subscribes each connected Page to the feed and messages fields.",
       "Copy the App ID and App secret from Settings, Basic.",
@@ -490,9 +490,9 @@ const networkApps: { name: string; where: string; url: string; steps: ReactNode[
   {
     name: "X",
     where: "the X developer console",
-    url: "https://developer.x.com/en/portal/dashboard",
+    url: "https://developer.x.com",
     steps: [
-      "Create a project and an app, then open User authentication settings.",
+      "Create an app (X may ask you to create a project first), then open its User authentication settings.",
       "Choose OAuth 2.0, the type Web App, Automated App or Bot (a confidential client), and permissions Read and write.",
       "Add the redirect address below as the callback URI and any address you own as the website URL.",
       "Copy the OAuth 2.0 Client ID and Client Secret. These are not the API key and secret.",
@@ -509,6 +509,7 @@ const networkApps: { name: string; where: string; url: string; steps: ReactNode[
     steps: [
       "Create an app of the Web type and add the Login Kit and Content Posting API products. Turn on Direct Post in the Content Posting API settings.",
       "Add the redirect address below under Login Kit. TikTok wants the exact address, with no wildcards.",
+      "TikTok pulls your media from a link, so verify the domain or URL prefix that serves it (your brain address, or your media storage) under the app's URL properties.",
       "Add your own TikTok account as a target user while the app is in the sandbox.",
       "Copy the Client key and Client secret.",
     ],
@@ -549,7 +550,7 @@ function Apps({ mode }: { mode: Mode }) {
   return (
     <>
       <p>
-        Bluesky needs no app: you connect it with an app password. Every other network needs a developer app that you create with that network. Each one below follows the same steps: create the app, register the redirect address, copy the keys into <C>.env</C>, then run <C>docker compose up -d</C>. A network stays off, shown as not configured, until both of its values are set.
+        Bluesky needs no app: you connect it with an app password. Every other network needs a developer app that you create with that network. Each one below follows the same steps: create the app, register the redirect address, copy the keys into <C>.env</C>, then run <C>docker compose up -d</C>. A network stays off, shown as not configured, until both of its values are set. For YouTube, set both or neither: with only one, brain refuses to start.
       </p>
       <p>
         Redirect addresses start with your <C>BRAIN_URL</C>, for example <C>https://api.example.com</C>. They must match exactly, so change them when you change the domain.
