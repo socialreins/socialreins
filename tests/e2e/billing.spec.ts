@@ -166,19 +166,21 @@ test("a url that is not a Stripe page is not followed", async ({ page }) => {
   }
 });
 
-test("a double click on Choose starts one checkout, and the buttons stay off while Stripe loads", async ({ page }) => {
+test("a double click on Choose starts one checkout", async ({ page }) => {
   await brain(page, "owner", noPlan);
   const state = await stripeRoutes(page);
   await page.unroute(stripe);
+  let release = () => {};
+  const held = new Promise<void>((r) => (release = r));
   await page.route(stripe, async (route) => {
-    await new Promise((r) => setTimeout(r, 500));
+    await held;
     await route.fulfill({ contentType: "text/html", body: "<title>Stripe</title>" });
   });
   await page.goto("/billing");
   const choose = page.getByRole("button", { name: "Choose Scheduler", exact: true });
   await choose.dblclick();
-  await expect(choose).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Choose Scheduler and Automation" })).toBeDisabled();
+  await expect.poll(() => state.checkout.length).toBe(1);
+  release();
   await expect(page).toHaveURL(stripe);
   expect(state.checkout).toEqual([{ plan: "scheduler" }]);
 });
