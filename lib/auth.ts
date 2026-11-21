@@ -212,6 +212,11 @@ const codes = [
   "sender_required",
   "test_required",
   "too_many_newsletters",
+  "invalid_key",
+  "plan_limit",
+  "plan_limit_accounts",
+  "plan_limit_members",
+  "plan_limit_automation",
 ] as const;
 export type Failure = (typeof codes)[number] | "rate_limited" | "signed_out" | "timeout" | "error";
 export type Passkey = { id: string; name: string; created_at: string; last_used_at: string | null };
@@ -220,9 +225,12 @@ export type AddResult = Passkey | Failure | "cancelled" | "unsupported";
 // Sign-in failures are 401 with a code; any other 401 means the session is gone.
 // A known code wins (a 429 can be publish_quota); any other 429 is a rate limit.
 export async function failure(res: Response): Promise<Failure> {
-  const code: unknown = (await res.json().catch(() => null))?.error;
-  const known = codes.find((c) => c === code);
+  const body = await res.json().catch(() => null);
+  const code: unknown = body?.error;
+  // A plan limit answers 402 {error: "plan_limit", limit}: one code per limit, so the message can name it.
+  const known = codes.find((c) => c === (code === "plan_limit" ? `plan_limit_${body.limit}` : code));
   if (known) return known;
+  if (code === "plan_limit") return "plan_limit";
   if (res.status === 429) return "rate_limited";
   return res.status === 401 ? "signed_out" : "error";
 }

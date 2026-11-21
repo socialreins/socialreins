@@ -74,7 +74,26 @@ function Reverify() {
 
 export const reverify = <Reverify />;
 
+// A plan limit, in plain words with a link to the plan page. Brain's 402 plan_limit and the OAuth callback's `plan_limit` both end here.
+const limitWords: Record<string, string> = {
+  accounts: "Your plan's account limit is reached.",
+  members: "Your plan's team member limit is reached.",
+  automation: "Automations are not on your plan.",
+};
+export const planLimit = (limit?: string) => (
+  <>
+    {limitWords[limit ?? ""] ?? "Your plan's limit is reached."}{" "}
+    <Link href="/billing" className="underline decoration-2 underline-offset-4">
+      Upgrade
+    </Link>
+  </>
+);
+
 const messages: Partial<Record<Failure, ReactNode>> = {
+  plan_limit: planLimit(),
+  plan_limit_accounts: planLimit("accounts"),
+  plan_limit_members: planLimit("members"),
+  plan_limit_automation: planLimit("automation"),
   forbidden: "Your role in this team can't do that.",
   not_found: "That is no longer there. Reload the page to see the latest.",
   invalid_name: "Use a name of 1 to 60 characters.",
