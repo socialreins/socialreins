@@ -1,8 +1,9 @@
 import { expect, test } from "@playwright/test";
 
-const rivals = { postsyncer: "PostSyncer", manychat: "Manychat", buffer: "Buffer", hootsuite: "Hootsuite", later: "Later", postiz: "Postiz", publer: "Publer", socialbee: "SocialBee", metricool: "Metricool", "sprout-social": "Sprout Social" };
-// Manychat's column was not read again on the 19th (lib/compare.ts).
-const checked = (slug: string) => (slug === "manychat" ? "13 November 2026" : "19 November 2026");
+const rivals = { postsyncer: "PostSyncer", manychat: "Manychat", buffer: "Buffer", hootsuite: "Hootsuite", later: "Later", postiz: "Postiz", publer: "Publer", socialbee: "SocialBee", metricool: "Metricool", "sprout-social": "Sprout Social", "post-bridge": "Post Bridge", mixpost: "Mixpost", ayrshare: "Ayrshare", socialpilot: "SocialPilot", agorapulse: "Agorapulse", planable: "Planable", typefully: "Typefully", chatfuel: "Chatfuel" };
+// Manychat's column was not read again on the 19th, and the last eight tools were read on the 21st (lib/compare.ts).
+const readOn21st = ["post-bridge", "mixpost", "ayrshare", "socialpilot", "agorapulse", "planable", "typefully", "chatfuel"];
+const checked = (slug: string) => (slug === "manychat" ? "13 November 2026" : readOn21st.includes(slug) ? "21 November 2026" : "19 November 2026");
 
 test("the compare page lists every tool, and each has its own page with a table, sources and a date", async ({ page }) => {
   await page.goto("/");
@@ -20,9 +21,10 @@ test("the compare page lists every tool, and each has its own page with a table,
     await expect(page.getByText(`comes from its own website, checked on ${checked(slug)}`)).toBeVisible();
     await expect(page.getByRole("heading", { name: `Pick ${name} if` })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Sources" })).toBeVisible();
-    await expect(page.getByRole("navigation", { name: "Other comparisons" }).getByRole("link")).toHaveCount(9);
+    await expect(page.getByRole("navigation", { name: "Other comparisons" }).getByRole("link")).toHaveCount(17);
   }
   // Outside links open in a new tab and pass no ranking.
+  await page.goto("/compare/sprout-social");
   const source = page.locator('a[href="https://sproutsocial.com/pricing/"]');
   await expect(source).toHaveAttribute("rel", /nofollow/);
   await expect(source).toHaveAttribute("target", "_blank");

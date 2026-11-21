@@ -6,7 +6,7 @@ import { publicPage } from "@/lib/seo";
 
 export const metadata: Metadata = {
   title: "Compare SocialReins with other tools: SocialReins",
-  description: "SocialReins next to Buffer, Hootsuite, Later, Publer, Metricool, Sprout Social and more: what each one does, what it costs and where it fits.",
+  description: "SocialReins next to Buffer, Postiz, PostSyncer, Post Bridge, Manychat and more: what each one does, what it costs and where it fits.",
   ...publicPage("/compare"),
 };
 
