@@ -217,6 +217,11 @@ const codes = [
   "plan_limit_accounts",
   "plan_limit_members",
   "plan_limit_automation",
+  "already_subscribed",
+  "no_customer",
+  "billing_unavailable",
+  "stripe_failed",
+  "invalid_plan",
 ] as const;
 export type Failure = (typeof codes)[number] | "rate_limited" | "signed_out" | "timeout" | "error";
 export type Passkey = { id: string; name: string; created_at: string; last_used_at: string | null };
