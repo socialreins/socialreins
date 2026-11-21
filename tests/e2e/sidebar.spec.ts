@@ -311,7 +311,7 @@ test("the sidebar holds the team switcher with its plan, its menu ends with Upgr
   await expect(page).toHaveURL("/t/acme22/billing");
   await expect(menu).toBeHidden();
   await expect(page.getByRole("heading", { name: "Plans", level: 1 })).toBeVisible();
-  await expect(page.getByRole("main")).toContainText("Your team is on the Free plan. Paid plans are coming to the hosted version.");
+  await expect(page.getByRole("region", { name: "Bring your own AI key" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Plans");
 
   // The icon rail keeps only the logo mark and the team's avatar (the names stay for screen readers); the menu still opens.

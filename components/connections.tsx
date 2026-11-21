@@ -38,7 +38,7 @@ import { joinSet, listSets, setAccountSets, setNames, type SocialSet } from "@/l
 import { manages } from "@/lib/teams";
 import { PlatformIcon, platformOf, platforms } from "@/components/platform-icons";
 import { PlatformMark } from "@/components/posts";
-import { isFailure, problemText, Status, useAction } from "@/components/team-ui";
+import { isFailure, planLimit, problemText, Status, useAction } from "@/components/team-ui";
 import { EmptyState, Icon, LoadFailed, SkeletonRows } from "@/components/ui";
 
 const heading = "font-display text-xl font-extrabold tracking-tight";
@@ -265,10 +265,12 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
       </div>
       {returned && (
         <p role={returned.error ? "alert" : "status"} className={returned.error ? "waitlist-error" : "waitlist-done"}>
-          {connectResultText(
-            returned,
-            returned.provider === "meta" ? metaName : (platformOf(returned.provider)?.name ?? returned.provider),
-          )}
+          {returned.error === "plan_limit"
+            ? planLimit("accounts")
+            : connectResultText(
+                returned,
+                returned.provider === "meta" ? metaName : (platformOf(returned.provider)?.name ?? returned.provider),
+              )}
         </p>
       )}
       {picking && <MetaPicker team={team} onConnected={() => connectedTo("facebook")} />}

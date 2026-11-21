@@ -6,6 +6,7 @@ import { getMe, type Failure, type MeResult, type Team } from "@/lib/auth";
 import { acceptInvitation, previewInvitation, type InvitationPreview } from "@/lib/teams";
 import { isFailure, linkButton, problemText, roleName, Status, useAction } from "@/components/team-ui";
 
+const noSeat = "This team has no free seat. Ask its owner to upgrade.";
 const gone = "This invitation has expired, was already used or was withdrawn. Ask the team for a new one.";
 const date = (iso: string) => new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
 
@@ -82,7 +83,7 @@ export function InvitationView({ token }: { token: string }) {
           </div>
         </div>
       )}
-      <Status problem={problem} done={done} overrides={{ not_found: gone, email_mismatch: wrongAccount }} />
+      <Status problem={problem} done={done} overrides={{ not_found: gone, email_mismatch: wrongAccount, plan_limit_members: noSeat, plan_limit: noSeat }} />
       {joined && (
         <Link href="/home" className={`justify-self-start ${linkButton}`}>
           Open the app

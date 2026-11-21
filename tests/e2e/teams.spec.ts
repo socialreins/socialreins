@@ -263,6 +263,18 @@ test("invitation preview asks a signed-out visitor to sign in and come back", as
   await expect(page.getByRole("button", { name: /Join/ })).toHaveCount(0);
 });
 
+test("an invitation to a team with no free seat says so, with no link to the team's billing", async ({ page }) => {
+  await page.route("**/v1/invitations/tok", (route) =>
+    route.request().method() === "POST" ? route.fulfill({ status: 402, json: { error: "plan_limit", limit: "members" } }) : route.fulfill({ json: preview }),
+  );
+  await page.route("**/auth/me", (route) => route.fulfill({ json: me("owner") }));
+  await page.goto("/invitations/tok");
+  await page.getByRole("button", { name: "Join Acme" }).click();
+  const alert = page.getByRole("alert").filter({ hasText: "This team has no free seat. Ask its owner to upgrade." });
+  await expect(alert).toBeVisible();
+  await expect(alert.getByRole("link")).toHaveCount(0);
+});
+
 test("invitation accept joins the team", async ({ page }) => {
   await page.route("**/v1/invitations/tok", (route) =>
     route.request().method() === "POST" ? route.fulfill({ json: acme("admin") }) : route.fulfill({ json: preview }),
