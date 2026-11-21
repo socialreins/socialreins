@@ -91,13 +91,13 @@ test("the AI key is saved, shown as its last 4 characters only, and removed", as
   await expect(s.getByText("AI steps in automations are not metered")).toBeVisible();
   await expect(s.getByLabel("API key")).toHaveAttribute("type", "password");
   await s.getByLabel("Provider").selectOption("openai");
-  await s.getByLabel("API key").fill("sk-secret-abcd1234");
+  await s.getByLabel("API key").fill("sk-fake-1234");
   await s.getByRole("button", { name: "Save" }).click();
   await expect(s.getByText("Using your OpenAI key ending in 1234.")).toBeVisible();
-  expect(state.bodies).toEqual([{ provider: "openai", key: "sk-secret-abcd1234" }]);
+  expect(state.bodies).toEqual([{ provider: "openai", key: "sk-fake-1234" }]);
   // The key is never echoed back: the field is empty and the page holds no copy of it.
   await expect(s.getByLabel("API key")).toHaveValue("");
-  await expect(page.locator("body")).not.toContainText("sk-secret");
+  await expect(page.locator("body")).not.toContainText("sk-fake");
   await page.reload();
   await expect(s.getByText("Using your OpenAI key ending in 1234.")).toBeVisible();
   await s.getByRole("button", { name: "Remove key" }).click();
