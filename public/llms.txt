@@ -25,9 +25,11 @@
 - [Install SocialReins on your own server](https://socialreins.com/docs/self-hosted): Docker Compose install, domains, platform apps, updates
 - [Connect accounts and publish, self-hosted](https://socialreins.com/docs/self-hosted/use): accounts, posts, the queue, CSV upload, recurring posts, feeds, approvals, the library, inbox, automations, broadcasts, newsletters, analytics
 - [Connect an AI assistant to your own SocialReins](https://socialreins.com/docs/self-hosted/ai): MCP server and API tokens
+- [Create the network apps for your own SocialReins](https://socialreins.com/docs/self-hosted/apps): developer app, redirect address and keys for each network
 - [Get started with SocialReins Cloud](https://socialreins.com/docs/cloud): not open yet, waitlist
 - [Connect accounts and publish on SocialReins Cloud](https://socialreins.com/docs/cloud/use): the same guide for the cloud version
 - [Connect an AI assistant to SocialReins Cloud](https://socialreins.com/docs/cloud/ai): MCP server and API tokens
+- [Network apps on SocialReins Cloud](https://socialreins.com/docs/cloud/apps): we register the apps for you
 - [Compare SocialReins](https://socialreins.com/compare): SocialReins next to other tools
 - [SocialReins vs PostSyncer](https://socialreins.com/compare/postsyncer)
 - [SocialReins vs Manychat](https://socialreins.com/compare/manychat)
