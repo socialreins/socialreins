@@ -47,15 +47,106 @@ test("a self-hosted install says nothing is capped and offers no plan or upgrade
   await brain(page, "owner", { enabled: false, plan: null, limits: {}, usage: { accounts: 1, members: 1 } });
   await page.goto("/billing");
   await expect(page.getByText("Self-hosted: nothing is capped.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Checkout opens soon" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Choose|Manage billing/ })).toHaveCount(0);
   await expect(page.getByText("No plan")).toHaveCount(0);
 });
 
-test("a team with no plan says so and the checkout button is disabled", async ({ page }) => {
-  await brain(page, "owner", { enabled: true, plan: null, limits: { accounts: 0, members: 0, automation: false, contacts: 0 }, usage: { accounts: 0, members: 1 } });
+const noPlan = { enabled: true, plan: null, limits: { accounts: 0, members: 0, automation: false, contacts: 0 }, usage: { accounts: 0, members: 1 } };
+const stripe = "https://checkout.stripe.test/c/pay_123";
+
+// Brain's checkout and portal answers: `status` and `json` for the next call, every body kept.
+async function stripeRoutes(page: Page, answer: { status: number; json: object } = { status: 200, json: { url: stripe } }) {
+  const state = { checkout: [] as unknown[], portal: 0, answer };
+  await page.route(/\/v1\/team\/billing\/checkout$/, (route) => {
+    state.checkout.push(route.request().postDataJSON());
+    return route.fulfill(state.answer);
+  });
+  await page.route(/\/v1\/team\/billing\/portal$/, (route) => {
+    state.portal++;
+    return route.fulfill(state.answer);
+  });
+  await page.route(stripe, (route) => route.fulfill({ contentType: "text/html", body: "<title>Stripe</title>" }));
+  return state;
+}
+
+test("a team with no plan sees two plan cards with no price, and owners choose one", async ({ page }) => {
+  await brain(page, "owner", noPlan);
+  const state = await stripeRoutes(page);
   await page.goto("/billing");
   await expect(page.getByText("No plan", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Checkout opens soon" })).toBeDisabled();
+  const cards = page.getByRole("region", { name: "Choose a plan" });
+  await expect(cards.getByText("10 connected accounts")).toBeVisible();
+  await expect(cards.getByText("25 connected accounts")).toBeVisible();
+  await expect(cards.getByText("2,500 contacts")).toBeVisible();
+  await expect(page.getByText("New plans start with a 7-day free trial.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("main")).not.toContainText(/[$€£]\s?\d/);
+  await expect(page.getByRole("button", { name: "Manage billing" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Choose Scheduler and Automation" }).click();
+  await expect(page).toHaveURL(stripe);
+  expect(state.checkout).toEqual([{ plan: "automation" }]);
+  await page.goBack();
+  await page.getByRole("button", { name: "Choose Scheduler", exact: true }).click();
+  await expect(page).toHaveURL(stripe);
+  expect(state.checkout).toEqual([{ plan: "automation" }, { plan: "scheduler" }]);
+});
+
+test("checkout says to sign in again, or to use Manage billing, in plain words", async ({ page }) => {
+  await brain(page, "owner", noPlan);
+  const state = await stripeRoutes(page, { status: 403, json: { error: "reauth_required" } });
+  await page.goto("/billing");
+  await page.getByRole("button", { name: "Choose Scheduler", exact: true }).click();
+  await expect(page.locator("p.waitlist-error")).toContainText("needs a fresh sign-in");
+  state.answer = { status: 409, json: { error: "already_subscribed" } };
+  await page.getByRole("button", { name: "Choose Scheduler", exact: true }).click();
+  await expect(page.locator("p.waitlist-error")).toContainText("Use Manage billing");
+  state.answer = { status: 502, json: { error: "stripe_failed" } };
+  await page.getByRole("button", { name: "Choose Scheduler", exact: true }).click();
+  await expect(page.locator("p.waitlist-error")).toHaveText("Payment page could not be opened. Try again.");
+});
+
+test("an admin or member sees no plan cards, only who can change the plan", async ({ page }) => {
+  for (const role of ["admin", "member"] as const) {
+    await brain(page, role, noPlan);
+    await page.goto("/billing");
+    await expect(page.getByText("Only the team owner can change the plan.")).toBeVisible();
+    await expect(page.getByRole("button", { name: /Choose/ })).toHaveCount(0);
+    await page.unrouteAll();
+  }
+});
+
+test("Manage billing opens the portal for an owner with a live plan, and a failure says so", async ({ page }) => {
+  await brain(page, "owner", { enabled: true, plan: { ...trial, status: "active" }, limits, usage: { accounts: 1, members: 1 } });
+  const state = await stripeRoutes(page, { status: 409, json: { error: "no_customer" } });
+  await page.goto("/billing");
+  await expect(page.getByRole("button", { name: /Choose/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Manage billing" }).click();
+  await expect(page.locator("p.waitlist-error")).toContainText("no billing account yet");
+  state.answer = { status: 200, json: { url: stripe } };
+  await page.getByRole("button", { name: "Manage billing" }).click();
+  await expect(page).toHaveURL(stripe);
+  expect(state.portal).toBe(2);
+});
+
+test("coming back from checkout shows a banner and looks again until the plan appears", async ({ page }) => {
+  await brain(page, "owner", noPlan);
+  let calls = 0;
+  await page.route(/\/v1\/team\/billing$/, (route) => {
+    calls++;
+    return route.fulfill({ json: calls < 3 ? noPlan : { enabled: true, plan: trial, limits, usage: { accounts: 0, members: 1 } } });
+  });
+  await page.goto("/billing?checkout=success");
+  await expect(page.getByRole("status")).toHaveText("Thanks. Your plan will show here in a moment.");
+  await expect(page.getByText("Growth", { exact: true })).toBeVisible({ timeout: 10_000 });
+  expect(calls).toBe(3);
+  await expect(page.getByRole("button", { name: "Manage billing" })).toBeVisible();
+  await expect(page).not.toHaveURL(/checkout=/);
+});
+
+test("coming back from a canceled checkout says so and offers the plans again", async ({ page }) => {
+  await brain(page, "owner", noPlan);
+  await page.goto("/billing?checkout=canceled");
+  await expect(page.getByText("Checkout was canceled.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Choose Scheduler", exact: true })).toBeVisible();
 });
 
 test("a trialing plan shows its end date, usage against limits and credits, with no price", async ({ page }) => {
@@ -67,7 +158,8 @@ test("a trialing plan shows its end date, usage against limits and credits, with
   await expect(page.getByText("Team members").locator("xpath=following-sibling::dd[1]")).toHaveText("2, unlimited");
   await expect(page.getByText("X posts").locator("xpath=following-sibling::dd[1]")).toHaveText("40");
   await expect(page.getByText("AI", { exact: true }).locator("xpath=following-sibling::dd[1]")).toHaveText("120");
-  await expect(page.getByRole("button", { name: "Checkout opens soon" })).toBeDisabled();
+  await expect(page.getByText("Only the team owner can change the plan.")).toBeVisible();
+  await expect(page.getByRole("button", { name: /Choose|Manage billing/ })).toHaveCount(0);
   await expect(page.getByRole("main")).not.toContainText(/[$€£]\s?\d/);
   // A member can read the page but gets no key form.
   await expect(page.getByRole("region", { name: "Bring your own AI key" })).toHaveCount(0);
@@ -83,7 +175,7 @@ test("a canceled or past due plan does not say it renews", async ({ page }) => {
   await page.unroute(/\/v1\/team\/billing$/);
   await page.route(/\/v1\/team\/billing$/, (route) => route.fulfill({ json: { enabled: true, plan: { ...plan, status: "past_due" }, limits, usage: { accounts: 1, members: 1 } } }));
   await page.reload();
-  await expect(page.getByText("Payment failed, retrying.")).toBeVisible();
+  await expect(page.getByText("Payment failed, update your card in Manage billing.")).toBeVisible();
   await expect(page.getByText("Renews")).toHaveCount(0);
 });
 

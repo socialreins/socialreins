@@ -26,3 +26,10 @@ export const getAiKey = () => api<AiKey>("/v1/team/ai-key");
 // Needs a sign-in from the last 10 minutes, else brain answers reauth_required; a wrong shape is invalid_key.
 export const setAiKey = (provider: Provider, key: string) => api<AiKey>("/v1/team/ai-key", "PUT", { provider, key });
 export const removeAiKey = () => api("/v1/team/ai-key", "DELETE");
+
+export type PlanChoice = "scheduler" | "automation";
+// Owner only, and a sign-in from the last 10 minutes (reauth_required). Both answer {url}, a Stripe page to send the browser to.
+export const startCheckout = (plan: PlanChoice) => api<{ url: string }>("/v1/team/billing/checkout", "POST", { plan });
+export const openPortal = () => api<{ url: string }>("/v1/team/billing/portal", "POST", {});
+// A plan that counts as live: the team has one and can use it.
+export const isLive = (p: Plan | null): p is Plan => !!p && ["trialing", "active", "past_due"].includes(p.status);

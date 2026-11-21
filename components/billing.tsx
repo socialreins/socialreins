@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import type { Failure } from "@/lib/auth";
 import { useSession } from "@/components/app-shell";
-import { getAiKey, getBilling, getCredits, removeAiKey, setAiKey, type AiKey, type Billing, type Credits, type Plan, type Provider } from "@/lib/billing";
+import { getAiKey, getBilling, getCredits, isLive, openPortal, removeAiKey, setAiKey, startCheckout, type AiKey, type Billing, type Credits, type Plan, type PlanChoice, type Provider } from "@/lib/billing";
 import { manages } from "@/lib/teams";
 import { isFailure, linkButton, Status, useAction } from "@/components/team-ui";
 import { LoadFailed, Skeleton } from "@/components/ui";
@@ -15,11 +15,29 @@ const overrides = {
   invalid_key: "That key doesn't look right for the provider. Anthropic keys start with sk-ant-, OpenAI keys with sk-.",
   forbidden: "Only team owners and admins can change the AI key.",
 };
+const planOverrides = {
+  forbidden: "Only the team owner can change the plan.",
+  already_subscribed: "This team already has a plan. Use Manage billing to change it.",
+  no_customer: "There is no billing account yet. Choose a plan first.",
+  billing_unavailable: "Billing is not available right now. Try again later.",
+  stripe_failed: "Payment page could not be opened. Try again.",
+  invalid_plan: "That plan is not available.",
+};
+const choices: { plan: PlanChoice; name: string; features: string[] }[] = [
+  { plan: "scheduler", name: "Scheduler", features: ["10 connected accounts", "3 team members", "No inbox or automations"] },
+  {
+    plan: "automation",
+    name: "Scheduler and Automation",
+    features: ["25 connected accounts", "Unlimited team members", "Inbox, automations, broadcasts and newsletters", "2,500 contacts"],
+  },
+];
+const banners = { success: "Thanks. Your plan will show here in a moment.", canceled: "Checkout was canceled." };
+const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
 
 // When the plan ends or renews, in a sentence.
-function planDate(p: Plan) {
+function planDate(p: Plan, owner: boolean) {
   if (p.status === "trialing" && p.trial_ends_at) return `Trial ends ${date(p.trial_ends_at)}.`;
-  if (p.status === "past_due") return "Payment failed, retrying.";
+  if (p.status === "past_due") return owner ? "Payment failed, update your card in Manage billing." : "Payment failed, retrying.";
   if (!p.current_period_end) return null;
   if (p.status === "canceled") return `Ended ${date(p.current_period_end)}.`;
   return p.cancel_at_period_end ? `Ends ${date(p.current_period_end)}, at the end of the paid period.` : `Renews ${date(p.current_period_end)}.`;
@@ -35,25 +53,57 @@ const limitText = (used: number, limit: number | null) => (limit === null ? `${u
 
 export function BillingPage() {
   const { user } = useSession();
+  // Brain sends the browser back from Stripe to /billing?checkout=success or canceled; show it once, then clean the address.
+  const [returned] = useState(() => new URLSearchParams(window.location.search).get("checkout"));
+  useEffect(() => {
+    if (returned) window.history.replaceState(null, "", window.location.pathname);
+  }, [returned]);
   return (
     <div className="grid max-w-3xl gap-10">
-      <PlanSection />
+      {returned === "success" || returned === "canceled" ? (
+        <p role="status" className={returned === "success" ? "waitlist-done" : "text-ink-soft"}>
+          {banners[returned]}
+        </p>
+      ) : null}
+      <PlanSection polling={returned === "success"} />
       {manages(user.current_team.role) ? <AiKeySection /> : <p className="text-ink-soft">Only team owners and admins can set the team&apos;s own AI key.</p>}
     </div>
   );
 }
 
-function PlanSection() {
+function PlanSection({ polling }: { polling: boolean }) {
+  const { user } = useSession();
+  const owner = user.current_team.role === "owner";
+  const action = useAction();
   const [data, setData] = useState<{ billing: Billing; credits: Credits | Failure } | Failure | null>(null);
   const load = useCallback(async () => {
     setData(null);
     const [billing, credits] = await Promise.all([getBilling(), getCredits()]);
     setData(isFailure(billing) ? billing : { billing, credits });
+    return billing;
   }, []);
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load() resets, then fills, state around a request
-    void load();
-  }, [load]);
+    let stop = false;
+    (async () => {
+      let b = await load();
+      // Back from Stripe, the webhook may lag a few seconds: look again, up to 5 times, until a plan shows.
+      for (let i = 0; polling && i < 5 && !stop && !isFailure(b) && !isLive(b.plan); i++) {
+        await sleep(2000);
+        const next = await getBilling();
+        if (stop || isFailure(next)) continue;
+        b = next;
+        setData((d) => (d && !isFailure(d) ? { ...d, billing: next } : d));
+      }
+    })();
+    return () => {
+      stop = true;
+    };
+  }, [load, polling]);
+  // Both buttons end on a Stripe page: send the browser there.
+  const go = (key: string, call: () => Promise<{ url: string } | Failure>) =>
+    action.run(key, call, ({ url }) => {
+      window.location.assign(url);
+    });
 
   if (data === null) return <Skeleton className="h-40 w-full" />;
   if (isFailure(data))
@@ -84,15 +134,44 @@ function PlanSection() {
             <p>
               <strong>{plan.name}</strong>, {plan.status.replaceAll("_", " ")}
             </p>
-            {planDate(plan) && <p className="text-ink-soft">{planDate(plan)}</p>}
+            {planDate(plan, owner) && <p className="text-ink-soft">{planDate(plan, owner)}</p>}
           </>
         ) : (
           <p>No plan</p>
         )}
-        <button type="button" disabled className="btn btn-primary justify-self-start">
-          Checkout opens soon
-        </button>
+        {isLive(plan) && owner && (
+          <button type="button" className="btn btn-primary justify-self-start" disabled={action.busy !== null} onClick={() => go("portal", openPortal)}>
+            {action.busy === "portal" ? "Opening..." : "Manage billing"}
+          </button>
+        )}
+        {!owner && <p className="text-ink-soft">Only the team owner can change the plan.</p>}
+        <Status problem={action.problem} done={action.done} overrides={planOverrides} />
       </section>
+      {owner && !isLive(plan) && (
+        <section aria-labelledby="choose-heading" className="grid gap-3">
+          <h2 id="choose-heading" className={heading}>
+            Choose a plan
+          </h2>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {choices.map((c) => (
+              <div key={c.plan} className="card grid content-between gap-4 p-5">
+                <div className="grid gap-2">
+                  <h3 className="font-bold">{c.name}</h3>
+                  <ul className="list-disc pl-5 text-ink-soft">
+                    {c.features.map((f) => (
+                      <li key={f}>{f}</li>
+                    ))}
+                  </ul>
+                </div>
+                <button type="button" className="btn btn-primary justify-self-start" disabled={action.busy !== null} onClick={() => go(c.plan, () => startCheckout(c.plan))} aria-label={`Choose ${c.name}`}>
+                  {action.busy === c.plan ? "Opening..." : "Choose"}
+                </button>
+              </div>
+            ))}
+          </div>
+          <p className="text-ink-soft">New plans start with a 7-day free trial.</p>
+        </section>
+      )}
       <section aria-labelledby="usage-heading" className="grid gap-2">
         <h2 id="usage-heading" className={heading}>
           Usage
