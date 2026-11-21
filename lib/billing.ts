@@ -12,7 +12,7 @@ export type Plan = {
 export type Billing = {
   enabled: boolean;
   plan: Plan | null;
-  limits: { accounts: number | null; members: number | null; automation: number | null; contacts: number | null };
+  limits: { accounts: number | null; members: number | null; automation: boolean; contacts: number | null };
   usage: { accounts: number; members: number };
 };
 export type Credits = { x: number; ai: number };

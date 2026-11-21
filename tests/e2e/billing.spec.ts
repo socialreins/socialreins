@@ -8,7 +8,7 @@ const me = (role: Role) => ({
   username: null,
   current_team: { id: "t1", name: "Acme", code: "acme22", role },
 });
-const limits = { accounts: 5, members: null, automation: 3, contacts: null };
+const limits = { accounts: 5, members: null, automation: true, contacts: null };
 const trial = {
   id: "p1",
   name: "Growth",
@@ -52,7 +52,7 @@ test("a self-hosted install says nothing is capped and offers no plan or upgrade
 });
 
 test("a team with no plan says so and the checkout button is disabled", async ({ page }) => {
-  await brain(page, "owner", { enabled: true, plan: null, limits: { accounts: 0, members: 0, automation: 0, contacts: 0 }, usage: { accounts: 0, members: 1 } });
+  await brain(page, "owner", { enabled: true, plan: null, limits: { accounts: 0, members: 0, automation: false, contacts: 0 }, usage: { accounts: 0, members: 1 } });
   await page.goto("/billing");
   await expect(page.getByText("No plan", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Checkout opens soon" })).toBeDisabled();
@@ -72,6 +72,33 @@ test("a trialing plan shows its end date, usage against limits and credits, with
   // A member can read the page but gets no key form.
   await expect(page.getByRole("region", { name: "Bring your own AI key" })).toHaveCount(0);
   await expect(page.getByText("Only team owners and admins can set")).toBeVisible();
+});
+
+test("a canceled or past due plan does not say it renews", async ({ page }) => {
+  const plan = { ...trial, trial_ends_at: null, current_period_end: "2026-12-20T00:00:00Z" };
+  await brain(page, "owner", { enabled: true, plan: { ...plan, status: "canceled" }, limits, usage: { accounts: 1, members: 1 } });
+  await page.goto("/billing");
+  await expect(page.getByText(/^Ended /)).toBeVisible();
+  await expect(page.getByText("Renews")).toHaveCount(0);
+  await page.unroute(/\/v1\/team\/billing$/);
+  await page.route(/\/v1\/team\/billing$/, (route) => route.fulfill({ json: { enabled: true, plan: { ...plan, status: "past_due" }, limits, usage: { accounts: 1, members: 1 } } }));
+  await page.reload();
+  await expect(page.getByText("Payment failed, retrying.")).toBeVisible();
+  await expect(page.getByText("Renews")).toHaveCount(0);
+});
+
+test("removing a key that is already gone clears it", async ({ page }) => {
+  await brain(page, "owner", { enabled: true, plan: trial, limits, usage: { accounts: 1, members: 1 } }, { provider: "openai", last4: "1234" });
+  await page.unroute(/\/v1\/team\/ai-key$/);
+  await page.route(/\/v1\/team\/ai-key$/, (route) =>
+    route.request().method() === "DELETE"
+      ? route.fulfill({ status: 404, json: { error: "not_found" } })
+      : route.fulfill({ json: { provider: "openai", last4: "1234", updated_at: "2026-11-01T10:00:00Z" } }),
+  );
+  await page.goto("/billing");
+  await keySection(page).getByRole("button", { name: "Remove key" }).click();
+  await expect(keySection(page).getByText("No key set.")).toBeVisible();
+  await expect(keySection(page).getByRole("alert")).toHaveCount(0);
 });
 
 test("a plan that ends at the period end says so", async ({ page }) => {

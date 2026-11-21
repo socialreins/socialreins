@@ -19,9 +19,17 @@ const overrides = {
 // When the plan ends or renews, in a sentence.
 function planDate(p: Plan) {
   if (p.status === "trialing" && p.trial_ends_at) return `Trial ends ${date(p.trial_ends_at)}.`;
+  if (p.status === "past_due") return "Payment failed, retrying.";
   if (!p.current_period_end) return null;
+  if (p.status === "canceled") return `Ended ${date(p.current_period_end)}.`;
   return p.cancel_at_period_end ? `Ends ${date(p.current_period_end)}, at the end of the paid period.` : `Renews ${date(p.current_period_end)}.`;
 }
+
+// A 404 means the key is already gone, which is what Remove wanted.
+const removeGone = async () => {
+  const r = await removeAiKey();
+  return r === "not_found" ? "ok" : r;
+};
 
 const limitText = (used: number, limit: number | null) => (limit === null ? `${used}, unlimited` : `${used} of ${limit}`);
 
@@ -184,7 +192,7 @@ function AiKeySection() {
               className={`justify-self-start ${linkButton}`}
               disabled={action.busy !== null}
               onClick={() =>
-                action.run("remove", removeAiKey, () => {
+                action.run("remove", removeGone, () => {
                   setSaved(null);
                   return "Removed the key. AI steps use credits again.";
                 })
