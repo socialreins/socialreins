@@ -64,3 +64,22 @@ test("the use guide has a how-to for each part of the app, in both versions", as
   await page.setViewportSize({ width: 320, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
+
+test("the Network apps guide lists every network with its redirect address and keys", async ({ page }) => {
+  await page.goto("/docs/self-hosted/apps");
+  const article = page.getByRole("article");
+  for (const [name, redirect, key] of [
+    ["Facebook and Instagram", "/connect/meta/callback", "META_APP_SECRET"],
+    ["Threads", "/connect/threads/callback", "THREADS_APP_ID"],
+    ["LinkedIn", "/connect/linkedin/callback", "LINKEDIN_CLIENT_ID"],
+    ["X", "/connect/x/callback", "X_CLIENT_SECRET"],
+    ["TikTok", "/connect/tiktok/callback", "TIKTOK_CLIENT_KEY"],
+    ["YouTube", "/connect/youtube/callback", "GOOGLE_CLIENT_ID"],
+  ]) {
+    const section = article.locator("section").filter({ has: page.getByRole("heading", { name, level: 2, exact: true }) });
+    await expect(section).toContainText(redirect);
+    await expect(section).toContainText(key);
+  }
+  await page.goto("/docs/cloud/apps");
+  await expect(page.getByRole("article")).toContainText("You do not create any app or key");
+});

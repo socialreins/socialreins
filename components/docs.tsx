@@ -8,7 +8,7 @@ import { publicPage } from "@/lib/seo";
 // The docs live in this app for now: one guide per page, written once for both ways of running SocialReins.
 // Each guide is a function of the mode, so the self-hosted and cloud versions cannot drift apart.
 export type Mode = "self-hosted" | "cloud";
-export type Guide = "start" | "use" | "ai";
+export type Guide = "start" | "use" | "ai" | "apps";
 
 const repo = "https://github.com/socialreins/socialreins";
 const link = "font-bold underline decoration-signal decoration-2 underline-offset-4 hover:text-signal-deep";
@@ -22,6 +22,7 @@ const titles: Record<Guide, Record<Mode, string>> = {
   start: { "self-hosted": "Install SocialReins on your own server", cloud: "Get started with SocialReins Cloud" },
   use: { "self-hosted": "Connect accounts and publish, self-hosted", cloud: "Connect accounts and publish on SocialReins Cloud" },
   ai: { "self-hosted": "Connect an AI assistant to your own SocialReins", cloud: "Connect an AI assistant to SocialReins Cloud" },
+  apps: { "self-hosted": "Create the network apps for your own SocialReins", cloud: "Network apps on SocialReins Cloud" },
 };
 
 const descriptions: Record<Guide, Record<Mode, string>> = {
@@ -37,15 +38,20 @@ const descriptions: Record<Guide, Record<Mode, string>> = {
     "self-hosted": "Connect Claude or another AI assistant to your own SocialReins install through its MCP server, using an API token you create in the app.",
     cloud: "Connect Claude or another AI assistant to SocialReins Cloud through its MCP server, using an API token you create in the app.",
   },
+  apps: {
+    "self-hosted": "Create the developer app for each network, register the redirect address and add the keys to your own SocialReins install.",
+    cloud: "On SocialReins Cloud we register the developer apps with each network for you, so you only connect your accounts.",
+  },
 };
 
 const short: Record<Guide, Record<Mode, string>> = {
   start: { "self-hosted": "Install", cloud: "Get started" },
   use: { "self-hosted": "Connect and publish", cloud: "Connect and publish" },
   ai: { "self-hosted": "AI setup", cloud: "AI setup" },
+  apps: { "self-hosted": "Network apps", cloud: "Network apps" },
 };
 
-export const guides: Guide[] = ["start", "use", "ai"];
+export const guides: Guide[] = ["start", "use", "ai", "apps"];
 export const docModes: Mode[] = ["self-hosted", "cloud"];
 export const docPath = (mode: Mode, guide: Guide) => `/docs/${mode}${guide === "start" ? "" : `/${guide}`}`;
 export const docTitle = (mode: Mode, guide: Guide) => short[guide][mode];
@@ -172,7 +178,11 @@ function Start({ mode }: { mode: Mode }) {
         </table>
       </div>
       <p>
-        Meta also needs the webhook address <C>/webhooks/meta</C>. After changing <C>.env</C>, run <C>docker compose up -d</C>.
+        Meta also needs the webhook address <C>/webhooks/meta</C>. After changing <C>.env</C>, run <C>docker compose up -d</C>. The{" "}
+        <Link href="/docs/self-hosted/apps" className={link}>
+          Network apps guide
+        </Link>{" "}
+        walks through creating each app.
       </p>
       <h2>Update or remove</h2>
       <Code>docker compose pull && docker compose up -d</Code>
@@ -433,7 +443,158 @@ function Ai({ mode }: { mode: Mode }) {
   );
 }
 
-const bodies: Record<Guide, (props: { mode: Mode }) => ReactNode> = { start: Start, use: Use, ai: Ai };
+// One entry per network that needs your own developer app. Scopes and redirect paths come from brain's connectors.
+const networkApps: { name: string; where: string; url: string; steps: ReactNode[]; scopes: string; env: string[]; redirect: string[]; note?: ReactNode }[] = [
+  {
+    name: "Facebook and Instagram",
+    where: "Meta for Developers",
+    url: "https://developers.facebook.com/apps",
+    steps: [
+      "Create an app of the Business type and add the Facebook Login product.",
+      "Under Facebook Login settings, add the redirect address below as a valid OAuth redirect URI.",
+      "Add the Webhooks product. Set the callback URL to the webhook address below and the verify token to any long random string; put the same string in META_WEBHOOK_VERIFY_TOKEN. brain subscribes each connected Page to the feed and messages fields.",
+      "Copy the App ID and App secret from Settings, Basic.",
+    ],
+    scopes: "pages_show_list, pages_read_engagement, pages_manage_posts, business_management, instagram_basic, instagram_content_publish, instagram_manage_contents, pages_manage_metadata, pages_messaging, pages_manage_engagement, pages_read_user_content, instagram_manage_comments, instagram_manage_messages",
+    env: ["META_APP_ID", "META_APP_SECRET", "META_WEBHOOK_VERIFY_TOKEN"],
+    redirect: ["/connect/meta/callback", "/webhooks/meta (webhook)"],
+    note: "Until Meta approves these permissions through App Review, only people with a role on the app (admin, developer or tester) can connect. Instagram accounts must be professional accounts linked to a Facebook Page.",
+  },
+  {
+    name: "Threads",
+    where: "Meta for Developers",
+    url: "https://developers.facebook.com/apps",
+    steps: [
+      "Create a second app and add the Threads API use case. Threads has its own app ID and secret, separate from the Meta app above.",
+      "In the Threads settings, add the redirect address below. Add your Threads account as a Threads tester and accept the invite in Threads while the app is in development.",
+      "Copy the Threads app ID and Threads app secret from the Threads settings, not from Settings, Basic.",
+    ],
+    scopes: "threads_basic, threads_content_publish, threads_manage_replies, threads_delete",
+    env: ["THREADS_APP_ID", "THREADS_APP_SECRET"],
+    redirect: ["/connect/threads/callback"],
+  },
+  {
+    name: "LinkedIn",
+    where: "LinkedIn Developers",
+    url: "https://www.linkedin.com/developers/apps",
+    steps: [
+      "Create an app. LinkedIn asks for a Company Page to attach it to.",
+      "On the Products tab, request Share on LinkedIn and Sign In with LinkedIn using OpenID Connect.",
+      "On the Auth tab, add the redirect address below and copy the Client ID and Primary Client Secret.",
+    ],
+    scopes: "openid, profile, email, w_member_social",
+    env: ["LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET"],
+    redirect: ["/connect/linkedin/callback"],
+    note: "This connects a personal profile. LinkedIn tokens last about 60 days and only approved partner apps get a refresh token, so you reconnect when SocialReins shows the account as expiring.",
+  },
+  {
+    name: "X",
+    where: "the X developer console",
+    url: "https://developer.x.com",
+    steps: [
+      "Create an app (X may ask you to create a project first), then open its User authentication settings.",
+      "Choose OAuth 2.0, the type Web App, Automated App or Bot (a confidential client), and permissions Read and write.",
+      "Add the redirect address below as the callback URI and any address you own as the website URL.",
+      "Copy the OAuth 2.0 Client ID and Client Secret. These are not the API key and secret.",
+    ],
+    scopes: "tweet.read, tweet.write, users.read, offline.access, media.write",
+    env: ["X_CLIENT_ID", "X_CLIENT_SECRET"],
+    redirect: ["/connect/x/callback"],
+    note: "X charges for API use under its own plans. SocialReins reads the account's plan to set the post length limit, and you can set it yourself on the account.",
+  },
+  {
+    name: "TikTok",
+    where: "TikTok for Developers",
+    url: "https://developers.tiktok.com/apps",
+    steps: [
+      "Create an app of the Web type and add the Login Kit and Content Posting API products. Turn on Direct Post in the Content Posting API settings.",
+      "Add the redirect address below under Login Kit. TikTok wants the exact address, with no wildcards.",
+      "TikTok pulls your media from a link, so verify the domain or URL prefix that serves it (your brain address, or your media storage) under the app's URL properties.",
+      "Add your own TikTok account as a target user while the app is in the sandbox.",
+      "Copy the Client key and Client secret.",
+    ],
+    scopes: "user.info.basic, video.upload, video.publish",
+    env: ["TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET"],
+    redirect: ["/connect/tiktok/callback"],
+    note: "Until TikTok approves your app, an unaudited app can only post privately. Submit the app for review and the audit when it is ready.",
+  },
+  {
+    name: "YouTube",
+    where: "the Google Cloud console",
+    url: "https://console.cloud.google.com/apis/credentials",
+    steps: [
+      "Create a project and enable the YouTube Data API v3.",
+      "Set up the OAuth consent screen and add the three scopes below. Add your own Google account as a test user.",
+      "Create an OAuth client ID of the type Web application and add the redirect address below. If you also want Google sign-in, add the second address too: the same client works for both.",
+      "Copy the Client ID and Client secret.",
+    ],
+    scopes: "youtube.upload, youtube.readonly, youtube.force-ssl",
+    env: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"],
+    redirect: ["/connect/youtube/callback", "/auth/google/callback (Google sign-in)"],
+    note: "While the consent screen is in Testing, only your listed test users can connect and Google ends their access after 7 days. Publish the app, and finish Google's verification for these scopes, to lift that.",
+  },
+];
+
+function Apps({ mode }: { mode: Mode }) {
+  if (mode === "cloud")
+    return (
+      <>
+        <p>
+          On SocialReins Cloud we register and keep the developer apps with each network, and we handle their reviews. You do not create any app or key. When Cloud opens, you connect an account from the Accounts page and approve the permissions the network asks for.
+        </p>
+        <p>
+          If you run your own install, the <Link href="/docs/self-hosted/apps" className={link}>self-hosted version of this guide</Link> shows how to create each app.
+        </p>
+      </>
+    );
+  return (
+    <>
+      <p>
+        Bluesky needs no app: you connect it with an app password. Every other network needs a developer app that you create with that network. Each one below follows the same steps: create the app, register the redirect address, copy the keys into <C>.env</C>, then run <C>docker compose up -d</C>. A network stays off, shown as not configured, until both of its values are set. For YouTube, set both or neither: with only one, brain refuses to start.
+      </p>
+      <p>
+        Redirect addresses start with your <C>BRAIN_URL</C>, for example <C>https://api.example.com</C>. They must match exactly, so change them when you change the domain.
+      </p>
+      {networkApps.map((n) => (
+        <section key={n.name} className="grid gap-3">
+          <h2>{n.name}</h2>
+          <p>
+            Create the app in{" "}
+            <a href={n.url} target="_blank" rel="noopener noreferrer" className={link}>
+              {n.where}
+            </a>
+            .
+          </p>
+          <ol className="list-decimal pl-6">
+            {n.steps.map((step, i) => (
+              <li key={i}>{step}</li>
+            ))}
+          </ol>
+          <p>
+            Redirect address:{" "}
+            {n.redirect.map((r, i) => {
+              const [path, what] = r.split(" (");
+              return (
+                <span key={r}>
+                  {i > 0 && ", "}
+                  <C>{path}</C>
+                  {what && ` (${what}`}
+                </span>
+              );
+            })}
+          </p>
+          <p>
+            Permissions SocialReins asks for: <C>{n.scopes}</C>
+          </p>
+          <Code>{n.env.map((e) => `${e}=`).join("\n")}</Code>
+          {n.note && <p>{n.note}</p>}
+        </section>
+      ))}
+    </>
+  );
+}
+
+const bodies: Record<Guide, (props: { mode: Mode }) => ReactNode> = { start: Start, use: Use, ai: Ai, apps: Apps };
 
 // The self-hosted / cloud switcher: the same guide in the other version.
 function Switcher({ mode, guide }: { mode: Mode; guide: Guide }) {

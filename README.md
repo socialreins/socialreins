@@ -104,8 +104,7 @@ api.example.com {
 ### Platform apps
 
 Every platform is optional and shows as not configured until its app credentials are in `.env`.
-Connectors are being built now; brain reads these variables as each one ships. Create your own
-app with each platform and register these URLs, with your `BRAIN_URL` in place of
+Create your own app with each platform (the [Network apps guide](https://socialreins.com/docs/self-hosted/apps) walks through each one) and register these URLs, with your `BRAIN_URL` in place of
 `https://api.example.com`:
 
 | Platform | Variables | Redirect URI |
