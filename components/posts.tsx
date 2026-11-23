@@ -439,7 +439,9 @@ function PostRow({ posts, onMove, review }: { posts: Post[]; onMove?: (posts: Po
   const approval = approvalState(p);
   const remote = posts.flatMap((v) => v.targets.filter((t) => t.remote_url && t.status === "published").map((t) => ({ ...t, platform: v.platform })));
   const error = p.status === "failed" ? failText(posts) : undefined;
-  const retried = posts.some((v) => v.targets.some((t) => t.retried));
+  // The earliest retry still waiting, else whether one has run.
+  const retryAt = posts.flatMap((v) => v.targets.flatMap((t) => (t.retry_at ? [new Date(t.retry_at)] : []))).sort((a, b) => +a - +b)[0];
+  const retried = !retryAt && posts.some((v) => v.targets.some((t) => t.retried));
   // A published row's likes and comments over all its networks, once brain has read any.
   const totals = p.status === "published" ? postTotals(posts) : null;
   const stats = totals && statWords(totals, ["likes", "comments"]);
@@ -465,6 +467,11 @@ function PostRow({ posts, onMove, review }: { posts: Post[]; onMove?: (posts: Po
       <StatusBadge status={p.status} />
       <ApprovalBadge post={p} />
       <RepeatBadge post={p} />
+      {retryAt && (
+        <span className="text-xs text-ink-soft" title="Sending again once by itself, after an error that posted nothing">
+          Retrying at {time(retryAt)}
+        </span>
+      )}
       {retried && (
         <span className="text-xs text-ink-soft" title="Sent again once by itself, after an error that posted nothing">
           Retried once
