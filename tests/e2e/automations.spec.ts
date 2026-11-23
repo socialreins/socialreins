@@ -1151,3 +1151,33 @@ test("the automation pages have no sideways scroll on a 375 wide phone", async (
   await expect(page.getByRole("button", { name: "Tag the contact" }).first()).toBeVisible();
   await fits();
 });
+
+test("an AI step takes a prompt, says who pays, and saves as ai_send_dm", async ({ page }) => {
+  const state = await brain(page, "owner");
+  await page.goto("/automations/new?template=comment-to-dm");
+  await page.getByLabel("Name").fill("AI answers");
+  const doThis = page.getByRole("group", { name: "Do this" });
+  await doThis.getByRole("radio", { name: "A flow of steps" }).check();
+  await step(page, 1).getByRole("button", { name: "Remove step 1" }).click();
+  await doThis.getByRole("button", { name: "AI DM", exact: true }).click();
+  await step(page, 1).getByLabel("Prompt for the AI").fill("Thank them and point them to https://acme.example/guide");
+  await expect(step(page, 1)).toContainText("without one, each reply uses 1 AI credit");
+  await expect(page.getByRole("region", { name: "Preview" })).toContainText("Written by AI from your prompt");
+  await page.getByRole("button", { name: "Create automation" }).click();
+  await expect(page).toHaveURL("/t/acme22/automations/a2");
+  expect(state.bodies[0]).toMatchObject({ steps: [{ type: "ai_send_dm", prompt: "Thank them and point them to https://acme.example/guide" }] });
+  await expect(page.getByRole("region", { name: "AI answers" })).toContainText("1 step: AI DM.");
+});
+
+test("run history names the model of an AI reply and says when credits ran out", async ({ page }) => {
+  const state = await brain(page, "owner");
+  state.list.push(guideFlow({ steps: [{ type: "ai_send_dm", prompt: "Say hi" }] }));
+  const ai = (status: string, why: string | null, model?: string) => ({ type: "ai_send_dm", status, reason: why, remote_id: null, ...(model && { provider: "anthropic", model }) });
+  await page.route(/\/v1\/automations\/flow\/runs/, (route) =>
+    route.fulfill({ json: { runs: [run("x1", "sent", null, [ai("sent", null, "claude-haiku-5-5")]), run("x2", "skipped", "no_ai_credits", [ai("skipped", "no_ai_credits")])], next_cursor: null } }),
+  );
+  await page.goto("/automations/flow");
+  const history = page.getByRole("region", { name: "Run history" });
+  await expect(history.getByRole("listitem").filter({ hasText: "AI DM: sent, written by claude-haiku-5-5" })).toHaveCount(1);
+  await expect(history).toContainText("Out of AI credits: add your own AI key on the Billing page");
+});

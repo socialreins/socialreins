@@ -6,7 +6,9 @@ import {
   MAX_BUTTONS,
   MAX_LABEL,
   MAX_STEPS,
+  MAX_PROMPT,
   WAIT_UNITS,
+  isAi,
   isSend,
   newStep,
   numbered,
@@ -72,14 +74,16 @@ export function TextField({
         <label id={`${id}-label`} htmlFor={id} className="label">
           {label}
         </label>
-        <span className="flex items-center gap-1.5 text-sm text-ink-soft">
-          Insert
-          {tokens.map((t) => (
-            <button key={t} type="button" className="badge tone font-mono text-ink hover:bg-ink/10" aria-controls={id} aria-describedby={`${id}-label`} onClick={() => insert(t)}>
-              {t}
-            </button>
-          ))}
-        </span>
+        {tokens.length > 0 && (
+          <span className="flex items-center gap-1.5 text-sm text-ink-soft">
+            Insert
+            {tokens.map((t) => (
+              <button key={t} type="button" className="badge tone font-mono text-ink hover:bg-ink/10" aria-controls={id} aria-describedby={`${id}-label`} onClick={() => insert(t)}>
+                {t}
+              </button>
+            ))}
+          </span>
+        )}
       </div>
       <textarea
         ref={ref}
@@ -112,7 +116,9 @@ const rail = "relative grid grid-cols-[2rem_minmax(0,1fr)] gap-x-3 before:absolu
 const node = "relative grid size-8 place-items-center rounded-full bg-paper text-ink-soft shadow-[0_0_0_1px_var(--edge)]";
 // A wait sits on the line itself.
 const pill = "relative col-span-2 flex items-center gap-2 justify-self-start rounded-2xl bg-paper px-3 text-sm shadow-[0_0_0_1px_var(--edge)]";
-export const stepIcon: Record<Step["type"], IconName> = { send_dm: "send", reply_publicly: "comment", wait: "clock", tag_contact: "tag" };
+export const stepIcon: Record<Step["type"], IconName> = { send_dm: "send", reply_publicly: "comment", ai_send_dm: "send", ai_reply_publicly: "comment", wait: "clock", tag_contact: "tag" };
+// One line on who pays for an AI send, under its prompt.
+export const AI_HINT = "The AI writes it from this prompt and their message, with no links but yours. Your own AI key (Billing) is not metered; without one, each reply uses 1 AI credit.";
 
 // A step that was added or moved slides into place from where it was. Nothing moves for a reader who asks for no motion.
 function settle(id: number, fromTop?: number) {
@@ -148,7 +154,7 @@ export function FlowTimeline({ icon, trigger, steps, fallback }: { icon: IconNam
                 </span>
                 <div className="grid min-w-0 gap-1 pt-1">
                   <strong className="text-sm">{stepName[s.type]}</strong>
-                  <span className="whitespace-pre-wrap break-words">{s.type === "tag_contact" ? s.tag : s.text}</span>
+                  <span className="whitespace-pre-wrap break-words">{s.type === "tag_contact" ? s.tag : "prompt" in s ? `Prompt: ${s.prompt}` : s.text}</span>
                   {s.type === "send_dm" && s.buttons && s.buttons.length > 0 && (
                     <ul aria-label="Buttons" className="flex flex-wrap gap-1.5">
                       {s.buttons.map((b) => (
@@ -222,7 +228,7 @@ export function FlowEditor({
     document.getElementById("automation-flow-add")?.focus();
   }
 
-  const types = ["send_dm", ...(t.publicReply ? (["reply_publicly"] as const) : []), "wait", "tag_contact"] as const;
+  const types = ["send_dm", ...(t.publicReply ? (["reply_publicly"] as const) : []), "ai_send_dm", ...(t.publicReply ? (["ai_reply_publicly"] as const) : []), "wait", "tag_contact"] as const;
   const whole = problems.filter((p) => p.step === null);
   const inSteps = problems.filter((p) => p.step !== null && steps[p.step]);
   return (
@@ -294,6 +300,18 @@ export function FlowEditor({
                             Put on the contact when the flow gets here. Saved in lower case. It sends nothing.
                           </p>
                         </div>
+                      ) : isAi(s.type) ? (
+                        <TextField
+                          id={field}
+                          label="Prompt for the AI"
+                          value={s.text}
+                          onChange={(text) => patch(i, { text })}
+                          max={MAX_PROMPT}
+                          tokens={[]}
+                          placeholder="Thank them for the comment and point them to our guide at https://..."
+                          length={[...s.text].length}
+                          hint={AI_HINT}
+                        />
                       ) : (
                         <TextField
                           id={field}
@@ -486,6 +504,13 @@ export function FlowPreview({ steps }: { steps: StepDraft[] }) {
         }
         if (s.type === "tag_contact") return <TagLine key={s.id} tags={[cleanTag(s.tag)]} />;
         const buttons = s.type === "send_dm" ? s.buttons.filter((b) => b.label.trim()) : [];
+        if (isAi(s.type))
+          return (
+            <div key={s.id} className="grid justify-items-end gap-1">
+              <span className="text-xs font-bold text-ink-soft">{s.type === "ai_send_dm" ? "AI DM to Sam" : "AI public reply"}</span>
+              <p className="rounded-2xl rounded-br-md border border-dashed border-ink/30 px-3.5 py-2.5 text-[0.95rem] leading-snug text-ink-soft">Written by AI from your prompt and Sam&apos;s message</p>
+            </div>
+          );
         return (
           <div key={s.id} className="grid justify-items-end gap-1">
             <span className="text-xs font-bold text-ink-soft">{s.type === "send_dm" ? "DM to Sam" : "Public reply"}</span>

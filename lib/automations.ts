@@ -17,11 +17,15 @@ export type Conditions = ScopeBody & {
 };
 // tag_contact sends nothing: it puts a tag on the contact behind the item.
 export type TagAction = { type: "tag_contact"; tag: string };
-export type Action = { type: "send_dm" | "reply_publicly"; text: string } | TagAction;
+// An AI send: brain writes the text with a model from the prompt and the comment or DM.
+export type AiType = "ai_send_dm" | "ai_reply_publicly";
+export type AiSend = { type: "ai_send_dm"; prompt: string } | { type: "ai_reply_publicly"; prompt: string };
+export const MAX_PROMPT = 2000;
+export type Action = { type: "send_dm" | "reply_publicly"; text: string } | AiSend | TagAction;
 export const MAX_TAG_ACTIONS = 3;
 export type Button = { label: string; payload: string };
 // One step of a flow. brain leaves `buttons` out when a DM has none.
-export type Step = { type: "send_dm"; text: string; buttons?: Button[] } | { type: "reply_publicly"; text: string } | { type: "wait"; minutes: number } | TagAction;
+export type Step = { type: "send_dm"; text: string; buttons?: Button[] } | { type: "reply_publicly"; text: string } | AiSend | { type: "wait"; minutes: number } | TagAction;
 export type RunStats = { sent: number; skipped: number; failed: number; running: number; waiting?: number; total: number; count: number; last_at: string | null };
 export type Automation = {
   id: string;
@@ -44,11 +48,14 @@ export type Automation = {
 export type AutomationInput = Pick<Automation, "name" | "trigger" | "conditions" | "active"> & { actions?: Action[]; steps?: Step[]; fallback_public_reply?: string | null };
 export type RunStatus = "running" | "waiting" | "sent" | "failed" | "skipped";
 export type ActionResult = {
-  type: "send_dm" | "reply_publicly" | "fallback_public_reply" | "tag_contact";
+  type: "send_dm" | "reply_publicly" | AiType | "fallback_public_reply" | "tag_contact";
   // A tag is `done` or `skipped`; it is never sent.
   status: Exclude<RunStatus, "running"> | "done";
   reason: string | null;
   remote_id: string | null;
+  // An AI send: who wrote it.
+  provider?: string;
+  model?: string;
 };
 export type Run = {
   id: string;
@@ -173,6 +180,7 @@ function knownStep(s: unknown) {
   if (x.type === "wait") return only("minutes") && Number.isInteger(x.minutes);
   if (x.type === "reply_publicly") return only("text") && isText(x.text);
   if (x.type === "tag_contact") return only("tag") && isText(x.tag);
+  if (x.type === "ai_send_dm" || x.type === "ai_reply_publicly") return only("prompt") && isText((x as { prompt?: unknown }).prompt);
   const buttons = x.buttons ?? [];
   return (
     x.type === "send_dm" &&
@@ -247,11 +255,15 @@ export type ButtonDraft = Button & { own: boolean };
 export type StepDraft = { id: number } & (
   | { type: "send_dm"; text: string; buttons: ButtonDraft[] }
   | { type: "reply_publicly"; text: string }
+  // An AI send's prompt is kept as `text`, so it edits like the other sends.
+  | { type: "ai_send_dm"; text: string }
+  | { type: "ai_reply_publicly"; text: string }
   | { type: "wait"; amount: string; unit: WaitUnit }
   | { type: "tag_contact"; tag: string }
 );
 // A step that sends something; a wait and a tag do not.
-export const isSend = <T extends { type: Step["type"] }>(s: T): s is Extract<T, { type: "send_dm" | "reply_publicly" }> => s.type === "send_dm" || s.type === "reply_publicly";
+export const isAi = (type: string): type is AiType => type === "ai_send_dm" || type === "ai_reply_publicly";
+export const isSend = <T extends { type: Step["type"] }>(s: T): s is Extract<T, { type: "send_dm" | "reply_publicly" | AiType }> => s.type === "send_dm" || s.type === "reply_publicly" || isAi(s.type);
 let lastStepId = 0;
 export function newStep(type: Step["type"], text = ""): StepDraft {
   const id = ++lastStepId;
@@ -263,6 +275,7 @@ const stepDraft = (s: Step): StepDraft => {
   const id = ++lastStepId;
   if (s.type === "wait") return { id, type: "wait", ...waitParts(s.minutes) };
   if (s.type === "tag_contact") return { id, type: s.type, tag: s.tag };
+  if (s.type === "ai_send_dm" || s.type === "ai_reply_publicly") return { id, type: s.type, text: s.prompt };
   return s.type === "send_dm" ? { id, type: s.type, text: s.text, buttons: (s.buttons ?? []).map((b) => ({ ...b, own: true })) } : { id, type: s.type, text: s.text };
 };
 // The steps as brain takes them. A wait that is not a valid time goes as 0, which `flowProblems` catches first.
@@ -270,6 +283,7 @@ export const stepsBody = (steps: StepDraft[]): Step[] =>
   steps.map((s) => {
     if (s.type === "wait") return { type: s.type, minutes: waitMinutes(s.amount, s.unit) ?? 0 };
     if (s.type === "reply_publicly") return { type: s.type, text: s.text };
+    if (s.type === "ai_send_dm" || s.type === "ai_reply_publicly") return { type: s.type, prompt: s.text };
     if (s.type === "tag_contact") return { type: s.type, tag: cleanTag(s.tag) };
     const buttons = s.buttons.map((b) => ({ label: b.label.trim(), payload: b.payload }));
     return { type: s.type, text: s.text, ...(buttons.length > 0 && { buttons }) };
@@ -301,7 +315,13 @@ export function flowProblems(steps: StepDraft[], trigger: Trigger): FlowProblem[
       if (!cleanTag(s.tag)) say("Write the tag: 1 to 30 characters, no commas.");
       return;
     }
-    if (s.type === "reply_publicly" && !pub) say("This trigger has nothing to reply under. Remove this step.");
+    if ((s.type === "reply_publicly" || s.type === "ai_reply_publicly") && !pub) say("This trigger has nothing to reply under. Remove this step.");
+    if (s.type === "ai_send_dm" || s.type === "ai_reply_publicly") {
+      if (!s.text.trim()) say("Write the prompt.");
+      else if ([...s.text].length > MAX_PROMPT) say(`Too long: at most ${MAX_PROMPT} characters.`);
+      if (s.text.includes("{page}")) say("The AI can't use {page}. Remove it.");
+      return;
+    }
     const buttons = s.type === "send_dm" ? s.buttons : [];
     const max = s.type === "send_dm" ? 1000 : 300;
     if (!s.text.trim()) say("Write the text.");
@@ -334,10 +354,12 @@ export function toFlow(d: Draft): { steps: StepDraft[]; dropped: string[] } {
 export function toSimple(steps: StepDraft[]): { dm: string; publicReply: string; tags: string[]; dropped: string[] } {
   const of = <T extends StepDraft["type"]>(type: T) => steps.filter((s): s is Extract<StepDraft, { type: T }> => s.type === type);
   const [dms, replies, waits] = [of("send_dm"), of("reply_publicly"), of("wait")];
+  const ai = steps.filter((s) => isAi(s.type)).length;
   const buttons = dms.reduce((n, s) => n + s.buttons.length, 0);
   const tags = [...new Set(of("tag_contact").map((s) => cleanTag(s.tag)).filter(Boolean))];
   const lost: [number, string, string][] = [
     [waits.length, "1 wait", "waits"],
+    [ai, "1 AI step", "AI steps"],
     [buttons, "1 button", "buttons"],
     [dms.length - 1, "1 more DM", "more DMs"],
     [replies.length - 1, "1 more public reply", "more public replies"],
@@ -508,7 +530,7 @@ export function duplicateDraft(a: Automation): Draft {
 // Whether two flows are the same steps, whatever order brain wrote a step's keys in. No steps equals no steps.
 export function sameSteps(a: Step[] | null | undefined, b: Step[] | null | undefined) {
   const flat = (steps: Step[] | null | undefined) =>
-    JSON.stringify((steps ?? []).map((s) => (s.type === "wait" ? [s.type, s.minutes] : s.type === "tag_contact" ? [s.type, s.tag] : [s.type, s.text, ...("buttons" in s ? (s.buttons ?? []) : []).flatMap((x) => [x.label, x.payload])])));
+    JSON.stringify((steps ?? []).map((s) => (s.type === "wait" ? [s.type, s.minutes] : s.type === "tag_contact" ? [s.type, s.tag] : "prompt" in s ? [s.type, s.prompt] : [s.type, s.text, ...("buttons" in s ? (s.buttons ?? []) : []).flatMap((x) => [x.label, x.payload])])));
   return flat(a) === flat(b);
 }
 
@@ -531,7 +553,8 @@ export function changeTrigger(d: Draft, to: Trigger): { draft: Draft; dropped: s
   const unpage = (text: string) => text.replaceAll("{page}", "").replace(/ {2,}/g, " ").trim();
   drop(!t.publicReply && d.dm.includes("{page}"), "{page} in the DM", { dm: unpage(d.dm) });
   drop(!t.payloads && d.payloads.length > 0, "button payloads", { payloads: [] });
-  drop(!t.publicReply && d.steps.some((s) => s.type === "reply_publicly"), "public reply steps", { steps: d.steps.filter((s) => s.type !== "reply_publicly") });
+  const replyStep = (s: StepDraft) => s.type === "reply_publicly" || s.type === "ai_reply_publicly";
+  drop(!t.publicReply && d.steps.some(replyStep), "public reply steps", { steps: d.steps.filter((s) => !replyStep(s)) });
   drop(!t.publicReply && draft.steps.some((s) => s.type === "send_dm" && s.text.includes("{page}")), "{page} in the steps", {
     steps: draft.steps.map((s) => (s.type === "send_dm" ? { ...s, text: unpage(s.text) } : s)),
   });
@@ -593,6 +616,12 @@ export const reasonText: Record<string, string> = {
   tag_limit: "The contact already has 20 tags, the most allowed",
   no_contact: "There is no contact behind this item to tag",
   automation_changed: "Stopped: the automation was changed or switched off before the flow finished",
+  no_ai_key: "No AI key: add your own on the Billing page",
+  no_ai_credits: "Out of AI credits: add your own AI key on the Billing page",
+  ai_failed: "The AI provider gave no answer",
+  ai_empty: "The AI wrote nothing, so nothing was sent",
+  ai_too_long: "The AI's text was too long to send",
+  ai_link: "Not sent: the AI added a link that is not in your prompt",
 };
 // Why it happened and what helps, for the reasons that have more to say than their name.
 export const reasonWhy: Record<string, string> = {
@@ -602,6 +631,8 @@ export const reasonWhy: Record<string, string> = {
   no_dm_access: "The account's Bluesky app password was made without access to DMs. Make one that allows DMs and reconnect.",
   no_public_page: "{page} is the link to the post's public page, so the text can go only under posts made here whose public page is open.",
   automation_changed: "Saving new steps or switching the automation off stops the runs that are waiting.",
+  no_ai_credits: "Without your own AI key, each AI reply uses 1 AI credit.",
+  ai_link: "The AI may only use links that are in your prompt, so this reply was held back.",
   daily_cap: "A team's automations run at most 500 times a day.",
 };
 export const reason = (code: string | null) => (code ? (reasonText[code] ?? code.replaceAll("_", " ")) : null);
@@ -609,6 +640,8 @@ export const reason = (code: string | null) => (code ? (reasonText[code] ?? code
 export const actionName: Record<ActionResult["type"], string> = {
   send_dm: "DM",
   reply_publicly: "Public reply",
+  ai_send_dm: "AI DM",
+  ai_reply_publicly: "AI public reply",
   fallback_public_reply: "Fallback reply",
   tag_contact: "Tag",
 };
@@ -621,15 +654,23 @@ export function conditionNotes(c: Conditions) {
   );
 }
 
-export const stepName: Record<Step["type"], string> = { send_dm: "Send a DM", reply_publicly: "Reply publicly", wait: "Wait", tag_contact: "Tag the contact" };
+export const stepName: Record<Step["type"], string> = {
+  send_dm: "Send a DM",
+  reply_publicly: "Reply publicly",
+  ai_send_dm: "AI DM",
+  ai_reply_publicly: "AI public reply",
+  wait: "Wait",
+  tag_contact: "Tag the contact",
+};
 // "DM, wait 1 day, DM, tag: vip".
 export const flowOutline = (steps: Step[]) =>
-  steps.map((s) => (s.type === "wait" ? `wait ${waitText(s.minutes)}` : s.type === "tag_contact" ? `tag: ${s.tag}` : s.type === "send_dm" ? "DM" : "public reply")).join(", ");
+  steps.map((s) => (s.type === "wait" ? `wait ${waitText(s.minutes)}` : s.type === "tag_contact" ? `tag: ${s.tag}` : s.type === "send_dm" ? "DM" : isAi(s.type) ? stepName[s.type] : "public reply")).join(", ");
 
 export function actionsSummary(a: Pick<Automation, "actions" | "fallback_public_reply" | "steps">) {
   if (a.steps) return `${count(a.steps.length, "step")}: ${flowOutline(a.steps)}`;
   const has = (type: Action["type"]) => a.actions.some((x) => x.type === type);
   const tags = a.actions.flatMap((x) => (x.type === "tag_contact" ? [`, tag: ${x.tag}`] : [])).join("");
+  if (has("ai_send_dm") || has("ai_reply_publicly")) return `${a.actions.filter(isSend).map((x) => actionName[x.type]).join(" and ")}${tags}`;
   if (!has("send_dm")) return `Replies publicly${tags}`;
   if (has("reply_publicly")) return `Sends a DM and replies publicly${tags}`;
   return `${a.fallback_public_reply ? "Sends a DM, or replies publicly if it can't" : "Sends a DM"}${tags}`;
