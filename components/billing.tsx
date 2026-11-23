@@ -26,13 +26,13 @@ const planOverrides = {
 };
 // USD, decision 0006: yearly is two months free.
 const choices: { plan: PlanChoice; name: string; monthly: number; yearly: number; features: string[] }[] = [
-  { plan: "scheduler", name: "Scheduler", monthly: 19, yearly: 190, features: ["10 connected accounts", "3 team members", "No inbox or automations"] },
+  { plan: "scheduler", name: "Scheduler", monthly: 19, yearly: 190, features: ["10 connected accounts", "3 team members", "1 inbox", "No automations"] },
   {
     plan: "automation",
     name: "Scheduler and Automation",
     monthly: 49,
     yearly: 490,
-    features: ["25 connected accounts", "Unlimited team members", "Inbox, automations, broadcasts and newsletters", "2,500 contacts"],
+    features: ["25 connected accounts", "Unlimited team members", "10 inboxes", "Automations, broadcasts and newsletters", "2,500 contacts"],
   },
 ];
 const banners: Record<string, string> = {
@@ -238,6 +238,12 @@ function PlanSection({ polling }: { polling: boolean }) {
           <dd>{limitText(usage.accounts, limits.accounts)}</dd>
           <dt className="text-ink-soft">Team members</dt>
           <dd>{limitText(usage.members, limits.members)}</dd>
+          {usage.inboxes !== undefined && (
+            <>
+              <dt className="text-ink-soft">Inboxes</dt>
+              <dd>{limitText(usage.inboxes, limits.inboxes ?? null)}</dd>
+            </>
+          )}
         </dl>
       </section>
       <section aria-labelledby="credits-heading" className="grid gap-2">

@@ -14,6 +14,7 @@ import {
   chatRows,
   getConversation,
   getItem,
+  inboxName,
   kindName,
   listInboxes,
   listItems,
@@ -26,7 +27,9 @@ import {
   sentAlready,
   setItemState,
   shortcutFor,
+  stepInbox,
   threadKey,
+  unboxed,
   type Author,
   type ConversationPage,
   type Inbox as InboxT,
@@ -37,15 +40,15 @@ import {
 } from "@/lib/inbox";
 import { createSnippet, isProblem, libraryText, type Problem } from "@/lib/library";
 import { graphemes } from "@/lib/posts";
-import { listSets, type SocialSet } from "@/lib/sets";
+import { getBilling, type Billing } from "@/lib/billing";
 import { listMembers, manages } from "@/lib/teams";
 import { useSession } from "@/components/app-shell";
-import { accountName } from "@/components/connections";
+import { accountName, Avatar } from "@/components/connections";
 import { InboxEditor, inboxMessages } from "@/components/inbox-editor";
 import { SnippetMenu } from "@/components/library";
 import { platformName } from "@/components/platform-icons";
 import { TagEditor } from "@/components/tag-editor";
-import { isFailure, linkButton, problemText, Status, useAction, useSearchInUrl } from "@/components/team-ui";
+import { isFailure, linkButton, planLimit, problemText, Status, useAction, useSearchInUrl } from "@/components/team-ui";
 import { Icon } from "@/components/ui";
 
 // New comments arrive on brain's per-minute tick; the open list checks twice a minute.
@@ -91,6 +94,8 @@ const shortcuts: [string, string][] = [
   ["R", "Write a reply"],
   ["A", "Assign to me"],
   ["/", "Search this inbox"],
+  ["[", "Previous inbox"],
+  ["]", "Next inbox"],
   ["?", "Show these shortcuts"],
   ["Ctrl or Cmd + Enter", "Send the reply"],
 ];
@@ -204,7 +209,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
 
   const [inboxes, setInboxes] = useState<InboxT[] | Failure | null>(null);
   const [accounts, setAccounts] = useState<Connection[] | Failure | null>(null);
-  const [sets, setSets] = useState<SocialSet[]>([]);
+  const [billing, setBilling] = useState<Billing | null>(null);
   // Loaded data remembers what it was loaded for, so a new inbox, tab or item shows loading, not stale rows.
   const [loaded, setLoaded] = useState<{ key: string; page: Page | Failure } | null>(null);
   const [more, setMore] = useState<Failure | "loading" | null>(null);
@@ -225,7 +230,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   useEffect(() => {
     listInboxes().then(setInboxes);
     listConnections().then(setAccounts);
-    listSets().then((r) => Array.isArray(r) && setSets(r));
+    getBilling().then((r) => !isFailure(r) && setBilling(r));
     listMembers().then((r) => Array.isArray(r) && setMembers(r));
     listContactTags().then((r) => Array.isArray(r) && setTagOptions(r.map((t) => t.tag)));
   }, []);
@@ -408,7 +413,10 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
       else if (s === "assign") document.getElementById("assign-me")?.click();
       else if (s === "reply") document.getElementById("reply-text")?.focus();
       else if (s === "search") document.getElementById("inbox-search")?.focus();
-      else setHelp(true);
+      else if (s === "nextInbox" || s === "previousInbox") {
+        const to = stepInbox(list, current?.id, s === "nextInbox" ? 1 : -1);
+        if (to) router.push(`/inbox/${encodeURIComponent(to.id)}`);
+      } else setHelp(true);
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -430,6 +438,13 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   const stuck = outbox.filter((p, n) => settled(p) && p.thread !== openKey && outbox.findIndex((x) => settled(x) && x.thread === p.thread) === n);
   const noAccounts = Array.isArray(accounts) && accounts.length === 0;
   const accountList = Array.isArray(accounts) ? accounts : [];
+  const accountById = new Map(accountList.map((a) => [a.id, a]));
+  const custom = list.filter((i) => !i.is_all);
+  const left = Array.isArray(inboxes) && Array.isArray(accounts) ? unboxed(accountList, list) : [];
+  // The plan's inbox count is reached ("All inboxes" never counts); existing ones stay.
+  const max = billing?.enabled ? billing.limits.inboxes : null;
+  const atLimit = max != null && custom.length >= max;
+  const nameOf = new Map(list.map((i) => [i.id, i.name]));
   // On small screens one pane shows at a time: inboxes, then items, then the item.
   const show = (pane: "inboxes" | "items" | "detail") =>
     (pane === "detail" ? itemId : pane === "items" ? inboxId && !itemId : !inboxId && !itemId) ? "block" : "hidden";
@@ -460,17 +475,28 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
                   <Link
                     href={`/inbox/${encodeURIComponent(i.id)}`}
                     aria-current={active ? "page" : undefined}
-                    className={`flex min-w-0 flex-1 items-center gap-2 rounded-xl px-3 py-2 font-bold focus-visible:outline-offset-[-3px] ${
+                    className={`grid min-w-0 flex-1 gap-1 rounded-xl px-3 py-2 font-bold focus-visible:outline-offset-[-3px] ${
                       active ? "bg-ink text-paper" : "text-ink-soft hover:bg-ink/5 hover:text-ink"
                     }`}
                   >
-                    <Icon name="inbox" className={`size-4 ${active ? "text-signal" : ""}`} />
-                    <span className="truncate">{i.name}</span>
+                    <span className="flex min-w-0 items-center gap-2">
+                      <Icon name="inbox" className={`size-4 shrink-0 ${active ? "text-signal" : ""}`} />
+                      <span className="truncate">{inboxName(i)}</span>
+                    </span>
+                    {!i.is_all && i.account_ids.length > 0 && (
+                      <span aria-hidden="true" className="flex -space-x-1.5 pl-6">
+                        {i.account_ids.slice(0, 4).flatMap((id) => {
+                          const a = accountById.get(id);
+                          return a ? [<span key={id} className="rounded-full ring-2 ring-paper"><Avatar connection={a} size="size-5" /></span>] : [];
+                        })}
+                        {i.account_ids.length > 4 && <span className="pl-2.5 text-xs font-normal">+{i.account_ids.length - 4}</span>}
+                      </span>
+                    )}
                   </Link>
                   {Boolean(i.open_count) && (
                     <span className="badge tone shrink-0 tabular-nums" data-kind="dm">
                       {i.open_count}
-                      <span className="sr-only"> open in {i.name}</span>
+                      <span className="sr-only"> open in {inboxName(i)}</span>
                     </span>
                   )}
                   {canManage && !i.is_all && (
@@ -488,12 +514,26 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
             })}
           </ul>
         )}
-        {canManage && (
-          <button type="button" className="btn btn-secondary btn-sm mt-3 w-full" onClick={() => setEditing("new")}>
-            <Icon name="plus" className="size-4" />
-            New inbox
-          </button>
+        {Array.isArray(inboxes) && custom.length === 0 && (
+          <p className="card mt-3 p-3 text-sm text-ink-soft">
+            <strong className="block text-ink">No inboxes yet</strong>
+            Group accounts into an inbox, for example one per brand.
+          </p>
         )}
+        {left.length > 0 && custom.length > 0 && (
+          <p className="mt-3 text-sm text-ink-soft">
+            {left.length === 1 ? "1 account is" : `${left.length} accounts are`} in no inbox, so {left.length === 1 ? "its" : "their"} messages show only in All inboxes.
+          </p>
+        )}
+        {canManage &&
+          (atLimit ? (
+            <p className="mt-3 text-sm text-ink-soft">{planLimit("inboxes")}</p>
+          ) : (
+            <button type="button" className="btn btn-secondary btn-sm mt-3 w-full" onClick={() => setEditing("new")}>
+              <Icon name="plus" className="size-4" />
+              New inbox
+            </button>
+          ))}
       </nav>
 
       <section aria-labelledby="items-heading" className={`${show("items")} grid content-start gap-3 lg:flex lg:flex-col lg:gap-0`}>
@@ -502,12 +542,12 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
           Inboxes
         </Link>
         <h2 id="items-heading" className="font-display text-lg font-extrabold tracking-tight lg:mb-3">
-          {current?.name ?? "Inbox"}
+          {current ? inboxName(current) : "Inbox"}
         </h2>
         <div className="grid gap-2 lg:mb-3">
           <div className="flex items-center gap-2">
             <label className="relative block min-w-0 flex-1">
-              <span className="sr-only">Search {current?.name ?? "this inbox"}</span>
+              <span className="sr-only">Search {current ? inboxName(current) : "this inbox"}</span>
               <Icon name="search" className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-soft" />
               <input id="inbox-search" type="search" maxLength={100} className="field w-full py-1.5 pl-9" placeholder="Search text or author" value={search} onChange={(e) => setSearch(e.target.value)} />
             </label>
@@ -570,7 +610,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
             <div className="card grid gap-3 p-5">
               <p>
                 <strong className="block">No accounts connected</strong>
-                <span className="text-ink-soft">Connect a Bluesky account and its comments, mentions and DMs land here.</span>
+                <span className="text-ink-soft">Connect a Bluesky, Facebook or Instagram account and its comments, mentions and DMs land here.</span>
               </p>
               <Link href="/connections" className="btn btn-primary justify-self-start">
                 Connect an account
@@ -595,6 +635,8 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
                 ? "Nothing marked done yet."
                 : kind !== "all"
                   ? "No items of this kind here."
+                  : current && !current.is_all && current.account_ids.length === 0
+                  ? "This inbox has no accounts. Edit it to add some."
                   : "Nothing here yet. New comments, mentions and DMs show up here within a minute."}
             </p>
             {loadMoreButton}
@@ -650,6 +692,11 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
                           <span className="mt-0.5 flex items-center gap-2">
                             <KindBadge kind={i.kind} />
                             {c && <span className="text-xs text-ink-soft">{messageCount(c.count)}</span>}
+                            {current?.is_all &&
+                              i.inbox_ids?.flatMap((id) => {
+                                const n = nameOf.get(id);
+                                return n ? [<span key={id} className="badge max-w-32 truncate">{n}</span>] : [];
+                              })}
                             {i.assigned_to && (
                               <span className="ml-auto grid size-5 place-items-center rounded-full bg-ink text-[0.65rem] font-bold text-paper" title={`Assigned to ${i.assigned_to.name}`}>
                                 <span aria-hidden="true">{i.assigned_to.name.charAt(0).toUpperCase()}</span>
@@ -672,7 +719,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
       <section aria-label="Item" className={`${show("detail")} lg:block lg:overflow-y-auto lg:overscroll-contain lg:p-px`}>
         <Link href={href({ item: null })} scroll={false} className="mb-3 flex items-center gap-1 text-sm font-bold text-ink-soft hover:text-ink lg:hidden">
           <Icon name="left" className="size-4" />
-          Back to {current?.name ?? "the inbox"}
+          Back to {current ? inboxName(current) : "the inbox"}
         </Link>
         {!itemId ? (
           <div className="hidden h-full place-content-center justify-items-center gap-3 p-8 text-center text-sm text-ink-soft lg:grid">
@@ -741,12 +788,12 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
         <InboxEditor
           inbox={editing === "new" ? null : editing}
           accounts={accountList}
-          sets={sets}
           onClose={() => setEditing(null)}
           onSaved={(saved) => {
             setInboxes((l) => (Array.isArray(l) ? (l.some((x) => x.id === saved.id) ? l.map((x) => (x.id === saved.id ? saved : x)) : [...l, saved]) : l));
             // The saved inbox comes without its count, and new filters change it.
             listInboxes().then((l) => Array.isArray(l) && setInboxes(l));
+            if (editing === "new") getBilling().then((r) => !isFailure(r) && setBilling(r));
             // Its filters changed, so its items did too.
             if (saved.id === currentId) setReloads((n) => n + 1);
           }}

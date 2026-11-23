@@ -70,7 +70,7 @@ export const features: Feature[] = [
       {
         heading: "Custom inboxes",
         bullets: [
-          "Scope an inbox to some accounts or to a set, for example one inbox per brand.",
+          "Pick the accounts each inbox holds, for example one inbox per brand. An account can be in more than one.",
           "Filter by kind: comments, mentions or DMs.",
           "Filter by keyword, or show only what nobody has answered yet.",
           "Everyone on the team sees the same inboxes.",

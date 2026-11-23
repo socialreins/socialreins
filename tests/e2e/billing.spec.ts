@@ -205,12 +205,13 @@ test("coming back from a canceled checkout says so and offers the plans again", 
 });
 
 test("a trialing plan shows its end date, usage against limits and credits, with no price", async ({ page }) => {
-  await brain(page, "member", { enabled: true, plan: trial, limits, usage: { accounts: 3, members: 2 } });
+  await brain(page, "member", { enabled: true, plan: trial, limits: { ...limits, inboxes: 10 }, usage: { accounts: 3, members: 2, inboxes: 4 } });
   await page.goto("/billing");
   await expect(page.getByText("Growth", { exact: true })).toBeVisible();
   await expect(page.getByText("Trial ends")).toBeVisible();
   await expect(page.getByText("Accounts").locator("xpath=following-sibling::dd[1]")).toHaveText("3 of 5");
   await expect(page.getByText("Team members").locator("xpath=following-sibling::dd[1]")).toHaveText("2, unlimited");
+  await expect(page.getByText("Inboxes", { exact: true }).locator("xpath=following-sibling::dd[1]")).toHaveText("4 of 10");
   await expect(page.getByText("X posts").locator("xpath=following-sibling::dd[1]")).toHaveText("40");
   await expect(page.getByText("AI", { exact: true }).locator("xpath=following-sibling::dd[1]")).toHaveText("120");
   await expect(page.getByText("Only the team owner can change the plan.")).toBeVisible();

@@ -14,8 +14,8 @@ export type Plan = {
 export type Billing = {
   enabled: boolean;
   plan: Plan | null;
-  limits: { accounts: number | null; members: number | null; automation: boolean; contacts: number | null };
-  usage: { accounts: number; members: number };
+  limits: { accounts: number | null; members: number | null; automation: boolean; contacts: number | null; inboxes?: number | null };
+  usage: { accounts: number; members: number; inboxes?: number };
 };
 export type Credits = { x: number; ai: number };
 export type Provider = "anthropic" | "openai";

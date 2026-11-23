@@ -19,7 +19,7 @@ const add = (html: string) => {
 };
 
 it("maps each key, in either case", () => {
-  const keys = { j: "next", k: "previous", e: "done", r: "reply", a: "assign", "/": "search", "?": "help" };
+  const keys = { j: "next", k: "previous", e: "done", r: "reply", a: "assign", "/": "search", "?": "help", "[": "previousInbox", "]": "nextInbox" };
   for (const [key, name] of Object.entries(keys)) expect(press(document.body, key)).toBe(name);
   expect(press(document.body, "J")).toBe("next");
   expect(press(document.body, "?", { shiftKey: true })).toBe("help");
@@ -37,7 +37,7 @@ it("never fires while typing", () => {
     "<div contenteditable data-t></div>",
     "<div contenteditable='true'><b data-t>deep</b></div>",
   ])
-    for (const key of ["j", "k", "e", "r", "a", "/", "?"]) expect(press(add(html), key), `${key} in ${html}`).toBeNull();
+    for (const key of ["j", "k", "e", "r", "a", "/", "?", "[", "]"]) expect(press(add(html), key), `${key} in ${html}`).toBeNull();
 });
 
 it("never fires with a modifier key, in a dialog or in a menu", () => {
