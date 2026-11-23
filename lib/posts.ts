@@ -509,7 +509,9 @@ function zoneOffset(ms: number, zone: string) {
 }
 
 // toLocalInput and fromLocalInput in an IANA `zone` instead of the browser's: the composer shows
-// times in the set's queue zone. A wall time a DST change skips lands an hour later.
+// times in the set's queue zone. The same in every zone: a wall time a spring-forward change skips
+// moves forward to the first time after the gap (02:30 becomes 03:00), and one a fall-back change
+// repeats is its first occurrence (the earlier instant).
 export function toZoneInput(iso: string | null, zone: string) {
   if (!iso) return "";
   const ms = new Date(iso).getTime();
@@ -520,9 +522,29 @@ export function fromZoneInput(value: string, zone: string) {
   const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(value);
   if (!m) return null;
   const wall = Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!, +m[4]!, +m[5]!);
-  // The offset at the wall time read as UTC is a guess; the offset at the guess settles a DST edge.
-  const guess = wall - zoneOffset(wall, zone);
-  return new Date(wall - zoneOffset(guess, zone)).toISOString();
+  // A change moves the offset at most once in a day: the offsets a day either side are the two.
+  const DAY = 86_400_000;
+  const before = zoneOffset(wall - DAY, zone);
+  const after = zoneOffset(wall + DAY, zone);
+  const fits = [wall - before, wall - after].filter((t) => zoneOffset(t, zone) === wall - t);
+  if (fits.length) return new Date(Math.min(...fits)).toISOString();
+  // In a gap: the change's instant, found by the minute, is the first valid time after it.
+  let lo = Math.min(wall - before, wall - after);
+  let hi = Math.max(wall - before, wall - after);
+  while (hi - lo > 60_000) {
+    const mid = lo + Math.floor((hi - lo) / 120_000) * 60_000;
+    if (zoneOffset(mid, zone) === after) hi = mid;
+    else lo = mid;
+  }
+  return new Date(hi).toISOString();
+}
+
+// `when` moved to the calendar day `day` at the same wall time in `zone`, the set's queue zone;
+// null when that moment is not in the future. A skipped or repeated time follows fromZoneInput.
+export function moveToZoneDay(when: Date, day: Date, zone: string, now = new Date()): Date | null {
+  const date = `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`;
+  const to = new Date(fromZoneInput(`${date}T${toZoneInput(when.toISOString(), zone).slice(11)}`, zone)!);
+  return to.getTime() > now.getTime() ? to : null;
 }
 
 // The local month as an ISO range: from inclusive, to exclusive, as brain filters scheduled_at.

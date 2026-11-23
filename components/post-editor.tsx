@@ -165,6 +165,8 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const [unsent, setUnsent] = useState<string[]>([]);
   // When to publish, as ISO; the field shows it in the set's time zone.
   const [at, setAt] = useState("");
+  // The typed wall time a spring-forward change skips, when `at` moved past the gap.
+  const [skipped, setSkipped] = useState("");
   // The Repeat control: what a new post is scheduled with, or a saved scheduled post's rule.
   const [repeat, setRepeat] = useState<RepeatForm>(noRepeat);
   const [lists, setLists] = useState<PostList[]>([]);
@@ -207,6 +209,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     setMediaCustom({});
     setAt(p.status === "scheduled" ? (p.scheduled_at ?? "") : "");
     setPicked(p.account_ids ? { [p.platform]: p.account_ids } : {});
+    setSkipped("");
     setRepeat(repeatForm(p.repeat));
     setListId("");
     setWhole(false);
@@ -245,6 +248,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     fillGroup(mine, all);
     setPost(null);
     setAt("");
+    setSkipped("");
     // A copy goes out once unless asked to repeat again.
     setRepeat(noRepeat);
     setChosen(all.map((g) => g.platform));
@@ -580,6 +584,8 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   // The set's queue zone; the browser's until it is read, or when it can't be.
   const zone = setQueue ? startZone(setQueue, browserZone) : browserZone;
+  // No time is typed before the set's zone is known (read, or failed to read), so none shifts after.
+  const zoneKnown = !!setId && queueRead?.key === setId;
   const queue = queueKey ? setQueue : null;
   // A queue that couldn't be read leaves the button on: brain answers queue_empty if need be.
   const queueEmpty = queue?.slots.length === 0;
@@ -1669,7 +1675,16 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
               <label htmlFor="post-at" className="text-xs font-bold whitespace-nowrap">
                 Publish at
               </label>
-              <input id="post-at" type="datetime-local" className="field w-auto min-w-0 max-w-full flex-1 sm:flex-none" value={toZoneInput(at, zone)} onChange={(e) => setAt(fromZoneInput(e.target.value, zone) ?? "")} aria-describedby="post-at-note" />
+              <input id="post-at" type="datetime-local" className="field w-auto min-w-0 max-w-full flex-1 sm:flex-none" value={zoneKnown ? toZoneInput(at, zone) : ""}
+                disabled={!zoneKnown}
+                onChange={(e) => {
+                  const typed = e.target.value.slice(0, 16);
+                  const iso = fromZoneInput(typed, zone);
+                  setAt(iso ?? "");
+                  setSkipped(iso && toZoneInput(iso, zone) !== typed ? typed.slice(11) : "");
+                }}
+                aria-describedby="post-at-note"
+              />
               <button type="submit" name="mode" value="schedule" className="btn btn-secondary" disabled={busy !== null}>
                 <Icon name="clock" className="size-4" />
                 {busy === "schedule" ? "Scheduling..." : "Schedule"}
@@ -1695,7 +1710,8 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
                 </>
               )}
               <p id="post-at-note" className="hint text-xs sm:ml-auto">
-                {setQueue ? `In this set's time zone, ${zone}.` : `In your time zone, ${zone}.`}
+                {!zoneKnown ? "Loading time zone..." : setQueue ? `In this set's time zone, ${zone}.` : `In your time zone, ${zone}.`}
+                {zoneKnown && skipped && at && ` ${skipped} does not exist that day (the clocks go forward), so it is ${toZoneInput(at, zone).slice(11)}.`}
               </p>
               <div className="flex basis-full flex-wrap items-center gap-x-2 gap-y-1">
                 {hasTikTok ? (
