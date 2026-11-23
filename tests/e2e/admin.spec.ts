@@ -36,8 +36,9 @@ const users = Array.from({ length: 5 }, (_, i) => ({
   teams: i === 0 ? [{ id: "t1", name: "Acme", code: "acme22", role: "owner" }, { id: "t2", name: "Globex", code: "beta33", role: "member" }] : [],
 }));
 const teams = [
-  { id: "t1", name: "Acme", created_at: "2026-10-01T10:00:00Z", members: 3, accounts: 4, posts: 1500, owner_email: "ada@example.com" },
-  { id: "t2", name: "Globex", created_at: "2026-10-02T10:00:00Z", members: 1, accounts: 0, posts: 0, owner_email: null },
+  { id: "t1", name: "Acme", created_at: "2026-10-01T10:00:00Z", members: 3, accounts: 4, posts: 1500, owner_email: "ada@example.com", plan: "automation", plan_status: "active", plan_provider: "comp" },
+  { id: "t2", name: "Globex", created_at: "2026-10-02T10:00:00Z", members: 1, accounts: 0, posts: 0, owner_email: null, plan: null, plan_status: null, plan_provider: null },
+  { id: "t3", name: "Initech", created_at: "2026-10-03T10:00:00Z", members: 2, accounts: 1, posts: 9, owner_email: "bob@example.com", plan: "scheduler", plan_status: "active", plan_provider: "stripe" },
 ];
 
 async function brain(page: Page, isAdmin = true) {
@@ -53,6 +54,8 @@ async function brain(page: Page, isAdmin = true) {
     mail: "sent" as "sent" | "failed" | "already_approved",
     settings: { mode: "closed", domains: [] as string[], source: "env" },
     saves: [] as unknown[],
+    plans: [] as string[],
+    planAnswer: { status: 204 } as { status: number; json?: object },
     saveError: null as { status: number; error: string } | null,
   };
   await page.route("**/auth/me", (route) => route.fulfill({ json: me(isAdmin) }));
@@ -102,6 +105,11 @@ async function brain(page: Page, isAdmin = true) {
     const q = get(route).get("q") ?? "";
     const found = teams.filter((t) => t.name.toLowerCase().includes(q));
     return route.fulfill({ json: { total: found.length, teams: found } });
+  });
+  await page.route(/\/v1\/admin\/teams\/[^/]+\/plan$/, (route) => {
+    const req = route.request();
+    state.plans.push(`${req.method()} ${req.url().split("/teams/")[1]}${req.method() === "PUT" ? ` ${JSON.stringify(req.postDataJSON())}` : ""}`);
+    return route.fulfill(state.planAnswer);
   });
   await page.route(/\/v1\/admin\/settings\/signup$/, (route) => {
     const req = route.request();
@@ -263,12 +271,12 @@ test("users: the table, search and paging in the URL", async ({ page }) => {
 test("teams: the table and search", async ({ page }) => {
   const state = await brain(page);
   await page.goto("/admin/teams");
-  await expect(rows(page)).toHaveCount(2);
-  await expect(page.getByRole("columnheader")).toHaveText(["Name", "Owner", "Members", "Accounts", "Posts", "Created"]);
+  await expect(rows(page)).toHaveCount(3);
+  await expect(page.getByRole("columnheader")).toHaveText(["Name", "Owner", "Plan", "Members", "Accounts", "Posts", "Created"]);
   await expect(rows(page).nth(0).getByRole("rowheader")).toHaveText("Acme");
-  await expect(rows(page).nth(0).getByRole("cell")).toHaveText(["ada@example.com", "3", "4", "1,500", "Oct 1, 2026"]);
+  await expect(rows(page).nth(0).getByRole("cell")).toHaveText(["ada@example.com", /Scheduler and Automation, comped/, "3", "4", "1,500", "Oct 1, 2026"]);
   await expect(rows(page).nth(1)).toContainText("No owner");
-  await expect(main(page).getByText("Showing 1 to 2 of 2")).toBeVisible();
+  await expect(main(page).getByText("Showing 1 to 3 of 3")).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Pages" })).toHaveCount(0);
 
   await page.getByRole("searchbox", { name: "Search by team name" }).fill("glob");
@@ -276,6 +284,27 @@ test("teams: the table and search", async ({ page }) => {
   await expect(page).toHaveURL("/admin/teams?q=glob");
   await expect(rows(page)).toHaveText([/Globex/]);
   expect(state.asked).toEqual(["teams", "teams?q=glob"]);
+});
+
+test("teams: comp a plan, end a comp, and a paid plan offers neither", async ({ page }) => {
+  const state = await brain(page);
+  await page.goto("/admin/teams");
+  await expect(rows(page)).toHaveCount(3);
+  // A paid plan is changed in Stripe, not here.
+  await expect(rows(page).nth(2)).toContainText("Scheduler, active");
+  await expect(rows(page).nth(2).getByRole("button")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Comp Globex" }).click();
+  await expect(rows(page).nth(1)).toContainText("Scheduler and Automation, comped");
+  await expect(rows(page).nth(1).getByRole("status")).toHaveText("Comped Scheduler and Automation.");
+  await page.getByRole("button", { name: "End comp for Acme" }).click();
+  await expect(rows(page).nth(0)).toContainText("Scheduler and Automation, canceled");
+  await expect(rows(page).nth(0).getByRole("button", { name: "Comp Acme" })).toBeVisible();
+
+  state.planAnswer = { status: 403, json: { error: "reauth_required" } };
+  await page.getByRole("button", { name: "Comp Acme" }).click();
+  await expect(rows(page).nth(0).getByRole("alert")).toContainText("then try again");
+  expect(state.plans).toEqual(['PUT t2/plan {"plan":"automation"}', "DELETE t1/plan", 'PUT t1/plan {"plan":"automation"}']);
 });
 
 test("the waitlist shows totals and signups, filtered in ?verified= and searched in ?q=", async ({ page }) => {
