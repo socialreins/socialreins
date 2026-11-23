@@ -321,6 +321,27 @@ test("schedule sends the local time as UTC and moves to the post's address", asy
   });
 });
 
+test("the composer picks times in the set's queue time zone, DST included", async ({ page }) => {
+  await brain(page, { accounts: [{ ...alice, set_ids: ["d", "s1"] }] });
+  await page.route(/\/v1\/social-sets\/s1\/queue$/, (route) => route.fulfill({ json: { time_zone: "America/New_York", slots: [{ weekday: 1, time: "09:00" }], next: [] } }));
+  const sent: Record<string, unknown>[] = [];
+  await page.route("**/v1/posts", (route) => {
+    sent.push(route.request().postDataJSON());
+    return route.fulfill({ status: 201, json: post("p1", { ...sent.at(-1), status: "scheduled" }) });
+  });
+  await page.route("**/v1/posts/p1", (route) => route.fulfill({ json: post("p1", { ...sent.at(-1), social_set_id: "s1", status: "scheduled" }) }));
+  await page.goto("/posts/new");
+  await page.getByLabel("Set", { exact: true }).selectOption("s1");
+  await page.getByLabel("Post", { exact: true }).fill("Summer");
+  await expect(page.getByText("In this set's time zone, America/New_York.")).toBeVisible();
+  // 09:30 in New York is 13:30 UTC in July and 14:30 in December, whatever the browser's zone.
+  await page.getByLabel("Publish at").fill("2026-07-01T09:30");
+  await page.getByRole("button", { name: "Schedule" }).click();
+  await expect(page).toHaveURL("/t/acme22/posts/p1");
+  expect(sent[0]!.scheduled_at).toBe("2026-07-01T13:30:00.000Z");
+  await expect(page.getByLabel("Publish at")).toHaveValue("2026-07-01T09:30");
+});
+
 test("a thread is written, checked, previewed and sent in order", async ({ page }) => {
   await brain(page);
   let sent: Record<string, unknown> | undefined;

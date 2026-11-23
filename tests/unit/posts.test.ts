@@ -15,6 +15,7 @@ import {
   limits,
   deletePost,
   fromLocalInput,
+  fromZoneInput,
   getPost,
   getTikTokCreator,
   graphemes,
@@ -31,6 +32,7 @@ import {
   publishPost,
   takeDownAll,
   toLocalInput,
+  toZoneInput,
   updatePost,
   utf8Bytes,
   xWeight,
@@ -446,6 +448,20 @@ describe("dates", () => {
     expect(toLocalInput(iso)).toBe("2026-11-20T09:30");
     expect(fromLocalInput("")).toBeNull();
     expect(toLocalInput(null)).toBe("");
+  });
+
+  it("converts wall times in a set's zone, across DST", () => {
+    // New York is UTC-4 in summer and UTC-5 in winter.
+    expect(fromZoneInput("2026-07-01T09:30", "America/New_York")).toBe("2026-07-01T13:30:00.000Z");
+    expect(fromZoneInput("2026-12-01T09:30", "America/New_York")).toBe("2026-12-01T14:30:00.000Z");
+    expect(toZoneInput("2026-07-01T13:30:00.000Z", "America/New_York")).toBe("2026-07-01T09:30");
+    expect(toZoneInput("2026-11-20T09:30:00Z", "Asia/Dhaka")).toBe("2026-11-20T15:30");
+    // The day the clocks go forward (8 March 2026), either side of the jump.
+    expect(fromZoneInput("2026-03-08T01:30", "America/New_York")).toBe("2026-03-08T06:30:00.000Z");
+    expect(fromZoneInput("2026-03-08T03:30", "America/New_York")).toBe("2026-03-08T07:30:00.000Z");
+    expect(fromZoneInput("2026-11-20T09:30", "UTC")).toBe("2026-11-20T09:30:00.000Z");
+    expect(fromZoneInput("", "UTC")).toBeNull();
+    expect(toZoneInput(null, "UTC")).toBe("");
   });
 
   it("builds a month range and Monday-first weeks", () => {

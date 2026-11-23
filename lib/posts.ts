@@ -497,6 +497,30 @@ export function toLocalInput(iso: string | null) {
 }
 export const fromLocalInput = (value: string) => (value ? new Date(value).toISOString() : null);
 
+// How far `zone` is ahead of UTC at the instant `ms`, in ms (DST included).
+function zoneOffset(ms: number, zone: string) {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: zone, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" }).formatToParts(new Date(ms));
+  const n = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+  return Date.UTC(n("year"), n("month") - 1, n("day"), n("hour"), n("minute"), n("second")) - Math.floor(ms / 1000) * 1000;
+}
+
+// toLocalInput and fromLocalInput in an IANA `zone` instead of the browser's: the composer shows
+// times in the set's queue zone. A wall time a DST change skips lands an hour later.
+export function toZoneInput(iso: string | null, zone: string) {
+  if (!iso) return "";
+  const ms = new Date(iso).getTime();
+  const d = new Date(ms + zoneOffset(ms, zone));
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+}
+export function fromZoneInput(value: string, zone: string) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(value);
+  if (!m) return null;
+  const wall = Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!, +m[4]!, +m[5]!);
+  // The offset at the wall time read as UTC is a guess; the offset at the guess settles a DST edge.
+  const guess = wall - zoneOffset(wall, zone);
+  return new Date(wall - zoneOffset(guess, zone)).toISOString();
+}
+
 // The local month as an ISO range: from inclusive, to exclusive, as brain filters scheduled_at.
 export const monthRange = (year: number, month: number) => ({
   from: new Date(year, month, 1).toISOString(),
