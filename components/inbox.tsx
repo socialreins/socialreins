@@ -10,11 +10,13 @@ import { listConnections, safeAvatar, type Connection } from "@/lib/connections"
 import { listContactTags, updateContact } from "@/lib/contacts";
 import {
   assignItem,
+  attachmentName,
   authorName,
   chatRows,
   getConversation,
   getItem,
   inboxName,
+  itemSummary,
   kindName,
   listInboxes,
   listItems,
@@ -30,6 +32,7 @@ import {
   stepInbox,
   threadKey,
   unboxed,
+  type Attachment,
   type Author,
   type ConversationPage,
   type Inbox as InboxT,
@@ -688,11 +691,13 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
                               {relativeTime(c?.last_at ?? i.received_at)}
                             </time>
                           </span>
-                          <span className="line-clamp-2 text-sm text-ink-soft">{i.text || "(no text)"}</span>
+                          <span className="line-clamp-2 text-sm text-ink-soft">{itemSummary(i)}</span>
                           <span className="mt-0.5 flex items-center gap-2">
                             <KindBadge kind={i.kind} />
                             {c && <span className="text-xs text-ink-soft">{messageCount(c.count)}</span>}
+                            {/* With one custom inbox every row would carry the same chip. */}
                             {current?.is_all &&
+                              custom.length > 1 &&
                               i.inbox_ids?.flatMap((id) => {
                                 const n = nameOf.get(id);
                                 return n ? [<span key={id} className="badge max-w-32 truncate">{n}</span>] : [];
@@ -804,6 +809,43 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
         />
       )}
     </div>
+  );
+}
+
+const stills: Attachment["kind"][] = ["image", "sticker", "gif"];
+
+// A thumbnail linking to the file. Meta's links expire: a still that no longer loads falls back to the kind's label.
+// no-referrer: the platform learns nothing beyond the link it gave out.
+function AttachmentLink({ a }: { a: Attachment }) {
+  const [broken, setBroken] = useState(false);
+  const name = attachmentName[a.kind];
+  const still = a.preview_url ?? (stills.includes(a.kind) ? a.url : undefined);
+  return (
+    <a href={a.url} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer" className="group relative block rounded-xl hover:opacity-90">
+      {still && !broken ? (
+        // eslint-disable-next-line @next/next/no-img-element -- a platform link that expires, not ours to optimize
+        <img src={still} alt={name} loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(true)} className="size-28 rounded-xl border border-ink/10 bg-canvas object-cover" />
+      ) : (
+        <span className="badge tone gap-1">
+          {name}
+          <Icon name="external" className="size-3.5" />
+        </span>
+      )}
+      <span className="sr-only"> (view the original, opens in a new tab)</span>
+    </a>
+  );
+}
+
+function Attachments({ items }: { items?: Attachment[] }) {
+  if (!items?.length) return null;
+  return (
+    <ul aria-label="Attachments" className="flex max-w-[90%] flex-wrap gap-2">
+      {items.map((a, n) => (
+        <li key={n}>
+          <AttachmentLink a={a} />
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -1082,7 +1124,8 @@ function Detail({
             </li>
           ) : r.type === "them" ? (
             <li key={r.key} data-row="them" className="grid justify-items-start gap-1">
-              <p className="max-w-[90%] whitespace-pre-wrap break-words rounded-2xl rounded-tl-md bg-canvas px-4 py-3">{r.text || "(no text)"}</p>
+              {(r.text || !r.item.attachments?.length) && <p className="max-w-[90%] whitespace-pre-wrap break-words rounded-2xl rounded-tl-md bg-canvas px-4 py-3">{r.text || "(no text)"}</p>}
+              <Attachments items={r.item.attachments} />
               <p className="flex flex-wrap items-center gap-x-3 text-xs text-ink-soft">
                 <time dateTime={r.at}>{when(r.at)}</time>
                 {r.item.remote_url && (
