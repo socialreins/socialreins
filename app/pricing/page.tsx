@@ -5,25 +5,38 @@ import { publicPage } from "@/lib/seo";
 
 export const metadata: Metadata = {
   title: "Pricing: SocialReins",
-  description: "Self-hosting SocialReins is free, with every feature, and works today. SocialReins Cloud is not open yet and has no price set.",
+  description: "SocialReins Cloud: Scheduler $190 a year or $19 a month, with Automation $490 or $49. A 7-day free trial on a first plan. Self-hosting is free.",
   ...publicPage("/pricing"),
 };
 
 const link = "font-bold underline decoration-signal decoration-2 underline-offset-4 hover:text-signal-deep";
 
-// Cloud has no price yet (plan/migration.md, phase 5): say so plainly and promise nothing.
+// Decision 0006: USD, yearly (two months free) shown first. Cloud is invitation-only until open sign-up, so the button is still the waitlist.
 const plans = [
   {
-    name: "Cloud",
-    tag: "Not open yet",
-    price: "Price not set yet",
-    note: "We run it for you. You cannot sign up yet; join the waitlist to hear when it opens.",
+    name: "Scheduler",
+    tag: "Cloud, not open yet",
+    price: "$190 a year",
+    note: "Or $19 a month. A team's first plan starts with a 7-day free trial.",
     points: [
-      "Every feature, the same as the self-hosted version.",
-      "Nothing to install, update or keep running.",
-      "We register the apps with each network, so you only sign in.",
-      "Not open yet. Join the waitlist and we email you when it is.",
-      "It will be a paid subscription, and people on the waitlist hear the price first.",
+      "10 connected accounts.",
+      "3 team members.",
+      "Scheduling, the calendar, queues, approvals and analytics.",
+      "Nothing to install: we run it and register the apps with each network.",
+      "No inbox or automations.",
+    ],
+    cta: { label: "Join the waitlist", href: "/#waitlist", external: false },
+  },
+  {
+    name: "Scheduler and Automation",
+    tag: "Cloud, not open yet",
+    price: "$490 a year",
+    note: "Or $49 a month. A team's first plan starts with a 7-day free trial.",
+    points: [
+      "25 connected accounts.",
+      "Unlimited team members.",
+      "Everything in Scheduler.",
+      "The inbox, automations, broadcasts and newsletters, with 2,500 contacts.",
     ],
     cta: { label: "Join the waitlist", href: "/#waitlist", external: false },
   },
@@ -46,9 +59,11 @@ const plans = [
 
 const questions: [string, string][] = [
   ["Is the self-hosted version limited?", "No. There are no plan limits: it is the same code that runs the cloud version, under the AGPL-3.0 license, and nothing is held back for paying customers."],
-  ["What will the cloud version cost?", "We have not set a price. We will publish it here before anyone is charged, and tell the waitlist first."],
+  ["What does the cloud version cost?", "Scheduler is $190 a year or $19 a month. Scheduler and Automation is $490 a year or $49 a month. Yearly is two months free. Prices are in US dollars, and a team's first plan starts with a 7-day free trial."],
+  ["Why do posts to X cost extra?", "X charges us for every post sent through its API, so posting to X on the cloud version uses prepaid credits: 100 posts for $5 or 500 for $20. Each part of a thread counts as one post. Credits never expire. The other networks do not charge for posting."],
+  ["Can I cancel or get a refund?", "You can cancel at any time, and your plan keeps working until the end of the period you paid for. A period already started and credit packs are not refunded, except for a duplicate charge or our mistake; the free trial is the time to try it."],
   ["Does self-hosting cost anything at all?", "SocialReins itself is free. You pay for your own server, and X charges for its API. The other networks do not charge for posting."],
-  ["Can I try the cloud version now?", "No. SocialReins Cloud is not open yet. Join the waitlist and we email you when it is. You can self-host today."],
+  ["Can I try the cloud version now?", "Not yet. SocialReins Cloud is open by invitation while we finish it. Join the waitlist and we email you when it opens. You can self-host today."],
 ];
 
 export default function Pricing() {
@@ -58,15 +73,15 @@ export default function Pricing() {
       <div className="grid w-full gap-10">
       <div className="grid max-w-2xl gap-2">
         <h1 className="font-display text-4xl font-extrabold tracking-tight">Pricing</h1>
-        <p className="text-ink-soft">Run SocialReins on your own server today, free. SocialReins Cloud, where we run everything for you, is not open yet.</p>
+        <p className="text-ink-soft">SocialReins Cloud, where we run everything for you, opens by invitation for now. Prices are in US dollars, and yearly is two months free. Or run SocialReins on your own server today, free.</p>
       </div>
 
-      <div className="grid gap-5 md:grid-cols-2">
+      <div className="grid gap-5 lg:grid-cols-3">
         {plans.map((p) => (
-          <section key={p.name} aria-labelledby={`plan-${p.name}`} className={`grid content-start gap-5 rounded-3xl bg-paper p-6 ${p.name === "Cloud" ? "border-2 border-ink" : "border border-ink/10"}`}>
+          <section key={p.name} aria-labelledby={`plan-${p.name.replace(/ /g, "-")}`} className={`grid content-start gap-5 rounded-3xl bg-paper p-6 ${p.name === "Self-hosted" ? "border border-ink/10" : "border-2 border-ink"}`}>
             <div className="grid gap-1">
               <p className="justify-self-start rounded-full bg-canvas px-2.5 py-0.5 text-xs font-bold text-signal-deep">{p.tag}</p>
-              <h2 id={`plan-${p.name}`} className="font-display text-xl font-extrabold">
+              <h2 id={`plan-${p.name.replace(/ /g, "-")}`} className="font-display text-xl font-extrabold">
                 {p.name}
               </h2>
               <p className="font-display text-3xl font-extrabold tracking-tight">{p.price}</p>

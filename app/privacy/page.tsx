@@ -7,7 +7,7 @@ export const metadata: Metadata = { title: "Privacy Policy: SocialReins", ...pub
 
 export default function Privacy() {
   return (
-    <LegalPage title="Privacy Policy">
+    <LegalPage title="Privacy Policy" updated="23 November 2026">
       <p>
         SocialReins is an open-source social media manager. The hosted service at socialreins.com is operated by Binary Labs
         LLC, a company in Wyoming, United States, and built and supported by Bytech, a company in Bangladesh, which controls
@@ -29,6 +29,10 @@ export default function Privacy() {
           shown back to anyone.
         </li>
         <li>Your posts: their text, the links to their images, when they are scheduled, and where they were published.</li>
+        <li>
+          Billing: your team&apos;s plan, its status and renewal dates, its Stripe customer and subscription ids, and its
+          credit balance. Card details stay with Stripe; we never see or store your full card number.
+        </li>
         <li>Basic security records, such as counts of recent attempts used for rate limits.</li>
         <li>
           Site visits: our public pages (not the app, not public post pages) use Google Analytics, which sets cookies
@@ -66,7 +70,7 @@ export default function Privacy() {
       <h2>Who helps us run it</h2>
       <p>
         The hosted service runs on providers that process data for us only to run SocialReins: Railway hosts the servers
-        and database, Cloudflare carries traffic to them, and Resend sends sign-in and invitation emails. When you publish, your post goes to the platform you
+        and database, Cloudflare carries traffic to them, Resend sends sign-in and invitation emails, and Stripe takes payments for plans and credits. When you publish, your post goes to the platform you
         chose, such as Bluesky, under that platform&apos;s own terms.
       </p>
 

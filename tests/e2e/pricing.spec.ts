@@ -1,25 +1,36 @@
 import { expect, test } from "@playwright/test";
 
-test("the pricing page shows self-hosted as free and cloud with no price yet", async ({ page }) => {
+test("the pricing page shows the two cloud plans with yearly prices first, and self-hosted as free", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("contentinfo").getByRole("link", { name: "Pricing", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Pricing", level: 1 })).toBeVisible();
 
-  // Cloud is the standard choice, so it comes first; self-hosting is the free one.
-  await expect(page.getByRole("region").first()).toHaveAccessibleName("Cloud");
-  await expect(page.getByRole("region", { name: "Cloud" })).toContainText("Not open yet");
-  await expect(page.getByRole("region", { name: "Self-hosted" })).toContainText("Works today");
+  // Cloud is the standard choice, so its plans come first; self-hosting is the free one.
+  await expect(page.getByRole("region").first()).toHaveAccessibleName("Scheduler");
+  const scheduler = page.getByRole("region", { name: "Scheduler", exact: true });
+  await expect(scheduler).toContainText("$190 a year");
+  await expect(scheduler).toContainText("Or $19 a month. A team's first plan starts with a 7-day free trial.");
+  await expect(scheduler).toContainText("10 connected accounts.");
+  await expect(scheduler).toContainText("3 team members.");
+  await expect(scheduler).toContainText("Cloud, not open yet");
+  const automation = page.getByRole("region", { name: "Scheduler and Automation" });
+  await expect(automation).toContainText("$490 a year");
+  await expect(automation).toContainText("Or $49 a month.");
+  await expect(automation).toContainText("25 connected accounts.");
+  await expect(automation).toContainText("Unlimited team members.");
 
   const self = page.getByRole("region", { name: "Self-hosted" });
+  await expect(self).toContainText("Works today");
   await expect(self).toContainText("Free");
   await expect(self).toContainText("Every feature. There is no paid tier in the code.");
   await expect(self.getByRole("link", { name: "Read the install guide" })).toHaveAttribute("href", "/docs/self-hosted");
 
-  const cloud = page.getByRole("region", { name: "Cloud" });
-  await expect(cloud).toContainText("Price not set yet");
-  // No amount is promised anywhere on the page.
-  await expect(page.getByRole("main")).not.toContainText(/[$€£]\s?\d/);
-  await cloud.getByRole("link", { name: "Join the waitlist" }).click();
+  // X credits and the refund rule are answered on the page.
+  await expect(page.getByText("100 posts for $5 or 500 for $20")).toBeVisible();
+  await expect(page.getByText("A period already started and credit packs are not refunded, except for a duplicate charge or our mistake", { exact: false })).toBeVisible();
+
+  // Cloud is invitation-only until sign-up opens: the button is still the waitlist.
+  await scheduler.getByRole("link", { name: "Join the waitlist" }).click();
   await expect(page).toHaveURL(/\/#waitlist$/);
 });
 
