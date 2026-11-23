@@ -52,6 +52,7 @@ describe("editInput", () => {
     expect(editInput(post, "2026-11-21T14:30:00.000Z")).toEqual({
       social_set_id: "s1",
       platform: "tiktok",
+      account_ids: null,
       body: "Hi",
       media: ["https://x.test/v.mp4"],
       thread: [],
@@ -61,6 +62,10 @@ describe("editInput", () => {
       youtube: undefined,
       scheduled_at: "2026-11-21T14:30:00.000Z",
     });
+  });
+
+  it("sends back the accounts picked, so a move keeps them", () => {
+    expect(editInput({ ...post, account_ids: ["a2", "a1"] }, null).account_ids).toEqual(["a2", "a1"]);
   });
 
   it("keeps YouTube private when no privacy was saved", () => {

@@ -9,9 +9,13 @@ export const UPLOAD_ACCEPT = "image/jpeg,image/png,image/webp,image/gif,applicat
 
 // Sends `file` raw to POST /v1/uploads, reporting the share sent so far (0 to 1). XMLHttpRequest,
 // since fetch reports no upload progress. No timeout: a large video takes as long as it takes.
-export function uploadFile(file: Blob, onProgress?: (sent: number) => void): Promise<Upload | Failure> {
+// `signal` cancels it; the caller tells a cancel by the signal, as it answers "error".
+export function uploadFile(file: Blob, onProgress?: (sent: number) => void, signal?: AbortSignal): Promise<Upload | Failure> {
   return new Promise((resolve) => {
     const xhr = new XMLHttpRequest();
+    if (signal?.aborted) return resolve("error");
+    signal?.addEventListener("abort", () => xhr.abort());
+    xhr.onabort = () => resolve("error");
     xhr.open("POST", `${apiUrl}/v1/uploads`);
     xhr.withCredentials = true;
     const team = getTabTeam();

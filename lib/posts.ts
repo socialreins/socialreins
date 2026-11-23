@@ -199,8 +199,9 @@ export const approvalName = { pending: "Needs approval", rejected: "Changes requ
 export type PostInput = {
   social_set_id: string;
   platform: Platform;
-  // Absent: every account of the platform in the set; brain answers invalid_accounts for one outside it.
-  account_ids?: string[];
+  // null: every account of the platform in the set. Absent: every one on a create, unchanged on an edit.
+  // brain answers invalid_accounts for one outside it.
+  account_ids?: string[] | null;
   body: string;
   media: string[];
   thread?: ThreadPart[];
@@ -632,6 +633,7 @@ export function editInput(p: Post, scheduled_at: string | null): PostInput {
   return {
     social_set_id: p.social_set_id,
     platform: p.platform,
+    account_ids: p.account_ids ?? null,
     body: p.body,
     media: p.media,
     thread: limits[p.platform].thread ? (p.thread ?? []) : [],

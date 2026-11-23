@@ -146,6 +146,7 @@ export const codes = [
   "invalid_upload",
   "too_many_uploads",
   "upload_interrupted",
+  "uploads_in_progress",
   "all_inbox",
   "invalid_state",
   "invalid_text",

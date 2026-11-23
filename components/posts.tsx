@@ -77,6 +77,7 @@ export const postMessages: Partial<Record<Failure, ReactNode>> = {
   invalid_upload: "An uploaded file is no longer kept, or belongs to another team. Upload it again.",
   too_many_uploads: "Your team keeps too many uploads (200 files or 10 GB). They clear a day after their posts go out.",
   upload_interrupted: "The upload stopped before the whole file arrived. Try again.",
+  uploads_in_progress: "Your team has 3 uploads running already. Wait for one to finish, then try again.",
   unsupported_platform: "That platform can't publish yet.",
   too_many_posts: "This team has 2000 posts, the most allowed. Delete some first.",
   not_editable: "This post is publishing or already went out, so it can't change. Reload to see it.",

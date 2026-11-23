@@ -153,6 +153,9 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const [chosen, setChosen] = useState<Platform[] | null>(null);
   // The accounts picked per platform; a platform not in it goes to every one of its accounts in the set.
   const [picked, setPicked] = useState<Partial<Record<Platform, string[]>>>({});
+  // Files still uploading in any media box; nothing saves until they are in or cancelled.
+  const [uploading, setUploading] = useState(0);
+  const onUploading = (delta: number) => setUploading((n) => n + delta);
   // Per-platform text that replaces the main post on that platform.
   const [custom, setCustom] = useState<Partial<Record<Platform, string>>>({});
   // A platform's own files in place of the shared ones; an empty list posts it without any.
@@ -368,6 +371,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
 
   async function save(mode: "draft" | "schedule" | "publish" | "queue") {
     flushSync(() => setLocal(null));
+    if (uploading > 0) return setLocal("Wait for the uploads to finish, or cancel them.");
     if (selected.length === 0) return setLocal("Pick at least one platform to post to.");
     for (const p of selected) {
       const e = entry(p);
@@ -613,11 +617,13 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const mediaFor = (p: Platform) => (mediaCustomFor(p) ? links(mediaCustomFor(p)!) : images);
   const mediaMain = selected.filter((p) => mediaCustomFor(p) === undefined);
   const parts = thread.map((p) => ({ ...p, media: links(p.media) }));
-  // The accounts `p` goes to when some are unticked; undefined for every one, as brain takes no list.
+  // The accounts `p` goes to when some are unticked; null for every one, which an edit must send to clear a pick.
   const accountIdsFor = (p: Platform) => {
+    // Until the accounts are read, the pick stands as loaded, so an early save keeps it.
+    if (!accountsLoaded) return picked[p] ?? null;
     const all = inSet(p).map((a) => a.id);
     const on = picked[p]?.filter((id) => all.includes(id));
-    return on && on.length < all.length ? on : undefined;
+    return on && on.length < all.length ? on : null;
   };
   const toggleAccount = (p: Platform, id: string) => {
     const all = inSet(p).map((a) => a.id);
@@ -1189,7 +1195,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
           </ul>
         )}
       </div>
-      <ImageLinks media={media} max={cap(mediaMain)} platforms={mediaMain} onChange={setMedia} />
+      <ImageLinks media={media} max={cap(mediaMain)} platforms={mediaMain} onChange={setMedia} onUploading={onUploading} />
       {issueList(issues.filter((i) => i.inline && i.tab === "all"))}
       {coverShown && (
         <fieldset className="grid gap-2">
@@ -1269,7 +1275,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
                       aria-describedby={`post-part-${i}-count`}
                     />
                     <Counts id={`post-part-${i}-count`} text={p.body} platforms={threadable} xLong={xLong} />
-                    <ImageLinks media={p.media} max={cap(threadable)} post={i + 2} onChange={(m) => setThread((list) => list.map((v, j) => (j === i ? { ...v, media: m } : v)))} />
+                    <ImageLinks media={p.media} max={cap(threadable)} post={i + 2} onChange={(m) => setThread((list) => list.map((v, j) => (j === i ? { ...v, media: m } : v)))} onUploading={onUploading} />
                   </li>
                 );
               })}
@@ -1364,7 +1370,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
             <p className="hint">{mediaRule(p)}</p>
           </div>
         ) : (
-          <ImageLinks media={mediaCustom[p]!} max={limits[p].media} own={p} onChange={(m) => setMediaCustom((c) => ({ ...c, [p]: m }))} onClose={() => uncustomizeMedia(p)} />
+          <ImageLinks media={mediaCustom[p]!} max={limits[p].media} own={p} onChange={(m) => setMediaCustom((c) => ({ ...c, [p]: m }))} onClose={() => uncustomizeMedia(p)} onUploading={onUploading} />
         )}
         {issueList(issues.filter((i) => i.inline && i.platform === p))}
         {limits[p].comment === null ? (
@@ -1657,14 +1663,19 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
                 </button>
               )}
               <div className="ml-auto flex gap-2">
-                <button type="submit" name="mode" value="draft" className="btn btn-secondary" disabled={busy !== null}>
+                <button type="submit" name="mode" value="draft" className="btn btn-secondary" disabled={busy !== null || uploading > 0} aria-describedby={uploading > 0 ? "post-upload-note" : undefined}>
                   {busy === "draft" ? "Saving..." : "Save draft"}
                 </button>
-                <button type="submit" name="mode" value="publish" className="btn btn-primary" disabled={busy !== null || needsApproval} aria-describedby={needsApproval ? "post-approval-note" : undefined}>
+                <button type="submit" name="mode" value="publish" className="btn btn-primary" disabled={busy !== null || needsApproval || uploading > 0} aria-describedby={needsApproval ? "post-approval-note" : uploading > 0 ? "post-upload-note" : undefined}>
                   <Icon name="send" className="size-4" />
                   {busy === "publish" ? "Publishing..." : "Publish now"}
                 </button>
               </div>
+              {uploading > 0 && (
+                <p id="post-upload-note" role="status" className="hint basis-full text-xs sm:text-right">
+                  Saving waits for {uploading === 1 ? "the upload" : `${uploading} uploads`} to finish. Cancel {uploading === 1 ? "it" : "them"} to save without.
+                </p>
+              )}
               {needsApproval && (
                 <p id="post-approval-note" className="hint basis-full text-xs sm:text-right">
                   An owner or admin has to approve this post before it goes out. Schedule it to ask for approval.
@@ -1685,13 +1696,13 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
                 }}
                 aria-describedby="post-at-note"
               />
-              <button type="submit" name="mode" value="schedule" className="btn btn-secondary" disabled={busy !== null}>
+              <button type="submit" name="mode" value="schedule" className="btn btn-secondary" disabled={busy !== null || uploading > 0} aria-describedby={uploading > 0 ? "post-upload-note" : undefined}>
                 <Icon name="clock" className="size-4" />
                 {busy === "schedule" ? "Scheduling..." : "Schedule"}
               </button>
               {queueKey && (
                 <>
-                  <button type="submit" name="mode" value="queue" className="btn btn-secondary" disabled={busy !== null || queueEmpty} aria-describedby="post-queue-note">
+                  <button type="submit" name="mode" value="queue" className="btn btn-secondary" disabled={busy !== null || queueEmpty || uploading > 0} aria-describedby={uploading > 0 ? "post-queue-note post-upload-note" : "post-queue-note"}>
                     <Icon name="lists" className="size-4" />
                     {busy === "queue" ? "Adding..." : "Add to queue"}
                   </button>
@@ -1830,14 +1841,40 @@ const mediaRule = (p: Platform) => `${mediaRules[p] ?? `${platformName(p)} takes
 // The image links of one post. `post` is its number in a thread; the first post leaves it out.
 // `post` is a thread part's number; `own` is the one platform these files go to in place of the shared ones.
 // `rule` is the one platform of a post for one platform, whose media rule the shared hint then says.
-function ImageLinks({ media, max, post, own, platforms, onChange, onClose }: { media: string[]; max: number; post?: number; own?: Platform; platforms?: Platform[]; onChange: (media: string[]) => void; onClose?: () => void }) {
+function ImageLinks({
+  media,
+  max,
+  post,
+  own,
+  platforms,
+  onChange,
+  onClose,
+  onUploading,
+}: {
+  media: string[];
+  max: number;
+  post?: number;
+  own?: Platform;
+  platforms?: Platform[];
+  onChange: (media: string[]) => void;
+  onClose?: () => void;
+  // +1 as a file starts uploading, -1 as it ends, whatever the outcome.
+  onUploading?: (delta: number) => void;
+}) {
   const addRef = useRef<HTMLButtonElement>(null);
   const imageRefs = useRef<(HTMLInputElement | null)[]>([]);
   const [saved, setSaved] = useState<{ text: string; ok: boolean } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  // Files on their way to brain, each with the share sent so far.
-  const [sending, setSending] = useState<{ key: number; name: string; sent: number }[]>([]);
-  const [upError, setUpError] = useState<ReactNode>(null);
+  // Files on their way to brain, each with the share sent so far and its cancel.
+  const [sending, setSending] = useState<{ key: number; name: string; sent: number; ctrl: AbortController }[]>([]);
+  // One line per file that did not go up, and one for files left out.
+  const [upErrors, setUpErrors] = useState<{ key: number; text: ReactNode }[]>([]);
+  // Closing the editor (or this box) cancels what is still uploading.
+  const running = useRef(new Set<AbortController>());
+  useEffect(() => {
+    const all = running.current;
+    return () => all.forEach((c) => c.abort());
+  }, []);
   // Uploads finish in any order, so each adds its link to the media as it is then.
   const latest = useRef(media);
   useEffect(() => {
@@ -1853,26 +1890,43 @@ function ImageLinks({ media, max, post, own, platforms, onChange, onClose }: { m
   }
 
   async function upload(files: File[]) {
-    setUpError(null);
     const room = max - latest.current.filter((m) => m.trim()).length - sending.length;
-    if (files.length > room) setUpError(`Only ${Math.max(room, 0)} more ${room === 1 ? "file fits" : "files fit"}; the rest were left out.`);
+    setUpErrors(files.length > room ? [{ key: -1, text: `Only ${Math.max(room, 0)} more ${room === 1 ? "file fits" : "files fit"}; the rest were left out.` }] : []);
     await Promise.all(
       files.slice(0, Math.max(room, 0)).map(async (file) => {
         const key = Math.random();
-        setSending((s) => [...s, { key, name: file.name, sent: 0 }]);
-        const r = await uploadFile(file, (sent) => setSending((s) => s.map((x) => (x.key === key ? { ...x, sent } : x))));
+        const ctrl = new AbortController();
+        running.current.add(ctrl);
+        onUploading?.(1);
+        setSending((s) => [...s, { key, name: file.name, sent: 0, ctrl }]);
+        const r = await uploadFile(file, (sent) => setSending((s) => s.map((x) => (x.key === key ? { ...x, sent } : x))), ctrl.signal);
+        running.current.delete(ctrl);
+        onUploading?.(-1);
         setSending((s) => s.filter((x) => x.key !== key));
+        if (ctrl.signal.aborted) return;
         if (!isFailure(r)) {
           latest.current = [...latest.current.filter((m) => m.trim()), r.url].slice(0, max);
           return onChange(latest.current);
         }
         const why =
-          r === "media_too_large" ? "it is too large: up to 100 MB, or a video up to 1 GB." : r === "media_type_not_supported" ? "it is not a JPEG, PNG, WebP, GIF, PDF, MP4 or MOV file." : problemText(r, postMessages);
-        setUpError(
-          <>
-            {file.name} was not uploaded: {why}
-          </>,
-        );
+          r === "media_too_large"
+            ? "it is too large: up to 100 MB, or a video up to 1 GB."
+            : r === "media_type_not_supported"
+              ? "it is not a JPEG, PNG, WebP, GIF, PDF, MP4 or MOV file."
+              : r === "rate_limited"
+                ? "too many uploads in a minute. Wait a minute, then try again."
+                : problemText(r, postMessages);
+        setUpErrors((list) => [
+          ...list,
+          {
+            key,
+            text: (
+              <>
+                {file.name} was not uploaded: {why}
+              </>
+            ),
+          },
+        ]);
       }),
     );
   }
@@ -1967,14 +2021,21 @@ function ImageLinks({ media, max, post, own, platforms, onChange, onClose }: { m
               <span className="truncate">{f.name}</span>
               <progress className="w-32" value={f.sent} max={1} aria-label={`Uploading ${f.name}`} />
               <span className="hint tabular-nums">{Math.round(f.sent * 100)}%</span>
+              <button type="button" className="btn btn-quiet btn-sm" onClick={() => f.ctrl.abort()}>
+                Cancel<span className="sr-only"> uploading {f.name}</span>
+              </button>
             </li>
           ))}
         </ul>
       )}
-      {upError && (
-        <p role="alert" className="waitlist-error">
-          {upError}
-        </p>
+      {upErrors.length > 0 && (
+        <ul role="alert" className="grid gap-1">
+          {upErrors.map((e) => (
+            <li key={e.key} className="waitlist-error">
+              {e.text}
+            </li>
+          ))}
+        </ul>
       )}
       <div className="flex flex-wrap gap-2">
         <input
