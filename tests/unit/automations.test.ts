@@ -558,6 +558,50 @@ describe("the template gallery", () => {
   });
 });
 
+describe("AI steps", () => {
+  const scope = { social_set_id: null, account_ids: [] };
+  const saved = (steps: Automation["steps"]): Automation => ({ id: "a", name: "A", active: true, activated_at: "", trigger: "comment_received", conditions: scope, actions: [], fallback_public_reply: null, created_by: null, created_at: "", updated_at: "", steps });
+
+  it("saves the prompt, loads it back and counts as a send", () => {
+    const steps = [newStep("ai_send_dm", "Thank them"), newStep("ai_reply_publicly", "Say hi")];
+    expect(flowProblems(steps, "comment_received")).toEqual([]);
+    const body = stepsBody(steps);
+    expect(body).toEqual([
+      { type: "ai_send_dm", prompt: "Thank them" },
+      { type: "ai_reply_publicly", prompt: "Say hi" },
+    ]);
+    expect(canEdit(saved(body))).toBe(true);
+    expect(canEdit(saved([{ type: "ai_send_dm", prompt: "x", text: "y" } as never]))).toBe(false);
+    expect(stepsBody(draftOf(saved(body)).steps)).toEqual(body);
+    expect(flowOutline(body)).toBe("AI DM, AI public reply");
+    expect(sameSteps(body, [{ type: "ai_send_dm", prompt: "Thank them" }, { type: "ai_reply_publicly", prompt: "Say hi" }])).toBe(true);
+    expect(sameSteps(body, [{ type: "ai_send_dm", prompt: "Other" }, { type: "ai_reply_publicly", prompt: "Say hi" }])).toBe(false);
+  });
+
+  it("finds what brain would refuse in a prompt", () => {
+    expect(flowProblems([newStep("ai_send_dm", " ")], "dm_received")).toEqual([{ step: 0, text: "Write the prompt." }]);
+    expect(flowProblems([newStep("ai_send_dm", "x".repeat(2001))], "dm_received")).toEqual([{ step: 0, text: "Too long: at most 2000 characters." }]);
+    expect(flowProblems([newStep("ai_send_dm", "See {page}")], "comment_received")).toEqual([{ step: 0, text: "The AI can't use {page}. Remove it." }]);
+    expect(flowProblems([newStep("ai_send_dm", "Greet {name}")], "comment_received")).toEqual([{ step: 0, text: "The AI is given their name already. Remove {name}." }]);
+    expect(flowProblems([newStep("ai_reply_publicly", "Hi")], "dm_received")).toContainEqual({ step: 0, text: "This trigger has nothing to reply under. Remove this step." });
+  });
+
+  it("is dropped by a trigger with nothing to reply under, and by One reply", () => {
+    const d = { ...draftOf(), flow: true, steps: [newStep("send_dm", "Hi"), newStep("ai_reply_publicly", "Say hi")] };
+    const { draft, dropped } = changeTrigger(d, "dm_received");
+    expect(dropped).toContain("public reply steps");
+    expect(draft.steps.map((s) => s.type)).toEqual(["send_dm"]);
+    expect(toSimple([newStep("send_dm", "Hi"), newStep("ai_send_dm", "x")]).dropped).toEqual(["1 AI step"]);
+  });
+
+  it("names its results and reasons", () => {
+    expect(reason("no_ai_credits")).toBe("This month's AI replies and your AI credits are used up");
+    expect(reason("ai_link")).toBe("Not sent: the AI added a link, address or @handle that is not in your prompt");
+    expect(reason("ai_leak")).toBe("Not sent: the AI repeated your prompt");
+    expect(actionsSummary({ actions: [{ type: "ai_send_dm", prompt: "x" }], fallback_public_reply: null, steps: null })).toBe("AI DM");
+  });
+});
+
 describe("flowProblems with a Facebook or Instagram scope", () => {
   const dm = (text: string) => newStep("send_dm", text);
   const wait = (amount: number, unit: "minutes" | "hours" | "days") => ({ ...newStep("wait"), amount: String(amount), unit }) as ReturnType<typeof newStep>;

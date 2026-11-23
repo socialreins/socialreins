@@ -766,6 +766,7 @@ export function AutomationDetail({ id }: { id: string }) {
                                 <li key={i}>
                                   {actionName[x.type] ?? String(x.type).replaceAll("_", " ")}: {(x.status === "done" ? "done" : (statusName[x.status] ?? x.status)).toLowerCase()}
                                   {x.reason && x.reason !== r.reason ? ` (${reason(x.reason)})` : ""}
+                                  {x.model ? `, written by ${x.model}` : ""}
                                 </li>
                               ))}
                             </ul>
