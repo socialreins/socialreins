@@ -80,15 +80,23 @@ test("a team with no plan sees two plan cards with no price, and owners choose o
   await expect(cards.getByText("25 connected accounts")).toBeVisible();
   await expect(cards.getByText("2,500 contacts")).toBeVisible();
   await expect(page.getByText("New plans start with a 7-day free trial.", { exact: true })).toBeVisible();
-  await expect(page.getByRole("main")).not.toContainText(/[$€£]\s?\d/);
+  // Yearly, two months free, is the default; monthly is one click away.
+  await expect(page.getByRole("radio", { name: "Yearly, 2 months free" })).toBeChecked();
+  await expect(cards).toContainText("$190 a year");
+  await expect(cards).toContainText("$490 a year");
   await expect(page.getByRole("button", { name: "Manage billing" })).toHaveCount(0);
   await page.getByRole("button", { name: "Choose Scheduler and Automation" }).click();
   await expect(page).toHaveURL(stripe);
-  expect(state.checkout).toEqual([{ plan: "automation" }]);
+  expect(state.checkout).toEqual([{ plan: "automation", interval: "year" }]);
   await page.goBack();
+  await page.getByRole("radio", { name: "Monthly" }).check();
+  await expect(cards).toContainText("$19 a month");
   await page.getByRole("button", { name: "Choose Scheduler", exact: true }).click();
   await expect(page).toHaveURL(stripe);
-  expect(state.checkout).toEqual([{ plan: "automation" }, { plan: "scheduler" }]);
+  expect(state.checkout).toEqual([
+    { plan: "automation", interval: "year" },
+    { plan: "scheduler", interval: "month" },
+  ]);
 });
 
 test("checkout says to sign in again, or to use Manage billing, in plain words", async ({ page }) => {
@@ -182,7 +190,7 @@ test("a double click on Choose starts one checkout", async ({ page }) => {
   await expect.poll(() => state.checkout.length).toBe(1);
   release();
   await expect(page).toHaveURL(stripe);
-  expect(state.checkout).toEqual([{ plan: "scheduler" }]);
+  expect(state.checkout).toEqual([{ plan: "scheduler", interval: "year" }]);
 });
 
 test("coming back from a canceled checkout says so and offers the plans again", async ({ page }) => {
