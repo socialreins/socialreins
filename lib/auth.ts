@@ -223,6 +223,7 @@ const codes = [
   "billing_unavailable",
   "stripe_failed",
   "invalid_plan",
+  "has_paid_plan",
   "invalid_pack",
 ] as const;
 export type Failure = (typeof codes)[number] | "rate_limited" | "signed_out" | "timeout" | "error";

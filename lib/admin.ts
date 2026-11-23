@@ -64,7 +64,19 @@ export type AdminUser = {
   teams: { id: string; name: string; role: string }[];
 };
 export type AdminUsers = { total: number; users: AdminUser[] };
-export type AdminTeam = { id: string; name: string; created_at: string; members: number; accounts: number; posts: number; owner_email: string | null };
+export type AdminTeam = {
+  id: string;
+  name: string;
+  created_at: string;
+  members: number;
+  accounts: number;
+  posts: number;
+  owner_email: string | null;
+  // The team's plan row; null when it never had one. provider is "stripe" or "comp" (free, given here).
+  plan?: string | null;
+  plan_status?: string | null;
+  plan_provider?: string | null;
+};
 export type AdminTeams = { total: number; teams: AdminTeam[] };
 
 // One page of an admin list: the search text and where the page starts.
@@ -109,6 +121,11 @@ export function showing(offset: number, rows: number, total: number) {
 // Newest first; `total` counts every match, not only this page.
 export const listUsers = (p: Page) => api<AdminUsers>(`/v1/admin/users${pageQuery(p)}`);
 export const listTeams = (p: Page) => api<AdminTeams>(`/v1/admin/teams${pageQuery(p)}`);
+
+// A comped plan is free, with no Stripe and no end. Both need a sign-in from the last 10 minutes (reauth_required);
+// comping answers has_paid_plan over a live paid plan, ending answers not_found when there is no live comp.
+export const compPlan = (team: string, plan: "scheduler" | "automation") => api<"ok">(`/v1/admin/teams/${team}/plan`, "PUT", { plan });
+export const endCompPlan = (team: string) => api<"ok">(`/v1/admin/teams/${team}/plan`, "DELETE");
 
 export type SignupMode = "open" | "closed" | "domains";
 // `source`: "env" while the rules still come from the server's environment, "saved" once saved here.
