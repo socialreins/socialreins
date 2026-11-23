@@ -3,15 +3,18 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { Failure } from "@/lib/auth";
 import type { Connection } from "@/lib/connections";
-import { createInbox, deleteInbox, KINDS, updateInbox, type Inbox, type Kind } from "@/lib/inbox";
-import type { SocialSet } from "@/lib/sets";
-import { PlatformIcon, platforms } from "@/components/platform-icons";
-import { KeywordsField, ScopeField, scopeBody, scopeOf } from "@/components/scope-fields";
-import { Status, useAction } from "@/components/team-ui";
+import { createInbox, deleteInbox, inboxCapable, KINDS, updateInbox, type Inbox, type Kind } from "@/lib/inbox";
+import { accountName, Avatar } from "@/components/connections";
+import { platformName } from "@/components/platform-icons";
+import { PlatformMark } from "@/components/posts";
+import { KeywordsField } from "@/components/scope-fields";
+import { planLimit, Status, useAction } from "@/components/team-ui";
 import { Icon } from "@/components/ui";
 
 export const inboxMessages: Partial<Record<Failure, ReactNode>> = {
-  invalid_filters: "One of the accounts or the set no longer exists, or a keyword is too long. Check them and try again.",
+  invalid_filters: "A keyword is too long. Check them and try again.",
+  invalid_accounts: "Pick at least one account. One you picked may have been disconnected: reload and try again.",
+  plan_limit_inboxes: planLimit("inboxes"),
   too_many_inboxes: "This team already has 50 inboxes, the most allowed. Delete one first.",
   all_inbox: "The All inbox can't be changed.",
   not_deletable: "The All inbox can't be deleted.",
@@ -24,14 +27,12 @@ const kindLabel: Record<Kind, string> = { comment: "Comments", mention: "Mention
 export function InboxEditor({
   inbox,
   accounts,
-  sets,
   onSaved,
   onDeleted,
   onClose,
 }: {
   inbox: Inbox | null;
   accounts: Connection[];
-  sets: SocialSet[];
   onSaved: (i: Inbox) => void;
   onDeleted: (id: string) => void;
   onClose: () => void;
@@ -39,7 +40,11 @@ export function InboxEditor({
   const ref = useRef<HTMLDialogElement>(null);
   const f = inbox?.filters;
   const [name, setName] = useState(inbox?.name ?? "");
-  const [scope, setScope] = useState(scopeOf(f ?? { account_ids: [] }));
+  const usable = inboxCapable(accounts);
+  // A new inbox starts with every account picked, the common case for a first inbox. Until the user
+  // changes a pick, that follows `accounts`, which may still be loading when the editor opens.
+  const [picks, setPicks] = useState<string[] | null>(inbox?.account_ids ?? null);
+  const picked = picks ?? usable.map((a) => a.id);
   const [kinds, setKinds] = useState<Kind[]>(f?.kinds ?? []);
   const [keywords, setKeywords] = useState<string[]>(f?.keywords ?? []);
   const [unanswered, setUnanswered] = useState(f?.unanswered ?? false);
@@ -52,9 +57,9 @@ export function InboxEditor({
 
   async function onSave(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    // No kind ticked means every kind; Bluesky is the only platform with an inbox today.
-    const filters = { ...scopeBody(scope), kinds, platforms: [], keywords, unanswered };
-    const call = () => (inbox ? updateInbox(inbox.id, name, filters) : createInbox(name, filters));
+    // No kind ticked means every kind.
+    const body = { name, account_ids: picked, filters: { kinds, keywords, unanswered } };
+    const call = () => (inbox ? updateInbox(inbox.id, body) : createInbox(body));
     await run("save", call, (saved) => {
       onSaved(saved);
       ref.current?.close();
@@ -100,7 +105,33 @@ export function InboxEditor({
             aria-invalid={problem === "invalid_name" || undefined}
           />
         </div>
-        <ScopeField id="inbox-scope" value={scope} onChange={setScope} accounts={accounts} sets={sets} />
+        <fieldset className="grid gap-2" aria-invalid={problem === "invalid_accounts" || undefined}>
+          <legend className="label mb-1">Accounts</legend>
+          {usable.length === 0 ? (
+            <p className="text-ink-soft">No account with an inbox is connected yet.</p>
+          ) : (
+            <ul className="grid gap-1 sm:grid-cols-2" aria-label="Accounts in this inbox">
+              {usable.map((a) => (
+                <li key={a.id}>
+                  <label className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-ink/5">
+                    <input
+                      type="checkbox"
+                      aria-label={`${accountName(a)}, ${platformName(a.provider)}`}
+                      checked={picked.includes(a.id)}
+                      onChange={(e) => setPicks(e.target.checked ? [...picked, a.id] : picked.filter((x) => x !== a.id))}
+                    />
+                    <Avatar connection={a} size="size-6" />
+                    <span className="truncate">{accountName(a)}</span>
+                    <span className="ml-auto inline-flex shrink-0 items-center gap-1 text-sm">
+                      <PlatformMark platform={a.provider} className="size-3.5" named />
+                    </span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="hint">Bluesky, Facebook and Instagram accounts have an inbox. An account can be in more than one.</p>
+        </fieldset>
         <fieldset className="grid gap-1">
           <legend className="label mb-1">Kinds</legend>
           <div className="flex flex-wrap gap-x-5 gap-y-1">
@@ -117,26 +148,6 @@ export function InboxEditor({
           </div>
           <p className="hint">None ticked shows every kind.</p>
         </fieldset>
-        <fieldset className="grid gap-1">
-          <legend className="label mb-1">Platforms</legend>
-          <ul className="flex flex-wrap gap-x-5 gap-y-1">
-            {platforms.map((p) => {
-              const live = p.id === "bluesky";
-              return (
-                <li key={p.id}>
-                  <label className={`flex items-center gap-2 ${live ? "" : "text-ink-soft"}`}>
-                    <input type="checkbox" checked={live} disabled aria-describedby={live ? undefined : "platforms-note"} readOnly />
-                    <PlatformIcon platform={p} className="size-4" />
-                    {p.name}
-                  </label>
-                </li>
-              );
-            })}
-          </ul>
-          <p id="platforms-note" className="hint">
-            Only Bluesky has an inbox today. The others come with their connections.
-          </p>
-        </fieldset>
         <KeywordsField
           id="inbox-keywords"
           label="Keywords"
@@ -150,7 +161,7 @@ export function InboxEditor({
         </label>
         <Status problem={problem} done={done} overrides={inboxMessages} />
         <div className="flex flex-wrap items-center gap-2">
-          <button type="submit" className="btn btn-primary" disabled={busy !== null}>
+          <button type="submit" className="btn btn-primary" disabled={busy !== null || picked.length === 0}>
             {busy === "save" ? "Saving..." : inbox ? "Save inbox" : "Create inbox"}
           </button>
           <button type="button" className="btn btn-quiet" disabled={busy !== null} onClick={() => ref.current?.close()}>
@@ -160,7 +171,7 @@ export function InboxEditor({
             (confirming ? (
               <span className="ml-auto flex flex-wrap items-center gap-2">
                 <span id="inbox-delete-q" className="text-sm">
-                  Delete {inbox.name}? Its items stay in All.
+                  Delete {inbox.name}? Its items stay in All inboxes.
                 </span>
                 <button
                   type="button"

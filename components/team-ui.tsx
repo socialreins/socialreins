@@ -79,6 +79,7 @@ const limitWords: Record<string, string> = {
   accounts: "Your plan's account limit is reached.",
   members: "Your plan's team member limit is reached.",
   automation: "Automations are not on your plan.",
+  inboxes: "Your plan's inbox limit is reached.",
   plan: "The team has no plan, so posts don't publish. Scheduled posts wait and go out once a plan is chosen.",
 };
 export const planLimit = (limit?: string) => (
@@ -96,6 +97,7 @@ const messages: Partial<Record<Failure, ReactNode>> = {
   plan_limit_members: planLimit("members"),
   plan_limit_automation: planLimit("automation"),
   plan_limit_plan: planLimit("plan"),
+  plan_limit_inboxes: planLimit("inboxes"),
   forbidden: "Your role in this team can't do that.",
   not_found: "That is no longer there. Reload the page to see the latest.",
   invalid_name: "Use a name of 1 to 60 characters.",
