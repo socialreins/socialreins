@@ -5,7 +5,7 @@ import { publicPage } from "@/lib/seo";
 
 export const metadata: Metadata = {
   title: "Pricing: SocialReins",
-  description: "SocialReins Cloud: Scheduler $190 a year or $19 a month, Scheduler and Automation $490 a year or $49 a month, and a 7-day free trial on a team's first plan. Self-hosting is free, with every feature.",
+  description: "SocialReins Cloud: Scheduler $190 a year or $19 a month, with Automation $490 or $49. A 7-day free trial on a first plan. Self-hosting is free.",
   ...publicPage("/pricing"),
 };
 
