@@ -41,8 +41,10 @@ export function InboxEditor({
   const f = inbox?.filters;
   const [name, setName] = useState(inbox?.name ?? "");
   const usable = inboxCapable(accounts);
-  // A new inbox starts with every account picked, the common case for a first inbox.
-  const [picked, setPicked] = useState<string[]>(inbox?.account_ids ?? usable.map((a) => a.id));
+  // A new inbox starts with every account picked, the common case for a first inbox. Until the user
+  // changes a pick, that follows `accounts`, which may still be loading when the editor opens.
+  const [picks, setPicks] = useState<string[] | null>(inbox?.account_ids ?? null);
+  const picked = picks ?? usable.map((a) => a.id);
   const [kinds, setKinds] = useState<Kind[]>(f?.kinds ?? []);
   const [keywords, setKeywords] = useState<string[]>(f?.keywords ?? []);
   const [unanswered, setUnanswered] = useState(f?.unanswered ?? false);
@@ -116,7 +118,7 @@ export function InboxEditor({
                       type="checkbox"
                       aria-label={`${accountName(a)}, ${platformName(a.provider)}`}
                       checked={picked.includes(a.id)}
-                      onChange={(e) => setPicked((p) => (e.target.checked ? [...p, a.id] : p.filter((x) => x !== a.id)))}
+                      onChange={(e) => setPicks(e.target.checked ? [...picked, a.id] : picked.filter((x) => x !== a.id))}
                     />
                     <Avatar connection={a} size="size-6" />
                     <span className="truncate">{accountName(a)}</span>

@@ -64,7 +64,7 @@ export const features: Feature[] = [
     name: "Inboxes",
     short: "Comments, mentions and DMs in one place",
     description: "Inboxes in SocialReins: comments, mentions and DMs in one place, DMs as conversations, with search, assigning and saved replies. See which networks work.",
-    intro: "Comments, mentions and DMs from your connected accounts arrive in one place, and you answer them there. Make as many custom inboxes as you need, each showing only what you choose.",
+    intro: "Comments, mentions and DMs from your connected accounts arrive in one place, and you answer them there. Make custom inboxes, each showing only what you choose: 1 on Scheduler, 10 on Scheduler and Automation, as many as you like when you self-host.",
     support,
     sections: [
       {

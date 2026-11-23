@@ -954,6 +954,29 @@ test("the switcher puts All inboxes first, rows in it carry inbox chips, and [ a
   await expect(page).toHaveURL(/item=p1/);
   await page.keyboard.press("?");
   await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toContainText("Next inbox");
+  await page.keyboard.press("Escape");
+  // In the reply box [ and ] are text, not inbox moves.
+  const reply = page.getByRole("region", { name: "Item" }).getByLabel("Reply publicly");
+  await reply.click();
+  await page.keyboard.type("[a]");
+  await expect(reply).toHaveValue("[a]");
+  await expect(page).toHaveURL(/\/inbox\/i2\?item=p1/);
+});
+
+test("a new inbox opened before the accounts load ticks them once they arrive", async ({ page }) => {
+  await brain(page, "owner");
+  let release = () => {};
+  const loaded = new Promise<void>((r) => (release = r));
+  await page.route("**/v1/connections", async (route) => {
+    await loaded;
+    await route.fulfill({ json: [alice] });
+  });
+  await page.goto("/inbox");
+  await page.getByRole("button", { name: "New inbox" }).click();
+  const dialog = page.getByRole("dialog", { name: "New inbox" });
+  await expect(dialog.getByText("No account with an inbox is connected yet.")).toBeVisible();
+  release();
+  await expect(dialog.getByRole("checkbox", { name: "Alice, Bluesky" })).toBeChecked();
 });
 
 test("empty states: no inboxes, an inbox without accounts, and the plan's inbox limit", async ({ page }) => {
