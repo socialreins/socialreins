@@ -83,7 +83,7 @@ test("a team with no plan sees two plan cards with no price, and owners choose o
   await expect(cards.getByText("10 connected accounts")).toBeVisible();
   await expect(cards.getByText("25 connected accounts")).toBeVisible();
   await expect(cards.getByText("2,500 contacts")).toBeVisible();
-  await expect(page.getByText("New plans start with a 7-day free trial.", { exact: true })).toBeVisible();
+  await expect(page.getByText("A team's first plan starts with a 7-day free trial.", { exact: true })).toBeVisible();
   // Yearly, two months free, is the default; monthly is one click away.
   await expect(page.getByRole("radio", { name: "Yearly, 2 months free" })).toBeChecked();
   await expect(cards).toContainText("$190 a year");

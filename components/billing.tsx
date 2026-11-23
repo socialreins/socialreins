@@ -225,7 +225,7 @@ function PlanSection({ polling }: { polling: boolean }) {
               </div>
             ))}
           </div>
-          <p className="text-ink-soft">New plans start with a 7-day free trial.</p>
+          <p className="text-ink-soft">A team's first plan starts with a 7-day free trial.</p>
         </section>
       )}
       <section aria-labelledby="usage-heading" className="grid gap-2">

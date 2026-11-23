@@ -9,11 +9,15 @@ test("the pricing page shows the two cloud plans with yearly prices first, and s
   await expect(page.getByRole("region").first()).toHaveAccessibleName("Scheduler");
   const scheduler = page.getByRole("region", { name: "Scheduler", exact: true });
   await expect(scheduler).toContainText("$190 a year");
-  await expect(scheduler).toContainText("Or $19 a month. Starts with a 7-day free trial.");
+  await expect(scheduler).toContainText("Or $19 a month. A team's first plan starts with a 7-day free trial.");
+  await expect(scheduler).toContainText("10 connected accounts.");
+  await expect(scheduler).toContainText("3 team members.");
   await expect(scheduler).toContainText("Cloud, not open yet");
   const automation = page.getByRole("region", { name: "Scheduler and Automation" });
   await expect(automation).toContainText("$490 a year");
   await expect(automation).toContainText("Or $49 a month.");
+  await expect(automation).toContainText("25 connected accounts.");
+  await expect(automation).toContainText("Unlimited team members.");
 
   const self = page.getByRole("region", { name: "Self-hosted" });
   await expect(self).toContainText("Works today");
@@ -23,7 +27,7 @@ test("the pricing page shows the two cloud plans with yearly prices first, and s
 
   // X credits and the refund rule are answered on the page.
   await expect(page.getByText("100 posts for $5 or 500 for $20")).toBeVisible();
-  await expect(page.getByText("Payments and credit packs are not refunded", { exact: false })).toBeVisible();
+  await expect(page.getByText("A period already started and credit packs are not refunded, except for a duplicate charge or our mistake", { exact: false })).toBeVisible();
 
   // Cloud is invitation-only until sign-up opens: the button is still the waitlist.
   await scheduler.getByRole("link", { name: "Join the waitlist" }).click();

@@ -5,7 +5,7 @@ import { publicPage } from "@/lib/seo";
 
 export const metadata: Metadata = {
   title: "Pricing: SocialReins",
-  description: "SocialReins Cloud: Scheduler $190 a year or $19 a month, Scheduler and Automation $490 a year or $49 a month, with a 7-day free trial. Self-hosting is free, with every feature.",
+  description: "SocialReins Cloud: Scheduler $190 a year or $19 a month, Scheduler and Automation $490 a year or $49 a month, and a 7-day free trial on a team's first plan. Self-hosting is free, with every feature.",
   ...publicPage("/pricing"),
 };
 
@@ -17,7 +17,7 @@ const plans = [
     name: "Scheduler",
     tag: "Cloud, not open yet",
     price: "$190 a year",
-    note: "Or $19 a month. Starts with a 7-day free trial.",
+    note: "Or $19 a month. A team's first plan starts with a 7-day free trial.",
     points: [
       "10 connected accounts.",
       "3 team members.",
@@ -31,7 +31,7 @@ const plans = [
     name: "Scheduler and Automation",
     tag: "Cloud, not open yet",
     price: "$490 a year",
-    note: "Or $49 a month. Starts with a 7-day free trial.",
+    note: "Or $49 a month. A team's first plan starts with a 7-day free trial.",
     points: [
       "25 connected accounts.",
       "Unlimited team members.",
@@ -59,9 +59,9 @@ const plans = [
 
 const questions: [string, string][] = [
   ["Is the self-hosted version limited?", "No. There are no plan limits: it is the same code that runs the cloud version, under the AGPL-3.0 license, and nothing is held back for paying customers."],
-  ["What does the cloud version cost?", "Scheduler is $190 a year or $19 a month. Scheduler and Automation is $490 a year or $49 a month. Yearly is two months free. Prices are in US dollars, and each plan starts with a 7-day free trial."],
+  ["What does the cloud version cost?", "Scheduler is $190 a year or $19 a month. Scheduler and Automation is $490 a year or $49 a month. Yearly is two months free. Prices are in US dollars, and a team's first plan starts with a 7-day free trial."],
   ["Why do posts to X cost extra?", "X charges us for every post sent through its API, so posting to X on the cloud version uses prepaid credits: 100 posts for $5 or 500 for $20. Each part of a thread counts as one post. Credits never expire. The other networks do not charge for posting."],
-  ["Can I cancel or get a refund?", "You can cancel at any time, and your plan keeps working until the end of the period you paid for. Payments and credit packs are not refunded, except for a duplicate charge or our mistake; the free trial is the time to try it."],
+  ["Can I cancel or get a refund?", "You can cancel at any time, and your plan keeps working until the end of the period you paid for. A period already started and credit packs are not refunded, except for a duplicate charge or our mistake; the free trial is the time to try it."],
   ["Does self-hosting cost anything at all?", "SocialReins itself is free. You pay for your own server, and X charges for its API. The other networks do not charge for posting."],
   ["Can I try the cloud version now?", "Not yet. SocialReins Cloud is open by invitation while we finish it. Join the waitlist and we email you when it opens. You can self-host today."],
 ];
@@ -76,7 +76,7 @@ export default function Pricing() {
         <p className="text-ink-soft">SocialReins Cloud, where we run everything for you, opens by invitation for now. Prices are in US dollars, and yearly is two months free. Or run SocialReins on your own server today, free.</p>
       </div>
 
-      <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-5 lg:grid-cols-3">
         {plans.map((p) => (
           <section key={p.name} aria-labelledby={`plan-${p.name.replace(/ /g, "-")}`} className={`grid content-start gap-5 rounded-3xl bg-paper p-6 ${p.name === "Self-hosted" ? "border border-ink/10" : "border-2 border-ink"}`}>
             <div className="grid gap-1">

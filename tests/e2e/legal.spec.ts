@@ -22,6 +22,7 @@ test("terms are dated and link the privacy policy", async ({ page }) => {
   await expect(page.getByRole("main")).toContainText("open by invitation for now");
   await expect(page.getByRole("main")).toContainText("Payments are handled by Stripe");
   await expect(page.getByRole("main")).toContainText("We do not refund payments for a period already started");
+  await expect(page.getByRole("main")).toContainText("Stripe tries the card again for up to 7 days");
   await expect(page.getByRole("main")).not.toContainText("free for now");
   await expect(page.getByRole("link", { name: "Privacy Policy" })).toHaveAttribute("href", "/privacy");
 });
