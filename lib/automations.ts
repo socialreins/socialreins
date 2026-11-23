@@ -281,7 +281,9 @@ export const numbered = (text: string, buttons: Pick<Button, "label">[]) => text
 export type FlowProblem = { step: number | null; text: string };
 // What brain would refuse (422 invalid_steps or invalid_text), in words, with the step's index
 // or null for the flow as a whole. Empty when the flow can be saved.
-export function flowProblems(steps: StepDraft[], trigger: Trigger): FlowProblem[] {
+// `providers`: the networks of the accounts the automation is limited to by name (empty: a set or
+// all accounts). Only when every one is Facebook or Instagram are Meta's rules checked, as brain does.
+export function flowProblems(steps: StepDraft[], trigger: Trigger, providers: string[] = []): FlowProblem[] {
   const out: FlowProblem[] = [];
   const pub = triggers[trigger].publicReply;
   if (!steps.some(isSend)) out.push({ step: null, text: "A flow needs at least one step that sends something. Add a DM." });
@@ -315,6 +317,26 @@ export function flowProblems(steps: StepDraft[], trigger: Trigger): FlowProblem[
       else if (payloads.indexOf(b.payload) !== payloads.lastIndexOf(b.payload)) say(`Two buttons share the payload "${b.payload}". Give each its own under Advanced.`);
     }
   });
+  if (providers.length && providers.every((p) => p === "facebook" || p === "instagram")) {
+    const dms = steps.flatMap((s, i) => (s.type === "send_dm" ? [i] : []));
+    if (trigger === "comment_received" && dms.length > 1)
+      out.push({ step: dms[1]!, text: "Facebook and Instagram allow one private reply per comment. Keep one DM, or start the flow from a DM instead." });
+    // A DM trigger's DM within 24 hours of the person's message; a comment's private reply within 7 days.
+    const window = !triggers[trigger].publicReply && trigger !== "new_follower" ? 24 * 60 : trigger === "comment_received" ? 7 * 24 * 60 : null;
+    if (window !== null) {
+      let waited = 0;
+      steps.forEach((s, step) => {
+        if (s.type === "wait") waited += waitMinutes(s.amount, s.unit) ?? 0;
+        else if (s.type === "send_dm" && waited >= window)
+          out.push({ step, text: `Facebook and Instagram take this DM only within ${window === 24 * 60 ? "24 hours of the person's message" : "7 days of the comment"}. Shorten the waits before it.` });
+      });
+    }
+    if (providers.includes("instagram"))
+      steps.forEach((s, step) => {
+        if (s.type === "send_dm" && new TextEncoder().encode(numbered(s.text, s.buttons).replaceAll("{name}", "\u{10348}".repeat(64)).replaceAll("{page}", "p".repeat(100))).length > 1000)
+          out.push({ step, text: "Too long for Instagram, which takes 1000 bytes: letters outside English count 2 to 4 each, and {name} up to 256." });
+      });
+  }
   // The same button problem once, whichever of its buttons raised it.
   return out.filter((p, i) => out.findIndex((q) => q.step === p.step && q.text === p.text) === i);
 }
