@@ -346,3 +346,12 @@ test("an unknown return value shows no banner and the page still works", async (
   await expect(page.getByText("No plan", { exact: true })).toBeVisible();
   await expect(page.getByRole("status")).toHaveCount(0);
 });
+
+test("a comped plan says it is free and offers nothing to manage or buy as a plan", async ({ page }) => {
+  const comped = { ...trial, status: "active", trial_ends_at: null, comped: true };
+  await brain(page, "owner", { ...noPlan, plan: comped, limits });
+  await page.goto("/billing");
+  await expect(page.getByText("Free plan, given by SocialReins. Nothing to pay.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Manage billing" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Choose/ })).toHaveCount(0);
+});
