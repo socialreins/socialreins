@@ -78,7 +78,8 @@ export function BillingPage() {
   }, [returned]);
   return (
     <div className="grid max-w-3xl gap-10">
-      {returned && banners[returned] ? (
+      {/* Own keys only: a query like ?checkout=__proto__ must not reach the prototype. */}
+      {returned && Object.hasOwn(banners, returned) ? (
         <p role="status" className={returned.endsWith("success") ? "waitlist-done" : "text-ink-soft"}>
           {banners[returned]}
         </p>

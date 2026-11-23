@@ -339,3 +339,10 @@ test("only the owner sees the credit packs", async ({ page }) => {
   await expect(page.getByText("X posts", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /Buy/ })).toHaveCount(0);
 });
+
+test("an unknown return value shows no banner and the page still works", async ({ page }) => {
+  await brain(page, "owner", noPlan);
+  await page.goto("/billing?checkout=__proto__");
+  await expect(page.getByText("No plan", { exact: true })).toBeVisible();
+  await expect(page.getByRole("status")).toHaveCount(0);
+});
