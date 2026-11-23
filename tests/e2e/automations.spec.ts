@@ -1161,7 +1161,7 @@ test("an AI step takes a prompt, says who pays, and saves as ai_send_dm", async 
   await step(page, 1).getByRole("button", { name: "Remove step 1" }).click();
   await doThis.getByRole("button", { name: "AI DM", exact: true }).click();
   await step(page, 1).getByLabel("Prompt for the AI").fill("Thank them and point them to https://acme.example/guide");
-  await expect(step(page, 1)).toContainText("without one, each reply uses 1 AI credit");
+  await expect(step(page, 1)).toContainText("200 AI replies a month come first, then AI credits");
   await expect(page.getByRole("region", { name: "Preview" })).toContainText("Written by AI from your prompt");
   await page.getByRole("button", { name: "Create automation" }).click();
   await expect(page).toHaveURL("/t/acme22/automations/a2");
@@ -1179,5 +1179,5 @@ test("run history names the model of an AI reply and says when credits ran out",
   await page.goto("/automations/flow");
   const history = page.getByRole("region", { name: "Run history" });
   await expect(history.getByRole("listitem").filter({ hasText: "AI DM: sent, written by claude-haiku-5-5" })).toHaveCount(1);
-  await expect(history).toContainText("Out of AI credits: add your own AI key on the Billing page");
+  await expect(history).toContainText("This month's AI replies and your AI credits are used up");
 });

@@ -238,6 +238,12 @@ function PlanSection({ polling }: { polling: boolean }) {
           <dd>{limitText(usage.accounts, limits.accounts)}</dd>
           <dt className="text-ink-soft">Team members</dt>
           <dd>{limitText(usage.members, limits.members)}</dd>
+          {typeof limits.ai_monthly === "number" && limits.ai_monthly > 0 && (
+            <>
+              <dt className="text-ink-soft">AI replies this month</dt>
+              <dd>{limitText(usage.ai_replies ?? 0, limits.ai_monthly)}</dd>
+            </>
+          )}
         </dl>
       </section>
       <section aria-labelledby="credits-heading" className="grid gap-2">

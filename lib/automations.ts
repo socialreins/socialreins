@@ -320,6 +320,7 @@ export function flowProblems(steps: StepDraft[], trigger: Trigger): FlowProblem[
       if (!s.text.trim()) say("Write the prompt.");
       else if ([...s.text].length > MAX_PROMPT) say(`Too long: at most ${MAX_PROMPT} characters.`);
       if (s.text.includes("{page}")) say("The AI can't use {page}. Remove it.");
+      if (s.text.includes("{name}")) say("The AI is given their name already. Remove {name}.");
       return;
     }
     const buttons = s.type === "send_dm" ? s.buttons : [];
@@ -617,11 +618,12 @@ export const reasonText: Record<string, string> = {
   no_contact: "There is no contact behind this item to tag",
   automation_changed: "Stopped: the automation was changed or switched off before the flow finished",
   no_ai_key: "No AI key: add your own on the Billing page",
-  no_ai_credits: "Out of AI credits: add your own AI key on the Billing page",
+  no_ai_credits: "This month's AI replies and your AI credits are used up",
   ai_failed: "The AI provider gave no answer",
   ai_empty: "The AI wrote nothing, so nothing was sent",
   ai_too_long: "The AI's text was too long to send",
-  ai_link: "Not sent: the AI added a link that is not in your prompt",
+  ai_link: "Not sent: the AI added a link, address or @handle that is not in your prompt",
+  ai_leak: "Not sent: the AI repeated your prompt",
 };
 // Why it happened and what helps, for the reasons that have more to say than their name.
 export const reasonWhy: Record<string, string> = {
@@ -631,8 +633,9 @@ export const reasonWhy: Record<string, string> = {
   no_dm_access: "The account's Bluesky app password was made without access to DMs. Make one that allows DMs and reconnect.",
   no_public_page: "{page} is the link to the post's public page, so the text can go only under posts made here whose public page is open.",
   automation_changed: "Saving new steps or switching the automation off stops the runs that are waiting.",
-  no_ai_credits: "Without your own AI key, each AI reply uses 1 AI credit.",
-  ai_link: "The AI may only use links that are in your prompt, so this reply was held back.",
+  no_ai_credits: "The Scheduler and Automation plan includes 200 AI replies a month; after that each uses 1 AI credit. Add your own AI key on the Billing page for replies with no limit.",
+  ai_link: "The AI may only use links and @handles that are in your prompt, so this reply was held back.",
+  ai_leak: "The reply quoted a long part of your prompt word for word, so it was held back.",
   daily_cap: "A team's automations run at most 500 times a day.",
 };
 export const reason = (code: string | null) => (code ? (reasonText[code] ?? code.replaceAll("_", " ")) : null);

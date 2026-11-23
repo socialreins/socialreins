@@ -118,7 +118,7 @@ const node = "relative grid size-8 place-items-center rounded-full bg-paper text
 const pill = "relative col-span-2 flex items-center gap-2 justify-self-start rounded-2xl bg-paper px-3 text-sm shadow-[0_0_0_1px_var(--edge)]";
 export const stepIcon: Record<Step["type"], IconName> = { send_dm: "send", reply_publicly: "comment", ai_send_dm: "send", ai_reply_publicly: "comment", wait: "clock", tag_contact: "tag" };
 // One line on who pays for an AI send, under its prompt.
-export const AI_HINT = "The AI writes it from this prompt and their message, with no links but yours. Your own AI key (Billing) is not metered; without one, each reply uses 1 AI credit.";
+export const AI_HINT = "The AI writes it from this prompt, their message and their name, with no links or @handles but yours. Your own AI key (Billing) has no limit; without one, your plan's 200 AI replies a month come first, then AI credits.";
 
 // A step that was added or moved slides into place from where it was. Nothing moves for a reader who asks for no motion.
 function settle(id: number, fromTop?: number) {
