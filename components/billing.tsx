@@ -50,6 +50,7 @@ const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
 
 // When the plan ends or renews, in a sentence.
 function planDate(p: Plan, owner: boolean) {
+  if (p.comped && p.status === "active") return "Free plan, given by SocialReins. Nothing to pay.";
   if (p.status === "trialing" && p.trial_ends_at) return `Trial ends ${date(p.trial_ends_at)}.`;
   if (p.status === "past_due") return owner ? "Payment failed, update your card in Manage billing." : "Payment failed, retrying.";
   if (!p.current_period_end) return null;
@@ -173,7 +174,7 @@ function PlanSection({ polling }: { polling: boolean }) {
         ) : (
           <p>No plan</p>
         )}
-        {isLive(plan) && owner && (
+        {isLive(plan) && !plan.comped && owner && (
           <button type="button" className="btn btn-primary justify-self-start" disabled={off} onClick={() => go("portal", openPortal)}>
             {label("portal", "Manage billing")}
           </button>

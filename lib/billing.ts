@@ -7,6 +7,8 @@ export type Plan = {
   trial_ends_at: string | null;
   current_period_end: string | null;
   cancel_at_period_end: boolean;
+  // A free plan an admin gave: nothing to pay or manage. Optional until brain sends it.
+  comped?: boolean;
 };
 // A limit of null is unlimited.
 export type Billing = {
