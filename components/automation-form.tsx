@@ -128,12 +128,16 @@ export function AutomationForm({
   // brain refuses tags with nothing sent beside them (422 invalid_actions).
   const tagsAlone = !d.flow && d.tags.length > 0 && !hasDm && !(t.publicReply && d.publicReply.trim());
   const sam = incoming[d.trigger];
-  const providers = scope.mode === "accounts" ? accounts.filter((x) => scope.accountIds.includes(x.id)).map((x) => x.provider) : [];
+  const picked = scope.mode === "accounts" ? accounts.filter((x) => scope.accountIds.includes(x.id)) : [];
+  const providers = picked.map((x) => x.provider);
+  // Accounts saved before automations were limited to these networks stay listed so they can be unticked.
+  const stuck = picked.filter((x) => !AUTOMATED.includes(x.provider)).map((x) => x.handle ?? x.display_name ?? x.provider);
   const problems = d.flow ? flowProblems(d.steps, d.trigger, providers) : [];
   const waiting = a?.runs?.waiting ?? 0;
   // Everything that stops a save, with the field to fix it in, for the bar's count.
   const issues: { text: string; field: string }[] = [
     ...(d.name.trim() ? [] : [{ text: "Give it a name.", field: "automation-name" }]),
+    ...(stuck.length ? [{ text: `Untick ${stuck.join(", ")}: automations run only on Bluesky, Facebook and Instagram.`, field: "automation-scope" }] : []),
     ...(t.payloads && !d.payloads.length ? [{ text: "Add at least one button payload.", field: "automation-payloads" }] : []),
     ...(d.flow
       ? problems.map((p) => ({ text: p.step === null ? p.text : `Step ${p.step + 1}: ${p.text}`, field: p.step === null ? "automation-flow-add" : `step-${d.steps[p.step]!.id}-field` }))
@@ -313,7 +317,7 @@ export function AutomationForm({
 
         <fieldset className="card grid gap-5 p-5">
           <legend className={cardTitle}>Only if</legend>
-          <ScopeField id="automation-scope" value={scope} onChange={setScope} accounts={accounts.filter((x) => AUTOMATED.includes(x.provider))} sets={sets} />
+          <ScopeField id="automation-scope" value={scope} onChange={setScope} accounts={accounts.filter((x) => AUTOMATED.includes(x.provider) || scope.accountIds.includes(x.id))} sets={sets} />
           {t.keywords && (
             <KeywordsField
               id="automation-keywords"
