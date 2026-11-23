@@ -5,16 +5,27 @@ export type Kind = "comment" | "mention" | "dm";
 export const KINDS: Kind[] = ["comment", "mention", "dm"];
 export type ItemState = "open" | "done";
 
-export type Filters = {
-  social_set_id?: string | null;
-  account_ids: string[];
-  kinds: Kind[];
-  platforms: string[];
-  keywords: string[];
-  unanswered: boolean;
-};
+// What narrows an inbox beyond its accounts. Empty lists mean any.
+export type Filters = { kinds: Kind[]; keywords: string[]; unanswered: boolean };
+// A custom inbox holds the items of its accounts; "All" (`is_all`) holds every item and no `account_ids`.
 // `open_count` (open items, follows left out) comes with the list only.
-export type Inbox = { id: string; name: string; is_all: boolean; filters: Filters; open_count?: number; created_at: string; updated_at: string };
+export type Inbox = { id: string; name: string; is_all: boolean; account_ids: string[]; filters: Filters; open_count?: number; created_at: string; updated_at: string };
+
+// Platforms whose accounts have an inbox.
+export const INBOX_PLATFORMS = ["bluesky", "facebook", "instagram"];
+export const inboxCapable = <A extends { provider: string }>(accounts: A[]) => accounts.filter((a) => INBOX_PLATFORMS.includes(a.provider));
+export const inboxName = (i: Inbox) => (i.is_all ? "All inboxes" : i.name);
+// Inbox-capable accounts no custom inbox holds: their items show only in All inboxes.
+export function unboxed<A extends { id: string; provider: string }>(accounts: A[], inboxes: Inbox[]) {
+  const held = new Set(inboxes.flatMap((i) => i.account_ids));
+  return inboxCapable(accounts).filter((a) => !held.has(a.id));
+}
+// The inbox before or after `id` in the switcher, wrapping around; null with fewer than two.
+export function stepInbox(inboxes: Inbox[], id: string | undefined, by: 1 | -1) {
+  if (inboxes.length < 2) return null;
+  const at = Math.max(0, inboxes.findIndex((i) => i.id === id));
+  return inboxes[(at + by + inboxes.length) % inboxes.length]!;
+}
 export type Author = { id: string; handle: string | null; name: string | null; avatar_url: string | null };
 export type Reply = {
   id: string;
@@ -46,6 +57,8 @@ export type Item = {
   contact_id?: string | null;
   contact_tags?: string[];
   assigned_to?: { id: string; name: string } | null;
+  // The custom inboxes that hold it, for chips in All inboxes. Missing from an older brain.
+  inbox_ids?: string[];
   // On a list row that stands for a whole DM conversation (the row is its latest DM); null or missing otherwise.
   conversation?: Conversation | null;
 };
@@ -68,9 +81,9 @@ export const kindName: Record<Item["kind"], string> = { comment: "Comment", ment
 const enc = encodeURIComponent;
 
 export const listInboxes = () => api<Inbox[]>("/v1/inboxes");
-export const createInbox = (name: string, filters: Filters) => api<Inbox>("/v1/inboxes", "POST", { name, filters });
-export const updateInbox = (id: string, name: string, filters: Filters) =>
-  api<Inbox>(`/v1/inboxes/${enc(id)}`, "PUT", { name, filters });
+export type InboxInput = { name: string; account_ids: string[]; filters: Filters };
+export const createInbox = (input: InboxInput) => api<Inbox>("/v1/inboxes", "POST", input);
+export const updateInbox = (id: string, input: InboxInput) => api<Inbox>(`/v1/inboxes/${enc(id)}`, "PUT", input);
 export const deleteInbox = (id: string) => api(`/v1/inboxes/${enc(id)}`, "DELETE");
 
 // `search` looks in the text and the author's name and handle; brain takes 1 to 100 characters.
@@ -149,7 +162,7 @@ export function chatRows(items: Item[], now = Date.now()): ChatRow[] {
 }
 
 // The inbox's one-key shortcuts. Never while typing, with a modifier key, or inside a dialog.
-const SHORTCUTS = { j: "next", k: "previous", e: "done", r: "reply", a: "assign", "/": "search", "?": "help" } as const;
+const SHORTCUTS = { j: "next", k: "previous", e: "done", r: "reply", a: "assign", "/": "search", "?": "help", "[": "previousInbox", "]": "nextInbox" } as const;
 export type Shortcut = (typeof SHORTCUTS)[keyof typeof SHORTCUTS];
 type KeyLike = { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; target: EventTarget | null };
 export function shortcutFor(e: KeyLike): Shortcut | null {
