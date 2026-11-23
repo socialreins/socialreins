@@ -4,7 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import type { Failure } from "@/lib/auth";
 import { contactName, deleteContact, getContact, listContacts, listContactTags, MAX_NOTES, updateContact, type Contact, type ContactDetail, type TagCount } from "@/lib/contacts";
-import { relativeTime } from "@/lib/inbox";
+import { itemSummary, relativeTime } from "@/lib/inbox";
 import { manages } from "@/lib/teams";
 import { useSession } from "@/components/app-shell";
 import { AuthorAvatar, KindBadge } from "@/components/inbox";
@@ -370,7 +370,7 @@ function ContactPanel({ id, suggestions, close, onSaved, onDeleted }: { id: stri
             {c.recent.map((i) => (
               <li key={i.id}>
                 <Link href={`/inbox?item=${enc(i.id)}${i.state === "done" ? "&state=done" : ""}`} className="grid gap-1 rounded-xl px-2 py-1.5 hover:bg-ink/[0.04]">
-                  <span className="line-clamp-2 text-sm">{i.text || "(no text)"}</span>
+                  <span className="line-clamp-2 text-sm">{itemSummary(i)}</span>
                   <span className="flex items-center gap-2 text-xs text-ink-soft">
                     <KindBadge kind={i.kind} />
                     <time dateTime={i.received_at}>{relativeTime(i.received_at)}</time>

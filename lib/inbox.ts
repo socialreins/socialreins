@@ -59,9 +59,20 @@ export type Item = {
   assigned_to?: { id: string; name: string } | null;
   // The custom inboxes that hold it, for chips in All inboxes. Missing from an older brain.
   inbox_ids?: string[];
+  // Photos, stickers, videos, files and links it carries, https only. Meta's links expire after a while. Missing from an older brain.
+  attachments?: Attachment[];
   // On a list row that stands for a whole DM conversation (the row is its latest DM); null or missing otherwise.
   conversation?: Conversation | null;
 };
+export type Attachment = { kind: "image" | "video" | "sticker" | "gif" | "audio" | "file" | "link"; url: string; preview_url?: string };
+export const attachmentName: Record<Attachment["kind"], string> = { image: "Photo", video: "Video", sticker: "Sticker", gif: "GIF", audio: "Audio", file: "File", link: "Link" };
+// What a list row says: the text, else what the item carries ("Photo", "Sticker and 1 more"), never "(no text)" when it carries something.
+export function itemSummary(i: Pick<Item, "text" | "attachments">): string {
+  if (i.text) return i.text;
+  const [first, ...rest] = i.attachments ?? [];
+  if (!first) return "(no text)";
+  return rest.length ? `${attachmentName[first.kind]} and ${rest.length} more` : attachmentName[first.kind];
+}
 export type Conversation = { count: number; open_count: number; first_at: string; last_at: string };
 export type ItemPage = { items: Item[]; next_cursor: string | null };
 
