@@ -72,7 +72,7 @@ async function calendar(page: Page, state: Post[], refuse: Record<string, { stat
 }
 
 // What the editor would send for the unchanged post, as PUT replaces it whole.
-const unchanged = (p: Post) => ({ social_set_id: p.social_set_id, platform: p.platform, body: p.body, media: p.media, thread: p.thread });
+const unchanged = (p: Post) => ({ social_set_id: p.social_set_id, platform: p.platform, account_ids: null, body: p.body, media: p.media, thread: p.thread });
 
 test("dragging a chip to another day moves every version of the post, keeping the rest of each", async ({ page }) => {
   const group = [

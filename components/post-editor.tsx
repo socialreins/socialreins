@@ -633,7 +633,8 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   };
   // One platform's post: its own text if customized, and the thread only where it can post one.
   const entry = (p: Platform) => ({
-    account_ids: accountIdsFor(p),
+    // An edit sends null to clear a pick; a new post leaves it out, which is the same.
+    account_ids: accountIdsFor(p) ?? (postId ? null : undefined),
     body: customFor(p) ?? body,
     media: mediaFor(p),
     thread: limits[p].thread ? parts : [],
@@ -1965,7 +1966,7 @@ function ImageLinks({
       {!post && !own && (
         <div className="grid gap-1">
           <p className="hint">
-            Up to {max}. Upload files from your device (or drop them here), or add public https links, Google Drive or Dropbox share links. An upload is kept until its post goes out.
+            Up to {max}. Upload files from your device (or drop them here), or add public https links, Google Drive or Dropbox share links. An upload is kept while a post that names it has yet to go out, a failed one included, so a retry finds it.
           </p>
           {platforms && platforms.length > 0 && (
             <details className="hint">
