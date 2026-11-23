@@ -28,6 +28,7 @@ export const setAiKey = (provider: Provider, key: string) => api<AiKey>("/v1/tea
 export const removeAiKey = () => api("/v1/team/ai-key", "DELETE");
 
 export type PlanChoice = "scheduler" | "automation";
+export type Interval = "year" | "month";
 // Only Stripe's own pages are followed, so a wrong or tampered answer can't send the browser elsewhere.
 export function stripeUrl(url: unknown): string | null {
   if (typeof url !== "string") return null;
@@ -45,7 +46,8 @@ const toStripe = (r: { url?: unknown } | Failure): { url: string } | Failure => 
   return url ? { url } : "stripe_failed";
 };
 // Owner only, and a sign-in from the last 10 minutes (reauth_required). Both answer {url}, a Stripe page to send the browser to.
-export const startCheckout = async (plan: PlanChoice) => toStripe(await api<{ url: string }>("/v1/team/billing/checkout", "POST", { plan }));
+export const startCheckout = async (plan: PlanChoice, interval: Interval = "year") =>
+  toStripe(await api<{ url: string }>("/v1/team/billing/checkout", "POST", { plan, interval }));
 export const openPortal = async () => toStripe(await api<{ url: string }>("/v1/team/billing/portal", "POST", {}));
 // A plan that counts as live: the team has one and can use it.
 export const isLive = (p: Plan | null): p is Plan => !!p && ["trialing", "active", "past_due"].includes(p.status);

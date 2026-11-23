@@ -67,5 +67,11 @@ describe("Stripe urls", () => {
     expect(await startCheckout("automation")).toBe("stripe_failed");
     vi.stubGlobal("fetch", reply(409, { error: "already_subscribed" }));
     expect(await startCheckout("scheduler")).toBe("already_subscribed");
+    const sent = reply(200, { url: "https://checkout.stripe.com/c/2" });
+    vi.stubGlobal("fetch", sent);
+    await startCheckout("scheduler");
+    await startCheckout("automation", "month");
+    const bodies = sent.mock.calls.map((c: unknown[]) => JSON.parse((c[1] as RequestInit).body as string));
+    expect(bodies).toEqual([{ plan: "scheduler", interval: "year" }, { plan: "automation", interval: "month" }]);
   });
 });

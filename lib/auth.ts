@@ -217,6 +217,7 @@ const codes = [
   "plan_limit_accounts",
   "plan_limit_members",
   "plan_limit_automation",
+  "plan_limit_plan",
   "already_subscribed",
   "no_customer",
   "billing_unavailable",

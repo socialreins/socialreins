@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import type { Failure } from "@/lib/auth";
 import { useSession } from "@/components/app-shell";
-import { getAiKey, getBilling, getCredits, isLive, openPortal, removeAiKey, setAiKey, startCheckout, type AiKey, type Billing, type Credits, type Plan, type PlanChoice, type Provider } from "@/lib/billing";
+import { getAiKey, getBilling, getCredits, isLive, openPortal, removeAiKey, setAiKey, startCheckout, type AiKey, type Billing, type Credits, type Interval, type Plan, type PlanChoice, type Provider } from "@/lib/billing";
 import { manages } from "@/lib/teams";
 import { isFailure, linkButton, Status, useAction } from "@/components/team-ui";
 import { LoadFailed, Skeleton } from "@/components/ui";
@@ -23,11 +23,14 @@ const planOverrides = {
   stripe_failed: "Payment page could not be opened. Try again.",
   invalid_plan: "That plan is not available.",
 };
-const choices: { plan: PlanChoice; name: string; features: string[] }[] = [
-  { plan: "scheduler", name: "Scheduler", features: ["10 connected accounts", "3 team members", "No inbox or automations"] },
+// USD, decision 0006: yearly is two months free.
+const choices: { plan: PlanChoice; name: string; monthly: number; yearly: number; features: string[] }[] = [
+  { plan: "scheduler", name: "Scheduler", monthly: 19, yearly: 190, features: ["10 connected accounts", "3 team members", "No inbox or automations"] },
   {
     plan: "automation",
     name: "Scheduler and Automation",
+    monthly: 49,
+    yearly: 490,
     features: ["25 connected accounts", "Unlimited team members", "Inbox, automations, broadcasts and newsletters", "2,500 contacts"],
   },
 ];
@@ -79,6 +82,7 @@ function PlanSection({ polling }: { polling: boolean }) {
   const [leaving, setLeaving] = useState<string | null>(null);
   // Back from checkout and polling ended without a live plan.
   const [gaveUp, setGaveUp] = useState(false);
+  const [period, setPeriod] = useState<Interval>("year");
   const [data, setData] = useState<{ billing: Billing; credits: Credits | Failure } | Failure | null>(null);
   const load = useCallback(async () => {
     setData(null);
@@ -168,18 +172,38 @@ function PlanSection({ polling }: { polling: boolean }) {
           <h2 id="choose-heading" className={heading}>
             Choose a plan
           </h2>
+          <fieldset className="flex flex-wrap gap-4">
+            <legend className="sr-only">Billing period</legend>
+            {(["year", "month"] as const).map((i) => (
+              <label key={i} className="flex items-center gap-2">
+                <input type="radio" name="interval" value={i} checked={period === i} onChange={() => setPeriod(i)} />
+                {i === "year" ? "Yearly, 2 months free" : "Monthly"}
+              </label>
+            ))}
+          </fieldset>
           <div className="grid gap-4 sm:grid-cols-2">
             {choices.map((c) => (
               <div key={c.plan} className="card grid content-between gap-4 p-5">
                 <div className="grid gap-2">
                   <h3 className="font-bold">{c.name}</h3>
+                  <p>
+                    {period === "year" ? (
+                      <>
+                        <span className="text-lg font-bold">${c.yearly}</span> a year <span className="text-ink-soft">(${(c.yearly / 12).toFixed(2)} a month)</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-lg font-bold">${c.monthly}</span> a month
+                      </>
+                    )}
+                  </p>
                   <ul className="list-disc pl-5 text-ink-soft">
                     {c.features.map((f) => (
                       <li key={f}>{f}</li>
                     ))}
                   </ul>
                 </div>
-                <button type="button" className="btn btn-primary justify-self-start" disabled={off} onClick={() => go(c.plan, () => startCheckout(c.plan))} aria-label={`Choose ${c.name}`}>
+                <button type="button" className="btn btn-primary justify-self-start" disabled={off} onClick={() => go(c.plan, () => startCheckout(c.plan, period))} aria-label={`Choose ${c.name}`}>
                   {label(c.plan, "Choose")}
                 </button>
               </div>
