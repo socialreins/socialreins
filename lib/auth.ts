@@ -225,6 +225,9 @@ const codes = [
   "billing_unavailable",
   "stripe_failed",
   "invalid_plan",
+  "unsupported_account",
+  "meta_one_private_reply",
+  "meta_reply_window",
   "has_paid_plan",
   "invalid_pack",
 ] as const;

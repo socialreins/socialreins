@@ -557,3 +557,21 @@ describe("the template gallery", () => {
     expect(TRIGGERS.every((t) => triggers[t].networks.length > 0)).toBe(true);
   });
 });
+
+describe("flowProblems with a Facebook or Instagram scope", () => {
+  const dm = (text: string) => newStep("send_dm", text);
+  const wait = (amount: number, unit: "minutes" | "hours" | "days") => ({ ...newStep("wait"), amount: String(amount), unit }) as ReturnType<typeof newStep>;
+  const texts = (steps: ReturnType<typeof newStep>[], trigger: Draft["trigger"], providers: string[]) => flowProblems(steps, trigger, providers).map((p) => p.step);
+
+  it("checks Meta's rules only when every account is Facebook or Instagram", () => {
+    const two = [dm("Hi"), wait(5, "minutes"), dm("Again")];
+    expect(texts(two, "comment_received", ["facebook"])).toEqual([2]);
+    expect(texts(two, "comment_received", ["facebook", "bluesky"])).toEqual([]);
+    expect(texts(two, "comment_received", [])).toEqual([]);
+    expect(texts([dm("Hi"), wait(1, "days"), dm("Later")], "dm_received", ["instagram"])).toEqual([2]);
+    expect(texts([dm("Hi"), wait(23, "hours"), dm("Later")], "dm_received", ["instagram"])).toEqual([]);
+    expect(texts([newStep("reply_publicly", "Hi"), wait(7, "days"), dm("Late")], "comment_received", ["facebook"])).toEqual([2]);
+    expect(texts([dm("ক".repeat(400))], "dm_received", ["instagram"])).toEqual([0]);
+    expect(texts([dm("ক".repeat(400))], "dm_received", ["facebook"])).toEqual([]);
+  });
+});
