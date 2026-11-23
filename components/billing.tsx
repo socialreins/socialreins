@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import type { Failure } from "@/lib/auth";
 import { useSession } from "@/components/app-shell";
-import { getAiKey, getBilling, getCredits, isLive, openPortal, removeAiKey, setAiKey, startCheckout, type AiKey, type Billing, type Credits, type Interval, type Plan, type PlanChoice, type Provider } from "@/lib/billing";
+import { buyCredits, getAiKey, getBilling, getCredits, isLive, openPortal, removeAiKey, setAiKey, startCheckout, type AiKey, type Billing, type Credits, type Interval, type Pack, type Plan, type PlanChoice, type Provider } from "@/lib/billing";
 import { manages } from "@/lib/teams";
 import { isFailure, linkButton, Status, useAction } from "@/components/team-ui";
 import { LoadFailed, Skeleton } from "@/components/ui";
@@ -22,6 +22,7 @@ const planOverrides = {
   billing_unavailable: "Billing is not available right now. Try again later.",
   stripe_failed: "Payment page could not be opened. Try again.",
   invalid_plan: "That plan is not available.",
+  invalid_pack: "That credit pack is not available.",
 };
 // USD, decision 0006: yearly is two months free.
 const choices: { plan: PlanChoice; name: string; monthly: number; yearly: number; features: string[] }[] = [
@@ -34,7 +35,17 @@ const choices: { plan: PlanChoice; name: string; monthly: number; yearly: number
     features: ["25 connected accounts", "Unlimited team members", "Inbox, automations, broadcasts and newsletters", "2,500 contacts"],
   },
 ];
-const banners = { success: "Thanks. Your plan will show here in a moment.", canceled: "Checkout was canceled." };
+const banners: Record<string, string> = {
+  success: "Thanks. Your plan will show here in a moment.",
+  canceled: "Checkout was canceled.",
+  credits_success: "Thanks. Your credits will show here in a moment. Reload if they don't.",
+  credits_canceled: "The credit purchase was canceled.",
+};
+// USD, decision 0006: one credit is one X post, and credits never expire.
+const packs: { pack: Pack; posts: number; price: number }[] = [
+  { pack: "x100", posts: 100, price: 5 },
+  { pack: "x500", posts: 500, price: 20 },
+];
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
 
 // When the plan ends or renews, in a sentence.
@@ -56,15 +67,19 @@ const limitText = (used: number, limit: number | null) => (limit === null ? `${u
 
 export function BillingPage() {
   const { user } = useSession();
-  // Brain sends the browser back from Stripe to /billing?checkout=success or canceled; show it once, then clean the address.
-  const [returned] = useState(() => new URLSearchParams(window.location.search).get("checkout"));
+  // Brain sends the browser back from Stripe to /billing?checkout= (a plan) or ?credits= (a pack), success or canceled; show it once, then clean the address.
+  const [returned] = useState(() => {
+    const q = new URLSearchParams(window.location.search);
+    const credits = q.get("credits");
+    return q.get("checkout") ?? (credits ? `credits_${credits}` : null);
+  });
   useEffect(() => {
     if (returned) window.history.replaceState(null, "", window.location.pathname);
   }, [returned]);
   return (
     <div className="grid max-w-3xl gap-10">
-      {returned === "success" || returned === "canceled" ? (
-        <p role="status" className={returned === "success" ? "waitlist-done" : "text-ink-soft"}>
+      {returned && banners[returned] ? (
+        <p role="status" className={returned.endsWith("success") ? "waitlist-done" : "text-ink-soft"}>
           {banners[returned]}
         </p>
       ) : null}
@@ -238,6 +253,18 @@ function PlanSection({ polling }: { polling: boolean }) {
             <dt className="text-ink-soft">AI</dt>
             <dd>{credits.ai}</dd>
           </dl>
+        )}
+        {owner && (
+          <>
+            <div className="flex flex-wrap gap-3">
+              {packs.map((p) => (
+                <button key={p.pack} type="button" className="btn btn-secondary" disabled={off} onClick={() => go(p.pack, () => buyCredits(p.pack))}>
+                  {label(p.pack, `Buy ${p.posts} X posts, $${p.price}`)}
+                </button>
+              ))}
+            </div>
+            <p className="text-ink-soft">One credit posts once to X, and each thread part counts. Credits never expire.</p>
+          </>
         )}
       </section>
     </>

@@ -48,6 +48,9 @@ const toStripe = (r: { url?: unknown } | Failure): { url: string } | Failure => 
 // Owner only, and a sign-in from the last 10 minutes (reauth_required). Both answer {url}, a Stripe page to send the browser to.
 export const startCheckout = async (plan: PlanChoice, interval: Interval = "year") =>
   toStripe(await api<{ url: string }>("/v1/team/billing/checkout", "POST", { plan, interval }));
+// One-time X credit packs (decision 0006): the webhook grants the credits once Stripe reports the payment.
+export type Pack = "x100" | "x500";
+export const buyCredits = async (pack: Pack) => toStripe(await api<{ url: string }>("/v1/team/billing/credits", "POST", { pack }));
 export const openPortal = async () => toStripe(await api<{ url: string }>("/v1/team/billing/portal", "POST", {}));
 // A plan that counts as live: the team has one and can use it.
 export const isLive = (p: Plan | null): p is Plan => !!p && ["trialing", "active", "past_due"].includes(p.status);

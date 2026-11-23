@@ -57,9 +57,13 @@ const portal = "https://billing.stripe.com/p/session/abc";
 
 // Brain's checkout and portal answers: `status` and `json` for the next call, every body kept.
 async function stripeRoutes(page: Page, answer: { status: number; json: object } = { status: 200, json: { url: stripe } }) {
-  const state = { checkout: [] as unknown[], portal: 0, answer };
+  const state = { checkout: [] as unknown[], credits: [] as unknown[], portal: 0, answer };
   await page.route(/\/v1\/team\/billing\/checkout$/, (route) => {
     state.checkout.push(route.request().postDataJSON());
+    return route.fulfill(state.answer);
+  });
+  await page.route(/\/v1\/team\/billing\/credits$/, (route) => {
+    state.credits.push(route.request().postDataJSON());
     return route.fulfill(state.answer);
   });
   await page.route(/\/v1\/team\/billing\/portal$/, (route) => {
@@ -314,4 +318,24 @@ test("a connect callback that hit the account limit shows the message with Upgra
   const alert = page.getByRole("alert").filter({ hasText: "account limit is reached" });
   await expect(alert).toBeVisible();
   await expect(alert.getByRole("link", { name: "Upgrade" })).toHaveAttribute("href", "/t/acme22/billing");
+});
+
+test("an owner buys an X credit pack on Stripe and comes back to a thank you", async ({ page }) => {
+  await brain(page, "owner", { ...noPlan, plan: trial, limits });
+  const state = await stripeRoutes(page);
+  await page.goto("/billing");
+  await expect(page.getByText("Credits never expire.", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: "Buy 500 X posts, $20" }).click();
+  await expect(page).toHaveURL(stripe);
+  expect(state.credits).toEqual([{ pack: "x500" }]);
+  await page.goto("/billing?credits=success");
+  await expect(page.getByRole("status").filter({ hasText: "Your credits will show here" })).toBeVisible();
+  await expect(page).toHaveURL(/\/billing$/);
+});
+
+test("only the owner sees the credit packs", async ({ page }) => {
+  await brain(page, "admin", { ...noPlan, plan: trial, limits });
+  await page.goto("/billing");
+  await expect(page.getByText("X posts", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Buy/ })).toHaveCount(0);
 });
