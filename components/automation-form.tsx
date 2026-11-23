@@ -35,7 +35,13 @@ import { KeywordsField, ScopeField, scopeBody, scopeOf } from "@/components/scop
 import { Status, useAction } from "@/components/team-ui";
 import { Icon, type IconName } from "@/components/ui";
 
+// Networks whose inbox can fire an automation; brain refuses an account on any other (unsupported_account).
+const AUTOMATED = ["bluesky", "facebook", "instagram"];
+
 export const automationMessages: Partial<Record<Failure, ReactNode>> = {
+  unsupported_account: "Automations run only on Bluesky, Facebook and Instagram accounts. Remove the others.",
+  meta_one_private_reply: "Facebook and Instagram allow one private reply per comment. Keep one DM in this flow.",
+  meta_reply_window: "Facebook and Instagram take a DM only within 24 hours of the person's message. Shorten the waits.",
   invalid_conditions: "One of the accounts, the set or a post link is no longer valid, a keyword is too long, or a condition does not fit this trigger. Check them and try again.",
   invalid_actions: "Add a DM text or a public reply that this trigger can send.",
   invalid_text: "A text is too long or holds {page} where it can't go. DMs take 1000 characters and public replies 300, with {name} counted as 64 and {page} as 100. {page} works only for comments and mentions, and needs a space before it and a space or the end after it.",
@@ -122,7 +128,8 @@ export function AutomationForm({
   // brain refuses tags with nothing sent beside them (422 invalid_actions).
   const tagsAlone = !d.flow && d.tags.length > 0 && !hasDm && !(t.publicReply && d.publicReply.trim());
   const sam = incoming[d.trigger];
-  const problems = d.flow ? flowProblems(d.steps, d.trigger) : [];
+  const providers = scope.mode === "accounts" ? accounts.filter((x) => scope.accountIds.includes(x.id)).map((x) => x.provider) : [];
+  const problems = d.flow ? flowProblems(d.steps, d.trigger, providers) : [];
   const waiting = a?.runs?.waiting ?? 0;
   // Everything that stops a save, with the field to fix it in, for the bar's count.
   const issues: { text: string; field: string }[] = [
@@ -306,7 +313,7 @@ export function AutomationForm({
 
         <fieldset className="card grid gap-5 p-5">
           <legend className={cardTitle}>Only if</legend>
-          <ScopeField id="automation-scope" value={scope} onChange={setScope} accounts={accounts} sets={sets} />
+          <ScopeField id="automation-scope" value={scope} onChange={setScope} accounts={accounts.filter((x) => AUTOMATED.includes(x.provider))} sets={sets} />
           {t.keywords && (
             <KeywordsField
               id="automation-keywords"
