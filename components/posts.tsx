@@ -18,6 +18,7 @@ import {
   monthRange,
   monthWeeks,
   moveToDay,
+  moveToZoneDay,
   NOTE_MAX,
   parseFilters,
   postDay,
@@ -32,6 +33,7 @@ import {
   type PostStatus,
 } from "@/lib/posts";
 import { listSets, type SocialSet } from "@/lib/sets";
+import { zoneOf } from "@/lib/queue";
 import { PlatformIcon, platformName, platformOf } from "@/components/platform-icons";
 import { manages } from "@/lib/teams";
 import { isFailure, problemText, Status, useAction } from "@/components/team-ui";
@@ -353,9 +355,19 @@ function MoveDialog({ posts, onClose, onMove }: { posts: Post[]; onClose: () => 
   const id = useId();
   const when = postDay(posts[0]!)!;
   const [value, setValue] = useState(toLocalInput(when.toISOString()).slice(0, 10));
+  // The post keeps its time of day in its set's time zone, which `move` reads too.
+  const [zone, setZone] = useState<string | null>(null);
   const day = value ? new Date(`${value}T00:00`) : null;
-  const ok = day !== null && moveToDay(when, day) !== null;
+  const ok = day !== null && zone !== null && moveToZoneDay(when, day, zone) !== null;
   useEffect(() => ref.current?.showModal(), []);
+  const setId = posts[0]!.social_set_id;
+  useEffect(() => {
+    let live = true;
+    zoneOf(setId).then((z) => live && setZone(z));
+    return () => {
+      live = false;
+    };
+  }, [setId]);
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!ok) return;
@@ -383,9 +395,9 @@ function MoveDialog({ posts, onClose, onMove }: { posts: Post[]; onClose: () => 
             aria-describedby={`${id}-hint`}
           />
           <p id={`${id}-hint`} className="hint">
-            It keeps its time, {time(when)}{posts.length > 1 ? `, on all ${posts.length} networks` : ""}.
+            {zone === null ? "Loading time zone..." : `It keeps its time, ${when.toLocaleTimeString(undefined, { timeStyle: "short", timeZone: zone })} in ${zone}${posts.length > 1 ? `, on all ${posts.length} networks` : ""}.`}
           </p>
-          {value && !ok && <p className="waitlist-error">That is in the past. Pick a later day.</p>}
+          {value && zone !== null && !ok && <p className="waitlist-error">That is in the past. Pick a later day.</p>}
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="submit" className="btn btn-primary btn-sm" disabled={!ok}>
@@ -668,10 +680,12 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
   async function move(group: Post[], day: Date) {
     setDragging(null);
     setOver(null);
-    const to = moveToDay(postDay(group[0]!)!, day);
+    // The same wall time in the set's time zone, as the composer schedules it.
+    const zone = await zoneOf(group[0]!.social_set_id);
+    const to = moveToZoneDay(postDay(group[0]!)!, day, zone);
     if (!to) return setMoved({ ok: false, text: "A post can't move to a time that has passed." });
     const iso = to.toISOString();
-    const label = to.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    const label = to.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: zone });
     const ids = new Set(group.map((p) => p.id));
     setMoved({ ok: true, text: `Moving to ${label}...` });
     setPosts((old) => (Array.isArray(old) ? old.map((p) => (ids.has(p.id) ? { ...p, scheduled_at: iso } : p)) : old));

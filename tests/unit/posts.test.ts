@@ -16,6 +16,7 @@ import {
   deletePost,
   fromLocalInput,
   fromZoneInput,
+  moveToZoneDay,
   getPost,
   getTikTokCreator,
   graphemes,
@@ -459,6 +460,34 @@ describe("dates", () => {
     // The day the clocks go forward (8 March 2026), either side of the jump.
     expect(fromZoneInput("2026-03-08T01:30", "America/New_York")).toBe("2026-03-08T06:30:00.000Z");
     expect(fromZoneInput("2026-03-08T03:30", "America/New_York")).toBe("2026-03-08T07:30:00.000Z");
+  });
+
+  it("moves a skipped time forward and takes the first of a repeated one, in every zone", () => {
+    // Gaps: New York 8 March 02:00 to 03:00, London 29 March 01:00 to 02:00, Sydney 4 October 02:00 to 03:00.
+    expect(fromZoneInput("2026-03-08T02:30", "America/New_York")).toBe("2026-03-08T07:00:00.000Z");
+    expect(toZoneInput("2026-03-08T07:00:00.000Z", "America/New_York")).toBe("2026-03-08T03:00");
+    expect(fromZoneInput("2026-03-29T01:30", "Europe/London")).toBe("2026-03-29T01:00:00.000Z");
+    expect(toZoneInput("2026-03-29T01:00:00.000Z", "Europe/London")).toBe("2026-03-29T02:00");
+    expect(fromZoneInput("2026-10-04T02:30", "Australia/Sydney")).toBe("2026-10-03T16:00:00.000Z");
+    expect(toZoneInput("2026-10-03T16:00:00.000Z", "Australia/Sydney")).toBe("2026-10-04T03:00");
+    // Overlaps, the first (summer time) occurrence: New York 1 November, London 25 October, Sydney 5 April.
+    expect(fromZoneInput("2026-11-01T01:30", "America/New_York")).toBe("2026-11-01T05:30:00.000Z");
+    expect(fromZoneInput("2026-10-25T01:30", "Europe/London")).toBe("2026-10-25T00:30:00.000Z");
+    expect(fromZoneInput("2026-04-05T02:30", "Australia/Sydney")).toBe("2026-04-04T15:30:00.000Z");
+    // Next to a change, an ordinary time is itself.
+    expect(fromZoneInput("2026-10-04T03:30", "Australia/Sydney")).toBe("2026-10-03T16:30:00.000Z");
+    expect(fromZoneInput("2026-03-29T00:30", "Europe/London")).toBe("2026-03-29T00:30:00.000Z");
+  });
+
+  it("moves a post to another day at the same wall time in the set's zone", () => {
+    const now = new Date("2026-01-01T00:00:00Z");
+    // 09:00 in Dhaka (UTC+6) on 10 March, moved to 12 March, stays 09:00 there whatever the browser's zone.
+    const to = moveToZoneDay(new Date("2026-03-10T03:00:00Z"), new Date(2026, 2, 12), "Asia/Dhaka", now);
+    expect(to?.toISOString()).toBe("2026-03-12T03:00:00.000Z");
+    // Across New York's spring change, 09:00 stays 09:00.
+    const ny = moveToZoneDay(new Date("2026-03-06T14:00:00Z"), new Date(2026, 2, 9), "America/New_York", now);
+    expect(ny?.toISOString()).toBe("2026-03-09T13:00:00.000Z");
+    expect(moveToZoneDay(new Date("2026-03-06T14:00:00Z"), new Date(2025, 0, 1), "UTC", now)).toBeNull();
     expect(fromZoneInput("2026-11-20T09:30", "UTC")).toBe("2026-11-20T09:30:00.000Z");
     expect(fromZoneInput("", "UTC")).toBeNull();
     expect(toZoneInput(null, "UTC")).toBe("");
