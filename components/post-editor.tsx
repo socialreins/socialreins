@@ -64,6 +64,8 @@ import {
 import { fitsList, listLists, partLabel, type PostList } from "@/lib/lists";
 import { listSets, type SocialSet } from "@/lib/sets";
 import { getQueue, startZone, type Queue } from "@/lib/queue";
+import { UPLOAD_ACCEPT, uploadFile } from "@/lib/uploads";
+import { apiUrl } from "@/lib/waitlist";
 import { accountName, Avatar } from "@/components/connections";
 import { platformName } from "@/components/platform-icons";
 import { AccountNote, ApprovalBadge, ChangesDialog, PlatformMark, postMessages, snippet, StatusBadge, statusName } from "@/components/posts";
@@ -149,6 +151,8 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const [scheduleOpen, setScheduleOpen] = useState(false);
   // The platforms ticked for a new post; null means every platform with an account in the set.
   const [chosen, setChosen] = useState<Platform[] | null>(null);
+  // The accounts picked per platform; a platform not in it goes to every one of its accounts in the set.
+  const [picked, setPicked] = useState<Partial<Record<Platform, string[]>>>({});
   // Per-platform text that replaces the main post on that platform.
   const [custom, setCustom] = useState<Partial<Record<Platform, string>>>({});
   // A platform's own files in place of the shared ones; an empty list posts it without any.
@@ -202,6 +206,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     setCustom({});
     setMediaCustom({});
     setAt(p.status === "scheduled" ? (p.scheduled_at ?? "") : "");
+    setPicked(p.account_ids ? { [p.platform]: p.account_ids } : {});
     setRepeat(repeatForm(p.repeat));
     setListId("");
     setWhole(false);
@@ -230,6 +235,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     if (tk) setTikTok(tk.tiktok ?? noTikTok);
     const yt = all.find((g) => g.platform === "youtube");
     if (yt) setYtPrivacy(yt.youtube?.privacy ?? "private");
+    setPicked(Object.fromEntries(all.filter((g) => g.account_ids).map((g) => [g.platform, g.account_ids!])));
   }
 
   // Duplicate: a new post with the content and platforms of `mine` and its group, but no time, and TikTok's
@@ -366,6 +372,8 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
       const bad = checkComment(commentText(p), p) ?? checkCover(coverFor(p) ?? "", p, mediaFor(p).length);
       if (bad) return setLocal(platformProblem(p, bad));
     }
+    const none = selected.find((p) => accountIdsFor(p)?.length === 0);
+    if (none) return setLocal(`Pick at least one ${platformName(none)} account to post to.`);
     if (selected.includes("tiktok")) {
       const problem = tiktokProblem();
       if (problem) return setLocal(problem);
@@ -439,7 +447,8 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
         const r = await publishAll([saved.id, ...unsent.filter((u) => u !== saved.id)]);
         return isFailure(r) ? r : r[0]!;
       }
-      const g = await createPostGroup({ ...shared, platforms: selected, body, media: images, thread: parts, first_comment: comment.trim() ? comment : undefined, tiktok: selected.includes("tiktok") ? tiktokOut : undefined, youtube: selected.includes("youtube") ? { privacy: ytPrivacy } : undefined, overrides });
+      const picks = selected.some((p) => accountIdsFor(p)) ? selected.flatMap((p) => accountIdsFor(p) ?? inSet(p).map((a) => a.id)) : undefined;
+      const g = await createPostGroup({ ...shared, platforms: selected, account_ids: picks, body, media: images, thread: parts, first_comment: comment.trim() ? comment : undefined, tiktok: selected.includes("tiktok") ? tiktokOut : undefined, youtube: selected.includes("youtube") ? { privacy: ytPrivacy } : undefined, overrides });
       if (isFailure(g)) return g;
       const posts = g.posts;
       made = posts.length;
@@ -598,8 +607,21 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const mediaFor = (p: Platform) => (mediaCustomFor(p) ? links(mediaCustomFor(p)!) : images);
   const mediaMain = selected.filter((p) => mediaCustomFor(p) === undefined);
   const parts = thread.map((p) => ({ ...p, media: links(p.media) }));
+  // The accounts `p` goes to when some are unticked; undefined for every one, as brain takes no list.
+  const accountIdsFor = (p: Platform) => {
+    const all = inSet(p).map((a) => a.id);
+    const on = picked[p]?.filter((id) => all.includes(id));
+    return on && on.length < all.length ? on : undefined;
+  };
+  const toggleAccount = (p: Platform, id: string) => {
+    const all = inSet(p).map((a) => a.id);
+    const on = picked[p]?.filter((x) => all.includes(x)) ?? all;
+    const next = on.includes(id) ? on.filter((x) => x !== id) : [...on, id];
+    setPicked((old) => ({ ...old, [p]: next }));
+  };
   // One platform's post: its own text if customized, and the thread only where it can post one.
   const entry = (p: Platform) => ({
+    account_ids: accountIdsFor(p),
     body: customFor(p) ?? body,
     media: mediaFor(p),
     thread: limits[p].thread ? parts : [],
@@ -1440,6 +1462,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
                   onChange={(e) => {
                     setSetId(e.target.value);
                     setChosen(null);
+                    setPicked({});
                   }}
                   required
                   aria-describedby="post-set-note"
@@ -1452,7 +1475,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
                     ))}
                 </select>
                 <p id="post-set-note" className="hint">
-                  {post && together.length < 2 ? `Goes to every ${platformName(post.platform)} account in this set.` : "One post per platform, to every account of it in this set."}
+                  {post && together.length < 2 ? `Goes to the ${platformName(post.platform)} accounts ticked below, all of them in this set by default.` : "One post per platform, to the accounts ticked below, all of them by default."}
                 </p>
               </div>
               <div className="grid content-start gap-1.5">
@@ -1517,8 +1540,32 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
                 )}
               </fieldset>
             )}
+            {editable && selected.some((p) => inSet(p).length > 1) && (
+              <fieldset className="grid gap-2">
+                <legend className="label mb-1.5">Accounts</legend>
+                <p className="hint">Untick an account to leave it out of this post.</p>
+                {selected
+                  .filter((p) => inSet(p).length > 1)
+                  .map((p) => (
+                    <ul key={p} className="flex flex-wrap items-center gap-1.5" aria-label={`${platformName(p)} accounts`}>
+                      <li>
+                        <PlatformMark platform={p} className="size-4" />
+                      </li>
+                      {inSet(p).map((a) => (
+                        <li key={a.id}>
+                          <label className="flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm ring-1 ring-[var(--line)] hover:ring-[var(--edge)] has-checked:bg-ink/[0.04] has-checked:ring-[var(--color-ink)]/40">
+                            <input type="checkbox" className="size-3.5 accent-[var(--color-signal-deep)]" checked={(accountIdsFor(p) ?? [a.id]).includes(a.id)} onChange={() => toggleAccount(p, a.id)} />
+                            {accountName(a)}
+                            <span className="sr-only"> on {platformName(p)}</span>
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  ))}
+              </fieldset>
+            )}
             <ReconnectNotice
-              accounts={needingReconnect(selected.flatMap(inSet))}
+              accounts={needingReconnect(selected.flatMap(inSet).filter((a) => accountIdsFor(a.provider as Platform)?.includes(a.id) ?? true))}
               canManage={manages(user.current_team.role)}
               title="An account needs reconnecting"
               lead="Posts to these accounts fail while their sign-in has ended, and may fail soon if it ends within a week."
@@ -1771,6 +1818,15 @@ function ImageLinks({ media, max, post, own, platforms, onChange, onClose }: { m
   const addRef = useRef<HTMLButtonElement>(null);
   const imageRefs = useRef<(HTMLInputElement | null)[]>([]);
   const [saved, setSaved] = useState<{ text: string; ok: boolean } | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  // Files on their way to brain, each with the share sent so far.
+  const [sending, setSending] = useState<{ key: number; name: string; sent: number }[]>([]);
+  const [upError, setUpError] = useState<ReactNode>(null);
+  // Uploads finish in any order, so each adds its link to the media as it is then.
+  const latest = useRef(media);
+  useEffect(() => {
+    latest.current = media;
+  }, [media]);
   const of = post ? ` of post ${post}` : own ? ` for ${platformName(own)}` : "";
   // Library picks fill the empty link boxes first, then follow the links already there.
   const filled = media.filter((m) => m.trim());
@@ -1780,13 +1836,48 @@ function ImageLinks({ media, max, post, own, platforms, onChange, onClose }: { m
     imageRefs.current[media.length]?.focus();
   }
 
+  async function upload(files: File[]) {
+    setUpError(null);
+    const room = max - latest.current.filter((m) => m.trim()).length - sending.length;
+    if (files.length > room) setUpError(`Only ${Math.max(room, 0)} more ${room === 1 ? "file fits" : "files fit"}; the rest were left out.`);
+    await Promise.all(
+      files.slice(0, Math.max(room, 0)).map(async (file) => {
+        const key = Math.random();
+        setSending((s) => [...s, { key, name: file.name, sent: 0 }]);
+        const r = await uploadFile(file, (sent) => setSending((s) => s.map((x) => (x.key === key ? { ...x, sent } : x))));
+        setSending((s) => s.filter((x) => x.key !== key));
+        if (!isFailure(r)) {
+          latest.current = [...latest.current.filter((m) => m.trim()), r.url].slice(0, max);
+          return onChange(latest.current);
+        }
+        const why =
+          r === "media_too_large" ? "it is too large: up to 100 MB, or a video up to 1 GB." : r === "media_type_not_supported" ? "it is not a JPEG, PNG, WebP, GIF, PDF, MP4 or MOV file." : problemText(r, postMessages);
+        setUpError(
+          <>
+            {file.name} was not uploaded: {why}
+          </>,
+        );
+      }),
+    );
+  }
+
   function removeImage(i: number) {
     flushSync(() => onChange(media.filter((_, j) => j !== i)));
     addRef.current?.focus();
   }
 
   return (
-    <fieldset id={own ? `media-${own}` : post ? undefined : "media-shared"} tabIndex={post ? undefined : -1} className="grid gap-2">
+    <fieldset
+      id={own ? `media-${own}` : post ? undefined : "media-shared"}
+      tabIndex={post ? undefined : -1}
+      className="grid gap-2"
+      onDragOver={(e) => e.dataTransfer.types.includes("Files") && e.preventDefault()}
+      onDrop={(e) => {
+        if (e.dataTransfer.files.length === 0) return;
+        e.preventDefault();
+        void upload([...e.dataTransfer.files]);
+      }}
+    >
       <legend className={post ? "text-sm font-bold" : "label"}>
         {own ? `${platformName(own)} media` : <>Images<span className="sr-only">{of}</span></>}
       </legend>
@@ -1804,7 +1895,7 @@ function ImageLinks({ media, max, post, own, platforms, onChange, onClose }: { m
       {!post && !own && (
         <div className="grid gap-1">
           <p className="hint">
-            Up to {max}. Public https links, or Google Drive or Dropbox share links; nothing is uploaded to SocialReins.
+            Up to {max}. Upload files from your device (or drop them here), or add public https links, Google Drive or Dropbox share links. An upload is kept until its post goes out.
           </p>
           {platforms && platforms.length > 0 && (
             <details className="hint">
@@ -1839,7 +1930,8 @@ function ImageLinks({ media, max, post, own, platforms, onChange, onClose }: { m
                   onChange={(e) => onChange(media.map((v, j) => (j === i ? e.target.value : v)))}
                 />
               </label>
-              <SaveToLibrary url={m} label={`Image ${i + 1}${of}`} onResult={(text, ok) => setSaved({ text, ok })} />
+              {/* An upload is kept only for its posts, so it is no library link. */}
+              {!m.startsWith(`${apiUrl}/media/`) && <SaveToLibrary url={m} label={`Image ${i + 1}${of}`} onResult={(text, ok) => setSaved({ text, ok })} />}
               <button type="button" className="icon-btn mb-1" aria-label={`Remove image ${i + 1}${of}`} onClick={() => removeImage(i)}>
                 <Icon name="close" className="size-4" />
               </button>
@@ -1852,7 +1944,43 @@ function ImageLinks({ media, max, post, own, platforms, onChange, onClose }: { m
           {saved.text}
         </p>
       )}
+      {sending.length > 0 && (
+        <ul className="grid gap-1" aria-live="polite">
+          {sending.map((f) => (
+            <li key={f.key} className="flex items-center gap-2 text-sm">
+              <span className="truncate">{f.name}</span>
+              <progress className="w-32" value={f.sent} max={1} aria-label={`Uploading ${f.name}`} />
+              <span className="hint tabular-nums">{Math.round(f.sent * 100)}%</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {upError && (
+        <p role="alert" className="waitlist-error">
+          {upError}
+        </p>
+      )}
       <div className="flex flex-wrap gap-2">
+        <input
+          ref={fileRef}
+          type="file"
+          multiple
+          accept={UPLOAD_ACCEPT}
+          className="sr-only"
+          tabIndex={-1}
+          aria-label={`Upload files${of}`}
+          onChange={(e) => {
+            const files = [...(e.target.files ?? [])];
+            e.target.value = "";
+            void upload(files);
+          }}
+        />
+        {filled.length + sending.length < max && (
+          <button type="button" className="btn btn-secondary btn-sm justify-self-start" onClick={() => fileRef.current?.click()}>
+            <Icon name="image" className="size-4" />
+            Upload<span className="sr-only">{post ? ` to post ${post}` : of}</span>
+          </button>
+        )}
         {media.length < max && (
           <button ref={addRef} type="button" className="btn btn-secondary btn-sm justify-self-start" onClick={addImage}>
             <Icon name="image" className="size-4" />

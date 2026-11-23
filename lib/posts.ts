@@ -99,6 +99,8 @@ export type Post = {
   id: string;
   social_set_id: string;
   platform: Platform;
+  // The accounts picked for it; null or absent: every account of its platform in its set.
+  account_ids?: string[] | null;
   body: string;
   media: string[];
   thread: ThreadPart[];
@@ -197,6 +199,8 @@ export const approvalName = { pending: "Needs approval", rejected: "Changes requ
 export type PostInput = {
   social_set_id: string;
   platform: Platform;
+  // Absent: every account of the platform in the set; brain answers invalid_accounts for one outside it.
+  account_ids?: string[];
   body: string;
   media: string[];
   thread?: ThreadPart[];

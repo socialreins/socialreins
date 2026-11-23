@@ -38,7 +38,7 @@ test("one network shows the short media hint and the disclosure, like the tabs d
   await brain(page, ["bluesky"]);
   await page.goto("/posts/new");
   const images = page.getByRole("group", { name: "Images" });
-  await expect(images.getByText("Up to 4. Public https links, or Google Drive or Dropbox share links; nothing is uploaded to SocialReins.", { exact: true })).toBeVisible();
+  await expect(images.getByText("Up to 4. Upload files from your device (or drop them here), or add public https links, Google Drive or Dropbox share links. An upload is kept until its post goes out.", { exact: true })).toBeVisible();
   await expect(page.getByRole("tablist")).toHaveCount(0);
   const rules = images.getByText(/Bluesky takes/);
   await expect(rules).toBeHidden();
