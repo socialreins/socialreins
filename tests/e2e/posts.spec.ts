@@ -342,6 +342,36 @@ test("the composer picks times in the set's queue time zone, DST included", asyn
   await expect(page.getByLabel("Publish at")).toHaveValue("2026-07-01T09:30");
 });
 
+test("no time is typed before the set's zone is known, and a skipped time moves past the gap", async ({ page }) => {
+  await brain(page, { accounts: [{ ...alice, set_ids: ["d", "s1"] }] });
+  let answer = () => {};
+  const held = new Promise<void>((done) => (answer = done));
+  await page.route(/\/v1\/social-sets\/s1\/queue$/, async (route) => {
+    await held;
+    await route.fulfill({ json: { time_zone: "America/New_York", slots: [{ weekday: 1, time: "09:00" }], next: [] } });
+  });
+  const sent: Record<string, unknown>[] = [];
+  await page.route("**/v1/posts", (route) => {
+    sent.push(route.request().postDataJSON());
+    return route.fulfill({ status: 201, json: post("p1", { ...sent.at(-1), status: "scheduled" }) });
+  });
+  await page.route("**/v1/posts/p1", (route) => route.fulfill({ json: post("p1", { ...sent.at(-1), social_set_id: "s1", status: "scheduled" }) }));
+  await page.goto("/posts/new");
+  await page.getByLabel("Set", { exact: true }).selectOption("s1");
+  await page.getByLabel("Post", { exact: true }).fill("Spring");
+  await expect(page.getByLabel("Publish at")).toBeDisabled();
+  await expect(page.getByText("Loading time zone...")).toBeVisible();
+  answer();
+  await expect(page.getByLabel("Publish at")).toBeEnabled();
+  // 02:30 on 8 March 2026 does not exist in New York: it becomes 03:00 EDT, 07:00 UTC.
+  await page.getByLabel("Publish at").fill("2026-03-08T02:30");
+  await expect(page.getByLabel("Publish at")).toHaveValue("2026-03-08T03:00");
+  await expect(page.getByText("02:30 does not exist that day (the clocks go forward), so it is 03:00.")).toBeVisible();
+  await page.getByRole("button", { name: "Schedule" }).click();
+  await expect(page).toHaveURL("/t/acme22/posts/p1");
+  expect(sent[0]!.scheduled_at).toBe("2026-03-08T07:00:00.000Z");
+});
+
 test("a thread is written, checked, previewed and sent in order", async ({ page }) => {
   await brain(page);
   let sent: Record<string, unknown> | undefined;
