@@ -24,7 +24,7 @@ const us = {
   networks: "8: Facebook Pages, Instagram, Threads, LinkedIn, Bluesky, X, TikTok and YouTube.",
   source: "Open source (AGPL-3.0). You can run it on your own server.",
   api: "REST API, MCP server and signed webhooks.",
-  price: "Free to self-host, today. Cloud is not open yet and has no price set; join the waitlist.",
+  price: "Free to self-host, today. Cloud: $190 a year or $19 a month (Scheduler), $490 a year or $49 a month (with automation), 7-day trial; open by invitation for now.",
   inbox: "Comments and DMs in one inbox, with search. Live on Bluesky; Facebook Pages and Instagram are in testing.",
   automation:
     "Triggers for a comment keyword, a DM keyword, a first message, a new follower (Bluesky), a mention, a story reply and a button tap, and flows of several steps with waits and buttons. Live on Bluesky; Facebook and Instagram are in testing.",

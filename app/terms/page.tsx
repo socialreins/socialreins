@@ -7,7 +7,7 @@ export const metadata: Metadata = { title: "Terms of Service: SocialReins", ...p
 
 export default function Terms() {
   return (
-    <LegalPage title="Terms of Service" updated="20 November 2026">
+    <LegalPage title="Terms of Service" updated="23 November 2026">
       <p>
         These terms cover the hosted SocialReins service at socialreins.com, run by Binary Labs LLC, a company in Wyoming, United States, and built and supported by Bytech, a company in Bangladesh. In these terms, &quot;we&quot; means Binary Labs LLC. By creating an account or
         using the service, you agree to them. If you have a question, <ContactLink />.
@@ -41,11 +41,33 @@ export default function Terms() {
         can.
       </p>
 
-      <h2>Plans</h2>
+      <h2>Plans and payment</h2>
       <p>
-        The hosted service is not open to new accounts yet, and we do not charge for it today. When it opens it will
-        be a paid subscription; we will announce its prices before charging anything. You can run SocialReins
-        yourself instead; the software is free and open source.
+        The hosted service is a paid subscription, open by invitation for now. The plans and their prices, in US
+        dollars, are on the{" "}
+        <Link href="/pricing" className="font-bold underline decoration-signal decoration-2 underline-offset-4 hover:text-signal-deep">
+          pricing page
+        </Link>
+        . A team&apos;s first plan starts with a 7-day free trial. After the trial, the plan is charged at the start
+        of each month or year and renews on its own until it is cancelled. Payments are handled by Stripe; we never see
+        or store your full card number. You can run SocialReins yourself instead; the software is free and open source.
+      </p>
+      <p>
+        Posting to X uses prepaid credits, because X charges for each post sent through its API. One credit is one
+        post, each part of a thread counts, and credits never expire.
+      </p>
+      <p>
+        If a renewal payment fails, Stripe tries the card again for up to 7 days and the team keeps working meanwhile.
+        If it still fails, the subscription ends: scheduled posts stop publishing, but nothing is deleted, and choosing a
+        plan again picks up where you left off.
+      </p>
+
+      <h2>Cancelling and refunds</h2>
+      <p>
+        The team owner can cancel at any time from the Billing page. The plan keeps working until the end of the period
+        already paid for and is not renewed. We do not refund payments for a period already started, or credit packs,
+        because the free trial is the time to try SocialReins. If you are charged twice or by our mistake, we refund
+        it; <ContactLink />. This does not limit any right to a refund that the law where you live gives you.
       </p>
 
       <h2>Changes</h2>
