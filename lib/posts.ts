@@ -397,29 +397,19 @@ export async function deletePost(id: string): Promise<DeleteResult> {
   return failure(res);
 }
 
-// What happened to one post of a take-down-all run. "waiting": not tried, because brain's rate limit stopped the run.
-export type Takedown =
-  | { id: string; state: "down" | "gone" | "waiting" }
-  | { id: string; state: "failed"; failure?: Failure; message?: string };
+// What brain's group take down did to one post. `not_published`: a draft, scheduled, queued or failed post has nothing to take down.
+export type TakedownResult = {
+  post_id: string;
+  platform: Platform;
+  state: "taken_down" | "already_gone" | "failed" | "not_published";
+  message: string | null;
+};
 
-// Takes `ids` down one request after another, never in parallel: brain allows 10 publish or take-down
-// calls a minute per user, and a group has at most one post per platform. A failure of one post does not
-// stop the others; a rate limit does, since every later call would be refused too.
-export async function takeDownAll(ids: string[]): Promise<Takedown[]> {
-  const out: Takedown[] = [];
-  for (const id of ids) {
-    const r = await deletePost(id);
-    if (r === "rate_limited") {
-      out.push(...ids.slice(out.length).map((id) => ({ id, state: "waiting" as const })));
-      break;
-    }
-    if (r === "not_found") out.push({ id, state: "gone" });
-    else if (typeof r === "string" && r !== "ok") out.push({ id, state: "failed", failure: r });
-    else if (typeof r === "object" && "takedownFailed" in r) out.push({ id, state: "failed", message: r.takedownFailed });
-    else out.push({ id, state: "down" });
-  }
-  return out;
-}
+// Takes every published post of a group down in one call, one platform after another on brain's side. A platform that
+// can't come down (TikTok has no delete call) shows as `failed` in `results` and does not stop the others; calling again
+// only tries what is still up. It calls every account, so it gets the connect timeout.
+export const takeDownGroup = (groupId: string) =>
+  api<{ posts: Post[]; results: TakedownResult[] }>(`/v1/post-groups/${enc(groupId)}/takedown`, "POST", undefined, CONNECT_TIMEOUT_MS);
 
 const segmenter =typeof Intl !== "undefined" && "Segmenter" in Intl ? new Intl.Segmenter(undefined, { granularity: "grapheme" }) : null;
 // What Bluesky counts as characters: user-perceived graphemes, so an emoji family is one.

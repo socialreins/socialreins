@@ -51,7 +51,7 @@ import {
   repeatSummary,
   saveRepeat,
   type RepeatForm,
-  takeDownAll,
+  takeDownGroup as takeDownGroupCall,
   toZoneInput,
   updatePost,
   utf8Bytes,
@@ -61,7 +61,7 @@ import {
   type Post,
   type PostGroupInput,
   type PostInput,
-  type Takedown,
+  type TakedownResult,
   type Target,
   type ThreadPart,
   type TikTokCreator,
@@ -189,7 +189,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const [pollNote, setPollNote] = useState("");
   // Take down all: the one confirmation, and what happened to each post (kept across a retry).
   const [askingAll, setAskingAll] = useState(false);
-  const [downs, setDowns] = useState<(Takedown & { platform: Platform })[] | null>(null);
+  const [downs, setDowns] = useState<TakedownResult[] | null>(null);
   const [downsShown, setDownsShown] = useState(0);
   // Bumped after Publish now, to move focus onto the status line that follows the post.
   const [sent, setSent] = useState(0);
@@ -570,22 +570,17 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     else if (!ok) askRef.current?.focus();
   }
 
-  // Takes `items` down one by one, then reads the group again so the list and this page show the result.
-  async function takeDownGroup(items: { id: string; platform: Platform }[]) {
+  // Takes the group's published posts down in one call, then shows each platform's result and the group as it now is.
+  // TikTok has no delete call, so its answer is left out: the hint under the list says where to delete it.
+  async function takeDownGroup() {
     flushSync(() => setAskingAll(false));
-    await run("takedown-all", async () => {
-      const r = await takeDownAll(items.map((i) => i.id));
-      const g = await listPosts({ group_id: groupId! });
-      if (Array.isArray(g)) {
-        setGroup(g);
-        const mine = g.find((p) => p.id === postId);
-        if (mine) setPost(mine);
-      }
-      return r;
-    }, (r) => {
-      const platform = (id: string) => items.find((i) => i.id === id)!.platform;
-      const fresh = r.map((t) => ({ ...t, platform: platform(t.id) }));
-      setDowns((old) => (old ? old.map((o) => fresh.find((f) => f.id === o.id) ?? o) : fresh));
+    await run("takedown-all", () => takeDownGroupCall(groupId!), (r) => {
+      setGroup(r.posts);
+      const mine = r.posts.find((p) => p.id === postId);
+      if (mine) setPost(mine);
+      const fresh = r.results.filter((t) => t.platform !== "tiktok" && t.state !== "not_published");
+      // A retry says "already gone" for what the first call took down: keep the first answer.
+      setDowns((old) => fresh.map((f) => (f.state === "already_gone" && old?.find((o) => o.post_id === f.post_id && o.state === "taken_down")) || f));
       setDownsShown((n) => n + 1);
     });
   }
@@ -737,9 +732,10 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const others = group.filter((g) => g.id !== postId);
   // The group with this page's own post as it now stands, and the posts still up.
   const members = group.map((g) => (post && g.id === post.id ? post : g));
-  const live = members.filter((g) => g.status === "published");
-  const left = (downs ?? []).filter((d) => d.state === "failed" || d.state === "waiting");
-  const downNames = (downs ?? []).filter((d) => d.state === "down").map((d) => d.platform);
+  const live = members.filter((g) => g.status === "published" && g.platform !== "tiktok");
+  const tiktokUp = members.some((g) => g.status === "published" && g.platform === "tiktok");
+  const left = (downs ?? []).filter((d) => d.state === "failed");
+  const downNames = (downs ?? []).filter((d) => d.state === "taken_down").map((d) => d.platform);
 
   const preview = (
     <Preview
@@ -834,7 +830,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
               Take {live.length === 1 ? "this post" : `these ${live.length} posts`} down from {names(live.map((g) => g.platform))}? {live.length === 1 ? "It stays" : "They stay"} here as taken down.
             </p>
             <div className="flex flex-wrap gap-2">
-              <button ref={confirmAllRef} type="button" className="btn btn-primary btn-sm" aria-describedby="remove-all-q" disabled={busy !== null} onClick={() => takeDownGroup(live)}>
+              <button ref={confirmAllRef} type="button" className="btn btn-primary btn-sm" aria-describedby="remove-all-q" disabled={busy !== null} onClick={takeDownGroup}>
                 Yes, take {live.length === 1 ? "it" : "them all"} down
               </button>
               <button
@@ -855,6 +851,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
             {busy === "takedown-all" ? "Taking down..." : "Take down all"}
           </button>
         ))}
+      {tiktokUp && <p className="hint">TikTok does not let other apps delete a post. Delete it in the TikTok app.</p>}
       {downs && (
         <div key={downsShown} ref={downsRef} tabIndex={-1} role={left.length ? "alert" : "status"} className="card grid gap-3 p-4">
           <p className="font-bold">
@@ -863,16 +860,14 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
           </p>
           <ul className="grid gap-1 text-sm">
             {downs.map((d) => (
-              <li key={d.id}>
-                <PlatformMark platform={d.platform} named />:{" "}
-                {d.state === "down" ? "taken down" : d.state === "gone" ? "already gone" : d.state === "failed" ? (d.message || problemText(d.failure ?? "error", postMessages)) : "not tried yet"}
+              <li key={d.post_id}>
+                <PlatformMark platform={d.platform} named />: {d.state === "taken_down" ? "taken down" : d.state === "already_gone" ? "already gone" : d.message || "could not be taken down"}
               </li>
             ))}
           </ul>
           {left.length > 0 && (
             <div className="flex flex-wrap items-center gap-3">
-              {left.some((d) => d.state === "waiting") && <p className="min-w-0 flex-1">{postMessages.rate_limited}</p>}
-              <button type="button" className="btn btn-primary btn-sm" disabled={busy !== null} onClick={() => takeDownGroup(left)}>
+              <button type="button" className="btn btn-primary btn-sm" disabled={busy !== null} onClick={takeDownGroup}>
                 {busy === "takedown-all" ? "Taking down..." : `Retry ${names(left.map((d) => d.platform))}`}
               </button>
             </div>
