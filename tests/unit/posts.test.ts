@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   altList,
+  capAlt,
+  keepsAlt,
   altMap,
   altOut,
   isImageLink,
@@ -773,5 +775,21 @@ describe("alt text", () => {
     expect(isImageLink("https://example.com/pic.GIF?x=1")).toBe(true);
     expect(isImageLink("https://example.com/clip.mp4")).toBe(false);
     expect(isImageLink("https://example.com/doc.pdf")).toBe(false);
+  });
+
+  it("stays with a link only while the same link is typed on", () => {
+    expect(keepsAlt(a, a + "x")).toBe(true);
+    expect(keepsAlt(a, a.slice(0, -1), "deleteContentBackward")).toBe(true);
+    // A pasted link, even one character away, and any big change, is taken for another image.
+    expect(keepsAlt(a, b, "insertFromPaste")).toBe(false);
+    expect(keepsAlt(a, b, "insertFromDrop")).toBe(false);
+    expect(keepsAlt(a, "https://cdn.example.org/photos/other-picture.jpg", "insertText")).toBe(false);
+    expect(keepsAlt(a, "", "deleteContentBackward")).toBe(false);
+  });
+
+  it("is capped by code points as brain counts, so emoji are not cut short", () => {
+    expect([...capAlt("😀".repeat(1000))]).toHaveLength(1000);
+    expect([...capAlt("😀".repeat(1001))]).toHaveLength(1000);
+    expect(capAlt("short")).toBe("short");
   });
 });

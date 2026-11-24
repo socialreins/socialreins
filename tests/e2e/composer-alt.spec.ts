@@ -127,7 +127,7 @@ test("an edit loads each image's alt text, and removing an image keeps the other
   expect(put).toMatchObject({ media: [B], media_alt: ["Second picture"] });
 });
 
-test("an edit that clears an alt text sends the empty one, and fixing a link keeps its text", async ({ page }) => {
+test("an edit that clears an alt text sends the empty one, and typing a link on keeps its text", async ({ page }) => {
   await brain(page);
   let put: Record<string, unknown> | undefined;
   await page.route("**/v1/posts/p1", (route) => {
@@ -138,12 +138,51 @@ test("an edit that clears an alt text sends the empty one, and fixing a link kee
     return route.fulfill({ json: post("p1", { media: [A], media_alt: ["First picture"] }) });
   });
   await page.goto("/posts/p1");
-  await page.getByLabel("Image 1 link").fill(B);
+  // Typing the same link on (a character off, then back) keeps the description.
+  await page.getByLabel("Image 1 link").click();
+  await page.keyboard.press("End");
+  await page.keyboard.press("Backspace");
+  await page.keyboard.type("g");
+  await expect(page.getByLabel("Image 1 link")).toHaveValue(A);
   await expect(page.getByLabel("Alt text for image 1")).toHaveValue("First picture");
   await page.getByLabel("Alt text for image 1").fill("");
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page.getByText("Draft saved.")).toBeVisible();
-  expect(put).toMatchObject({ media: [B], media_alt: [""] });
+  expect(put).toMatchObject({ media: [A], media_alt: [""] });
+});
+
+test("a different link does not inherit the old description", async ({ page }) => {
+  await brain(page);
+  let put: Record<string, unknown> | undefined;
+  await page.route("**/v1/posts/p1", (route) => {
+    if (route.request().method() === "PUT") {
+      put = route.request().postDataJSON();
+      return route.fulfill({ json: post("p1", put) });
+    }
+    return route.fulfill({ json: post("p1", { media: [A], media_alt: ["First picture"] }) });
+  });
+  await page.goto("/posts/p1");
+  await expect(page.getByLabel("Alt text for image 1")).toHaveValue("First picture");
+  await page.getByLabel("Image 1 link").fill("https://cdn.example.org/photos/another-picture.jpg");
+  await expect(page.getByLabel("Alt text for image 1")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Add alt text for image 1" })).toBeVisible();
+  await expect(page.getByText(warning)).toBeVisible();
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page.getByText("Draft saved.")).toBeVisible();
+  expect(put).toMatchObject({ media: ["https://cdn.example.org/photos/another-picture.jpg"], media_alt: [""] });
+});
+
+test("the limit counts characters, not UTF-16 units, so emoji text is not cut short", async ({ page }) => {
+  await brain(page);
+  await page.goto("/posts/new");
+  await page.getByRole("button", { name: "Add image" }).click();
+  await page.getByLabel("Image 1 link").fill(A);
+  await page.getByRole("button", { name: "Add alt text for image 1" }).click();
+  await page.getByLabel("Alt text for image 1").fill("😀".repeat(1000));
+  await expect(page.getByText("1000 of 1000 characters")).toBeVisible();
+  await page.getByLabel("Alt text for image 1").fill("😀".repeat(1001));
+  await expect(page.getByText("1000 of 1000 characters")).toBeVisible();
+  expect([...(await page.getByLabel("Alt text for image 1").inputValue())]).toHaveLength(1000);
 });
 
 test("a network that refused the alt text is said on the published post", async ({ page }) => {

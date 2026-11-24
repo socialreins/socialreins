@@ -303,6 +303,20 @@ export function altMap(posts: { media: string[]; media_alt?: string[]; thread?: 
 }
 // The alt text of each link, in order, for brain's `media_alt` (empty for a link without one).
 export const altList = (media: string[], alts: Record<string, string>) => media.map((m) => (alts[m] ?? "").trim());
+// Whether the description written for the link `from` may stay with the link `to` it was edited into: only
+// while the user is typing the same link (a single character added, removed or changed), never for a pasted
+// or dropped link or a big change, which is most likely another image. A description left on the wrong image
+// would be posted as that image's.
+export function keepsAlt(from: string, to: string, inputType = ""): boolean {
+  if (/^insert(FromPaste|FromDrop|FromYank|ReplacementText)/.test(inputType)) return false;
+  let start = 0;
+  while (start < from.length && start < to.length && from[start] === to[start]) start++;
+  let end = 0;
+  while (end < from.length - start && end < to.length - start && from[from.length - 1 - end] === to[to.length - 1 - end]) end++;
+  return Math.max(from.length, to.length) - start - end <= 1;
+}
+// `text` cut to `ALT_MAX` characters, counted as brain counts them (code points, not UTF-16 units).
+export const capAlt = (text: string) => ([...text].length > ALT_MAX ? [...text].slice(0, ALT_MAX).join("") : text);
 // What to send as `media_alt`: nothing for a new post without any alt text (so brain's old behaviour stays),
 // and on an edit always the full list, since brain keeps the stored texts of the same links when it is left out.
 export const altOut = (media: string[], alts: Record<string, string>, editing: boolean) =>

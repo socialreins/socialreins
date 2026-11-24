@@ -15,6 +15,8 @@ import {
   altOut,
   altPlatforms,
   isImageLink,
+  keepsAlt,
+  capAlt,
   charCount,
   checkComment,
   checkCover,
@@ -2027,10 +2029,12 @@ function ImageLinks({
                     onChange={(e) => {
                       const next = e.target.value;
                       onChange(media.map((v, j) => (j === i ? next : v)));
-                      // Fixing a link keeps the description that was written for it.
+                      // Typing the same link on keeps its description; a pasted or clearly different link is
+                      // most likely another image, so the old description is not carried over to it.
                       if (m in alts && next !== m) {
                         const { [m]: moved, ...rest } = alts;
-                        onAlts(next.trim() && !(next in rest) ? { ...rest, [next]: moved! } : rest);
+                        const type = (e.nativeEvent as InputEvent).inputType;
+                        onAlts(next.trim() && !(next in rest) && keepsAlt(m, next, type) ? { ...rest, [next]: moved! } : rest);
                       }
                     }}
                   />
@@ -2128,12 +2132,11 @@ function AltText({ n, of, value, onChange }: { n: number; of: string; value: str
             id={id}
             ref={box}
             rows={2}
-            maxLength={ALT_MAX}
             className="field font-normal"
             placeholder="Describe the image for people who cannot see it"
             aria-describedby={`${id}-count`}
             value={value}
-            onChange={(e) => onChange(e.target.value)}
+            onChange={(e) => onChange(capAlt(e.target.value))}
           />
           <p id={`${id}-count`} className="hint tabular-nums">
             {[...value].length} of {ALT_MAX} characters
