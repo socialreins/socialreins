@@ -82,7 +82,7 @@ export async function signOut(): Promise<boolean> {
 }
 
 // Error codes brain sends for the auth endpoints.
-const codes = [
+export const codes = [
   "invalid_credentials",
   "reauth_required",
   "invalid_name",
@@ -143,6 +143,10 @@ const codes = [
   "invalid_filters",
   "too_many_inboxes",
   "invalid_accounts",
+  "invalid_upload",
+  "too_many_uploads",
+  "upload_interrupted",
+  "uploads_in_progress",
   "all_inbox",
   "invalid_state",
   "invalid_text",
