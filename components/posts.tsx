@@ -33,7 +33,7 @@ import {
   type PostStatus,
 } from "@/lib/posts";
 import { listSets, type SocialSet } from "@/lib/sets";
-import { zoneOf } from "@/lib/queue";
+import { loadZones, setZones, zoneFor, zoneOf, zoneTag, browserZone } from "@/lib/queue";
 import { PlatformIcon, platformName, platformOf } from "@/components/platform-icons";
 import { manages } from "@/lib/teams";
 import { isFailure, problemText, Status, useAction } from "@/components/team-ui";
@@ -108,18 +108,28 @@ export const statusName: Record<PostStatus, string> = {
   deleted: "Taken down",
 };
 
-const time = (d: Date) => d.toLocaleTimeString(undefined, { timeStyle: "short" });
+// A post's time of day in the zone of its set, tagged with the zone ("GMT+6") when that is not the browser's.
+// `block` puts the tag on its own line, for a column.
+function Stamp({ post, block }: { post: Post; block?: boolean }) {
+  const d = postDay(post)!;
+  const zone = zoneFor(post.social_set_id);
+  const text = d.toLocaleTimeString(undefined, { timeStyle: "short", timeZone: zone });
+  const tag = zoneTag(zone, d);
+  return (
+    <span title={`${text} in ${zone.replaceAll("_", " ")}`} className="tabular-nums">
+      {text}
+      {tag && <span className={`${block ? "block" : "ml-1"} text-[0.65rem] leading-3`}>{tag}</span>}
+    </span>
+  );
+}
 
 // The calendar's one rule for days: a post sits on, and moves between, days of its own set's time zone
 // (its queue zone), and the grid's dates (today, the month) are those of the set picked in the top bar,
 // or the browser's for all sets. `at` gives a post's wall time there as a local Date for the date maths.
-// shortcut: filled once per page load by `Posts`; a zone changed on /queue shows after a reload.
-const setZones = new Map<string, string>();
 const at = (p: Post) => {
   const d = postDay(p);
   return d && inZone(d, setZones.get(p.social_set_id));
 };
-const zoneFor = (setId: string) => setZones.get(setId) ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 export const snippet = (p: Post) => (p.body.trim() ? p.body.trim().slice(0, 60) + (p.body.trim().length > 60 ? "..." : "") : "(images only)");
 const bluesky = platformOf("bluesky")!;
 const legend: PostStatus[] = ["scheduled", "queued", "published", "failed", "deleted"];
@@ -230,7 +240,7 @@ export function PlatformMark({ platform, className = "size-3.5", named }: { plat
 }
 
 // The versions of one post on a day's line: the same status and time, so both show once.
-const chips = (posts: Post[]) => rows(posts, (p) => `${p.status} ${approvalState(p)} ${at(p)?.toDateString()} ${at(p) && time(at(p)!)}`);
+const chips = (posts: Post[]) => rows(posts, (p) => `${p.status} ${approvalState(p)} ${p.social_set_id} ${Math.floor((postDay(p)?.getTime() ?? 0) / 60_000)}`);
 
 function PostChip({ posts }: { posts: Post[] }) {
   const p = posts[0]!;
@@ -243,7 +253,7 @@ function PostChip({ posts }: { posts: Post[] }) {
         {posts.map((v) => (
           <PlatformMark key={v.id} platform={v.platform} />
         ))}{" "}
-        <span className="text-ink-soft tabular-nums">{time(at(p)!)}</span> {snippet(p)}
+        <span className="text-ink-soft"><Stamp post={p} /></span> {snippet(p)}
       </Link>
       <span className="sr-only">{stateName(p)}</span>
       {remote.map((t) => (
@@ -298,7 +308,7 @@ function GridChip({ posts, onDrag, onMove }: { posts: Post[]; onDrag: (posts: Po
         <span className="flex min-w-0 items-center gap-1 whitespace-nowrap text-ink-soft">
           <span aria-hidden="true" className="dot shrink-0" data-status={p.status} data-approval={approvalState(p) ?? undefined} />
           <span className="sr-only">{stateName(p)}: </span>
-          <span className="tabular-nums">{time(at(p)!)}</span>
+          <Stamp post={p} />
           {posts.map((v) => (
             <PlatformMark key={v.id} platform={v.platform} className="size-3" />
           ))}
@@ -462,6 +472,33 @@ function MonthList({ posts, y, m, title }: { posts: Post[]; y: number; m: number
   );
 }
 
+// Says which time zone the days and times are in: the one zone, or each post's own when its sets differ.
+function ZoneNote({ setId, sets, posts }: { setId: string; sets: SocialSet[] | Failure | null; posts: Post[] }) {
+  const name = (id: string) => (Array.isArray(sets) ? sets.find((s) => s.id === id)?.name : undefined) ?? "its set";
+  // The default set is every set, so its posts speak for themselves.
+  const one = Array.isArray(sets) && sets.some((s) => s.id === setId && !s.is_default);
+  const byZone = new Map<string, string[]>();
+  for (const id of one ? [setId] : [...new Set(posts.map((p) => p.social_set_id))]) byZone.set(zoneFor(id), [...(byZone.get(zoneFor(id)) ?? []), name(id)]);
+  const pretty = (z: string) => z.replaceAll("_", " ");
+  if (byZone.size > 1)
+    return (
+      <p className="hint" data-zone-note>
+        Your sets use different time zones, so each post shows the day and time of its own set&apos;s zone: {[...byZone].map(([z, n]) => `${pretty(z)} (${n.join(", ")})`).join(", ")}. A time in a zone other than your browser&apos;s ({pretty(browserZone())}) carries its zone.
+      </p>
+    );
+  const zone = [...byZone.keys()][0] ?? browserZone();
+  return (
+    <p className="hint" data-zone-note>
+      Days and times are in {pretty(zone)}
+      {one ? `, the time zone of ${name(setId)}` : zone === browserZone() ? ", your browser's zone" : ""}. Change a set&apos;s zone on the{" "}
+      <Link href="/queue" className="underline">
+        Queue
+      </Link>{" "}
+      page.
+    </p>
+  );
+}
+
 // The Posts list's choices, in the order the chips show them.
 const statusChips: PostStatus[] = ["scheduled", "queued", "published", "failed", "deleted", "draft"];
 const noFilters: PostFilters = { q: "", status: "all", network: "all", approval: "all" };
@@ -484,7 +521,9 @@ function PostRow({ posts, onMove, review }: { posts: Post[]; onMove?: (posts: Po
   return (
     <li className="relative flex flex-wrap items-start gap-x-3 gap-y-0.5 px-3 py-2.5 hover:bg-ink/[0.03] sm:items-center sm:px-4">
       <Link href={`/posts/${p.id}`} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-sm after:absolute after:inset-0 sm:flex-nowrap">
-        <span className="w-[4.5rem] shrink-0 text-ink-soft tabular-nums">{time(at(p)!)}</span>
+        <span className="w-[4.5rem] shrink-0 text-ink-soft">
+          <Stamp post={p} block />
+        </span>
         <span className="flex min-w-9 shrink-0 items-center gap-1">
           {posts.map((v) => (
             <PlatformMark key={v.id} platform={v.platform} className="size-4" />
@@ -505,7 +544,7 @@ function PostRow({ posts, onMove, review }: { posts: Post[]; onMove?: (posts: Po
       <RepeatBadge post={p} />
       {retryAt && (
         <span className="text-xs text-ink-soft" title="Sending again once by itself, after an error that posted nothing">
-          Retrying at {time(retryAt)}
+          Retrying at {retryAt.toLocaleTimeString(undefined, { timeStyle: "short", timeZone: zoneFor(p.social_set_id) })}
         </span>
       )}
       {retried && (
@@ -704,7 +743,7 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
   useEffect(() => {
     listSets().then(async (r) => {
       setSets(r);
-      if (Array.isArray(r)) await Promise.all(r.map((s) => zoneOf(s.id).then((z) => setZones.set(s.id, z))));
+      if (Array.isArray(r)) await loadZones(r.map((s) => s.id));
       setZonesRead(true);
     });
   }, []);
@@ -823,6 +862,7 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
             </h2>
           </div>
         </div>
+        {zonesRead && <ZoneNote setId={setId} sets={sets} posts={calendarPosts} />}
         {view === "list" && (
           <div className="grid gap-3">
             <div role="search" className="flex w-full max-w-md items-center gap-2">
