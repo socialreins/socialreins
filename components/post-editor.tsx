@@ -574,11 +574,23 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   // TikTok has no delete call, so its answer is left out: the hint under the list says where to delete it.
   async function takeDownGroup() {
     flushSync(() => setAskingAll(false));
-    await run("takedown-all", () => takeDownGroupCall(groupId!), (r) => {
-      setGroup(r.posts);
-      const mine = r.posts.find((p) => p.id === postId);
+    const show = (posts: Post[]) => {
+      setGroup(posts);
+      const mine = posts.find((p) => p.id === postId);
       if (mine) setPost(mine);
+    };
+    await run("takedown-all", async () => {
+      const r = await takeDownGroupCall(groupId!);
+      // A call that failed as a whole (timeout, 5xx) may still have taken some posts down: read the group again.
+      if (isFailure(r)) {
+        const g = await listPosts({ group_id: groupId! });
+        if (Array.isArray(g)) show(g);
+      }
+      return r;
+    }, (r) => {
+      show(r.posts);
       const fresh = r.results.filter((t) => t.platform !== "tiktok" && t.state !== "not_published");
+      if (fresh.length === 0) return;
       // A retry says "already gone" for what the first call took down: keep the first answer.
       setDowns((old) => fresh.map((f) => (f.state === "already_gone" && old?.find((o) => o.post_id === f.post_id && o.state === "taken_down")) || f));
       setDownsShown((n) => n + 1);
@@ -733,7 +745,8 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   // The group with this page's own post as it now stands, and the posts still up.
   const members = group.map((g) => (post && g.id === post.id ? post : g));
   const live = members.filter((g) => g.status === "published" && g.platform !== "tiktok");
-  const tiktokUp = members.some((g) => g.status === "published" && g.platform === "tiktok");
+  // Another post's TikTok version: this page's own shows the same hint under its Take down.
+  const tiktokUp = members.some((g) => g.id !== postId && g.status === "published" && g.platform === "tiktok");
   const left = (downs ?? []).filter((d) => d.state === "failed");
   const downNames = (downs ?? []).filter((d) => d.state === "taken_down").map((d) => d.platform);
 
