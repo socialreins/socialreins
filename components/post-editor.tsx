@@ -2,13 +2,19 @@
 
 import { PostPagePanel } from "@/components/post-page-panel";
 
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { TeamLink as Link } from "@/components/team-link";
 import { useTeamPath, useTeamRouter as useRouter } from "@/components/team-link";
 import type { Failure } from "@/lib/auth";
 import { listConnections, needingReconnect, xLongPosts, type Connection } from "@/lib/connections";
 import {
+  ALT_MAX,
+  altList,
+  altMap,
+  altOut,
+  altPlatforms,
+  isImageLink,
   charCount,
   checkComment,
   checkCover,
@@ -130,6 +136,8 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const startSet = useRef(useCurrentSet()[0]);
   const [body, setBody] = useState("");
   const [media, setMedia] = useState<string[]>([]);
+  // The alt text of each image, by its link: the same link has the same description wherever it is used.
+  const [alts, setAlts] = useState<Record<string, string>>({});
   const [thread, setThread] = useState<ThreadPart[]>([]);
   // The first comment, and per-platform text that replaces it on that platform.
   const [comment, setComment] = useState("");
@@ -202,6 +210,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     setSetId(p.social_set_id);
     setBody(p.body);
     setMedia(p.media);
+    setAlts(altMap([p]));
     setThread(p.thread ?? []);
     setComment(p.first_comment ?? "");
     setCommentCustom({});
@@ -229,6 +238,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   // The group's per-platform text, media, comment, thread, cover and settings, `mine` being the shared one.
   function fillGroup(mine: Post, all: Post[]) {
     const rest = all.filter((g) => g.id !== mine.id);
+    setAlts(altMap([mine, ...rest]));
     setCustom(Object.fromEntries(rest.filter((g) => g.body !== mine.body).map((g) => [g.platform, g.body])));
     setMediaCustom(Object.fromEntries(rest.filter((g) => !same(g.media, mine.media)).map((g) => [g.platform, g.media])));
     const commented = all.filter((g) => limits[g.platform].comment !== null);
@@ -401,6 +411,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
       const o = {
         body: customFor(p),
         media: mediaCustomFor(p) && mediaFor(p),
+        media_alt: mediaCustomFor(p) ? altOut(mediaFor(p), alts, !!postId) : undefined,
         thread: limits[p].thread || parts.length === 0 ? undefined : [],
         first_comment: limits[p].comment === null ? (comment.trim() ? "" : undefined) : commentCustomFor(p),
         // The cover goes only to the platforms that take one, so none needs an empty override.
@@ -458,7 +469,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
       // Only the platforms with some unticked: brain gives the others every account, later ones too.
       const picked = selected.flatMap((p) => accountIdsFor(p) ?? []);
       const picks = picked.length ? picked : undefined;
-      const g = await createPostGroup({ ...shared, platforms: selected, account_ids: picks, body, media: images, thread: parts, first_comment: comment.trim() ? comment : undefined, tiktok: selected.includes("tiktok") ? tiktokOut : undefined, youtube: selected.includes("youtube") ? { privacy: ytPrivacy } : undefined, overrides });
+      const g = await createPostGroup({ ...shared, platforms: selected, account_ids: picks, body, media: images, media_alt: altOut(images, alts, false), thread: parts, first_comment: comment.trim() ? comment : undefined, tiktok: selected.includes("tiktok") ? tiktokOut : undefined, youtube: selected.includes("youtube") ? { privacy: ytPrivacy } : undefined, overrides });
       if (isFailure(g)) return g;
       const posts = g.posts;
       made = posts.length;
@@ -618,7 +629,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const mediaCustomFor = (p: Platform) => (selected.length > 1 && selected.includes(p) ? mediaCustom[p] : undefined);
   const mediaFor = (p: Platform) => (mediaCustomFor(p) ? links(mediaCustomFor(p)!) : images);
   const mediaMain = selected.filter((p) => mediaCustomFor(p) === undefined);
-  const parts = thread.map((p) => ({ ...p, media: links(p.media) }));
+  const parts = thread.map((p) => ({ ...p, media: links(p.media), media_alt: altOut(links(p.media), alts, !!postId) }));
   // The accounts `p` goes to when some are unticked; null for every one, which an edit must send to clear a pick.
   const accountIdsFor = (p: Platform) => {
     // Until the accounts are read, the pick stands as loaded, so an early save keeps it.
@@ -639,6 +650,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     account_ids: accountIdsFor(p) ?? (postId ? null : undefined),
     body: customFor(p) ?? body,
     media: mediaFor(p),
+    media_alt: altOut(mediaFor(p), alts, !!postId),
     thread: limits[p].thread ? parts : [],
     first_comment: commentText(p).trim() ? commentText(p) : undefined,
     cover: coverFor(p),
@@ -729,7 +741,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
 
   const preview = (
     <Preview
-      posts={shown ? [{ body: entry(shown).body, media: entry(shown).media }, ...entry(shown).thread] : [{ body, media: images }]}
+      posts={shown ? [{ body: entry(shown).body, media: entry(shown).media, media_alt: entry(shown).media_alt }, ...entry(shown).thread] : [{ body, media: images, media_alt: altList(images, alts) }]}
       platform={shown ?? "bluesky"}
       account={shown ? inSet(shown)[0] : undefined}
     />
@@ -1017,6 +1029,11 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
                         </a>
                       )}
                       {t.status === "published" && <TargetStats platform={post.platform} metrics={t.metrics} />}
+                      {t.alt_error && (
+                        <span className="basis-full text-ink-soft" data-alt-error>
+                          Alt text: {t.alt_error} The post went out without it.
+                        </span>
+                      )}
                       {t.cover_error && (
                         <span className="basis-full text-ink-soft" data-cover-error>
                           Cover image: {t.cover_error} It is not tried again: set the cover on the platform yourself.
@@ -1198,7 +1215,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
           </ul>
         )}
       </div>
-      <ImageLinks media={media} max={cap(mediaMain)} platforms={mediaMain} onChange={setMedia} onUploading={onUploading} />
+      <ImageLinks media={media} alts={alts} onAlts={setAlts} max={cap(mediaMain)} platforms={mediaMain} onChange={setMedia} onUploading={onUploading} />
       {issueList(issues.filter((i) => i.inline && i.tab === "all"))}
       {coverShown && (
         <fieldset className="grid gap-2">
@@ -1278,7 +1295,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
                       aria-describedby={`post-part-${i}-count`}
                     />
                     <Counts id={`post-part-${i}-count`} text={p.body} platforms={threadable} xLong={xLong} />
-                    <ImageLinks media={p.media} max={cap(threadable)} post={i + 2} onChange={(m) => setThread((list) => list.map((v, j) => (j === i ? { ...v, media: m } : v)))} onUploading={onUploading} />
+                    <ImageLinks media={p.media} alts={alts} onAlts={setAlts} max={cap(threadable)} post={i + 2} onChange={(m) => setThread((list) => list.map((v, j) => (j === i ? { ...v, media: m } : v)))} onUploading={onUploading} />
                   </li>
                 );
               })}
@@ -1373,7 +1390,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
             <p className="hint">{mediaRule(p)}</p>
           </div>
         ) : (
-          <ImageLinks media={mediaCustom[p]!} max={limits[p].media} own={p} onChange={(m) => setMediaCustom((c) => ({ ...c, [p]: m }))} onClose={() => uncustomizeMedia(p)} onUploading={onUploading} />
+          <ImageLinks media={mediaCustom[p]!} alts={alts} onAlts={setAlts} max={limits[p].media} own={p} onChange={(m) => setMediaCustom((c) => ({ ...c, [p]: m }))} onClose={() => uncustomizeMedia(p)} onUploading={onUploading} />
         )}
         {issueList(issues.filter((i) => i.inline && i.platform === p))}
         {limits[p].comment === null ? (
@@ -1846,6 +1863,8 @@ const mediaRule = (p: Platform) => `${mediaRules[p] ?? `${platformName(p)} takes
 // `rule` is the one platform of a post for one platform, whose media rule the shared hint then says.
 function ImageLinks({
   media,
+  alts,
+  onAlts,
   max,
   post,
   own,
@@ -1855,6 +1874,9 @@ function ImageLinks({
   onUploading,
 }: {
   media: string[];
+  // The alt texts by link, and how to change them.
+  alts: Record<string, string>;
+  onAlts: (alts: Record<string, string>) => void;
   max: number;
   post?: number;
   own?: Platform;
@@ -1970,6 +1992,7 @@ function ImageLinks({
           <p className="hint">
             Up to {max}. Upload files from your device (or drop them here), or add public https links, Google Drive or Dropbox share links. An upload is kept while a post that names it has yet to go out, a failed one included, so a retry finds it.
           </p>
+          <p className="hint">Add alt text to each image below: {altPlatforms.map(platformName).join(", ")} get it with the post.</p>
           {platforms && platforms.length > 0 && (
             <details className="hint">
               <summary className="cursor-pointer select-none font-bold">What each network takes</summary>
@@ -1986,28 +2009,39 @@ function ImageLinks({
       {media.length > 0 && (
         <ul className="grid gap-2">
           {media.map((m, i) => (
-            <li key={i} className="flex items-end gap-2">
-              <label className="grid flex-1 gap-1 text-sm font-bold">
-                <span>
-                  Image {i + 1} link<span className="sr-only">{of}</span>
-                </span>
-                <input
-                  ref={(el) => {
-                    imageRefs.current[i] = el;
-                  }}
-                  type="url"
-                  inputMode="url"
-                  placeholder="https://"
-                  className="field font-normal"
-                  value={m}
-                  onChange={(e) => onChange(media.map((v, j) => (j === i ? e.target.value : v)))}
-                />
-              </label>
-              {/* An upload is kept only for its posts, so it is no library link. */}
-              {!m.startsWith(`${apiUrl}/media/`) && <SaveToLibrary url={m} label={`Image ${i + 1}${of}`} onResult={(text, ok) => setSaved({ text, ok })} />}
-              <button type="button" className="icon-btn mb-1" aria-label={`Remove image ${i + 1}${of}`} onClick={() => removeImage(i)}>
-                <Icon name="close" className="size-4" />
-              </button>
+            <li key={i} className="grid gap-1">
+              <div className="flex items-end gap-2">
+                <label className="grid flex-1 gap-1 text-sm font-bold">
+                  <span>
+                    Image {i + 1} link<span className="sr-only">{of}</span>
+                  </span>
+                  <input
+                    ref={(el) => {
+                      imageRefs.current[i] = el;
+                    }}
+                    type="url"
+                    inputMode="url"
+                    placeholder="https://"
+                    className="field font-normal"
+                    value={m}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      onChange(media.map((v, j) => (j === i ? next : v)));
+                      // Fixing a link keeps the description that was written for it.
+                      if (m in alts && next !== m) {
+                        const { [m]: moved, ...rest } = alts;
+                        onAlts(next.trim() && !(next in rest) ? { ...rest, [next]: moved! } : rest);
+                      }
+                    }}
+                  />
+                </label>
+                {/* An upload is kept only for its posts, so it is no library link. */}
+                {!m.startsWith(`${apiUrl}/media/`) && <SaveToLibrary url={m} label={`Image ${i + 1}${of}`} onResult={(text, ok) => setSaved({ text, ok })} />}
+                <button type="button" className="icon-btn mb-1" aria-label={`Remove image ${i + 1}${of}`} onClick={() => removeImage(i)}>
+                  <Icon name="close" className="size-4" />
+                </button>
+              </div>
+              {m.trim() && isImageLink(m) && <AltText n={i + 1} of={of} value={alts[m] ?? ""} onChange={(v) => onAlts({ ...alts, [m]: v })} />}
             </li>
           ))}
         </ul>
@@ -2073,6 +2107,48 @@ function ImageLinks({
   );
 }
 
+// One image's alt text: a button that opens a box with a counter, and a nudge while it is empty (never a block).
+function AltText({ n, of, value, onChange }: { n: number; of: string; value: string; onChange: (text: string) => void }) {
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (open) box.current?.focus();
+  }, [open]);
+  const shown = open || value !== "";
+  return (
+    <div className="grid gap-1 pl-3">
+      {shown ? (
+        <div className="grid gap-1">
+          <label htmlFor={id} className="text-sm font-bold">
+            Alt text for image {n}
+            <span className="sr-only">{of}</span>
+          </label>
+          <textarea
+            id={id}
+            ref={box}
+            rows={2}
+            maxLength={ALT_MAX}
+            className="field font-normal"
+            placeholder="Describe the image for people who cannot see it"
+            aria-describedby={`${id}-count`}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+          />
+          <p id={`${id}-count`} className="hint tabular-nums">
+            {[...value].length} of {ALT_MAX} characters
+          </p>
+        </div>
+      ) : (
+        <button type="button" className="btn btn-quiet btn-sm justify-self-start" onClick={() => setOpen(true)}>
+          Add alt text<span className="sr-only"> for image {n}{of}</span>
+        </button>
+      )}
+      {!value.trim() && <p className="hint">Add alt text so screen reader users can follow your post.</p>}
+    </div>
+  );
+}
+
 // Links, mentions and tags, coloured as Bluesky shows them.
 const rich = /(https?:\/\/\S+|(?<!\w)@[a-z0-9.-]+\.[a-z]{2,}|(?<!\w)#[^\s#.,!?;:]+)/gi;
 const fileName = (url: string) => {
@@ -2096,13 +2172,13 @@ function Preview({ posts, platform, account }: { posts: ThreadPart[]; platform: 
         </span>
       </h2>
       {posts.map((p, i) => (
-        <PreviewPost key={i} body={p.body} media={p.media} platform={platform} account={account} />
+        <PreviewPost key={i} body={p.body} media={p.media} alt={p.media_alt} platform={platform} account={account} />
       ))}
     </section>
   );
 }
 
-function PreviewPost({ body, media, platform, account }: { body: string; media: string[]; platform: Platform; account?: Connection }) {
+function PreviewPost({ body, media, alt = [], platform, account }: { body: string; media: string[]; alt?: string[]; platform: Platform; account?: Connection }) {
   const video = platform === "youtube" ? youtubeText(body) : null;
   const parts = (video ? video.description : body).split(rich);
   return (
@@ -2146,6 +2222,12 @@ function PreviewPost({ body, media, platform, account }: { body: string; media: 
                     <Icon name="image" className="size-6" />
                     <span className="max-w-full truncate">{fileName(m)}</span>
                   </span>
+                  {alt[i]?.trim() && (
+                    <span className="flex max-w-full items-start gap-1 text-left" data-preview-alt>
+                      <span className="rounded bg-ink/70 px-1 text-[0.65rem] font-bold text-white">ALT</span>
+                      <span className="line-clamp-3 break-words">{alt[i]}</span>
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>

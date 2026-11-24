@@ -57,6 +57,8 @@ export const postMessages: Partial<Record<Failure, ReactNode>> = {
   mixed_media: "A video goes on its own on Bluesky, Facebook, LinkedIn, X and TikTok (a PDF on LinkedIn and a GIF on X too): post it without the other images.",
   media_too_large: "A media file is too large: images of at most 1 MB on Bluesky, 5 MB on X (a GIF 15 MB), and no file over 100 MB.",
   invalid_cover_type: "The cover image must be a JPEG or PNG (Instagram also takes WebP).",
+  alt_text_too_long: "An image's alt text is too long: at most 1000 characters.",
+  invalid_alt_text: "An image's alt text has a character that is not allowed. Use plain text.",
   cover_too_large: "The cover image is too large: at most 8 MB on Instagram, 10 MB on Facebook, 2 MB on YouTube.",
   tiktok_privacy_not_offered: "TikTok doesn't offer that visibility to this account now. Pick one of the choices shown and save again.",
   tiktok_privacy_required: "Choose who can see the TikTok post.",
