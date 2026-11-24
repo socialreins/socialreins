@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { apiUrl } from "@/lib/waitlist";
-import { addSlots, getQueue, saveQueue, DAYS, EVERY_DAY, removeSlot, sameSlots, slotTime, slotTimes, sortSlots, startZone, timeZones, WEEKDAYS } from "@/lib/queue";
+import { addSlots, browserZone, getQueue, saveQueue, DAYS, EVERY_DAY, removeSlot, sameSlots, slotTime, slotTimes, sortSlots, startZone, timeZones, WEEKDAYS, zoneOf, zoneTag } from "@/lib/queue";
 
 describe("queue slots", () => {
   it("sorts by time, then Monday first with Sunday last", () => {
@@ -83,5 +83,23 @@ describe("queue calls", () => {
   it("passes brain's validation codes through", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => Response.json({ error: "too_many_slots" }, { status: 422 })));
     expect(await saveQueue("s1", { time_zone: "UTC", slots: [] })).toBe("too_many_slots");
+  });
+});
+
+describe("zoneOf", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it("is the set's zone, and the browser's for a zone it does not know", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ time_zone: "Asia/Dhaka", slots: [{ weekday: 1, time: "09:00" }], next: [] })));
+    expect(await zoneOf("s1")).toBe("Asia/Dhaka");
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ time_zone: "Not/AZone", slots: [{ weekday: 1, time: "09:00" }], next: [] })));
+    expect(await zoneOf("s1")).toBe(browserZone());
+  });
+});
+
+describe("zoneTag", () => {
+  const d = new Date("2026-11-12T10:00:00Z");
+  it("is null in the browser's zone and a short name elsewhere", () => {
+    expect(zoneTag(browserZone(), d)).toBeNull();
+    expect(zoneTag(browserZone() === "Asia/Dhaka" ? "UTC" : "Asia/Dhaka", d)).toMatch(/^(UTC|GMT\+6)$/);
   });
 });
