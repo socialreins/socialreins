@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  altList,
+  capAlt,
+  keepsAlt,
+  altMap,
+  altOut,
+  isImageLink,
   charCount,
   checkComment,
   checkCover,
@@ -737,5 +743,53 @@ describe("repeat until", () => {
     for (const day of ["2026-12-05", "2026-12-31", "2027-02-28"]) expect(untilLocal(untilUtc(day))).toBe(day);
     // The local day's last second, as a UTC date.
     expect(untilUtc("2026-12-05")).toBe(new Date(2026, 11, 5, 23, 59, 59).toISOString().slice(0, 10));
+  });
+});
+
+describe("alt text", () => {
+  const a = "https://example.com/a.png";
+  const b = "https://example.com/b.png";
+  it("is collected by link from a post and its thread, the first one winning", () => {
+    const posts = [{ media: [a, b], media_alt: ["A cat", ""], thread: [{ body: "", media: [b, a], media_alt: ["B dog", "other"] }] }];
+    expect(altMap(posts)).toEqual({ [a]: "A cat", [b]: "B dog" });
+    expect(altMap([{ media: [a] }])).toEqual({});
+  });
+
+  it("follows its image when images are added, removed or reordered", () => {
+    const alts = { [a]: " A cat ", [b]: "B dog" };
+    expect(altList([a, b], alts)).toEqual(["A cat", "B dog"]);
+    expect(altList([b, "https://example.com/c.png", a], alts)).toEqual(["B dog", "", "A cat"]);
+    expect(altList([b], alts)).toEqual(["B dog"]);
+  });
+
+  it("is left out of a new post without any, and always sent on an edit", () => {
+    expect(altOut([a], {}, false)).toBeUndefined();
+    expect(altOut([a], { [a]: "x" }, false)).toEqual(["x"]);
+    expect(altOut([a, b], {}, true)).toEqual(["", ""]);
+    expect(altOut([], { [a]: "x" }, true)).toBeUndefined();
+  });
+
+  it("is for images only", () => {
+    expect(isImageLink(a)).toBe(true);
+    expect(isImageLink("https://drive.google.com/file/d/abc/view")).toBe(true);
+    expect(isImageLink("https://example.com/pic.GIF?x=1")).toBe(true);
+    expect(isImageLink("https://example.com/clip.mp4")).toBe(false);
+    expect(isImageLink("https://example.com/doc.pdf")).toBe(false);
+  });
+
+  it("stays with a link only while the same link is typed on", () => {
+    expect(keepsAlt(a, a + "x")).toBe(true);
+    expect(keepsAlt(a, a.slice(0, -1), "deleteContentBackward")).toBe(true);
+    // A pasted link, even one character away, and any big change, is taken for another image.
+    expect(keepsAlt(a, b, "insertFromPaste")).toBe(false);
+    expect(keepsAlt(a, b, "insertFromDrop")).toBe(false);
+    expect(keepsAlt(a, "https://cdn.example.org/photos/other-picture.jpg", "insertText")).toBe(false);
+    expect(keepsAlt(a, "", "deleteContentBackward")).toBe(false);
+  });
+
+  it("is capped by code points as brain counts, so emoji are not cut short", () => {
+    expect([...capAlt("😀".repeat(1000))]).toHaveLength(1000);
+    expect([...capAlt("😀".repeat(1001))]).toHaveLength(1000);
+    expect(capAlt("short")).toBe("short");
   });
 });

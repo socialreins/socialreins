@@ -24,13 +24,16 @@ export type Target = {
   comment_error?: string | null;
   // Why the cover image could not be set on the published video; the post is up (a warning).
   cover_error?: string | null;
+  // Why a network did not get the images' alt text; the post went out without it.
+  alt_error?: string | null;
   // Sent again once by brain, about 5 minutes after an error that posted nothing.
   retried?: boolean;
   // When that retry runs; set only while the target waits for it, null once it has run.
   retry_at?: string | null;
 };
 // A follow-up post of a thread: a reply to the one before.
-export type ThreadPart = { body: string; media: string[] };
+// `media_alt` is the alt text of each image, in the order of `media` (an empty string for an image without).
+export type ThreadPart = { body: string; media: string[]; media_alt?: string[] };
 // The platforms brain publishes to.
 // What the user chooses for a TikTok post, as brain's POST /v1/posts takes it (TikTok's Content Sharing
 // Guidelines): who can see it (no default), the interactions (all off), the commercial content disclosure
@@ -107,6 +110,8 @@ export type Post = {
   account_ids?: string[] | null;
   body: string;
   media: string[];
+  // The alt text of each image, in the order of `media`: empty when none has one, else as long as `media`.
+  media_alt?: string[];
   thread: ThreadPart[];
   // Text the account comments on the post right after it is published; null for none.
   first_comment?: string | null;
@@ -208,6 +213,8 @@ export type PostInput = {
   account_ids?: string[] | null;
   body: string;
   media: string[];
+  // Alt text per image in the order of `media`. Left out on an edit, brain keeps the texts it has for the same links.
+  media_alt?: string[];
   thread?: ThreadPart[];
   first_comment?: string;
   // A cover image link for the post's one video (Instagram, Facebook, YouTube); "" or absent for none.
@@ -227,7 +234,7 @@ export type PostInput = {
 // (a first_comment of "" leaves it out on a platform that can't post one).
 export type PostGroupInput = Omit<PostInput, "platform"> & {
   platforms: Platform[];
-  overrides?: Partial<Record<Platform, { body?: string; media?: string[]; thread?: ThreadPart[]; first_comment?: string; cover?: string }>>;
+  overrides?: Partial<Record<Platform, { body?: string; media?: string[]; media_alt?: string[]; thread?: ThreadPart[]; first_comment?: string; cover?: string }>>;
 };
 export type PostFilter = { social_set_id?: string; status?: PostStatus; from?: string; to?: string; group_id?: string; approval?: Approval };
 
@@ -277,6 +284,48 @@ export function sizeHint(platforms: Platform[]): string {
   const video = own.length === platforms.length && own.length > 0 ? each("video") : `1 GB${own.length ? ` (${each("video")})` : ""}`;
   return `Size limits: a video up to ${video}; an image or PDF up to 100 MB${own.length ? " (a photo too large for a network is made smaller for you)" : ""}${own.length ? `; a GIF up to ${each("gif")}` : ""}. Sizes are checked when you save.`;
 }
+// Most characters of one image's alt text: brain's limit, the strictest of the networks that take one.
+export const ALT_MAX = 1000;
+// Networks that take an image's alt text; the others (Facebook, TikTok, YouTube) have no place for it.
+export const altPlatforms: Platform[] = ["bluesky", "threads", "instagram", "linkedin", "x"];
+// The alt texts the posts carry, by image link: the same link is described once wherever it appears.
+export function altMap(posts: { media: string[]; media_alt?: string[]; thread?: ThreadPart[] }[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  const add = (media: string[], alt: string[] | undefined) =>
+    media.forEach((m, i) => {
+      if (alt?.[i]?.trim() && !(m in out)) out[m] = alt[i]!;
+    });
+  for (const p of posts) {
+    add(p.media, p.media_alt);
+    for (const t of p.thread ?? []) add(t.media, t.media_alt);
+  }
+  return out;
+}
+// The alt text of each link, in order, for brain's `media_alt` (empty for a link without one).
+export const altList = (media: string[], alts: Record<string, string>) => media.map((m) => (alts[m] ?? "").trim());
+// Whether the description written for the link `from` may stay with the link `to` it was edited into: only
+// while the user is typing the same link (a single character added, removed or changed), never for a pasted
+// or dropped link or a big change, which is most likely another image. A description left on the wrong image
+// would be posted as that image's.
+export function keepsAlt(from: string, to: string, inputType = ""): boolean {
+  if (/^insert(FromPaste|FromDrop|FromYank|ReplacementText)/.test(inputType)) return false;
+  let start = 0;
+  while (start < from.length && start < to.length && from[start] === to[start]) start++;
+  let end = 0;
+  while (end < from.length - start && end < to.length - start && from[from.length - 1 - end] === to[to.length - 1 - end]) end++;
+  return Math.max(from.length, to.length) - start - end <= 1;
+}
+// `text` cut to `ALT_MAX` characters, counted as brain counts them (code points, not UTF-16 units).
+export const capAlt = (text: string) => ([...text].length > ALT_MAX ? [...text].slice(0, ALT_MAX).join("") : text);
+// What to send as `media_alt`: nothing for a new post without any alt text (so brain's old behaviour stays),
+// and on an edit always the full list, since brain keeps the stored texts of the same links when it is left out.
+export const altOut = (media: string[], alts: Record<string, string>, editing: boolean) =>
+  media.length > 0 && (editing || media.some((m) => alts[m]?.trim())) ? altList(media, alts) : undefined;
+// Whether a link may be an image, as far as its extension tells: alt text is for images only.
+export const isImageLink = (url: string) => {
+  const t = linkType(url);
+  return t === null || [JPEG, PNG, GIF, WEBP].includes(t);
+};
 // What a link's extension says its file is; null when it says nothing (a Drive link, no extension).
 export function linkType(url: string): string | null {
   const ext = /\.([a-z0-9]+)(?:[?#]|$)/i.exec(url.split(/[?#]/)[0] ?? "")?.[1]?.toLowerCase();
@@ -649,6 +698,7 @@ export function editInput(p: Post, scheduled_at: string | null): PostInput {
     // No account_ids: brain keeps the post's pick, even with an account gone since.
     body: p.body,
     media: p.media,
+    media_alt: p.media_alt,
     thread: limits[p.platform].thread ? (p.thread ?? []) : [],
     first_comment: p.first_comment?.trim() ? p.first_comment : undefined,
     cover: p.cover?.trim() || undefined,

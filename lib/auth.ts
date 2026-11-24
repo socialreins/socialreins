@@ -137,6 +137,8 @@ export const codes = [
   "media_too_large",
   "invalid_cover_type",
   "cover_too_large",
+  "alt_text_too_long",
+  "invalid_alt_text",
   "tiktok_privacy_not_offered",
   "invalid_override",
   "no_accounts",
