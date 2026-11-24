@@ -157,9 +157,9 @@ async function listMonth(page: Page) {
     route.fulfill({
       json:
         new URL(route.request().url()).searchParams.get("status") === "draft"
-          ? [post("p-draft", { body: "An unfinished launch note" })]
+          ? [post("p-draft", { body: "An unfinished launch note", error: "Not posted: it was due at 2026-11-09 08:00 UTC and is more than an hour late. Schedule it again." })]
           : [
-              post("p-old", { status: "published", scheduled_at: "2026-11-03T08:00:00Z", published_at: "2026-11-03T08:00:00Z", body: "Hello Bluesky", targets: [target()] }),
+              post("p-old", { status: "published", scheduled_at: "2026-11-03T08:00:00Z", published_at: "2026-11-03T08:00:00Z", body: "Hello Bluesky", targets: [target({ retried: true })] }),
               post("p-fail", { status: "failed", scheduled_at: "2026-11-05T08:00:00Z", error: "Bluesky refused the image", body: "Broken upload" }),
               post("p-today", { status: "scheduled", scheduled_at: "2026-11-10T15:00:00Z", body: "Launch day" }),
               post("p-x", { platform: "x", status: "scheduled", scheduled_at: "2026-11-20T15:00:00Z", body: "Follow-up on X" }),
@@ -167,6 +167,27 @@ async function listMonth(page: Page) {
     }),
   );
 }
+
+test("a retry that is still waiting says when it runs, and is Retried once only after", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-11-10T12:00:00+01:00"));
+  await brain(page);
+  const waiting = target({ status: "pending", remote_id: null, remote_url: null, published_at: null, error: "Rate limited. Nothing was posted.", retried: true, retry_at: "2026-11-10T11:05:00Z" });
+  const ran = { ...waiting, retry_at: null };
+  let current = waiting;
+  await page.route(/\/v1\/posts(\?.*)?$/, (route) =>
+    route.fulfill({
+      json: new URL(route.request().url()).searchParams.get("status") === "draft" ? [] : [post("p-wait", { status: "queued", scheduled_at: "2026-11-10T11:58:00Z", body: "Busy platform", targets: [current] })],
+    }),
+  );
+  await page.goto("/posts");
+  const row = page.getByRole("listitem").filter({ hasText: "Busy platform" });
+  await expect(row.getByText(/^Retrying at /)).toBeVisible();
+  await expect(row.getByText("Retried once")).toHaveCount(0);
+  current = ran;
+  await page.reload();
+  await expect(row.getByText("Retried once")).toBeVisible();
+  await expect(row.getByText(/^Retrying at /)).toHaveCount(0);
+});
 
 test("posts shows today and later first and folds the earlier days of the month", async ({ page }) => {
   await listMonth(page);
@@ -182,6 +203,9 @@ test("posts shows today and later first and folds the earlier days of the month"
   await expect(earlier.getByRole("link", { name: "View on Bluesky" })).toBeVisible();
   await expect(earlier.getByText("Failed", { exact: true })).toBeVisible();
   await expect(earlier.getByText("Bluesky refused the image")).toBeVisible();
+  await expect(earlier.getByText("Retried once")).toBeVisible();
+  // A draft brain put back for being late says why.
+  await expect(page.getByRole("region", { name: "Drafts" }).getByText(/more than an hour late/)).toBeVisible();
 
   // Another month shows every day, with nothing folded.
   await page.getByRole("button", { name: "Previous month" }).click();

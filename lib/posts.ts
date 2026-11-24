@@ -24,6 +24,10 @@ export type Target = {
   comment_error?: string | null;
   // Why the cover image could not be set on the published video; the post is up (a warning).
   cover_error?: string | null;
+  // Sent again once by brain, about 5 minutes after an error that posted nothing.
+  retried?: boolean;
+  // When that retry runs; set only while the target waits for it, null once it has run.
+  retry_at?: string | null;
 };
 // A follow-up post of a thread: a reply to the one before.
 export type ThreadPart = { body: string; media: string[] };

@@ -473,6 +473,9 @@ function PostRow({ posts, onMove, review }: { posts: Post[]; onMove?: (posts: Po
   const approval = approvalState(p);
   const remote = posts.flatMap((v) => v.targets.filter((t) => t.remote_url && t.status === "published").map((t) => ({ ...t, platform: v.platform })));
   const error = p.status === "failed" ? failText(posts) : undefined;
+  // The earliest retry still waiting, else whether one has run.
+  const retryAt = posts.flatMap((v) => v.targets.flatMap((t) => (t.retry_at ? [new Date(t.retry_at)] : []))).sort((a, b) => +a - +b)[0];
+  const retried = !retryAt && posts.some((v) => v.targets.some((t) => t.retried));
   // A published row's likes and comments over all its networks, once brain has read any.
   const totals = p.status === "published" ? postTotals(posts) : null;
   const stats = totals && statWords(totals, ["likes", "comments"]);
@@ -498,6 +501,16 @@ function PostRow({ posts, onMove, review }: { posts: Post[]; onMove?: (posts: Po
       <StatusBadge status={p.status} />
       <ApprovalBadge post={p} />
       <RepeatBadge post={p} />
+      {retryAt && (
+        <span className="text-xs text-ink-soft" title="Sending again once by itself, after an error that posted nothing">
+          Retrying at {time(retryAt)}
+        </span>
+      )}
+      {retried && (
+        <span className="text-xs text-ink-soft" title="Sent again once by itself, after an error that posted nothing">
+          Retried once
+        </span>
+      )}
       {review && approval === "pending" && (
         <>
           <button type="button" className="btn btn-primary btn-sm relative z-10" disabled={review.busy} aria-label={`Approve ${snippet(p)}`} onClick={() => review.approve(posts)}>
@@ -1041,6 +1054,8 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
                   {snippet(p)}
                 </Link>
                 {p.lists.length > 0 && <p className="text-sm font-bold">{p.lists.map(partLabel).join(", ")}</p>}
+                {/* Why brain put it back, e.g. it was over an hour late. */}
+                {p.error && <p className="text-sm text-signal-deep">{p.error}</p>}
                 {approvalState(p) && (
                   <p className="text-sm text-signal-deep">
                     <ApprovalBadge post={p} /> {p.approval_note}
