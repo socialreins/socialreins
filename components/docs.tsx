@@ -251,7 +251,7 @@ function Use({ mode }: { mode: Mode }) {
         Open Posts and write a post. Under Post to, pick the networks. Add your text, photos or a video, and a first comment or a thread where the network allows one. With two or more networks ticked, each has its own tab where you can give it a different text and different media. Then publish now or pick a time to schedule it. The <Link href="/post-types" className={link}>post types page</Link> lists what each network accepts.
       </p>
       <h2>4. Check and take down</h2>
-      <p>Calendar shows what is scheduled, and you can drag a scheduled post to another day or use its Move to button. Duplicate on a saved post copies it into a new one. A published post shows a result for each account, with the reason when a network refused it. Taking a published post down removes it from its network, and a post sent to several networks has Take down all. It stays in SocialReins, marked as taken down.</p>
+      <p>Calendar shows what is scheduled, and you can drag a scheduled post to another day or use its Move to button. Duplicate on a saved post copies it into a new one. A published post shows a result for each account, with the reason when a network refused it. Taking a published post down removes it from its network, and a post sent to several networks has Take down all (TikTok has no delete option for other apps, so delete that one in the TikTok app). It stays in SocialReins, marked as taken down.</p>
       <h2>5. Invite your team</h2>
       <p>Open Team to invite people by email as an admin or a member. Lists group posts into an ordered series.</p>
 
