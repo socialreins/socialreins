@@ -68,6 +68,8 @@ const limitText = (used: number, limit: number | null) => (limit === null ? `${u
 
 export function BillingPage() {
   const { user } = useSession();
+  // Whether AI steps are metered: billing is on. Unknown until the plan loads.
+  const [metered, setMetered] = useState<boolean | null>(null);
   // Brain sends the browser back from Stripe to /billing?checkout= (a plan) or ?credits= (a pack), success or canceled; show it once, then clean the address.
   const [returned] = useState(() => {
     const q = new URLSearchParams(window.location.search);
@@ -85,13 +87,13 @@ export function BillingPage() {
           {banners[returned]}
         </p>
       ) : null}
-      <PlanSection polling={returned === "success"} />
-      {manages(user.current_team.role) ? <AiKeySection /> : <p className="text-ink-soft">Only team owners and admins can set the team&apos;s own AI key.</p>}
+      <PlanSection polling={returned === "success"} onBilling={setMetered} />
+      {manages(user.current_team.role) ? <AiKeySection metered={metered} /> : <p className="text-ink-soft">Only team owners and admins can set the team&apos;s own AI key.</p>}
     </div>
   );
 }
 
-function PlanSection({ polling }: { polling: boolean }) {
+function PlanSection({ polling, onBilling }: { polling: boolean; onBilling: (enabled: boolean) => void }) {
   const { user } = useSession();
   const owner = user.current_team.role === "owner";
   const action = useAction();
@@ -105,8 +107,9 @@ function PlanSection({ polling }: { polling: boolean }) {
     setData(null);
     const [billing, credits] = await Promise.all([getBilling(), getCredits()]);
     setData(isFailure(billing) ? billing : { billing, credits });
+    if (!isFailure(billing)) onBilling(billing.enabled);
     return billing;
-  }, []);
+  }, [onBilling]);
   useEffect(() => {
     let stop = false;
     (async () => {
@@ -154,7 +157,7 @@ function PlanSection({ polling }: { polling: boolean }) {
         <h2 id="plan-heading" className={heading}>
           Plan
         </h2>
-        <p>Self-hosted: nothing is capped.</p>
+        <p>Billing is off: nothing is capped.</p>
       </section>
     );
   const { plan, limits, usage } = billing;
@@ -286,7 +289,7 @@ function PlanSection({ polling }: { polling: boolean }) {
 }
 
 // Rendered for owners and admins only. The key goes to brain and is never shown again, only its provider and last 4 characters.
-function AiKeySection() {
+function AiKeySection({ metered }: { metered: boolean | null }) {
   // undefined: loading; null: none set.
   const [saved, setSaved] = useState<AiKey | null | Failure | undefined>(undefined);
   const [provider, setProvider] = useState<Provider>("anthropic");
@@ -312,7 +315,13 @@ function AiKeySection() {
       <h2 id="ai-key-heading" className={heading}>
         Bring your own AI key
       </h2>
-      <p className="text-ink-soft">With your own key, AI steps in automations are not metered. Without one, they use credits.</p>
+      {metered !== null && (
+        <p className="text-ink-soft">
+          {metered
+            ? "With your own key, AI steps in automations are not metered. Without one, they use credits."
+            : "AI steps in automations use your own key when one is set. Without one, they use the app's key, if it has one. Billing is off, so nothing is metered."}
+        </p>
+      )}
       {saved === undefined ? (
         <Skeleton className="h-10 w-full" />
       ) : isFailure(saved) ? (
@@ -354,7 +363,7 @@ function AiKeySection() {
               onClick={() =>
                 action.run("remove", removeGone, () => {
                   setSaved(null);
-                  return "Removed the key. AI steps use credits again.";
+                  return metered === false ? "Removed the key." : "Removed the key. AI steps use credits again.";
                 })
               }
             >

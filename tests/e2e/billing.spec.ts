@@ -46,7 +46,10 @@ async function brain(page: Page, role: Role, billing: object, key: { provider: s
 test("a self-hosted install says nothing is capped and offers no plan or upgrade", async ({ page }) => {
   await brain(page, "owner", { enabled: false, plan: null, limits: {}, usage: { accounts: 1, members: 1 } });
   await page.goto("/billing");
-  await expect(page.getByText("Self-hosted: nothing is capped.")).toBeVisible();
+  await expect(page.getByText("Billing is off: nothing is capped.")).toBeVisible();
+  // AI steps are not metered either, so the AI key section says nothing about credits.
+  await expect(page.getByText("Billing is off, so nothing is metered.")).toBeVisible();
+  await expect(page.getByText(/use credits/)).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Choose|Manage billing/ })).toHaveCount(0);
   await expect(page.getByText("No plan")).toHaveCount(0);
 });

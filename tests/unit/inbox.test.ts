@@ -1,10 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { assignItem, chatRows, dayLabel, getConversation, listItems, maxFor, mergeConversation, mergeFresh, messageCount, relativeTime, replyToItem, sentAlready, setItemState, threadKey, type Item } from "@/lib/inbox";
+import { assignItem, chatRows, itemSummary, dayLabel, getConversation, listItems, maxFor, mergeConversation, mergeFresh, messageCount, relativeTime, replyToItem, sentAlready, setItemState, threadKey, type Item } from "@/lib/inbox";
 import { apiUrl } from "@/lib/waitlist";
 
 const call = (fetch: ReturnType<typeof vi.fn>) => fetch.mock.calls[0] as unknown as [string, RequestInit];
 
 afterEach(() => vi.unstubAllGlobals());
+
+describe("itemSummary", () => {
+  it("says what an item carries when it has no text, and never (no text) then", () => {
+    const image = { kind: "image" as const, url: "https://scontent.xx.fbcdn.net/a.jpg" };
+    expect(itemSummary({ text: "hi", attachments: [image] })).toBe("hi");
+    expect(itemSummary({ text: "", attachments: [{ kind: "sticker", url: "https://x.fbcdn.net/s.png" }] })).toBe("Sticker");
+    expect(itemSummary({ text: "", attachments: [image, image, { kind: "video", url: "https://x.fbsbx.com/v.mp4" }] })).toBe("Photo and 2 more");
+    expect(itemSummary({ text: "", attachments: [] })).toBe("(no text)");
+    expect(itemSummary({ text: "" })).toBe("(no text)");
+  });
+});
 
 describe("inbox requests", () => {
   it("pages items by state and cursor", async () => {
