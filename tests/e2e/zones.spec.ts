@@ -47,6 +47,7 @@ test("each post sits on the day and time of its own set's zone, tagged and expla
   await expect(cell(page, 12).getByRole("link", { name: /New York post/ })).toContainText("6:30 PM");
   await expect(cell(page, 12).getByRole("link", { name: /New York post/ })).toContainText(/GMT-5|EST/);
   await expect(cell(page, 12).getByRole("link", { name: /Dhaka post/ })).toHaveCount(0);
+  if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/zones-calendar.png` });
   const note = page.locator("[data-zone-note]");
   await expect(note).toContainText("Your sets use different time zones");
   await expect(note).toContainText("Asia/Dhaka (EN)");
@@ -81,7 +82,7 @@ test("Home sorts today and tomorrow by each post's own set zone", async ({ page 
   );
   await page.goto("/home");
   const next = page.getByRole("region", { name: "Today and next" });
-  // In Dhaka it is 17:00 on the 10th, so 01:30 on the 11th is tomorrow; in New York it is 05:00 on the 10th, so 14:30 is today.
+  // In Dhaka it is 17:00 on the 10th, so 01:30 on the 11th is tomorrow; in New York it is 06:00 on the 10th, so 14:30 is today.
   await expect(next.getByRole("heading", { level: 3 })).toHaveText([/^Today/, /^Tomorrow/]);
   await expect(next.getByRole("link", { name: /New York afternoon/ })).toContainText("2:30 PM");
   await expect(next.getByRole("link", { name: /Dhaka evening/ })).toContainText("1:30 AM GMT+6");

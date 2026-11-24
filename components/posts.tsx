@@ -240,7 +240,7 @@ export function PlatformMark({ platform, className = "size-3.5", named }: { plat
 }
 
 // The versions of one post on a day's line: the same status and time, so both show once.
-const chips = (posts: Post[]) => rows(posts, (p) => `${p.status} ${approvalState(p)} ${Math.floor((postDay(p)?.getTime() ?? 0) / 60_000)}`);
+const chips = (posts: Post[]) => rows(posts, (p) => `${p.status} ${approvalState(p)} ${p.social_set_id} ${Math.floor((postDay(p)?.getTime() ?? 0) / 60_000)}`);
 
 function PostChip({ posts }: { posts: Post[] }) {
   const p = posts[0]!;

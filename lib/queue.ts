@@ -54,11 +54,17 @@ export const startZone = (q: Queue, browser: string) => (q.time_zone === "UTC" &
 export async function zoneOf(setId: string) {
   const browser = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const q = await getQueue(setId);
-  return typeof q === "string" ? browser : startZone(q, browser);
+  const zone = typeof q === "string" ? browser : startZone(q, browser);
+  // A zone this browser's ICU doesn't know would throw in every date call: use the browser's.
+  try {
+    new Intl.DateTimeFormat(undefined, { timeZone: zone });
+    return zone;
+  } catch {
+    return browser;
+  }
 }
 
-// Each set's zone as pages place its posts on days and times. shortcut: one read per page load
-// (`loadZones`), so a zone changed on the Queue page shows after a reload.
+// Each set's zone as pages place its posts on days and times, read again (`loadZones`) each time a page loads.
 export const setZones = new Map<string, string>();
 export const browserZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 export const zoneFor = (setId: string) => setZones.get(setId) ?? browserZone();
