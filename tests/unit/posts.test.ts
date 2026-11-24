@@ -17,6 +17,7 @@ import {
   fromLocalInput,
   fromZoneInput,
   moveToZoneDay,
+  inZone,
   getPost,
   getTikTokCreator,
   graphemes,
@@ -477,6 +478,13 @@ describe("dates", () => {
     // Next to a change, an ordinary time is itself.
     expect(fromZoneInput("2026-10-04T03:30", "Australia/Sydney")).toBe("2026-10-03T16:30:00.000Z");
     expect(fromZoneInput("2026-03-29T00:30", "Europe/London")).toBe("2026-03-29T00:30:00.000Z");
+  });
+
+  it("reads a post's day and time in its set's zone, whatever the browser's", () => {
+    // 22:00 UTC on 11 November is 09:00 on the 12th in Sydney.
+    const d = inZone(new Date("2026-11-11T22:00:00Z"), "Australia/Sydney");
+    expect([d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes()]).toEqual([2026, 10, 12, 9, 0]);
+    expect(inZone(new Date("2026-11-11T22:00:00Z"))).toEqual(new Date("2026-11-11T22:00:00Z"));
   });
 
   it("moves a post to another day at the same wall time in the set's zone", () => {

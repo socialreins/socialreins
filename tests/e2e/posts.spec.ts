@@ -86,7 +86,8 @@ test("calendar shows the month's posts, with filter and month steps; posts lists
     const q = new URL(route.request().url()).searchParams;
     queries.push(q);
     if (q.get("status") === "draft") return route.fulfill({ json: [post("p-draft", { body: "An unfinished thought" })] });
-    if (q.get("from")?.startsWith("2026-10-31")) {
+    // A day either side of the month: a post may sit on another day in its set's zone.
+    if (q.get("from")?.startsWith("2026-10-30")) {
       return route.fulfill({
         json: [
           post("p-sched", { status: "scheduled", scheduled_at: "2026-11-12T09:30:00Z", body: "Launch day" }),
@@ -102,7 +103,7 @@ test("calendar shows the month's posts, with filter and month steps; posts lists
   const days = page.getByRole("list", { name: "Posts in November 2026" });
   await expect(days.getByRole("link", { name: /10:30.*Launch day$/ })).toHaveAttribute("href", "/t/acme22/posts/p-sched");
   await expect(page.getByRole("region", { name: "Drafts" }).getByRole("link", { name: "An unfinished thought" })).toHaveAttribute("href", "/t/acme22/posts/p-draft");
-  expect(queries[0]?.get("to")).toBe("2026-11-30T23:00:00.000Z");
+  expect(queries.find((q) => q.get("from"))?.get("to")).toBe("2026-12-01T23:00:00.000Z");
 
   await page.getByRole("navigation", { name: "App" }).getByRole("link", { name: "Calendar" }).click();
   await expect(page).toHaveURL("/t/acme22/calendar");
@@ -116,7 +117,7 @@ test("calendar shows the month's posts, with filter and month steps; posts lists
 
   await page.getByRole("button", { name: "Next month" }).click();
   await expect(page.getByRole("heading", { name: "December 2026" })).toBeVisible();
-  await expect.poll(() => queries.some((q) => q.get("from") === "2026-11-30T23:00:00.000Z")).toBe(true);
+  await expect.poll(() => queries.some((q) => q.get("from") === "2026-11-29T23:00:00.000Z")).toBe(true);
   await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "All sets" }).click();
   await page.locator("#set-menu").getByRole("button", { name: "Clients" }).click();
   await expect(page.locator("#set-menu")).toBeHidden();

@@ -17,7 +17,7 @@ import {
   matchesFilters,
   monthRange,
   monthWeeks,
-  moveToDay,
+  inZone,
   moveToZoneDay,
   NOTE_MAX,
   parseFilters,
@@ -25,7 +25,7 @@ import {
   repeatSummary,
   rows,
   sameDay,
-  toLocalInput,
+  toZoneInput,
   updatePost,
   type Platform,
   type Post,
@@ -102,6 +102,17 @@ export const statusName: Record<PostStatus, string> = {
 };
 
 const time = (d: Date) => d.toLocaleTimeString(undefined, { timeStyle: "short" });
+
+// The calendar's one rule for days: a post sits on, and moves between, days of its own set's time zone
+// (its queue zone), and the grid's dates (today, the month) are those of the set picked in the top bar,
+// or the browser's for all sets. `at` gives a post's wall time there as a local Date for the date maths.
+// shortcut: filled once per page load by `Posts`; a zone changed on /queue shows after a reload.
+const setZones = new Map<string, string>();
+const at = (p: Post) => {
+  const d = postDay(p);
+  return d && inZone(d, setZones.get(p.social_set_id));
+};
+const zoneFor = (setId: string) => setZones.get(setId) ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 export const snippet = (p: Post) => (p.body.trim() ? p.body.trim().slice(0, 60) + (p.body.trim().length > 60 ? "..." : "") : "(images only)");
 const bluesky = platformOf("bluesky")!;
 const legend: PostStatus[] = ["scheduled", "queued", "published", "failed", "deleted"];
@@ -212,7 +223,7 @@ export function PlatformMark({ platform, className = "size-3.5", named }: { plat
 }
 
 // The versions of one post on a day's line: the same status and time, so both show once.
-const chips = (posts: Post[]) => rows(posts, (p) => `${p.status} ${approvalState(p)} ${postDay(p)?.toDateString()} ${postDay(p) && time(postDay(p)!)}`);
+const chips = (posts: Post[]) => rows(posts, (p) => `${p.status} ${approvalState(p)} ${at(p)?.toDateString()} ${at(p) && time(at(p)!)}`);
 
 function PostChip({ posts }: { posts: Post[] }) {
   const p = posts[0]!;
@@ -225,7 +236,7 @@ function PostChip({ posts }: { posts: Post[] }) {
         {posts.map((v) => (
           <PlatformMark key={v.id} platform={v.platform} />
         ))}{" "}
-        <span className="text-ink-soft tabular-nums">{time(postDay(p)!)}</span> {snippet(p)}
+        <span className="text-ink-soft tabular-nums">{time(at(p)!)}</span> {snippet(p)}
       </Link>
       <span className="sr-only">{stateName(p)}</span>
       {remote.map((t) => (
@@ -280,7 +291,7 @@ function GridChip({ posts, onDrag, onMove }: { posts: Post[]; onDrag: (posts: Po
         <span className="flex min-w-0 items-center gap-1 whitespace-nowrap text-ink-soft">
           <span aria-hidden="true" className="dot shrink-0" data-status={p.status} data-approval={approvalState(p) ?? undefined} />
           <span className="sr-only">{stateName(p)}: </span>
-          <span className="tabular-nums">{time(postDay(p)!)}</span>
+          <span className="tabular-nums">{time(at(p)!)}</span>
           {posts.map((v) => (
             <PlatformMark key={v.id} platform={v.platform} className="size-3" />
           ))}
@@ -354,20 +365,26 @@ function MoveDialog({ posts, onClose, onMove }: { posts: Post[]; onClose: () => 
   const ref = useRef<HTMLDialogElement>(null);
   const id = useId();
   const when = postDay(posts[0]!)!;
-  const [value, setValue] = useState(toLocalInput(when.toISOString()).slice(0, 10));
-  // The post keeps its time of day in its set's time zone, which `move` reads too.
-  const [zone, setZone] = useState<string | null>(null);
+  const setId = posts[0]!.social_set_id;
+  // The post keeps its time of day in its set's time zone, and the dates are that zone's days, as `move` reads them.
+  const [zone, setZone] = useState<string | null>(setZones.get(setId) ?? null);
+  const [value, setValue] = useState(zone ? toZoneInput(when.toISOString(), zone).slice(0, 10) : "");
   const day = value ? new Date(`${value}T00:00`) : null;
   const ok = day !== null && zone !== null && moveToZoneDay(when, day, zone) !== null;
   useEffect(() => ref.current?.showModal(), []);
-  const setId = posts[0]!.social_set_id;
+  const iso = when.toISOString();
   useEffect(() => {
+    if (zone) return;
     let live = true;
-    zoneOf(setId).then((z) => live && setZone(z));
+    zoneOf(setId).then((z) => {
+      if (!live) return;
+      setZone(z);
+      setValue((v) => v || toZoneInput(iso, z).slice(0, 10));
+    });
     return () => {
       live = false;
     };
-  }, [setId]);
+  }, [setId, zone, iso]);
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!ok) return;
@@ -389,7 +406,7 @@ function MoveDialog({ posts, onClose, onMove }: { posts: Post[]; onClose: () => 
             type="date"
             className="field"
             required
-            min={toLocalInput(new Date().toISOString()).slice(0, 10)}
+            min={toZoneInput(new Date().toISOString(), zoneFor(setId)).slice(0, 10)}
             value={value}
             onChange={(e) => setValue(e.target.value)}
             aria-describedby={`${id}-hint`}
@@ -416,7 +433,7 @@ function MoveDialog({ posts, onClose, onMove }: { posts: Post[]; onClose: () => 
 function MonthList({ posts, y, m, title }: { posts: Post[]; y: number; m: number; title: string }) {
   const days = new Map<number, Post[]>();
   for (const p of posts.filter(postDay).sort((a, b) => postDay(a)!.getTime() - postDay(b)!.getTime())) {
-    const d = postDay(p)!;
+    const d = at(p)!;
     if (d.getFullYear() === y && d.getMonth() === m) days.set(d.getDate(), [...(days.get(d.getDate()) ?? []), p]);
   }
   if (days.size === 0) return <EmptyState title={`Nothing scheduled or published in ${title}.`} />;
@@ -457,7 +474,7 @@ function PostRow({ posts, onMove, review }: { posts: Post[]; onMove?: (posts: Po
   return (
     <li className="relative flex flex-wrap items-start gap-x-3 gap-y-0.5 px-3 py-2.5 hover:bg-ink/[0.03] sm:items-center sm:px-4">
       <Link href={`/posts/${p.id}`} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-sm after:absolute after:inset-0 sm:flex-nowrap">
-        <span className="w-[4.5rem] shrink-0 text-ink-soft tabular-nums">{time(postDay(p)!)}</span>
+        <span className="w-[4.5rem] shrink-0 text-ink-soft tabular-nums">{time(at(p)!)}</span>
         <span className="flex min-w-9 shrink-0 items-center gap-1">
           {posts.map((v) => (
             <PlatformMark key={v.id} platform={v.platform} className="size-4" />
@@ -567,11 +584,10 @@ function Chips<T extends string>({ label, value, options, onPick }: { label: str
 }
 
 // The month's posts by day under the filters: from today on first, earlier days of the current month folded.
-function PostList({ rows: all, y, m, title, filters, onClear, review }: { rows: Post[][]; y: number; m: number; title: string; filters: PostFilters; onClear: () => void; review?: Review }) {
-  const now = new Date();
+function PostList({ rows: all, y, m, title, filters, onClear, review, now }: { rows: Post[][]; y: number; m: number; title: string; filters: PostFilters; onClear: () => void; review?: Review; now: Date }) {
   const days = new Map<number, Post[][]>();
   for (const r of all.filter((r) => matchesFilters(r, filters))) {
-    const d = postDay(r[0]!)!;
+    const d = at(r[0]!)!;
     days.set(d.getDate(), [...(days.get(d.getDate()) ?? []), r]);
   }
   if (all.length === 0)
@@ -630,10 +646,10 @@ function PostList({ rows: all, y, m, title, filters, onClear, review }: { rows: 
 
 // /posts lists the month's posts by day with the drafts below; /calendar shows the month as a grid (a list of days on narrow screens).
 export function Posts({ view }: { view: "list" | "calendar" }) {
-  const now = new Date();
-  const [month, setMonth] = useState({ y: now.getFullYear(), m: now.getMonth() });
-  // The set picked in the top bar filters the calendar and drafts.
+  // The set picked in the top bar filters the calendar and drafts, and its zone dates the grid.
   const [setId] = useCurrentSet();
+  const now = inZone(new Date(), setId ? setZones.get(setId) : undefined);
+  const [month, setMonth] = useState({ y: now.getFullYear(), m: now.getMonth() });
   const [sets, setSets] = useState<SocialSet[] | Failure | null>(null);
   const [posts, setPosts] = useState<Post[] | Failure | null>(null);
   const [drafts, setDrafts] = useState<Post[] | Failure | null>(null);
@@ -663,17 +679,27 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
   }
   const review: Review | undefined = manages(team.role) ? { busy: decision.busy !== null, approve: (g) => decide(g, "approve"), reject: setRejecting } : undefined;
 
+  // Each set's zone is read before the month's posts show, so none jumps a day.
+  const [zonesRead, setZonesRead] = useState(false);
   useEffect(() => {
-    listSets().then(setSets);
+    listSets().then(async (r) => {
+      setSets(r);
+      if (Array.isArray(r)) await Promise.all(r.map((s) => zoneOf(s.id).then((z) => setZones.set(s.id, z))));
+      setZonesRead(true);
+    });
   }, []);
 
   useEffect(() => {
+    if (!zonesRead) return;
     let live = true;
-    listPosts({ social_set_id: setId, ...monthRange(month.y, month.m) }).then((r) => live && setPosts(r));
+    // A day either side: a post's day in its set's zone can be a day off the browser's month.
+    const { from, to } = monthRange(month.y, month.m);
+    const pad = (iso: string, days: number) => new Date(new Date(iso).getTime() + days * 86_400_000).toISOString();
+    listPosts({ social_set_id: setId, from: pad(from, -1), to: pad(to, 1) }).then((r) => live && setPosts(r));
     return () => {
       live = false;
     };
-  }, [month, setId, reload]);
+  }, [month, setId, reload, zonesRead]);
 
   // Moves the versions of one post to `day` at the same time: shown there at once, then one PUT each with
   // the post as it is and the new time. A version brain refuses goes back to its day, named with brain's reason.
@@ -681,7 +707,7 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
     setDragging(null);
     setOver(null);
     // The same wall time in the set's time zone, as the composer schedules it.
-    const zone = await zoneOf(group[0]!.social_set_id);
+    const zone = setZones.get(group[0]!.social_set_id) ?? (await zoneOf(group[0]!.social_set_id));
     const to = moveToZoneDay(postDay(group[0]!)!, day, zone);
     if (!to) return setMoved({ ok: false, text: "A post can't move to a time that has passed." });
     const iso = to.toISOString();
@@ -746,7 +772,7 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
   };
   const monthRows = chips(
     calendarPosts
-      .filter((p) => postDay(p)?.getFullYear() === month.y && postDay(p)?.getMonth() === month.m)
+      .filter((p) => at(p)?.getFullYear() === month.y && at(p)?.getMonth() === month.m)
       .sort((a, b) => postDay(a)!.getTime() - postDay(b)!.getTime()),
   );
   const draftRows = Array.isArray(drafts) ? rows(drafts, () => "") : [];
@@ -856,7 +882,7 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
                 Loading posts...
               </p>
             )}
-            {view === "list" && <PostList rows={monthRows} y={month.y} m={month.m} title={title} filters={filters} onClear={clear} review={review} />}
+            {view === "list" && <PostList rows={monthRows} y={month.y} m={month.m} title={title} filters={filters} onClear={clear} review={review} now={now} />}
             {/* Narrow screens get the month as a list of days; the grid needs about 46rem. */}
             {view === "calendar" && (
             <div className="lg:hidden">
@@ -880,11 +906,12 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
                 {monthWeeks(month.y, month.m).map((week, i) => (
                   <tr key={i}>
                     {week.map((day, j) => {
-                      const list = day ? monthRows.filter((r) => sameDay(postDay(r[0]!)!, day)) : [];
+                      const list = day ? monthRows.filter((r) => sameDay(at(r[0]!)!, day)) : [];
                       const today = day && sameDay(day, now);
                       // While a chip is dragged, each day says whether it can take it: not its own day, not the past.
-                      const from = dragging && postDay(dragging[0]!);
-                      const drop = day && from ? (!sameDay(day, from) && moveToDay(from, day) ? "ok" : "no") : undefined;
+                      const from = dragging && at(dragging[0]!);
+                      const real = dragging && postDay(dragging[0]!);
+                      const drop = day && from && real ? (!sameDay(day, from) && moveToZoneDay(real, day, zoneFor(dragging[0]!.social_set_id)) ? "ok" : "no") : undefined;
                       const key = day?.toDateString() ?? "";
                       return (
                         <td

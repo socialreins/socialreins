@@ -535,6 +535,14 @@ export function fromZoneInput(value: string, zone: string) {
   return new Date(hi).toISOString();
 }
 
+// The wall time of `d` in `zone` as a browser-local Date, so the calendar's date maths (getDate,
+// sameDay, monthWeeks) reads days of `zone`. No zone: `d` as it is, the browser's.
+export function inZone(d: Date, zone?: string) {
+  if (!zone) return d;
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(toZoneInput(d.toISOString(), zone))!;
+  return new Date(+m[1]!, +m[2]! - 1, +m[3]!, +m[4]!, +m[5]!, d.getSeconds());
+}
+
 // `when` moved to the calendar day `day` at the same wall time in `zone`, the set's queue zone;
 // null when that moment is not in the future. A skipped or repeated time follows fromZoneInput.
 export function moveToZoneDay(when: Date, day: Date, zone: string, now = new Date()): Date | null {
