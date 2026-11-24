@@ -70,7 +70,8 @@ test("every account is ticked; an unticked one is left out of the post and a dra
   await page.getByRole("checkbox", { name: "@bob.test on Bluesky" }).check();
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page.getByText("Saved 2 drafts, one per platform.")).toBeVisible();
-  expect(sent[0]!.account_ids).toEqual(["c2", "c3"]);
+  // Threads, all ticked, sends no pick: brain gives it every account, one added later too.
+  expect(sent[0]!.account_ids).toEqual(["c2"]);
   expect(sent[0]!.platforms).toEqual(["bluesky", "threads"]);
 });
 

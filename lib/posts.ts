@@ -636,12 +636,13 @@ export function moveToDay(when: Date, day: Date, now = new Date()): Date | null 
 }
 
 // A saved post as PUT /v1/posts/{id} takes it back, the way the editor sends an edit of an unchanged post,
-// with only `scheduled_at` new. PUT replaces the post, so everything else must go back as it was.
+// with only `scheduled_at` new. PUT replaces the post, so everything else must go back as it was, except the
+// accounts, which brain keeps when they are left out.
 export function editInput(p: Post, scheduled_at: string | null): PostInput {
   return {
     social_set_id: p.social_set_id,
     platform: p.platform,
-    account_ids: p.account_ids ?? null,
+    // No account_ids: brain keeps the post's pick, even with an account gone since.
     body: p.body,
     media: p.media,
     thread: limits[p.platform].thread ? (p.thread ?? []) : [],

@@ -455,7 +455,9 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
         const r = await publishAll([saved.id, ...unsent.filter((u) => u !== saved.id)]);
         return isFailure(r) ? r : r[0]!;
       }
-      const picks = selected.some((p) => accountIdsFor(p)) ? selected.flatMap((p) => accountIdsFor(p) ?? inSet(p).map((a) => a.id)) : undefined;
+      // Only the platforms with some unticked: brain gives the others every account, later ones too.
+      const picked = selected.flatMap((p) => accountIdsFor(p) ?? []);
+      const picks = picked.length ? picked : undefined;
       const g = await createPostGroup({ ...shared, platforms: selected, account_ids: picks, body, media: images, thread: parts, first_comment: comment.trim() ? comment : undefined, tiktok: selected.includes("tiktok") ? tiktokOut : undefined, youtube: selected.includes("youtube") ? { privacy: ytPrivacy } : undefined, overrides });
       if (isFailure(g)) return g;
       const posts = g.posts;
