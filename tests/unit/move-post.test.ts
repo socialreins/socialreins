@@ -63,6 +63,10 @@ describe("editInput", () => {
     });
   });
 
+  it("leaves the accounts out, so brain keeps the pick even with an account gone", () => {
+    expect(editInput({ ...post, account_ids: ["a2", "a1"] }, null)).not.toHaveProperty("account_ids");
+  });
+
   it("keeps YouTube private when no privacy was saved", () => {
     expect(editInput({ ...post, platform: "youtube", tiktok: null }, null).youtube).toEqual({ privacy: "private" });
   });

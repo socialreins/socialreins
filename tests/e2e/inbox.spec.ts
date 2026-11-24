@@ -924,7 +924,7 @@ test.describe("conversations", () => {
   });
 });
 
-test("the switcher puts All inboxes first, rows in it carry inbox chips, and [ and ] move between inboxes", async ({ page }) => {
+test("the switcher puts All inboxes first, one custom inbox puts no chips on rows, and [ and ] move between inboxes", async ({ page }) => {
   await brain(page, "owner", {
     accounts: [alice, fbPage],
     items: [item("p1", "comment", "What is the price?", { inbox_ids: ["i2"] }), item("p2", "mention", "Hello", { received_at: ago(90), inbox_ids: [] })],
@@ -939,8 +939,9 @@ test("the switcher puts All inboxes first, rows in it carry inbox chips, and [ a
   await expect(entries.nth(1).getByRole("link").locator("[aria-hidden=true] > span")).toHaveCount(1);
   await expect(nav.getByText("1 account is in no inbox, so its messages show only in All inboxes.")).toBeVisible();
   const rows = page.getByRole("region", { name: "All inboxes" }).getByRole("list", { name: "Items" }).getByRole("listitem");
-  await expect(rows.first()).toContainText("Questions");
-  await expect(rows.nth(1)).not.toContainText("Questions");
+  // With one custom inbox every row would carry the same chip, so none does.
+  await expect(rows.first()).toContainText("What is the price?");
+  await expect(rows.first()).not.toContainText("Questions");
   await page.keyboard.press("]");
   await expect(page).toHaveURL("/t/acme22/inbox/i2");
   await expect(page.getByRole("region", { name: "Questions" }).getByRole("listitem").first()).not.toContainText("Questions");
@@ -961,6 +962,60 @@ test("the switcher puts All inboxes first, rows in it carry inbox chips, and [ a
   await page.keyboard.type("[a]");
   await expect(reply).toHaveValue("[a]");
   await expect(page).toHaveURL(/\/inbox\/i2\?item=p1/);
+});
+
+test("with two custom inboxes, rows in All inboxes carry the chips of the inboxes that hold them", async ({ page }) => {
+  await brain(page, "owner", {
+    inboxes: [inbox("all", "All"), inbox("i2", "Questions"), inbox("i3", "Sales")],
+    items: [item("p1", "comment", "What is the price?", { inbox_ids: ["i2", "i3"] }), item("p2", "mention", "Hello", { received_at: ago(90), inbox_ids: [] })],
+  });
+  await page.goto("/inbox");
+  const rows = page.getByRole("region", { name: "All inboxes" }).getByRole("list", { name: "Items" }).getByRole("listitem");
+  await expect(rows.first()).toContainText("Questions");
+  await expect(rows.first()).toContainText("Sales");
+  await expect(rows.nth(1)).not.toContainText("Questions");
+  await expect(rows.nth(1)).not.toContainText("Sales");
+  // Inside one inbox there are no chips.
+  await page.goto("/inbox/i2");
+  await expect(page.getByRole("region", { name: "Questions" }).getByRole("list", { name: "Items" }).getByRole("listitem").first()).not.toContainText("Sales");
+});
+
+test("photos and stickers show as thumbnails linking to the original, and a label when there is no text or the link expired", async ({ page }) => {
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+  await page.route("https://scontent.xx.fbcdn.net/**", (route) =>
+    route.request().url().includes("gone") ? route.fulfill({ status: 403, body: "URL signature expired" }) : route.fulfill({ contentType: "image/png", body: png }),
+  );
+  const sticker = { kind: "sticker", url: "https://scontent.xx.fbcdn.net/s.png", preview_url: "https://scontent.xx.fbcdn.net/s.png" };
+  const expired = { kind: "image", url: "https://scontent.xx.fbcdn.net/gone.jpg" };
+  await brain(page, "owner", {
+    items: [
+      item("p1", "comment", "", { attachments: [sticker] }),
+      item("p2", "comment", "Look at this", { received_at: ago(60), attachments: [expired] }),
+      item("p3", "comment", "", { received_at: ago(90) }),
+    ],
+  });
+  await page.goto("/inbox");
+  const rows = page.getByRole("list", { name: "Items" }).getByRole("listitem");
+  await expect(rows.first()).toContainText("Sticker");
+  await expect(rows.first()).not.toContainText("(no text)");
+  await expect(rows.nth(1)).toContainText("Look at this");
+  await expect(rows.nth(2)).toContainText("(no text)");
+
+  await rows.first().getByRole("link").click();
+  const shown = page.getByRole("region", { name: "Item" }).getByRole("list", { name: "Attachments" });
+  const img = shown.getByRole("img", { name: "Sticker" });
+  await expect(img).toBeVisible();
+  await expect(img).toHaveAttribute("loading", "lazy");
+  await expect(img).toHaveAttribute("referrerpolicy", "no-referrer");
+  await expect(shown.getByRole("link")).toHaveAttribute("href", sticker.url);
+  await expect(page.getByRole("region", { name: "Item" }).getByText("(no text)")).toHaveCount(0);
+
+  // An expired Meta link falls back to the kind's label, still linking to it.
+  await rows.nth(1).getByRole("link").click();
+  const link = page.getByRole("region", { name: "Item" }).getByRole("list", { name: "Attachments" }).getByRole("link");
+  await expect(link).toContainText("Photo");
+  await expect(link.getByRole("img")).toHaveCount(0);
+  await expect(link).toHaveAttribute("href", expired.url);
 });
 
 test("a new inbox opened before the accounts load ticks them once they arrive", async ({ page }) => {

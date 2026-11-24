@@ -25,7 +25,7 @@ import {
   createPostGroup,
   decidePost,
   deletePost,
-  fromLocalInput,
+  fromZoneInput,
   getPost,
   getTikTokCreator,
   limits,
@@ -44,7 +44,7 @@ import {
   saveRepeat,
   type RepeatForm,
   takeDownAll,
-  toLocalInput,
+  toZoneInput,
   updatePost,
   utf8Bytes,
   YOUTUBE_DESCRIPTION_BYTES,
@@ -63,7 +63,9 @@ import {
 } from "@/lib/posts";
 import { fitsList, listLists, partLabel, type PostList } from "@/lib/lists";
 import { listSets, type SocialSet } from "@/lib/sets";
-import { getQueue, type Queue } from "@/lib/queue";
+import { getQueue, startZone, type Queue } from "@/lib/queue";
+import { UPLOAD_ACCEPT, uploadFile } from "@/lib/uploads";
+import { apiUrl } from "@/lib/waitlist";
 import { accountName, Avatar } from "@/components/connections";
 import { platformName } from "@/components/platform-icons";
 import { AccountNote, ApprovalBadge, ChangesDialog, PlatformMark, postMessages, snippet, StatusBadge, statusName } from "@/components/posts";
@@ -80,7 +82,8 @@ import { LibraryPicker, SaveToLibrary, SnippetMenu } from "@/components/library"
 
 const POLL_MS = 2000;
 const POLL_FOR_MS = 60_000;
-const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+// In `zone`, the set's queue time zone, so the composer and the queue agree.
+const when = (iso: string, zone: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short", timeZone: zone });
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const canEdit = (p: Post) => p.status === "draft" || p.status === "scheduled";
 // Where the editor's tab strip stands: the shared post, or one platform's own version and settings.
@@ -148,6 +151,11 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const [scheduleOpen, setScheduleOpen] = useState(false);
   // The platforms ticked for a new post; null means every platform with an account in the set.
   const [chosen, setChosen] = useState<Platform[] | null>(null);
+  // The accounts picked per platform; a platform not in it goes to every one of its accounts in the set.
+  const [picked, setPicked] = useState<Partial<Record<Platform, string[]>>>({});
+  // Files still uploading in any media box; nothing saves until they are in or cancelled.
+  const [uploading, setUploading] = useState(0);
+  const onUploading = (delta: number) => setUploading((n) => n + delta);
   // Per-platform text that replaces the main post on that platform.
   const [custom, setCustom] = useState<Partial<Record<Platform, string>>>({});
   // A platform's own files in place of the shared ones; an empty list posts it without any.
@@ -158,7 +166,10 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const [whole, setWhole] = useState(false);
   // Group posts still to publish after Publish now stopped partway, in order.
   const [unsent, setUnsent] = useState<string[]>([]);
+  // When to publish, as ISO; the field shows it in the set's time zone.
   const [at, setAt] = useState("");
+  // The typed wall time a spring-forward change skips, when `at` moved past the gap.
+  const [skipped, setSkipped] = useState("");
   // The Repeat control: what a new post is scheduled with, or a saved scheduled post's rule.
   const [repeat, setRepeat] = useState<RepeatForm>(noRepeat);
   const [lists, setLists] = useState<PostList[]>([]);
@@ -199,7 +210,9 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     setYtPrivacy(p.youtube?.privacy ?? "private");
     setCustom({});
     setMediaCustom({});
-    setAt(toLocalInput(p.status === "scheduled" ? p.scheduled_at : null));
+    setAt(p.status === "scheduled" ? (p.scheduled_at ?? "") : "");
+    setPicked(p.account_ids ? { [p.platform]: p.account_ids } : {});
+    setSkipped("");
     setRepeat(repeatForm(p.repeat));
     setListId("");
     setWhole(false);
@@ -228,6 +241,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     if (tk) setTikTok(tk.tiktok ?? noTikTok);
     const yt = all.find((g) => g.platform === "youtube");
     if (yt) setYtPrivacy(yt.youtube?.privacy ?? "private");
+    setPicked(Object.fromEntries(all.filter((g) => g.account_ids).map((g) => [g.platform, g.account_ids!])));
   }
 
   // Duplicate: a new post with the content and platforms of `mine` and its group, but no time, and TikTok's
@@ -237,6 +251,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     fillGroup(mine, all);
     setPost(null);
     setAt("");
+    setSkipped("");
     // A copy goes out once unless asked to repeat again.
     setRepeat(noRepeat);
     setChosen(all.map((g) => g.platform));
@@ -319,15 +334,16 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     };
   }, [ttKey]);
 
+  // Every post reads its set's queue for the time zone; only a new one offers Add to queue.
   const queueKey = !id && !postId ? setId : "";
   useEffect(() => {
-    if (!queueKey) return;
+    if (!setId) return;
     let live = true;
-    getQueue(queueKey).then((value) => live && setQueueRead({ key: queueKey, value }));
+    getQueue(setId).then((value) => live && setQueueRead({ key: setId, value }));
     return () => {
       live = false;
     };
-  }, [queueKey]);
+  }, [setId]);
 
   useEffect(() => {
     if (confirming) confirmRef.current?.focus();
@@ -355,6 +371,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
 
   async function save(mode: "draft" | "schedule" | "publish" | "queue") {
     flushSync(() => setLocal(null));
+    if (uploading > 0) return setLocal("Wait for the uploads to finish, or cancel them.");
     if (selected.length === 0) return setLocal("Pick at least one platform to post to.");
     for (const p of selected) {
       const e = entry(p);
@@ -363,6 +380,8 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
       const bad = checkComment(commentText(p), p) ?? checkCover(coverFor(p) ?? "", p, mediaFor(p).length);
       if (bad) return setLocal(platformProblem(p, bad));
     }
+    const none = selected.find((p) => accountIdsFor(p)?.length === 0);
+    if (none) return setLocal(`Pick at least one ${platformName(none)} account to post to.`);
     if (selected.includes("tiktok")) {
       const problem = tiktokProblem();
       if (problem) return setLocal(problem);
@@ -371,7 +390,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     const shared = {
       social_set_id: setId,
       // brain picks the time for a queued post and refuses one sent with scheduled_at.
-      ...(mode === "queue" ? { queue: true as const } : { scheduled_at: mode === "schedule" ? fromLocalInput(at) : null }),
+      ...(mode === "queue" ? { queue: true as const } : { scheduled_at: mode === "schedule" ? at : null }),
       list_id: listChoices.some((l) => l.id === listId) ? listId : undefined,
     };
     const input: PostInput = { ...shared, platform: selected[0]!, ...entry(selected[0]!) };
@@ -436,7 +455,10 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
         const r = await publishAll([saved.id, ...unsent.filter((u) => u !== saved.id)]);
         return isFailure(r) ? r : r[0]!;
       }
-      const g = await createPostGroup({ ...shared, platforms: selected, body, media: images, thread: parts, first_comment: comment.trim() ? comment : undefined, tiktok: selected.includes("tiktok") ? tiktokOut : undefined, youtube: selected.includes("youtube") ? { privacy: ytPrivacy } : undefined, overrides });
+      // Only the platforms with some unticked: brain gives the others every account, later ones too.
+      const picked = selected.flatMap((p) => accountIdsFor(p) ?? []);
+      const picks = picked.length ? picked : undefined;
+      const g = await createPostGroup({ ...shared, platforms: selected, account_ids: picks, body, media: images, thread: parts, first_comment: comment.trim() ? comment : undefined, tiktok: selected.includes("tiktok") ? tiktokOut : undefined, youtube: selected.includes("youtube") ? { privacy: ytPrivacy } : undefined, overrides });
       if (isFailure(g)) return g;
       const posts = g.posts;
       made = posts.length;
@@ -453,8 +475,8 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
       if (unrepeated) setLocal(<>The post is scheduled, but the repeat was not saved. {problemText(unrepeated, postMessages)}</>);
       // The status line says Publishing and updates itself; a separate message would go stale.
       if (mode === "publish") return void setSent((n) => n + 1);
-      if (p.status === "scheduled" && mode === "queue") return `${made > 1 ? `Added ${made} posts, one per platform, to the queue for` : "Added to the queue for"} ${when(p.scheduled_at!)}.`;
-      if (p.status === "scheduled") return `${made > 1 ? `Scheduled ${made} posts, one per platform, for` : "Scheduled for"} ${when(p.scheduled_at!)}.`;
+      if (p.status === "scheduled" && mode === "queue") return `${made > 1 ? `Added ${made} posts, one per platform, to the queue for` : "Added to the queue for"} ${when(p.scheduled_at!, zone)}.`;
+      if (p.status === "scheduled") return `${made > 1 ? `Scheduled ${made} posts, one per platform, for` : "Scheduled for"} ${when(p.scheduled_at!, zone)}.`;
       return made > 1 ? `Saved ${made} drafts, one per platform.` : "Draft saved.";
     });
   }
@@ -564,8 +586,13 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const mayReview = manages(user.current_team.role);
   // A member's post can't go out before an owner or admin approved it: brain answers approval_required.
   const needsApproval = !!user.current_team.require_approval && !mayReview && !(post && !isFailure(post) && post.approval === "approved");
-  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const queue = queueRead?.key === queueKey && queueKey && !isFailure(queueRead.value) ? queueRead.value : null;
+  const setQueue = queueRead?.key === setId && !isFailure(queueRead.value) ? queueRead.value : null;
+  const browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  // The set's queue zone; the browser's until it is read, or when it can't be.
+  const zone = setQueue ? startZone(setQueue, browserZone) : browserZone;
+  // No time is typed before the set's zone is known (read, or failed to read), so none shifts after.
+  const zoneKnown = !!setId && queueRead?.key === setId;
+  const queue = queueKey ? setQueue : null;
   // A queue that couldn't be read leaves the button on: brain answers queue_empty if need be.
   const queueEmpty = queue?.slots.length === 0;
   const queueNext = queue?.next[0];
@@ -592,8 +619,24 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const mediaFor = (p: Platform) => (mediaCustomFor(p) ? links(mediaCustomFor(p)!) : images);
   const mediaMain = selected.filter((p) => mediaCustomFor(p) === undefined);
   const parts = thread.map((p) => ({ ...p, media: links(p.media) }));
+  // The accounts `p` goes to when some are unticked; null for every one, which an edit must send to clear a pick.
+  const accountIdsFor = (p: Platform) => {
+    // Until the accounts are read, the pick stands as loaded, so an early save keeps it.
+    if (!accountsLoaded) return picked[p] ?? null;
+    const all = inSet(p).map((a) => a.id);
+    const on = picked[p]?.filter((id) => all.includes(id));
+    return on && on.length < all.length ? on : null;
+  };
+  const toggleAccount = (p: Platform, id: string) => {
+    const all = inSet(p).map((a) => a.id);
+    const on = picked[p]?.filter((x) => all.includes(x)) ?? all;
+    const next = on.includes(id) ? on.filter((x) => x !== id) : [...on, id];
+    setPicked((old) => ({ ...old, [p]: next }));
+  };
   // One platform's post: its own text if customized, and the thread only where it can post one.
   const entry = (p: Platform) => ({
+    // An edit sends null to clear a pick; a new post leaves it out, which is the same.
+    account_ids: accountIdsFor(p) ?? (postId ? null : undefined),
     body: customFor(p) ?? body,
     media: mediaFor(p),
     thread: limits[p].thread ? parts : [],
@@ -901,13 +944,13 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
               <span aria-hidden="true" className="tone size-3 shrink-0 rounded-full bg-current" data-status={post.status} />
               <p ref={statusRef} tabIndex={-1} role="status" className="font-bold">
                 {statusName[post.status]}
-                {post.status === "published" && post.published_at ? ` on ${when(post.published_at)}` : ""}
+                {post.status === "published" && post.published_at ? ` on ${when(post.published_at, zone)}` : ""}
                 {post.status === "queued" ? ". This page updates by itself." : "."}
               </p>
             </div>
             <p className="text-sm text-ink-soft">
               {setName ? `Set: ${setName}. ` : ""}
-              {post.scheduled_at ? `Planned for ${when(post.scheduled_at)}.` : ""}
+              {post.scheduled_at ? `Planned for ${when(post.scheduled_at, zone)}.` : ""}
             </p>
             {pollNote && <p className="text-ink-soft">{pollNote}</p>}
             {post.error && <p className="waitlist-error">What went wrong: {post.error}</p>}
@@ -1155,7 +1198,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
           </ul>
         )}
       </div>
-      <ImageLinks media={media} max={cap(mediaMain)} platforms={mediaMain} onChange={setMedia} />
+      <ImageLinks media={media} max={cap(mediaMain)} platforms={mediaMain} onChange={setMedia} onUploading={onUploading} />
       {issueList(issues.filter((i) => i.inline && i.tab === "all"))}
       {coverShown && (
         <fieldset className="grid gap-2">
@@ -1235,7 +1278,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
                       aria-describedby={`post-part-${i}-count`}
                     />
                     <Counts id={`post-part-${i}-count`} text={p.body} platforms={threadable} xLong={xLong} />
-                    <ImageLinks media={p.media} max={cap(threadable)} post={i + 2} onChange={(m) => setThread((list) => list.map((v, j) => (j === i ? { ...v, media: m } : v)))} />
+                    <ImageLinks media={p.media} max={cap(threadable)} post={i + 2} onChange={(m) => setThread((list) => list.map((v, j) => (j === i ? { ...v, media: m } : v)))} onUploading={onUploading} />
                   </li>
                 );
               })}
@@ -1330,7 +1373,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
             <p className="hint">{mediaRule(p)}</p>
           </div>
         ) : (
-          <ImageLinks media={mediaCustom[p]!} max={limits[p].media} own={p} onChange={(m) => setMediaCustom((c) => ({ ...c, [p]: m }))} onClose={() => uncustomizeMedia(p)} />
+          <ImageLinks media={mediaCustom[p]!} max={limits[p].media} own={p} onChange={(m) => setMediaCustom((c) => ({ ...c, [p]: m }))} onClose={() => uncustomizeMedia(p)} onUploading={onUploading} />
         )}
         {issueList(issues.filter((i) => i.inline && i.platform === p))}
         {limits[p].comment === null ? (
@@ -1388,7 +1431,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
         {status === "scheduled" && post && (
           <p className="flex flex-wrap items-center gap-3 font-bold">
             <StatusBadge status="scheduled" />
-            Scheduled for {when(post.scheduled_at!)}.
+            Scheduled for {when(post.scheduled_at!, zone)}.
             {post.repeat && <span className="font-normal text-ink-soft">{repeatSummary(post.repeat)}.</span>}
           </p>
         )}
@@ -1434,6 +1477,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
                   onChange={(e) => {
                     setSetId(e.target.value);
                     setChosen(null);
+                    setPicked({});
                   }}
                   required
                   aria-describedby="post-set-note"
@@ -1446,7 +1490,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
                     ))}
                 </select>
                 <p id="post-set-note" className="hint">
-                  {post && together.length < 2 ? `Goes to every ${platformName(post.platform)} account in this set.` : "One post per platform, to every account of it in this set."}
+                  {post && together.length < 2 ? `Goes to the ${platformName(post.platform)} accounts ticked below, all of them in this set by default.` : "One post per platform, to the accounts ticked below, all of them by default."}
                 </p>
               </div>
               <div className="grid content-start gap-1.5">
@@ -1511,8 +1555,32 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
                 )}
               </fieldset>
             )}
+            {editable && selected.some((p) => inSet(p).length > 1) && (
+              <fieldset className="grid gap-2">
+                <legend className="label mb-1.5">Accounts</legend>
+                <p className="hint">Untick an account to leave it out of this post.</p>
+                {selected
+                  .filter((p) => inSet(p).length > 1)
+                  .map((p) => (
+                    <ul key={p} className="flex flex-wrap items-center gap-1.5" aria-label={`${platformName(p)} accounts`}>
+                      <li>
+                        <PlatformMark platform={p} className="size-4" />
+                      </li>
+                      {inSet(p).map((a) => (
+                        <li key={a.id}>
+                          <label className="flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm ring-1 ring-[var(--line)] hover:ring-[var(--edge)] has-checked:bg-ink/[0.04] has-checked:ring-[var(--color-ink)]/40">
+                            <input type="checkbox" className="size-3.5 accent-[var(--color-signal-deep)]" checked={(accountIdsFor(p) ?? [a.id]).includes(a.id)} onChange={() => toggleAccount(p, a.id)} />
+                            {accountName(a)}
+                            <span className="sr-only"> on {platformName(p)}</span>
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  ))}
+              </fieldset>
+            )}
             <ReconnectNotice
-              accounts={needingReconnect(selected.flatMap(inSet))}
+              accounts={needingReconnect(selected.flatMap(inSet).filter((a) => accountIdsFor(a.provider as Platform)?.includes(a.id) ?? true))}
               canManage={manages(user.current_team.role)}
               title="An account needs reconnecting"
               lead="Posts to these accounts fail while their sign-in has ended, and may fail soon if it ends within a week."
@@ -1598,14 +1666,19 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
                 </button>
               )}
               <div className="ml-auto flex gap-2">
-                <button type="submit" name="mode" value="draft" className="btn btn-secondary" disabled={busy !== null}>
+                <button type="submit" name="mode" value="draft" className="btn btn-secondary" disabled={busy !== null || uploading > 0} aria-describedby={uploading > 0 ? "post-upload-note" : undefined}>
                   {busy === "draft" ? "Saving..." : "Save draft"}
                 </button>
-                <button type="submit" name="mode" value="publish" className="btn btn-primary" disabled={busy !== null || needsApproval} aria-describedby={needsApproval ? "post-approval-note" : undefined}>
+                <button type="submit" name="mode" value="publish" className="btn btn-primary" disabled={busy !== null || needsApproval || uploading > 0} aria-describedby={needsApproval ? "post-approval-note" : uploading > 0 ? "post-upload-note" : undefined}>
                   <Icon name="send" className="size-4" />
                   {busy === "publish" ? "Publishing..." : "Publish now"}
                 </button>
               </div>
+              {uploading > 0 && (
+                <p id="post-upload-note" role="status" className="hint basis-full text-xs sm:text-right">
+                  Saving waits for {uploading === 1 ? "the upload" : `${uploading} uploads`} to finish. Cancel {uploading === 1 ? "it" : "them"} to save without.
+                </p>
+              )}
               {needsApproval && (
                 <p id="post-approval-note" className="hint basis-full text-xs sm:text-right">
                   An owner or admin has to approve this post before it goes out. Schedule it to ask for approval.
@@ -1616,14 +1689,23 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
               <label htmlFor="post-at" className="text-xs font-bold whitespace-nowrap">
                 Publish at
               </label>
-              <input id="post-at" type="datetime-local" className="field w-auto min-w-0 max-w-full flex-1 sm:flex-none" value={at} onChange={(e) => setAt(e.target.value)} aria-describedby="post-at-note" />
-              <button type="submit" name="mode" value="schedule" className="btn btn-secondary" disabled={busy !== null}>
+              <input id="post-at" type="datetime-local" className="field w-auto min-w-0 max-w-full flex-1 sm:flex-none" value={zoneKnown ? toZoneInput(at, zone) : ""}
+                disabled={!zoneKnown}
+                onChange={(e) => {
+                  const typed = e.target.value.slice(0, 16);
+                  const iso = fromZoneInput(typed, zone);
+                  setAt(iso ?? "");
+                  setSkipped(iso && toZoneInput(iso, zone) !== typed ? typed.slice(11) : "");
+                }}
+                aria-describedby="post-at-note"
+              />
+              <button type="submit" name="mode" value="schedule" className="btn btn-secondary" disabled={busy !== null || uploading > 0} aria-describedby={uploading > 0 ? "post-upload-note" : undefined}>
                 <Icon name="clock" className="size-4" />
                 {busy === "schedule" ? "Scheduling..." : "Schedule"}
               </button>
               {queueKey && (
                 <>
-                  <button type="submit" name="mode" value="queue" className="btn btn-secondary" disabled={busy !== null || queueEmpty} aria-describedby="post-queue-note">
+                  <button type="submit" name="mode" value="queue" className="btn btn-secondary" disabled={busy !== null || queueEmpty || uploading > 0} aria-describedby={uploading > 0 ? "post-queue-note post-upload-note" : "post-queue-note"}>
                     <Icon name="lists" className="size-4" />
                     {busy === "queue" ? "Adding..." : "Add to queue"}
                   </button>
@@ -1636,13 +1718,14 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
                         </Link>
                       </>
                     ) : (
-                      queueNext && `Next slot: ${when(queueNext)}`
+                      queueNext && `Next slot: ${when(queueNext, zone)}`
                     )}
                   </p>
                 </>
               )}
               <p id="post-at-note" className="hint text-xs sm:ml-auto">
-                In your time zone, {zone}.
+                {!zoneKnown ? "Loading time zone..." : setQueue ? `In this set's time zone, ${zone}.` : `In your time zone, ${zone}.`}
+                {zoneKnown && skipped && at && ` ${skipped} does not exist that day (the clocks go forward), so it is ${toZoneInput(at, zone).slice(11)}.`}
               </p>
               <div className="flex basis-full flex-wrap items-center gap-x-2 gap-y-1">
                 {hasTikTok ? (
@@ -1761,10 +1844,45 @@ const mediaRule = (p: Platform) => `${mediaRules[p] ?? `${platformName(p)} takes
 // The image links of one post. `post` is its number in a thread; the first post leaves it out.
 // `post` is a thread part's number; `own` is the one platform these files go to in place of the shared ones.
 // `rule` is the one platform of a post for one platform, whose media rule the shared hint then says.
-function ImageLinks({ media, max, post, own, platforms, onChange, onClose }: { media: string[]; max: number; post?: number; own?: Platform; platforms?: Platform[]; onChange: (media: string[]) => void; onClose?: () => void }) {
+function ImageLinks({
+  media,
+  max,
+  post,
+  own,
+  platforms,
+  onChange,
+  onClose,
+  onUploading,
+}: {
+  media: string[];
+  max: number;
+  post?: number;
+  own?: Platform;
+  platforms?: Platform[];
+  onChange: (media: string[]) => void;
+  onClose?: () => void;
+  // +1 as a file starts uploading, -1 as it ends, whatever the outcome.
+  onUploading?: (delta: number) => void;
+}) {
   const addRef = useRef<HTMLButtonElement>(null);
   const imageRefs = useRef<(HTMLInputElement | null)[]>([]);
   const [saved, setSaved] = useState<{ text: string; ok: boolean } | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  // Files on their way to brain, each with the share sent so far and its cancel.
+  const [sending, setSending] = useState<{ key: number; name: string; sent: number; ctrl: AbortController }[]>([]);
+  // One line per file that did not go up, and one for files left out.
+  const [upErrors, setUpErrors] = useState<{ key: number; text: ReactNode }[]>([]);
+  // Closing the editor (or this box) cancels what is still uploading.
+  const running = useRef(new Set<AbortController>());
+  useEffect(() => {
+    const all = running.current;
+    return () => all.forEach((c) => c.abort());
+  }, []);
+  // Uploads finish in any order, so each adds its link to the media as it is then.
+  const latest = useRef(media);
+  useEffect(() => {
+    latest.current = media;
+  }, [media]);
   const of = post ? ` of post ${post}` : own ? ` for ${platformName(own)}` : "";
   // Library picks fill the empty link boxes first, then follow the links already there.
   const filled = media.filter((m) => m.trim());
@@ -1774,13 +1892,65 @@ function ImageLinks({ media, max, post, own, platforms, onChange, onClose }: { m
     imageRefs.current[media.length]?.focus();
   }
 
+  async function upload(files: File[]) {
+    const room = max - latest.current.filter((m) => m.trim()).length - sending.length;
+    setUpErrors(files.length > room ? [{ key: -1, text: `Only ${Math.max(room, 0)} more ${room === 1 ? "file fits" : "files fit"}; the rest were left out.` }] : []);
+    await Promise.all(
+      files.slice(0, Math.max(room, 0)).map(async (file) => {
+        const key = Math.random();
+        const ctrl = new AbortController();
+        running.current.add(ctrl);
+        onUploading?.(1);
+        setSending((s) => [...s, { key, name: file.name, sent: 0, ctrl }]);
+        const r = await uploadFile(file, (sent) => setSending((s) => s.map((x) => (x.key === key ? { ...x, sent } : x))), ctrl.signal);
+        running.current.delete(ctrl);
+        onUploading?.(-1);
+        setSending((s) => s.filter((x) => x.key !== key));
+        if (ctrl.signal.aborted) return;
+        if (!isFailure(r)) {
+          latest.current = [...latest.current.filter((m) => m.trim()), r.url].slice(0, max);
+          return onChange(latest.current);
+        }
+        const why =
+          r === "media_too_large"
+            ? "it is too large: up to 100 MB, or a video up to 1 GB."
+            : r === "media_type_not_supported"
+              ? "it is not a JPEG, PNG, WebP, GIF, PDF, MP4 or MOV file."
+              : r === "rate_limited"
+                ? "too many uploads in a minute. Wait a minute, then try again."
+                : problemText(r, postMessages);
+        setUpErrors((list) => [
+          ...list,
+          {
+            key,
+            text: (
+              <>
+                {file.name} was not uploaded: {why}
+              </>
+            ),
+          },
+        ]);
+      }),
+    );
+  }
+
   function removeImage(i: number) {
     flushSync(() => onChange(media.filter((_, j) => j !== i)));
     addRef.current?.focus();
   }
 
   return (
-    <fieldset id={own ? `media-${own}` : post ? undefined : "media-shared"} tabIndex={post ? undefined : -1} className="grid gap-2">
+    <fieldset
+      id={own ? `media-${own}` : post ? undefined : "media-shared"}
+      tabIndex={post ? undefined : -1}
+      className="grid gap-2"
+      onDragOver={(e) => e.dataTransfer.types.includes("Files") && e.preventDefault()}
+      onDrop={(e) => {
+        if (e.dataTransfer.files.length === 0) return;
+        e.preventDefault();
+        void upload([...e.dataTransfer.files]);
+      }}
+    >
       <legend className={post ? "text-sm font-bold" : "label"}>
         {own ? `${platformName(own)} media` : <>Images<span className="sr-only">{of}</span></>}
       </legend>
@@ -1798,7 +1968,7 @@ function ImageLinks({ media, max, post, own, platforms, onChange, onClose }: { m
       {!post && !own && (
         <div className="grid gap-1">
           <p className="hint">
-            Up to {max}. Public https links, or Google Drive or Dropbox share links; nothing is uploaded to SocialReins.
+            Up to {max}. Upload files from your device (or drop them here), or add public https links, Google Drive or Dropbox share links. An upload is kept while a post that names it has yet to go out, a failed one included, so a retry finds it.
           </p>
           {platforms && platforms.length > 0 && (
             <details className="hint">
@@ -1833,7 +2003,8 @@ function ImageLinks({ media, max, post, own, platforms, onChange, onClose }: { m
                   onChange={(e) => onChange(media.map((v, j) => (j === i ? e.target.value : v)))}
                 />
               </label>
-              <SaveToLibrary url={m} label={`Image ${i + 1}${of}`} onResult={(text, ok) => setSaved({ text, ok })} />
+              {/* An upload is kept only for its posts, so it is no library link. */}
+              {!m.startsWith(`${apiUrl}/media/`) && <SaveToLibrary url={m} label={`Image ${i + 1}${of}`} onResult={(text, ok) => setSaved({ text, ok })} />}
               <button type="button" className="icon-btn mb-1" aria-label={`Remove image ${i + 1}${of}`} onClick={() => removeImage(i)}>
                 <Icon name="close" className="size-4" />
               </button>
@@ -1846,7 +2017,50 @@ function ImageLinks({ media, max, post, own, platforms, onChange, onClose }: { m
           {saved.text}
         </p>
       )}
+      {sending.length > 0 && (
+        <ul className="grid gap-1" aria-live="polite">
+          {sending.map((f) => (
+            <li key={f.key} className="flex items-center gap-2 text-sm">
+              <span className="truncate">{f.name}</span>
+              <progress className="w-32" value={f.sent} max={1} aria-label={`Uploading ${f.name}`} />
+              <span className="hint tabular-nums">{Math.round(f.sent * 100)}%</span>
+              <button type="button" className="btn btn-quiet btn-sm" onClick={() => f.ctrl.abort()}>
+                Cancel<span className="sr-only"> uploading {f.name}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {upErrors.length > 0 && (
+        <ul role="alert" className="grid gap-1">
+          {upErrors.map((e) => (
+            <li key={e.key} className="waitlist-error">
+              {e.text}
+            </li>
+          ))}
+        </ul>
+      )}
       <div className="flex flex-wrap gap-2">
+        <input
+          ref={fileRef}
+          type="file"
+          multiple
+          accept={UPLOAD_ACCEPT}
+          className="sr-only"
+          tabIndex={-1}
+          aria-label={`Upload files${of}`}
+          onChange={(e) => {
+            const files = [...(e.target.files ?? [])];
+            e.target.value = "";
+            void upload(files);
+          }}
+        />
+        {filled.length + sending.length < max && (
+          <button type="button" className="btn btn-secondary btn-sm justify-self-start" onClick={() => fileRef.current?.click()}>
+            <Icon name="image" className="size-4" />
+            Upload<span className="sr-only">{post ? ` to post ${post}` : of}</span>
+          </button>
+        )}
         {media.length < max && (
           <button ref={addRef} type="button" className="btn btn-secondary btn-sm justify-self-start" onClick={addImage}>
             <Icon name="image" className="size-4" />

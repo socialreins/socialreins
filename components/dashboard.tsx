@@ -6,7 +6,7 @@ import type { Failure } from "@/lib/auth";
 import { compact, engagement, getAnalytics, postTotals, statWords } from "@/lib/analytics";
 import { listConnections, needingReconnect } from "@/lib/connections";
 import { manages } from "@/lib/teams";
-import { authorName, kindName, listInboxes, listItems, relativeTime, type Item } from "@/lib/inbox";
+import { authorName, itemSummary, kindName, listInboxes, listItems, relativeTime, type Item } from "@/lib/inbox";
 import { approvalState, listPosts, rows, type Post } from "@/lib/posts";
 import { getQueue, type Queue } from "@/lib/queue";
 import { useCurrentSet, useSession } from "@/components/app-shell";
@@ -298,7 +298,7 @@ export function Dashboard() {
                           </span>
                           <span className="ml-auto shrink-0 text-xs text-ink-soft">{relativeTime(i.received_at, now)}</span>
                         </span>
-                        <span className="truncate text-ink-soft">{i.text || "(no text)"}</span>
+                        <span className="truncate text-ink-soft">{itemSummary(i)}</span>
                       </Link>
                     </li>
                   ))}

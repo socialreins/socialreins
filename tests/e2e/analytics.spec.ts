@@ -180,7 +180,7 @@ test("a published row of the posts list shows its likes and comments", async ({ 
   await brain(page);
   await page.route(/\/v1\/posts(\?.*)?$/, (r) => {
     const q = new URL(r.request().url()).searchParams;
-    if (q.get("status") === "draft" || !q.get("from")?.startsWith("2026-10-31")) return r.fulfill({ json: [] });
+    if (q.get("status") === "draft" || !q.get("from")?.startsWith("2026-10-30")) return r.fulfill({ json: [] });
     return r.fulfill({
       json: [
         post("p-a", { body: "With numbers", group_id: "g1", targets: [target({ metrics: metrics(1200, 4, 1, null) })] }),
