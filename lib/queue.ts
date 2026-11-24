@@ -57,6 +57,16 @@ export async function zoneOf(setId: string) {
   return typeof q === "string" ? browser : startZone(q, browser);
 }
 
+// Each set's zone as pages place its posts on days and times. shortcut: one read per page load
+// (`loadZones`), so a zone changed on the Queue page shows after a reload.
+export const setZones = new Map<string, string>();
+export const browserZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
+export const zoneFor = (setId: string) => setZones.get(setId) ?? browserZone();
+export const loadZones = (setIds: Iterable<string>) => Promise.all([...new Set(setIds)].map((id) => zoneOf(id).then((z) => void setZones.set(id, z))));
+// A post's time is tagged with its zone ("GMT+6", "EST") only when it is not the browser's.
+export const zoneTag = (zone: string, at: Date) =>
+  zone === browserZone() ? null : (new Intl.DateTimeFormat(undefined, { timeZone: zone, timeZoneName: "short" }).formatToParts(at).find((p) => p.type === "timeZoneName")?.value ?? zone);
+
 // Every IANA zone the browser knows, with UTC and `extra` (the saved one) in case it is missing.
 export function timeZones(extra: string) {
   const all = Intl.supportedValuesOf("timeZone");

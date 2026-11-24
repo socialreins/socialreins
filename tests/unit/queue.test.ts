@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { apiUrl } from "@/lib/waitlist";
-import { addSlots, getQueue, saveQueue, DAYS, EVERY_DAY, removeSlot, sameSlots, slotTime, slotTimes, sortSlots, startZone, timeZones, WEEKDAYS } from "@/lib/queue";
+import { addSlots, browserZone, getQueue, saveQueue, DAYS, EVERY_DAY, removeSlot, sameSlots, slotTime, slotTimes, sortSlots, startZone, timeZones, WEEKDAYS, zoneTag } from "@/lib/queue";
 
 describe("queue slots", () => {
   it("sorts by time, then Monday first with Sunday last", () => {
@@ -83,5 +83,13 @@ describe("queue calls", () => {
   it("passes brain's validation codes through", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => Response.json({ error: "too_many_slots" }, { status: 422 })));
     expect(await saveQueue("s1", { time_zone: "UTC", slots: [] })).toBe("too_many_slots");
+  });
+});
+
+describe("zoneTag", () => {
+  const d = new Date("2026-11-12T10:00:00Z");
+  it("is null in the browser's zone and a short name elsewhere", () => {
+    expect(zoneTag(browserZone(), d)).toBeNull();
+    expect(zoneTag(browserZone() === "Asia/Dhaka" ? "UTC" : "Asia/Dhaka", d)).toMatch(/^(UTC|GMT\+6)$/);
   });
 });

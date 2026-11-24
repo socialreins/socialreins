@@ -50,7 +50,8 @@ const post = (id: string, extra: Record<string, unknown> = {}) => ({
 // The month's posts in `state`; PUT /v1/posts/{id} saves into it unless `refuse` answers for that id.
 async function calendar(page: Page, state: Post[], refuse: Record<string, { status: number; json: unknown }> = {}) {
   await page.clock.setFixedTime(new Date("2026-11-10T12:00:00+01:00"));
-  await page.setViewportSize({ width: 1440, height: 900 });
+  // Tall enough for the whole grid: a page that scrolls while a chip is held cancels the drag.
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.route("**/auth/me", (route) => route.fulfill({ json: me }));
   await page.route(/\/v1\/social-sets$/, (route) => route.fulfill({ json: sets }));
   await page.route("**/v1/connections", (route) => route.fulfill({ json: [alice, threadsAcc] }));
