@@ -25,7 +25,7 @@ import {
   createPostGroup,
   decidePost,
   deletePost,
-  fromLocalInput,
+  fromZoneInput,
   getPost,
   getTikTokCreator,
   limits,
@@ -44,7 +44,7 @@ import {
   saveRepeat,
   type RepeatForm,
   takeDownAll,
-  toLocalInput,
+  toZoneInput,
   updatePost,
   utf8Bytes,
   YOUTUBE_DESCRIPTION_BYTES,
@@ -63,7 +63,7 @@ import {
 } from "@/lib/posts";
 import { fitsList, listLists, partLabel, type PostList } from "@/lib/lists";
 import { listSets, type SocialSet } from "@/lib/sets";
-import { getQueue, type Queue } from "@/lib/queue";
+import { getQueue, startZone, type Queue } from "@/lib/queue";
 import { accountName, Avatar } from "@/components/connections";
 import { platformName } from "@/components/platform-icons";
 import { AccountNote, ApprovalBadge, ChangesDialog, PlatformMark, postMessages, snippet, StatusBadge, statusName } from "@/components/posts";
@@ -80,7 +80,8 @@ import { LibraryPicker, SaveToLibrary, SnippetMenu } from "@/components/library"
 
 const POLL_MS = 2000;
 const POLL_FOR_MS = 60_000;
-const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+// In `zone`, the set's queue time zone, so the composer and the queue agree.
+const when = (iso: string, zone: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short", timeZone: zone });
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const canEdit = (p: Post) => p.status === "draft" || p.status === "scheduled";
 // Where the editor's tab strip stands: the shared post, or one platform's own version and settings.
@@ -158,7 +159,10 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const [whole, setWhole] = useState(false);
   // Group posts still to publish after Publish now stopped partway, in order.
   const [unsent, setUnsent] = useState<string[]>([]);
+  // When to publish, as ISO; the field shows it in the set's time zone.
   const [at, setAt] = useState("");
+  // The typed wall time a spring-forward change skips, when `at` moved past the gap.
+  const [skipped, setSkipped] = useState("");
   // The Repeat control: what a new post is scheduled with, or a saved scheduled post's rule.
   const [repeat, setRepeat] = useState<RepeatForm>(noRepeat);
   const [lists, setLists] = useState<PostList[]>([]);
@@ -199,7 +203,8 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     setYtPrivacy(p.youtube?.privacy ?? "private");
     setCustom({});
     setMediaCustom({});
-    setAt(toLocalInput(p.status === "scheduled" ? p.scheduled_at : null));
+    setAt(p.status === "scheduled" ? (p.scheduled_at ?? "") : "");
+    setSkipped("");
     setRepeat(repeatForm(p.repeat));
     setListId("");
     setWhole(false);
@@ -237,6 +242,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     fillGroup(mine, all);
     setPost(null);
     setAt("");
+    setSkipped("");
     // A copy goes out once unless asked to repeat again.
     setRepeat(noRepeat);
     setChosen(all.map((g) => g.platform));
@@ -319,15 +325,16 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     };
   }, [ttKey]);
 
+  // Every post reads its set's queue for the time zone; only a new one offers Add to queue.
   const queueKey = !id && !postId ? setId : "";
   useEffect(() => {
-    if (!queueKey) return;
+    if (!setId) return;
     let live = true;
-    getQueue(queueKey).then((value) => live && setQueueRead({ key: queueKey, value }));
+    getQueue(setId).then((value) => live && setQueueRead({ key: setId, value }));
     return () => {
       live = false;
     };
-  }, [queueKey]);
+  }, [setId]);
 
   useEffect(() => {
     if (confirming) confirmRef.current?.focus();
@@ -371,7 +378,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     const shared = {
       social_set_id: setId,
       // brain picks the time for a queued post and refuses one sent with scheduled_at.
-      ...(mode === "queue" ? { queue: true as const } : { scheduled_at: mode === "schedule" ? fromLocalInput(at) : null }),
+      ...(mode === "queue" ? { queue: true as const } : { scheduled_at: mode === "schedule" ? at : null }),
       list_id: listChoices.some((l) => l.id === listId) ? listId : undefined,
     };
     const input: PostInput = { ...shared, platform: selected[0]!, ...entry(selected[0]!) };
@@ -453,8 +460,8 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
       if (unrepeated) setLocal(<>The post is scheduled, but the repeat was not saved. {problemText(unrepeated, postMessages)}</>);
       // The status line says Publishing and updates itself; a separate message would go stale.
       if (mode === "publish") return void setSent((n) => n + 1);
-      if (p.status === "scheduled" && mode === "queue") return `${made > 1 ? `Added ${made} posts, one per platform, to the queue for` : "Added to the queue for"} ${when(p.scheduled_at!)}.`;
-      if (p.status === "scheduled") return `${made > 1 ? `Scheduled ${made} posts, one per platform, for` : "Scheduled for"} ${when(p.scheduled_at!)}.`;
+      if (p.status === "scheduled" && mode === "queue") return `${made > 1 ? `Added ${made} posts, one per platform, to the queue for` : "Added to the queue for"} ${when(p.scheduled_at!, zone)}.`;
+      if (p.status === "scheduled") return `${made > 1 ? `Scheduled ${made} posts, one per platform, for` : "Scheduled for"} ${when(p.scheduled_at!, zone)}.`;
       return made > 1 ? `Saved ${made} drafts, one per platform.` : "Draft saved.";
     });
   }
@@ -564,8 +571,13 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const mayReview = manages(user.current_team.role);
   // A member's post can't go out before an owner or admin approved it: brain answers approval_required.
   const needsApproval = !!user.current_team.require_approval && !mayReview && !(post && !isFailure(post) && post.approval === "approved");
-  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const queue = queueRead?.key === queueKey && queueKey && !isFailure(queueRead.value) ? queueRead.value : null;
+  const setQueue = queueRead?.key === setId && !isFailure(queueRead.value) ? queueRead.value : null;
+  const browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  // The set's queue zone; the browser's until it is read, or when it can't be.
+  const zone = setQueue ? startZone(setQueue, browserZone) : browserZone;
+  // No time is typed before the set's zone is known (read, or failed to read), so none shifts after.
+  const zoneKnown = !!setId && queueRead?.key === setId;
+  const queue = queueKey ? setQueue : null;
   // A queue that couldn't be read leaves the button on: brain answers queue_empty if need be.
   const queueEmpty = queue?.slots.length === 0;
   const queueNext = queue?.next[0];
@@ -901,13 +913,13 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
               <span aria-hidden="true" className="tone size-3 shrink-0 rounded-full bg-current" data-status={post.status} />
               <p ref={statusRef} tabIndex={-1} role="status" className="font-bold">
                 {statusName[post.status]}
-                {post.status === "published" && post.published_at ? ` on ${when(post.published_at)}` : ""}
+                {post.status === "published" && post.published_at ? ` on ${when(post.published_at, zone)}` : ""}
                 {post.status === "queued" ? ". This page updates by itself." : "."}
               </p>
             </div>
             <p className="text-sm text-ink-soft">
               {setName ? `Set: ${setName}. ` : ""}
-              {post.scheduled_at ? `Planned for ${when(post.scheduled_at)}.` : ""}
+              {post.scheduled_at ? `Planned for ${when(post.scheduled_at, zone)}.` : ""}
             </p>
             {pollNote && <p className="text-ink-soft">{pollNote}</p>}
             {post.error && <p className="waitlist-error">What went wrong: {post.error}</p>}
@@ -1388,7 +1400,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
         {status === "scheduled" && post && (
           <p className="flex flex-wrap items-center gap-3 font-bold">
             <StatusBadge status="scheduled" />
-            Scheduled for {when(post.scheduled_at!)}.
+            Scheduled for {when(post.scheduled_at!, zone)}.
             {post.repeat && <span className="font-normal text-ink-soft">{repeatSummary(post.repeat)}.</span>}
           </p>
         )}
@@ -1616,7 +1628,16 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
               <label htmlFor="post-at" className="text-xs font-bold whitespace-nowrap">
                 Publish at
               </label>
-              <input id="post-at" type="datetime-local" className="field w-auto min-w-0 max-w-full flex-1 sm:flex-none" value={at} onChange={(e) => setAt(e.target.value)} aria-describedby="post-at-note" />
+              <input id="post-at" type="datetime-local" className="field w-auto min-w-0 max-w-full flex-1 sm:flex-none" value={zoneKnown ? toZoneInput(at, zone) : ""}
+                disabled={!zoneKnown}
+                onChange={(e) => {
+                  const typed = e.target.value.slice(0, 16);
+                  const iso = fromZoneInput(typed, zone);
+                  setAt(iso ?? "");
+                  setSkipped(iso && toZoneInput(iso, zone) !== typed ? typed.slice(11) : "");
+                }}
+                aria-describedby="post-at-note"
+              />
               <button type="submit" name="mode" value="schedule" className="btn btn-secondary" disabled={busy !== null}>
                 <Icon name="clock" className="size-4" />
                 {busy === "schedule" ? "Scheduling..." : "Schedule"}
@@ -1636,13 +1657,14 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
                         </Link>
                       </>
                     ) : (
-                      queueNext && `Next slot: ${when(queueNext)}`
+                      queueNext && `Next slot: ${when(queueNext, zone)}`
                     )}
                   </p>
                 </>
               )}
               <p id="post-at-note" className="hint text-xs sm:ml-auto">
-                In your time zone, {zone}.
+                {!zoneKnown ? "Loading time zone..." : setQueue ? `In this set's time zone, ${zone}.` : `In your time zone, ${zone}.`}
+                {zoneKnown && skipped && at && ` ${skipped} does not exist that day (the clocks go forward), so it is ${toZoneInput(at, zone).slice(11)}.`}
               </p>
               <div className="flex basis-full flex-wrap items-center gap-x-2 gap-y-1">
                 {hasTikTok ? (

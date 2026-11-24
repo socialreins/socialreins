@@ -50,6 +50,12 @@ export const sameSlots = (a: Slot[], b: Slot[]) => a.length === b.length && a.ev
 
 // A queue brain has never saved is UTC with no slots: start it in the browser's zone instead.
 export const startZone = (q: Queue, browser: string) => (q.time_zone === "UTC" && q.slots.length === 0 ? browser : q.time_zone);
+// The set's time zone as the composer uses it: the browser's when its queue can't be read.
+export async function zoneOf(setId: string) {
+  const browser = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const q = await getQueue(setId);
+  return typeof q === "string" ? browser : startZone(q, browser);
+}
 
 // Every IANA zone the browser knows, with UTC and `extra` (the saved one) in case it is missing.
 export function timeZones(extra: string) {
