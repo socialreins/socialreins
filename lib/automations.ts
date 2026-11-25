@@ -14,7 +14,20 @@ export type Conditions = ScopeBody & {
   first_message?: boolean;
   // button_clicked only: the payloads of the buttons whose click runs it.
   payloads?: string[];
+  // Weekdays and hours it may act in, and the text conditions (all but follows and button taps).
+  when?: When | null;
+  question?: boolean;
+  languages?: string[];
 };
+// When it may act: weekdays (0 is Monday) and hours of the day in an IANA zone; from_hour after to_hour is overnight.
+export type When = { zone: string; weekdays?: number[]; from_hour?: number | null; to_hour?: number | null };
+export const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+// The languages brain can tell apart, by the ISO 639-1 codes it takes.
+export const LANGUAGES: [string, string][] = [
+  ["ar", "Arabic"], ["bn", "Bangla"], ["zh", "Chinese"], ["nl", "Dutch"], ["en", "English"], ["fa", "Persian"], ["fr", "French"], ["de", "German"],
+  ["he", "Hebrew"], ["hi", "Hindi"], ["id", "Indonesian"], ["it", "Italian"], ["ja", "Japanese"], ["ko", "Korean"], ["pl", "Polish"], ["pt", "Portuguese"],
+  ["ru", "Russian"], ["es", "Spanish"], ["th", "Thai"], ["tr", "Turkish"], ["uk", "Ukrainian"], ["ur", "Urdu"], ["vi", "Vietnamese"],
+];
 // tag_contact sends nothing: it puts a tag on the contact behind the item.
 export type TagAction = { type: "tag_contact"; tag: string };
 // An AI send: brain writes the text with a model from the prompt and the comment or DM.
@@ -157,7 +170,7 @@ export type Capability = {
 export const triggers: Record<Trigger, Capability> = {
   comment_received: { label: "When someone comments", keywords: true, posts: true, firstPerAuthor: true, firstMessage: false, publicReply: true, payloads: false, note: null, networks: ["bluesky", "facebook", "instagram", "x"] },
   dm_received: { label: "When someone sends a DM", keywords: true, posts: false, firstPerAuthor: false, firstMessage: true, publicReply: false, payloads: false, note: null, networks: ["bluesky", "facebook", "instagram", "x"] },
-  mention_received: { label: "When someone mentions you", keywords: true, posts: false, firstPerAuthor: false, firstMessage: false, publicReply: true, payloads: false, note: null, networks: ["bluesky", "x"] },
+  mention_received: { label: "When someone mentions you", keywords: true, posts: false, firstPerAuthor: true, firstMessage: false, publicReply: true, payloads: false, note: null, networks: ["bluesky", "x"] },
   new_follower: {
     label: "When someone follows you",
     keywords: false,
@@ -452,6 +465,15 @@ export type Draft = {
   // Safety limits as typed: whole minutes and runs a day, empty for none.
   cooldown: string;
   dailyCap: string;
+  // Text conditions: only a question, only these languages (ISO codes).
+  question: boolean;
+  languages: string[];
+  // Only at certain times: a zone, weekdays (0 is Monday) and hours as typed ("" is no limit).
+  timed: boolean;
+  zone: string;
+  weekdays: number[];
+  fromHour: string;
+  toHour: string;
 };
 export const MAX_COOLDOWN = 10_080;
 export const MAX_DAILY_CAP = 500;
@@ -481,6 +503,13 @@ const empty: Draft = {
   payloads: [],
   cooldown: "",
   dailyCap: "",
+  question: false,
+  languages: [],
+  timed: false,
+  zone: "UTC",
+  weekdays: [],
+  fromHour: "",
+  toHour: "",
 };
 
 // The gallery's groups, in order, and the id that opens the builder empty.
@@ -567,6 +596,13 @@ export function draftOf(a?: Automation, templateId?: string | null, payload?: st
     payloads: c.payloads ?? [],
     cooldown: a.cooldown_minutes ? String(a.cooldown_minutes) : "",
     dailyCap: a.daily_cap ? String(a.daily_cap) : "",
+    question: c.question ?? false,
+    languages: c.languages ?? [],
+    timed: Boolean(c.when),
+    zone: c.when?.zone ?? "UTC",
+    weekdays: c.when?.weekdays ?? [],
+    fromHour: c.when?.from_hour != null ? String(c.when.from_hour) : "",
+    toHour: c.when?.to_hour != null ? String(c.when.to_hour) : "",
   };
 }
 
@@ -609,6 +645,8 @@ export function changeTrigger(d: Draft, to: Trigger): { draft: Draft; dropped: s
   drop(!t.keywords && d.keywords.length > 0, "keywords", { keywords: [] });
   drop(!t.posts && d.specific, "specific posts", { specific: false, posts: "" });
   drop(!t.firstPerAuthor && d.firstPerAuthor, "first comment per person", { firstPerAuthor: false });
+  drop(!t.keywords && d.question, "only questions", { question: false });
+  drop(!t.keywords && d.languages.length > 0, "languages", { languages: [] });
   drop(!t.firstMessage && d.firstMessage, "first message only", { firstMessage: false });
   drop(!t.publicReply && Boolean(d.publicReply.trim()), "public reply", { publicReply: "" });
   drop(!t.publicReply && (d.fallbackOn || Boolean(d.fallback.trim())), "fallback reply", { fallbackOn: false, fallback: "" });
@@ -621,6 +659,14 @@ export function changeTrigger(d: Draft, to: Trigger): { draft: Draft; dropped: s
     steps: draft.steps.map((s) => (s.type === "send_dm" ? { ...s, text: unpage(s.text) } : s)),
   });
   return { draft, dropped };
+}
+
+// The times the draft limits it to, as brain takes them; undefined when it is not limited or names nothing.
+export function whenOf(d: Draft): When | undefined {
+  if (!d.timed) return undefined;
+  const hours = d.fromHour !== "" && d.toHour !== "";
+  if (!hours && d.weekdays.length === 0) return undefined;
+  return { zone: d.zone.trim() || "UTC", weekdays: [...d.weekdays].sort(), ...(hours && { from_hour: Number(d.fromHour), to_hour: Number(d.toHour) }) };
 }
 
 // What brain gets: only the conditions and actions the trigger takes, whatever the draft still holds.
@@ -640,6 +686,9 @@ export function automationInput(d: Draft, scope: ScopeBody, uris: string[]): Aut
       ...(t.firstPerAuthor && { first_per_author: d.firstPerAuthor }),
       ...(t.firstMessage && { first_message: d.firstMessage }),
       ...(t.payloads && { payloads: d.payloads }),
+      ...(t.keywords && d.question && { question: true }),
+      ...(t.keywords && d.languages.length > 0 && { languages: d.languages }),
+      ...(whenOf(d) && { when: whenOf(d) }),
     },
     // Left out when empty: a save replaces the automation, so a missing limit is none.
     ...(limitOf(d.cooldown, MAX_COOLDOWN) !== null && { cooldown_minutes: limitOf(d.cooldown, MAX_COOLDOWN) }),
@@ -721,6 +770,10 @@ export const mismatchText: Record<string, string> = {
   no_keyword: "The text has none of the keywords",
   not_first_from_author: "It is only for a person's first comment",
   not_first_message: "It is only for a person's first message",
+  wrong_weekday: "It is not one of the days this automation runs on",
+  outside_hours: "It is outside the hours this automation runs in",
+  wrong_language: "The text is not in one of the languages chosen, or is too short to tell",
+  no_question: "The text does not ask a question",
   button_not_named: "That button payload is not one this automation listens for",
 };
 export const blockText: Record<string, string> = {
@@ -731,6 +784,9 @@ export const blockText: Record<string, string> = {
   meta_reply_window: "Facebook and Instagram take a DM only within 24 hours of the person's message (7 days for a comment)",
   no_public_page: "A text holds {page}, and this post has no open public page, so it would not run",
   paused: "The team paused all its automations, so nothing would be sent",
+  no_ai_key: "The question condition needs an AI key: add your own on the Billing page",
+  no_ai_credits: "The question condition could not be judged: this month's AI replies and your AI credits are used up",
+  ai_failed: "The question condition could not be judged: the AI provider gave no answer",
 };
 export const plannedStatus: Record<PlannedStatus, string> = {
   would_send: "Would send",
@@ -768,7 +824,17 @@ export const actionName: Record<ActionResult["type"], string> = {
 // "On 2 posts", "First comment per person", "First message only".
 export function conditionNotes(c: Conditions) {
   const n = c.post_remote_ids?.length ?? 0;
-  return [n ? `On ${n === 1 ? "1 post" : `${n} posts`}` : null, c.first_per_author ? "First comment per person" : null, c.first_message ? "First message only" : null].filter(
+  const w = c.when;
+  const days = w?.weekdays?.length ? (w.weekdays.length === 7 ? "every day" : w.weekdays.map((x) => WEEKDAYS[x]).join(", ")) : null;
+  const hours = w?.from_hour != null && w.to_hour != null ? `${w.from_hour}:00 to ${w.to_hour}:00` : null;
+  return [
+    n ? `On ${n === 1 ? "1 post" : `${n} posts`}` : null,
+    c.first_per_author ? "First one per person" : null,
+    c.first_message ? "First message only" : null,
+    c.question ? "Only questions" : null,
+    c.languages?.length ? `In ${c.languages.map((l) => LANGUAGES.find((x) => x[0] === l)?.[1] ?? l).join(", ")}` : null,
+    w ? `Only ${[days, hours, w.zone].filter(Boolean).join(" ")}` : null,
+  ].filter(
     (x): x is string => x !== null,
   );
 }

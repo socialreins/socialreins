@@ -11,7 +11,10 @@ import {
   duplicateDraft,
   flowProblems,
   MAX_TAG_ACTIONS,
+  LANGUAGES,
   limitOf,
+  whenOf,
+  WEEKDAYS,
   MAX_COOLDOWN,
   MAX_DAILY_CAP,
   postIds,
@@ -147,6 +150,9 @@ export function AutomationForm({
     ...(d.name.trim() ? [] : [{ text: "Give it a name.", field: "automation-name" }]),
     ...(stuck.length ? [{ text: `Untick ${stuck.join(", ")}: automations run only on Bluesky, Facebook, Instagram and X.`, field: "automation-scope" }] : []),
     ...(t.payloads && !d.payloads.length ? [{ text: "Add at least one button payload.", field: "automation-payloads" }] : []),
+    ...(d.timed && !whenOf(d) ? [{ text: "Pick the days or the hours it may run, or untick Only at certain times.", field: "automation-from-hour" }] : []),
+    ...(d.timed && d.fromHour !== "" && d.fromHour === String(Number(d.toHour) % 24) ? [{ text: "The start and the end of the hours must differ.", field: "automation-to-hour" }] : []),
+    ...(d.timed && (d.fromHour === "") !== (d.toHour === "") ? [{ text: "Set both the start and the end hour, or neither.", field: "automation-to-hour" }] : []),
     ...(Number.isNaN(limitOf(d.cooldown, MAX_COOLDOWN)) ? [{ text: "The wait must be 1 to 10080 minutes, or empty.", field: "automation-cooldown" }] : []),
     ...(Number.isNaN(limitOf(d.dailyCap, MAX_DAILY_CAP)) ? [{ text: "Most runs a day must be 1 to 500, or empty.", field: "automation-daily-cap" }] : []),
     ...(d.flow
@@ -412,7 +418,7 @@ export function AutomationForm({
           {t.firstPerAuthor && (
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={d.firstPerAuthor} onChange={(e) => set({ firstPerAuthor: e.target.checked })} />
-              First comment per person only
+              {d.trigger === "mention_received" ? "First mention per person only" : "First comment per person only"}
             </label>
           )}
           {t.firstMessage && (
@@ -420,6 +426,64 @@ export function AutomationForm({
               <input type="checkbox" checked={d.firstMessage} onChange={(e) => set({ firstMessage: e.target.checked })} />
               Only their first message ever
             </label>
+          )}
+          {t.keywords && (
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={d.question} onChange={(e) => set({ question: e.target.checked })} />
+              Only messages that ask a question
+            </label>
+          )}
+          {t.keywords && d.question && (
+            <p className="hint pl-6">A message with a question mark counts at once. Any other is read by AI, which counts against your AI replies (or your AI key).</p>
+          )}
+          {t.keywords && (
+            <details className="grid gap-2" open={d.languages.length > 0}>
+              <summary className="cursor-pointer font-medium">Only certain languages{d.languages.length > 0 && ` (${d.languages.length})`}</summary>
+              <div role="group" aria-label="Languages" className="flex flex-wrap gap-x-4 gap-y-1">
+                {LANGUAGES.map(([code, name]) => (
+                  <label key={code} className="flex items-center gap-1.5">
+                    <input type="checkbox" checked={d.languages.includes(code)} onChange={(e) => set({ languages: e.target.checked ? [...d.languages, code].slice(0, 10) : d.languages.filter((x) => x !== code) })} />
+                    {name}
+                  </label>
+                ))}
+              </div>
+              <p className="hint">Up to 10. The language is guessed from the text: a very short message may not be recognized, and then the automation does not run.</p>
+            </details>
+          )}
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={d.timed} onChange={(e) => set({ timed: e.target.checked, ...(e.target.checked && d.zone === "UTC" && { zone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" }) })} />
+            Only at certain times
+          </label>
+          {d.timed && (
+            <div className="grid gap-3 pl-6">
+              <div role="group" aria-label="Days" className="flex flex-wrap gap-x-4 gap-y-1">
+                {WEEKDAYS.map((name, i) => (
+                  <label key={name} className="flex items-center gap-1.5">
+                    <input type="checkbox" checked={d.weekdays.includes(i)} onChange={(e) => set({ weekdays: e.target.checked ? [...d.weekdays, i] : d.weekdays.filter((x) => x !== i) })} />
+                    {name}
+                  </label>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <label htmlFor="automation-from-hour">From</label>
+                <select id="automation-from-hour" className="field w-auto" value={d.fromHour} onChange={(e) => set({ fromHour: e.target.value })}>
+                  <option value="">Any time</option>
+                  {Array.from({ length: 24 }, (_, h) => (
+                    <option key={h} value={String(h)}>{`${h}:00`}</option>
+                  ))}
+                </select>
+                <label htmlFor="automation-to-hour">to</label>
+                <select id="automation-to-hour" className="field w-auto" value={d.toHour} onChange={(e) => set({ toHour: e.target.value })}>
+                  <option value="">Any time</option>
+                  {Array.from({ length: 24 }, (_, h) => (
+                    <option key={h + 1} value={String(h + 1)}>{`${h + 1}:00`}</option>
+                  ))}
+                </select>
+                <label htmlFor="automation-zone">in</label>
+                <input id="automation-zone" className="field w-auto" value={d.zone} onChange={(e) => set({ zone: e.target.value })} placeholder="Asia/Dhaka" />
+              </div>
+              <p className="hint">Pick days, hours, or both. The time zone is an IANA name such as Asia/Dhaka or America/New_York. A later start than end runs overnight.</p>
+            </div>
           )}
         </fieldset>
 
