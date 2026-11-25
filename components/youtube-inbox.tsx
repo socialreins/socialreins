@@ -112,7 +112,7 @@ export function YouTubeInboxSettings({ id, canManage }: { id: string; canManage:
         </div>
         <p id={`yt-cost-${id}`} className="text-sm text-ink-soft">
           Checking costs 1 unit, about {state.idle_units_per_day} a day at this pace, and a busy channel needs a few more to read replies and video titles. Replying, holding or rejecting a comment costs {state.write_units} units each, outside
-          this budget. Today (Pacific time): <strong>{state.units_today}</strong> of {state.daily_units} used reading, {state.write_units_today} on replies and moderation. YouTube&apos;s day starts at midnight Pacific time.
+          this budget, and a channel may make 40 such calls a day. Today (Pacific time): <strong>{state.units_today}</strong> of {state.daily_units} used reading, {state.write_units_today} on replies and moderation. YouTube&apos;s day starts at midnight Pacific time.
         </p>
       </fieldset>
       {state.shared_exhausted && (

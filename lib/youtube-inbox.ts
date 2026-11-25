@@ -44,7 +44,7 @@ export const resumeYouTubeInbox = (id: string) => call<YouTubeInbox>(`/v1/connec
 // What brain's codes mean to a person.
 export const youtubeMessages: Record<string, string> = {
   invalid_poll: "Read every 10 minutes to once a day.",
-  invalid_budget: "Choose a daily budget between 20 and 5000 units.",
+  invalid_budget: "Choose a daily budget between 20 and 2000 units.",
   reconnect_for_comments: "This channel was connected without the permission to read comments. Reconnect it.",
   reconnect_required: "YouTube refused this channel's sign-in. Reconnect it first.",
   youtube_reconnect_required: "YouTube refused this channel's sign-in, or a permission is missing. Reconnect it.",
@@ -52,4 +52,4 @@ export const youtubeMessages: Record<string, string> = {
 };
 
 export const POLL_CHOICES = [10, 15, 30, 60, 120, 240, 720, 1440];
-export const BUDGET_CHOICES = [100, 300, 600, 1000, 2000, 5000];
+export const BUDGET_CHOICES = [100, 300, 600, 1000, 2000];

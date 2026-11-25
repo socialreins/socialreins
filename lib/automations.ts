@@ -848,6 +848,8 @@ export const mismatchText: Record<string, string> = {
 export const blockText: Record<string, string> = {
   unsupported_account: "Automations run only on Bluesky, Facebook, Instagram, X and YouTube accounts",
   x_unsupported_trigger: "X has no follows, story replies or buttons to trigger on: use a comment, a mention or a DM",
+  youtube_unsupported_trigger: "YouTube only has comments to trigger on",
+  youtube_no_dm: "YouTube has no DMs and no private replies: only a public reply can answer a comment",
   bluesky_unsupported_trigger: "Bluesky has no story replies or buttons to tap: use a comment, a mention, a DM or a follow",
   meta_one_private_reply: "Facebook and Instagram allow one private reply per comment",
   meta_reply_window: "Facebook and Instagram take a DM only within 24 hours of the person's message (7 days for a comment)",

@@ -101,7 +101,7 @@ export function ModerationBar({ item, canDelete, onChange }: { item: Item; canDe
           canDelete &&
           (confirming ? (
             <span className="flex flex-wrap items-center gap-2">
-              <span id="delete-warning">{youtube ? "Hide it on YouTube for good? A rejected comment cannot be published again." : `Delete it on ${on} for good?`}</span>
+              <span id="delete-warning">{youtube ? "Hide it on YouTube for good? A rejected comment cannot be published again. \"Reject and ban author\" also bans its author from this channel's comments, which only YouTube Studio can undo." : `Delete it on ${on} for good?`}</span>
               {destructive.map((a) => (
                 <button key={a} type="button" className="btn btn-secondary btn-sm" aria-describedby="delete-warning" disabled={busy !== null} onClick={() => run(a)}>
                   {busy === a ? "Working..." : `Yes, ${label[a].toLowerCase()}`}

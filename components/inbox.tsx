@@ -1285,7 +1285,7 @@ function Detail({
       <XActions item={item} />
       {!dm && <ModerationBar key={item.id} item={item} canDelete={canManage} onChange={onChange} />}
 
-      {deleted && <p className="text-sm text-ink-soft">This comment was deleted on {platform}, so it takes no reply.</p>}
+      {deleted && <p className="text-sm text-ink-soft">This comment was {item.platform === "youtube" ? "rejected" : "deleted"} on {platform}, so it takes no reply.</p>}
       {/* A follow, like or repost has nothing to reply to, nor does a deleted comment. */}
       <form onSubmit={onReply} hidden={isActivity(item.kind) || deleted} className="grid gap-2 border-t border-ink/10 pt-4 [&[hidden]]:hidden">
         <div className="flex flex-wrap items-end justify-between gap-2">
