@@ -143,7 +143,7 @@ export function WaitlistForm() {
           </button>
         </form>
       )}
-      {count !== null && <p className="waitlist-note">{waitlistCountText(count)}</p>}
+      {count !== null && count > 0 && <p className="waitlist-note">{waitlistCountText(count)}</p>}
       {step === "email" && (
         <p id="waitlist-note" className="waitlist-note">
           SocialReins Cloud is not open yet. We email you when it is. It will be a paid subscription.
