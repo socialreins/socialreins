@@ -22,7 +22,20 @@ const messages: Partial<Record<Failure, string>> = {
   invalid_sample: "Write a sample of up to 2000 characters, and pick one of your Bluesky, Facebook, Instagram or X accounts.",
 };
 
-const stepName = (s: PlannedStep) => (s.type === "wait" ? "Wait" : actionName[s.type]);
+// How old the comment or the person's last message is, for Facebook and Instagram's windows.
+const AGES = [
+  { minutes: 0, label: "Just now" },
+  { minutes: 23 * 60, label: "23 hours ago" },
+  { minutes: 30 * 60, label: "30 hours ago (past the 24 hour window)" },
+  { minutes: 6 * 24 * 60, label: "6 days ago" },
+  { minutes: 8 * 24 * 60, label: "8 days ago (past the 7 days a comment allows)" },
+];
+const noteText: Record<string, string> = {
+  human_agent_by_hand: "Meta's 24 hours are over, but a person could still answer this by hand for up to 7 days (the HUMAN_AGENT tag). An automation never uses it.",
+  human_agent_off: "Meta's 24 hours are over, and this app does not hold Meta's Human Agent feature yet, so not even a person could answer it by hand.",
+};
+
+const stepName = (s: PlannedStep) => (s.type === "wait" ? "Wait" : s.type === "wait_for_reply" ? "Wait for their reply" : actionName[s.type]);
 
 function StepResult({ step: s }: { step: PlannedStep }) {
   const bad = s.status === "would_skip" || s.status === "would_fail";
@@ -69,12 +82,17 @@ export function AutomationTest({
   const [name, setName] = useState("Sam");
   // Bluesky: Sam does not follow the account or has DMs closed, so a DM is refused.
   const [closed, setClosed] = useState(false);
+  // Facebook and Instagram: how old it is, and whether the comment already got its one private reply.
+  const [age, setAge] = useState(0);
+  const [replied, setReplied] = useState(false);
   const [result, setResult] = useState<{ outcome: TestOutcome; of: string } | null>(null);
   const { busy, problem, run } = useAction();
   const account = accounts.find((a) => a.id === pick) ?? first;
   const sample = text.trim() || placeholder;
   // What changes the answer: not the name or the on switch.
-  const now = JSON.stringify([input && { ...input, name: "", active: true }, account?.id, sample, name, closed]);
+  const meta = account?.provider === "facebook" || account?.provider === "instagram";
+  const comment = input?.trigger === "comment_received";
+  const now = JSON.stringify([input && { ...input, name: "", active: true }, account?.id, sample, name, closed, meta && age, meta && comment && replied]);
   const can = Boolean(input && account && !stuck);
 
   async function test() {
@@ -87,6 +105,8 @@ export function AutomationTest({
       post_remote_id: input.conditions.post_remote_ids?.[0],
       button_payload: input.conditions.payloads?.[0],
       author_can_dm: account.provider === "bluesky" && closed ? false : undefined,
+      age_minutes: meta && age > 0 ? age : undefined,
+      private_reply_sent: meta && comment && replied ? true : undefined,
     };
     // A name is only needed to save, not to try.
     await run("test", () => testAutomation({ ...input, name: input.name.trim() || "Test" }, body), (outcome) => {
@@ -138,6 +158,28 @@ export function AutomationTest({
               They can&apos;t take our DM (no follow, or DMs closed)
             </label>
           )}
+          {meta && (
+            <>
+              <div className="grid gap-1.5">
+                <label htmlFor="automation-test-age" className="label">
+                  How old is it
+                </label>
+                <select id="automation-test-age" className="field" value={age} onChange={(e) => setAge(Number(e.target.value))}>
+                  {AGES.map((a) => (
+                    <option key={a.minutes} value={a.minutes}>
+                      {a.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {comment && (
+                <label className="flex items-center gap-2 self-end">
+                  <input type="checkbox" className="shrink-0 accent-[var(--color-signal-deep)]" checked={replied} onChange={(e) => setReplied(e.target.checked)} />
+                  It already got its private reply
+                </label>
+              )}
+            </>
+          )}
           {needsText && (
             <div className="grid gap-1.5 sm:col-span-2">
               <label htmlFor="automation-test-text" className="label">
@@ -165,6 +207,12 @@ export function AutomationTest({
               {runs ? "It would run." : "It would not run."}
               {why.length > 0 && <span className="block font-normal">{why.join(". ")}.</span>}
             </p>
+            {out.sentiment && <p className="text-sm text-ink-soft">The AI read the text as {out.sentiment}.</p>}
+            {(out.notes ?? []).map((n) => (
+              <p key={n} className="text-sm text-ink-soft">
+                {noteText[n] ?? n}
+              </p>
+            ))}
             {out.steps.length > 0 && (
               <ol className="grid gap-2" aria-label="What it would do">
                 {out.steps.map((s, i) => (
