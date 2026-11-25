@@ -348,11 +348,12 @@ function Use({ mode }: { mode: Mode }) {
       <h2 id="automations">Build an automation or a flow</h2>
       <ol>
         <li>Open Automations and choose New automation, then pick a template, such as Comment to DM or Welcome message, or start from scratch.</li>
-        <li>Under When, pick the trigger: a comment keyword, a DM keyword, a first message, a new follower (Bluesky), a mention, a story reply or a button tap.</li>
+        <li>Under When, pick the trigger: a comment keyword, a DM keyword, a first message, a new follower, a like of your post, a repost of your post (those three on Bluesky), a mention, a story reply or a button tap.</li>
         <li>Under Only if, narrow it to keywords, accounts or posts.</li>
         <li>Under Do this, choose One reply (a DM, a public reply, or both) or A flow of steps. A flow has up to 10 steps: a DM with up to 3 buttons, a public reply, a wait, or Tag the contact.</li>
-        <li>Save it and switch it on. Its page lists every run with what was sent and, when something was skipped or refused, the reason.</li>
+        <li>Save it and switch it on. Its page lists every run with what was sent and, when something was skipped or refused, the reason, and under it the recent items it did not run on and why. The same reasons show under an item in the inbox.</li>
       </ol>
+      <p>On Bluesky a like or repost of your post can also start an automation. It has nobody to message or tag, so it can follow the person back, mail your team, assign the item or stop newer automations. Reposting and following back are done on Bluesky accounts only, and liking on Bluesky and Facebook.</p>
       <p>Automations are live on Bluesky; Facebook and Instagram are in testing, and so is X (comments, mentions and DMs; X has no private reply, so keep a fallback public reply). Threads is in testing too, with a public reply to a reply or a mention: it has no DMs and no private reply.</p>
 
       <h2 id="broadcasts">Send a broadcast</h2>

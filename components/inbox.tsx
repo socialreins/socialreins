@@ -56,6 +56,7 @@ import { accountName, Avatar } from "@/components/connections";
 import { InboxEditor, inboxMessages } from "@/components/inbox-editor";
 import { DeleteReply, DmTools, ItemActionsMenu, MessageTools, useItemActions } from "@/components/inbox-actions";
 import { ModerationBar } from "@/components/inbox-moderation";
+import { ItemAutomations } from "@/components/item-automations";
 import { SnippetMenu } from "@/components/library";
 import { platformName } from "@/components/platform-icons";
 import { TagEditor } from "@/components/tag-editor";
@@ -1300,6 +1301,7 @@ function Detail({
           <strong>Reconnect to enable replies.</strong> This Threads account was connected before SocialReins could read and send replies. Reconnect it under Accounts and accept the new permissions. Until Meta approves them, only the app&apos;s testers can. {accountsLink}.
         </p>
       )}
+      <ItemAutomations key={item.id} itemId={item.id} />
       {!dm && <ModerationBar key={item.id} item={item} canDelete={canManage} onChange={onChange} />}
 
       {deleted && <p className="text-sm text-ink-soft">This comment was deleted on {platform}, so it takes no reply.</p>}

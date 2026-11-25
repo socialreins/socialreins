@@ -247,6 +247,8 @@ export const codes = [
   "threads_unsupported_trigger",
   "threads_no_dm",
   "threads_no_like",
+  "bluesky_only_trigger",
+  "bluesky_only_action",
   "meta_one_private_reply",
   "meta_reply_window",
   "has_paid_plan",
