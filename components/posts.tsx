@@ -103,6 +103,9 @@ export const postMessages: Partial<Record<Failure, ReactNode>> = {
   not_scheduled: "Only a scheduled post can repeat. Schedule it first.",
   repeat_not_supported: "TikTok posts can't repeat: TikTok needs a person to confirm each post.",
   invalid_repeat: "That repeat isn't valid. Repeat every 1 to 12 days, weeks or months, and end it never, after 1 to 100 more posts or on a date after the post's own.",
+  publish_in_progress: "This post is still going out. Wait for it to finish, then try again.",
+  nothing_to_retry: "Nothing is left to retry. Reload to see the post as it is now.",
+  outcome_unknown: "Every failure here may already have posted. Check the accounts on the networks first, and use Duplicate if a post is missing.",
   refreshed_recently: "The stats were refreshed less than a minute ago. Wait a minute, then try again.",
   too_many_repeats: "Too many repeating posts. Turn the repeat off on another post first.",
 };

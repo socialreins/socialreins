@@ -5,6 +5,7 @@ import type { Failure } from "@/lib/auth";
 import {
   actionName,
   blockText,
+  costText,
   mismatchText,
   plannedStatus,
   reason,
@@ -104,7 +105,7 @@ export function AutomationTest({
       author_name: name.trim() || undefined,
       post_remote_id: input.conditions.post_remote_ids?.[0],
       button_payload: input.conditions.payloads?.[0],
-      author_can_dm: account.provider === "bluesky" && closed ? false : undefined,
+      author_can_dm: (account.provider === "bluesky" || account.provider === "x") && closed ? false : undefined,
       age_minutes: meta && age > 0 ? age : undefined,
       private_reply_sent: meta && comment && replied ? true : undefined,
     };
@@ -152,10 +153,10 @@ export function AutomationTest({
             </label>
             <input id="automation-test-name" className="field" maxLength={64} placeholder="Sam" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
-          {account.provider === "bluesky" && (
+          {(account.provider === "bluesky" || account.provider === "x") && (
             <label className="flex items-center gap-2 sm:col-span-2">
               <input type="checkbox" className="shrink-0 accent-[var(--color-signal-deep)]" checked={closed} onChange={(e) => setClosed(e.target.checked)} />
-              They can&apos;t take our DM (no follow, or DMs closed)
+              They can&apos;t take our DM ({account.provider === "x" ? "they don't follow us and their DMs are closed" : "no follow, or DMs closed"})
             </label>
           )}
           {meta && (
@@ -213,6 +214,8 @@ export function AutomationTest({
                 {noteText[n] ?? n}
               </p>
             ))}
+            {out.cost && <p className="hint">{costText(out.cost)}</p>}
+            {!out.cost && account?.provider === "x" && <p className="hint">Nothing would run, so nothing would be billed.</p>}
             {out.steps.length > 0 && (
               <ol className="grid gap-2" aria-label="What it would do">
                 {out.steps.map((s, i) => (

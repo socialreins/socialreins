@@ -145,7 +145,18 @@ export type TestOutcome = {
   // What a mood condition read the sample as.
   sentiment?: string | null;
   steps: PlannedStep[];
+  // On X: what the run would cost (the read plus each write).
+  cost?: XCost;
 };
+// What a run costs on X: the read of the item and a write for each message or reaction. credits: team X credits.
+export type XCost = { writes: number; read_usd: number; write_usd: number; total_usd: number; credits: number };
+export type Estimate = { x: boolean; cost: XCost | null };
+// What one run of the automation as it stands costs on X, without saving it.
+export const estimateAutomation = (automation: AutomationInput) => api<Estimate>("/v1/automations/estimate", "POST", automation);
+const dollars = (n: number) => "$" + n.toFixed(3).replace(/0$/, "");
+// "About $0.045 a run on X: $0.015 to read it and $0.03 for 2 writes."
+export const costText = (c: XCost) =>
+  `About ${dollars(c.total_usd)} a run on X: ${dollars(c.read_usd)} to read it${c.writes > 0 ? ` and ${dollars(c.write_usd)} for ${c.writes} ${c.writes === 1 ? "write" : "writes"}` : ""}. With billing on that is about ${Number(c.credits.toFixed(1))} X credits.`;
 // AI steps are written for real, one call each, so brain answers after them: up to 10 steps of 20 seconds.
 export const testAutomation = (automation: AutomationInput, sample: TestSample) => api<TestOutcome>("/v1/automations/test", "POST", { automation, sample }, 120_000);
 
@@ -918,6 +929,10 @@ export const reasonText: Record<string, string> = {
   youtube_no_dm: "YouTube has no DMs and no private replies: only a public reply can answer a comment",
   daily_cap: "The team reached 500 automation runs today",
   paused: "The team paused all its automations",
+  x_no_credits: "X credits are used up: the team has none left, or X says the app is out of credits",
+  x_usage_capped: "X says the app reached its usage cap",
+  x_budget: "This account's monthly X budget is used up",
+  x_reconnect_required: "Reconnect the X account: it was connected without the permission this needs",
   paused_waiting: "Stopped: the team paused its automations while this flow waited",
   no_question: "The text was judged not to ask a question",
   question_cap: "The team judged 300 messages with AI today, the most a day",
@@ -977,6 +992,10 @@ export const reasonWhy: Record<string, string> = {
   ai_link: "The AI may only use links and @handles that are in your prompt, so this reply was held back.",
   ai_leak: "The reply quoted a long part of your prompt word for word, so it was held back.",
   daily_cap: "A team's automations run at most 500 times a day.",
+  x_no_credits: "X bills every write, so an automation stops before sending when the team has no X credits (Cloud) or X says the app is out of credits. Buy credits, or fund the X app if you self-host, then press Resume in the account's X inbox settings.",
+  x_usage_capped: "X refused more calls for now. Press Resume in the account's X inbox settings once its cap resets.",
+  x_budget: "Each X account has a monthly budget (Accounts, the X account's settings) that pays for reading and for what automations write. Automations start again on the 1st (UTC), or when you raise it.",
+  x_reconnect_required: "Open the account's X inbox settings and use Reconnect: X asks again for the direct message, like and hide permissions.",
   paused: "Someone switched on Pause all automations on the Team page. Nothing is sent, and flows waiting at a wait end, until it is switched off.",
   threads_no_dm: "Threads has no direct messages and no private reply to a comment, so an automation on a Threads account answers with a public reply only. Keep a public reply in the automation.",
   threads_replies_closed: "Threads lets the author of a post choose who may reply to it. This one takes replies from its own author only.",
@@ -1055,6 +1074,9 @@ export const plannedStatus: Record<PlannedStatus, string> = {
 };
 // A reason in two or three words, for the counts on a card.
 export const reasonShort: Record<string, string> = {
+  x_no_credits: "no X credits",
+  x_usage_capped: "X usage cap",
+  x_budget: "X budget used",
   paused: "paused",
   paused_waiting: "stopped by the pause",
   no_question: "not a question",
