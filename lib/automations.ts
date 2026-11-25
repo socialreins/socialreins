@@ -667,7 +667,7 @@ export const reasonText: Record<string, string> = {
 };
 // Why it happened and what helps, for the reasons that have more to say than their name.
 export const reasonWhy: Record<string, string> = {
-  dm_not_allowed: "This person does not accept DMs from accounts they don't follow. On X there is no private reply to a comment: they must follow you or have DMs open, so keep a fallback public reply.",
+  dm_not_allowed: "This person does not accept DMs from accounts they don't follow. On X and Bluesky there is no private reply to a comment: they must follow you or have DMs open, so keep a fallback public reply.",
   outside_window: "Meta closes a conversation 24 hours after the person's last message. A shorter wait in the flow keeps it open.",
   already_replied: "Meta allows one private reply per comment, and this comment already had it.",
   no_dm_access: "The account's Bluesky app password was made without access to DMs. Make one that allows DMs and reconnect.",

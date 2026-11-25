@@ -134,8 +134,8 @@ export function AutomationTest({
           </div>
           {account.provider === "bluesky" && (
             <label className="flex items-center gap-2 sm:col-span-2">
-              <input type="checkbox" checked={closed} onChange={(e) => setClosed(e.target.checked)} />
-              They can&apos;t take our DM (they don&apos;t follow this account, or have DMs closed)
+              <input type="checkbox" className="shrink-0 accent-[var(--color-signal-deep)]" checked={closed} onChange={(e) => setClosed(e.target.checked)} />
+              They can&apos;t take our DM (no follow, or DMs closed)
             </label>
           )}
           {needsText && (
