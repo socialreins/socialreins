@@ -32,6 +32,7 @@ export const features: Feature[] = [
         bullets: [
           "Triggers: a comment keyword, a DM keyword, a first message (welcome), a new follower (Bluesky), a mention, a story reply and a button tap.",
           "A flow runs several steps in turn, with waits and buttons.",
+          "A step can write its reply with AI from your prompt, using your own AI key or the AI replies that come with the Scheduler and Automation plan. It never adds a link or @handle your prompt does not hold.",
           "An automation can also tag the contact, so you can find those people later or send them a broadcast.",
         ],
       },
@@ -43,6 +44,7 @@ export const features: Feature[] = [
           "Write the DM, and add a public reply if you want one. {name} in the text becomes the commenter's name, and {page} the link to the post's public page.",
           "Add a public reply to fall back on when the network refuses the DM, for example when the person only takes DMs from accounts they follow.",
           "Answer each person once, or every time they comment.",
+          "Test it before it goes live: type a sample comment and see what it would match and send, AI text included. Nothing is sent. An AI step is written for real and counts toward your AI replies.",
         ],
       },
       {
