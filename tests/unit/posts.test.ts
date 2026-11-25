@@ -27,7 +27,6 @@ import {
   getPost,
   getTikTokCreator,
   graphemes,
-  threadsLength,
   listPosts,
   mergeCreators,
   monthRange,
@@ -44,6 +43,7 @@ import {
   toZoneInput,
   updatePost,
   utf8Bytes,
+  threadsLength,
   xWeight,
   youtubeText,
 } from "@/lib/posts";
@@ -183,6 +183,11 @@ describe("post checks", () => {
     expect(threadsLength("❤️")).toBe(6);
     expect(threadsLength("🇧🇩")).toBe(8);
     expect(threadsLength("1️⃣")).toBe(7);
+    expect(threadsLength("👍🏽")).toBe(8);
+    // Text-style symbols stay 1, and a Bangla conjunct (ra, joiner, virama, ya) is four characters.
+    expect(threadsLength("✓★♥©™")).toBe(5);
+    expect(threadsLength("র\u200D্য")).toBe(4);
+    expect(charCount("threads", "a".repeat(496) + "😀")).toBe(500);
     expect(charCount("threads", "😀".repeat(126))).toBeGreaterThan(limits.threads.chars);
   });
 
