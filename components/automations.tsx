@@ -507,7 +507,7 @@ function PausedNotice() {
   const { user } = useSession();
   if (!user.current_team.automations_paused) return null;
   return (
-    <p role="status" className="card border-signal-deep p-4 text-sm">
+    <p className="card border-signal-deep p-4 text-sm">
       <strong>All automations are paused.</strong> Nothing is sent, whatever each switch says.{" "}
       {manages(user.current_team.role) && (
         <Link href="/team" className="underline">

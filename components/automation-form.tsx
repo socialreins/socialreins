@@ -266,6 +266,17 @@ export function AutomationForm({
       document.getElementById("automation-dm")?.focus();
       return;
     }
+    // A limit that is not a whole number in range would be sent as none, and clear a working one.
+    const badLimit = [
+      ["automation-cooldown", d.cooldown, MAX_COOLDOWN],
+      ["automation-daily-cap", d.dailyCap, MAX_DAILY_CAP],
+    ] as const;
+    const wrong = badLimit.find(([, text, max]) => Number.isNaN(limitOf(text, max)));
+    if (wrong) {
+      setTried(true);
+      document.getElementById(wrong[0])?.focus();
+      return;
+    }
     if (problems.length) {
       flushSync(() => setTried(true));
       document.querySelector("#automation-flow [role=alert]")?.scrollIntoView({ block: "center" });
@@ -534,15 +545,19 @@ export function AutomationForm({
               <label htmlFor="automation-cooldown" className="font-medium">
                 Wait before answering the same person again (minutes)
               </label>
-              <input id="automation-cooldown" className="field" inputMode="numeric" placeholder="No wait" value={d.cooldown} onChange={(e) => set({ cooldown: e.target.value })} aria-invalid={Number.isNaN(limitOf(d.cooldown, MAX_COOLDOWN))} />
-              <p className="hint">1 to 10080 (7 days). 60 means one answer an hour for each person.</p>
+              <input id="automation-cooldown" className="field" inputMode="numeric" placeholder="No wait" value={d.cooldown} onChange={(e) => set({ cooldown: e.target.value })} aria-invalid={tried && Number.isNaN(limitOf(d.cooldown, MAX_COOLDOWN))} aria-describedby="automation-cooldown-hint" />
+              <p id="automation-cooldown-hint" className={tried && Number.isNaN(limitOf(d.cooldown, MAX_COOLDOWN)) ? "waitlist-error" : "hint"} role={tried && Number.isNaN(limitOf(d.cooldown, MAX_COOLDOWN)) ? "alert" : undefined}>
+                1 to 10080 (7 days), a whole number. 60 means one answer an hour for each person.
+              </p>
             </div>
             <div className="grid gap-1">
               <label htmlFor="automation-daily-cap" className="font-medium">
                 Most runs a day
               </label>
-              <input id="automation-daily-cap" className="field" inputMode="numeric" placeholder="Team limit only" value={d.dailyCap} onChange={(e) => set({ dailyCap: e.target.value })} aria-invalid={Number.isNaN(limitOf(d.dailyCap, MAX_DAILY_CAP))} />
-              <p className="hint">1 to 500. The whole team already stops at 500 a day.</p>
+              <input id="automation-daily-cap" className="field" inputMode="numeric" placeholder="Team limit only" value={d.dailyCap} onChange={(e) => set({ dailyCap: e.target.value })} aria-invalid={tried && Number.isNaN(limitOf(d.dailyCap, MAX_DAILY_CAP))} aria-describedby="automation-daily-cap-hint" />
+              <p id="automation-daily-cap-hint" className={tried && Number.isNaN(limitOf(d.dailyCap, MAX_DAILY_CAP)) ? "waitlist-error" : "hint"} role={tried && Number.isNaN(limitOf(d.dailyCap, MAX_DAILY_CAP)) ? "alert" : undefined}>
+                1 to 500, a whole number. The whole team already stops at 500 a day.
+              </p>
             </div>
           </div>
         </fieldset>

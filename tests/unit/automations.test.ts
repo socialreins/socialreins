@@ -171,6 +171,12 @@ describe("limits", () => {
     expect(draftOf(saved)).toMatchObject({ cooldown: "60", dailyCap: "25" });
   });
 
+  it("never sends a wrong limit as none", () => {
+    // NaN would be written as null by JSON.stringify and clear a working limit: the form stops before that.
+    expect(Number.isNaN(limitOf("0", 500))).toBe(true);
+    expect(JSON.stringify({ n: limitOf("0", 500) })).toBe('{"n":null}');
+  });
+
   it("names why runs were held back", () => {
     for (const code of ["paused", "own_account", "connected_account", "cooldown", "automation_cap"]) expect(reason(code)).not.toBe(code.replaceAll("_", " "));
     expect(reasonLabel("automation_cap")).toBe("daily limit");
