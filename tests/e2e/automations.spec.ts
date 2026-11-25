@@ -510,7 +510,7 @@ test("builds a flow of three steps with a wait and buttons, and saves steps with
 test("a comment flow waits for the answer, mails the team and hides spam, and the form saves the link rule and mood", async ({ page }) => {
   const state = await brain(page, "owner");
   await page.goto("/automations/new?template=dm-keyword");
-  await page.getByLabel("Name").fill("Spam and guide");
+  await page.getByLabel("Name", { exact: true }).fill("Spam and guide");
   await page.getByLabel("Links in their text").selectOption("no");
   await page.getByRole("group", { name: "Their mood" }).getByLabel(/^Negative/).check();
   const doThis = page.getByRole("group", { name: "Do this" });
