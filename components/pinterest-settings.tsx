@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Failure } from "@/lib/auth";
 import type { Connection } from "@/lib/connections";
 import { getPinterestBoards, PIN_LINK_MAX, PIN_TITLE_MAX, type PinterestBoard, type PinterestSettings } from "@/lib/posts";
@@ -49,6 +49,15 @@ export function PinterestPanel({ accounts, settings, onChange }: { accounts: Con
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` holds the account's id and the retry count
   }, [key]);
+  // A board belongs to one account: when the pin moves to another account, the old board is dropped.
+  const seen = useRef<string | null>(null);
+  useEffect(() => {
+    const id = one?.id ?? null;
+    if (!id) return;
+    if (seen.current && id !== seen.current && settings.board) onChange({ ...settings, board: "" });
+    seen.current = id;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a change of account clears the board
+  }, [one?.id]);
   const boards = read?.key === key ? read.value : null;
   const missing = pinNeedsBoard(settings, accounts);
   const titleOver = !pinTitleOk(settings.title);
@@ -66,7 +75,7 @@ export function PinterestPanel({ accounts, settings, onChange }: { accounts: Con
           </label>
           {boards !== null && isFailure(boards) ? (
             <>
-              <p role="alert" className="waitlist-error">
+              <p id="pinterest-board" tabIndex={-1} role="alert" className="waitlist-error">
                 The boards couldn&apos;t be read. {boards === "reconnect_required" ? "Reconnect the Pinterest account under Accounts." : problemText(boards, postMessages)}
               </p>
               <button type="button" className="btn btn-secondary btn-sm justify-self-start" onClick={() => setTries((n) => n + 1)}>
@@ -82,18 +91,23 @@ export function PinterestPanel({ accounts, settings, onChange }: { accounts: Con
                   {b.privacy && b.privacy !== "PUBLIC" ? ` (${b.privacy.toLowerCase()})` : ""}
                 </option>
               ))}
+              {/* A saved pin's board that is not listed (a secret or removed board) stays visible, not silently replaced. */}
+              {settings.board && boards !== null && !boards.some((b) => b.id === settings.board) && <option value={settings.board}>{`Board ${settings.board} (not in the list)`}</option>}
             </select>
           )}
-          <p id="pinterest-board-note" className="hint">
-            {boards === null && !read ? "Loading the boards... " : ""}
+          <p id="pinterest-board-note" className="hint" role="status">
+            {boards === null ? "Loading the boards... " : ""}
             {missing ? "This account has no default board, so choose one. " : "A pin goes to the board you choose, else to the account's default board. "}
             Secret boards aren&apos;t listed. Set the default under Accounts.
           </p>
         </div>
       ) : (
         <p id="pinterest-board-note" className="hint">
-          This pin goes to {accounts.length} Pinterest accounts, each to its own default board. Set a default board for each account under Accounts, or tick one account to choose a board here.
-          {missing ? " One of them has no default board yet." : ""}
+          {accounts.length === 0
+            ? "No Pinterest account is ticked for this pin."
+            : `This pin goes to ${accounts.length} Pinterest accounts, each to its own default board. Set a default board for each account under Accounts, or tick one account to choose a board here.`}
+          {accounts.length > 1 && missing ? " One of them has no default board yet." : ""}
+          {accounts.length > 1 && settings.board ? " The board chosen earlier is not used while the pin goes to several accounts." : ""}
         </p>
       )}
       <div className="grid gap-1.5">

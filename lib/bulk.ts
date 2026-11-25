@@ -50,8 +50,9 @@ export function readRow(n: number, cells: Record<Column, string>, available: Pla
   const names = cells.networks.toLowerCase().split(/[\s,]+/).filter(Boolean);
   let networks: Platform[] = [];
   if (names.length === 0) {
-    // Instagram, YouTube and Pinterest need media, so a row without any leaves them out unless it names them.
-    networks = available.filter((p) => p !== "tiktok" && (media.length > 0 || (p !== "instagram" && p !== "youtube" && p !== "pinterest")));
+    // Instagram and YouTube need media, so a row without any leaves them out unless it names them. Pinterest needs
+    // media and the account's default board, so a row goes there only when it names it.
+    networks = available.filter((p) => p !== "tiktok" && p !== "pinterest" && (media.length > 0 || (p !== "instagram" && p !== "youtube")));
     if (networks.length === 0) errors.push("The set has no connected network a CSV can post to. Connect one under Accounts.");
   }
   for (const name of new Set(names)) {

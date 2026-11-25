@@ -249,7 +249,7 @@ export function beyondPosting(slug: string, name: string, support: (feature: str
   const tiktok = slug === "tiktok";
   const pinterest = slug === "pinterest";
   return [
-    ["Bulk upload from a CSV file", tiktok ? "No. Every TikTok post needs its own privacy and disclosure choices, so post from the composer." : pinterest ? "Yes, with an image or a video and a default board on the account." : "Yes."],
+    ["Bulk upload from a CSV file", tiktok ? "No. Every TikTok post needs its own privacy and disclosure choices, so post from the composer." : pinterest ? "Yes, for a row that names pinterest, with an image or a video and a default board on the account." : "Yes."],
     ["Recurring posts", tiktok ? "No. TikTok needs a person to confirm each post." : "Yes: daily, weekly or monthly."],
     ["Posts from an RSS or Atom feed", tiktok ? "No. Feeds are not offered for TikTok." : pinterest ? "No. A feed item has no image or board for a pin." : slug === "youtube" ? "No. YouTube takes video only." : slug === "instagram" ? "Yes. A feed item needs an image to go to Instagram." : "Yes."],
     ["Post analytics", STATS[slug] ? `Yes: ${STATS[slug]} for each post.` : "No."],

@@ -69,11 +69,11 @@ describe("readCsv", () => {
     expect(withMedia!.networks).toEqual(["bluesky", "x", "facebook", "youtube", "instagram"]);
   });
 
-  it("leaves Pinterest out of a row with no media, and refuses it when asked for without one", () => {
+  it("leaves Pinterest out unless a row names it, and refuses it without media", () => {
     const withPin: Platform[] = ["bluesky", "pinterest"];
     const [none, some, named] = read("text,media,networks\nhi,,\nhi,https://a.co/p.jpg,\nhi,,pinterest", withPin);
     expect(none!.networks).toEqual(["bluesky"]);
-    expect(some!.networks).toEqual(["bluesky", "pinterest"]);
+    expect(some!.networks).toEqual(["bluesky"]);
     expect(named!.errors).toEqual(["Pinterest needs an image or a video: add its link under media."]);
   });
 

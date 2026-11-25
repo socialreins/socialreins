@@ -274,7 +274,7 @@ test("on a phone the posts list fits the screen", async ({ page }) => {
 test("a team without Bluesky sees a note linking to connections", async ({ page }) => {
   await brain(page, { accounts: [] });
   await page.goto("/posts/new");
-  const note = page.getByText("No Bluesky, Threads, LinkedIn, X, TikTok, YouTube, Facebook or Instagram account is connected to this team yet");
+  const note = page.getByText("No Bluesky, Threads, LinkedIn, X, TikTok, YouTube, Pinterest, Facebook or Instagram account is connected to this team yet");
   await expect(note).toBeVisible();
   await expect(page.getByRole("link", { name: "Connect an account" })).toHaveAttribute("href", "/t/acme22/connections");
 });
@@ -1046,6 +1046,22 @@ test("a group gives the Pinterest settings to its Pinterest post, and one accoun
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page).toHaveURL("/t/acme22/posts/g-p");
   expect(sent).toMatchObject({ pinterest: { board_id: "111", title: "Pasta", link: null } });
+});
+
+test("with several Pinterest accounts the pin uses each default board, and a saved board that is not listed stays visible", async ({ page }) => {
+  const second = { ...account("c10", "pinterest", "Second Pins"), handle: "second", default_board_id: "111" };
+  await brain(page, { accounts: [{ ...pinAcc, default_board_id: "111" }, second] });
+  await pinterestBoards(page);
+  await page.goto("/posts/new");
+  await expect(page.getByText("This pin goes to 2 Pinterest accounts")).toBeVisible();
+  await expect(page.getByLabel("Board", { exact: true })).toHaveCount(0);
+
+  await brain(page, { accounts: [pinAcc] });
+  await page.route("**/v1/posts/p9", (route) => route.fulfill({ json: post("p9", { platform: "pinterest", media: ["https://example.com/pie.jpg"], pinterest: { board_id: "999", title: null, link: null } }) }));
+  await page.goto("/posts/p9");
+  const board = page.getByLabel("Board", { exact: true });
+  await expect(board.getByRole("option", { name: "Board 999 (not in the list)" })).toHaveCount(1);
+  await expect(board).toHaveValue("999");
 });
 
 test("a saved pin shows its settings", async ({ page }) => {

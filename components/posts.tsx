@@ -74,7 +74,7 @@ export const postMessages: Partial<Record<Failure, ReactNode>> = {
   pinterest_board_required: "Choose a board for the pin, or set a default board for the Pinterest account under Accounts.",
   invalid_board: "That board isn't one of this Pinterest account's boards.",
   pinterest_failed: "Pinterest could not be reached. Try again in a moment.",
-  reconnect_required: "TikTok refused the account's access. Reconnect it under Connections.",
+  reconnect_required: "The network refused the account's access. Reconnect it under Connections.",
   tiktok_failed: "TikTok could not be reached. Try again in a moment.",
   invalid_override: "A customized platform isn't one the post goes to.",
   no_accounts: "This set has no connected account to post to.",
@@ -224,7 +224,7 @@ export function AccountNote() {
       </span>
       <p className="min-w-0 flex-1 basis-60">
         <strong className="block">Connect an account first</strong>
-        <span className="text-ink-soft">No Bluesky, Threads, LinkedIn, X, TikTok, YouTube, Facebook or Instagram account is connected to this team yet, so posts have nowhere to go.</span>
+        <span className="text-ink-soft">No Bluesky, Threads, LinkedIn, X, TikTok, YouTube, Pinterest, Facebook or Instagram account is connected to this team yet, so posts have nowhere to go.</span>
       </p>
       <Link href="/connections" className="btn btn-primary">
         Connect an account

@@ -115,7 +115,6 @@ export const setDefaultBoard = (accountId: string, boardId: string | null) =>
   });
 export const PIN_TITLE_MAX = 100;
 export const PIN_LINK_MAX = 2048;
-export const PIN_ALT_MAX = 500;
 export type Platform = "bluesky" | "threads" | "linkedin" | "facebook" | "instagram" | "youtube" | "x" | "tiktok" | "pinterest";
 export type Post = {
   id: string;

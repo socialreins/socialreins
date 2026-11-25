@@ -196,7 +196,7 @@ function Bulk({ setId, setName, available }: { setId: string; setName: string; a
               <dt className="font-mono font-bold">networks</dt>
               <dd className="text-ink-soft">
                 Optional. Network names separated by spaces or commas, such as <code>bluesky linkedin</code>. Empty means every network the set has
-                {available.length ? ` (${available.filter((p) => p !== "tiktok").map(platformName).join(", ")})` : ""}, leaving out Instagram, YouTube and Pinterest on a row without
+                {available.length ? ` (${available.filter((p) => p !== "tiktok" && p !== "pinterest").map(platformName).join(", ")})` : ""}, leaving out Pinterest unless a row names it, and Instagram and YouTube on a row without
                 media.
               </dd>
               <dt className="font-mono font-bold">media</dt>
