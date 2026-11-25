@@ -53,6 +53,7 @@ export const features: Feature[] = [
         bullets: [
           "A comment is acted on once and never tried again, so nobody gets the same message twice.",
           "A team's automations can answer 500 comments a day.",
+          "On Bluesky there is no private reply to a comment: a DM reaches only people who follow you or take DMs from anyone, so keep a fallback public reply. A new follower follows you, so a welcome DM reaches them unless they closed their DMs. Replies are 300 characters, and Bluesky has no story replies or buttons to tap. A quote of your post counts as a mention.",
           "Every run is listed with what was sent and, when something was refused, the reason.",
         ],
       },

@@ -240,6 +240,7 @@ export const codes = [
   "invalid_plan",
   "unsupported_account",
   "x_unsupported_trigger",
+  "bluesky_unsupported_trigger",
   "meta_one_private_reply",
   "meta_reply_window",
   "has_paid_plan",

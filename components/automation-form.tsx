@@ -42,6 +42,7 @@ const AUTOMATED = ["bluesky", "facebook", "instagram", "x"];
 export const automationMessages: Partial<Record<Failure, ReactNode>> = {
   unsupported_account: "Automations run only on Bluesky, Facebook, Instagram and X accounts. Remove the others.",
   x_unsupported_trigger: "X has no follows, story replies or buttons to trigger on. Pick a comment, a mention or a DM, or leave the X account out.",
+  bluesky_unsupported_trigger: "Bluesky has no story replies or buttons to tap. Pick a comment, a mention, a DM or a follow, or leave the Bluesky account out.",
   meta_one_private_reply: "Facebook and Instagram allow one private reply per comment. Keep one DM in this flow.",
   meta_reply_window: "Facebook and Instagram take a DM only within 24 hours of the person's message. Shorten the waits.",
   invalid_conditions: "One of the accounts, the set or a post link is no longer valid, a keyword is too long, or a condition does not fit this trigger. Check them and try again.",
