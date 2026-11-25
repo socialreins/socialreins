@@ -33,7 +33,7 @@ async function brain(page: Page) {
   await page.route(`**/v1/posts/${UUID}`, (route) => route.fulfill({ json: post }));
 }
 
-test("the Posts list links to the post's number, and Duplicate carries it too", async ({ page }) => {
+test("the Posts list links to the post's number", async ({ page }) => {
   await brain(page);
   await page.goto("/t/acme22/posts?view=list");
   await expect(page.getByRole("link", { name: /Numbered post/ }).first()).toHaveAttribute("href", "/t/acme22/posts/48213");
@@ -45,4 +45,11 @@ test("an old address with the UUID moves to the post's number", async ({ page })
   await expect(page.getByText("Numbered post").first()).toBeVisible();
   await expect(page).toHaveURL("/t/acme22/posts/48213");
   await expect(page.getByRole("link", { name: "Duplicate" })).toHaveAttribute("href", "/t/acme22/posts/new?from=48213");
+});
+
+test("the old address without a team, with the UUID, ends at the team address with the number", async ({ page }) => {
+  await brain(page);
+  await page.goto(`/posts/${UUID}`);
+  await expect(page.getByText("Numbered post").first()).toBeVisible();
+  await expect(page).toHaveURL("/t/acme22/posts/48213");
 });
