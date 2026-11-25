@@ -15,6 +15,8 @@ import {
   flowProblems,
   MAX_TAG_ACTIONS,
   LANGUAGES,
+  costText,
+  estimateAutomation,
   limitOf,
   timeProblems,
   whenOf,
@@ -37,6 +39,8 @@ import {
   triggers,
   updateAutomation,
   type Automation,
+  type AutomationInput,
+  type XCost,
   type Draft,
   type ScopeBody,
   type Trigger,
@@ -48,7 +52,7 @@ import type { SocialSet } from "@/lib/sets";
 import { effectHint, FlowEditor, FlowPreview, TagLine, TextField } from "@/components/automation-flow";
 import { AutomationTest } from "@/components/automation-test";
 import { KeywordsField, ScopeField, scopeBody, scopeOf } from "@/components/scope-fields";
-import { Status, useAction } from "@/components/team-ui";
+import { isFailure, Status, useAction } from "@/components/team-ui";
 import { Icon, type IconName } from "@/components/ui";
 
 // Networks whose inbox can fire an automation; brain refuses an account on any other (unsupported_account).
@@ -281,6 +285,26 @@ export function AutomationForm({
   const specific = t.posts && d.specific;
   const uris = specific ? postIds(lines, (a ?? copyOf)?.conditions.post_remote_ids ?? [], accounts) : [];
   const testable = !specific || (lines.length > 0 && uris.every(Boolean));
+  // What a run costs on X, asked of brain while the form changes, and only when an X account can be in
+  // scope (the team has one, and a scope by name names one).
+  const mayBeX = accounts.some((x) => x.provider === "x") && (scope.mode !== "accounts" || picked.some((x) => x.provider === "x"));
+  const priced = testable && mayBeX ? JSON.stringify(automationInput(d, scopeBody(scope), uris as string[])) : null;
+  // The answer is kept with what it was asked for, so a figure for an older draft is never shown.
+  const [answer, setAnswer] = useState<{ asked: string; cost: XCost | null } | null>(null);
+  const cost = priced !== null && answer?.asked === priced ? answer.cost : null;
+  useEffect(() => {
+    if (priced === null) return;
+    let live = true;
+    const wait = setTimeout(() => {
+      estimateAutomation(JSON.parse(priced) as AutomationInput).then((r) => {
+        if (live) setAnswer({ asked: priced, cost: !isFailure(r) && r.x ? r.cost : null });
+      });
+    }, 600);
+    return () => {
+      live = false;
+      clearTimeout(wait);
+    };
+  }, [priced]);
 
   // `sure`: the yes to stopping the runs that wait in the flow.
   async function save(sure: boolean) {
@@ -717,6 +741,13 @@ export function AutomationForm({
 
         <fieldset className="card grid gap-3 p-5">
           <legend className={cardTitle}>Limits</legend>
+          <div role="status">{cost && <p className="rounded-xl bg-canvas p-3 text-sm">{costText(cost)}</p>}</div>
+          {cost && (
+            <p className="hint">
+              X bills every post, user and message it returns or takes. Each X account has a monthly budget, and the automation stops when it is used up. X counts a link as 23 characters and some characters as 2: a reply holds 280 (up to 300 on a paid X
+              plan, the most any automation text takes), a DM 1000.
+            </p>
+          )}
           <p className="hint">Both are optional. A run held back by a limit is kept in the run history with its reason.</p>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="grid gap-1">
