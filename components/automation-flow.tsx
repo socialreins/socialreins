@@ -9,6 +9,9 @@ import {
   MAX_PROMPT,
   WAIT_UNITS,
   isAi,
+  EFFECTS,
+  effectFits,
+  isActivity,
   isEffect,
   isSend,
   isWait,
@@ -131,14 +134,18 @@ export const stepIcon: Record<Step["type"], IconName> = {
   assign: "user",
   hide_comment: "comment",
   like_comment: "check",
+  repost_comment: "repeat",
+  follow_back: "follower",
   stop_automations: "close",
 };
 // What a step that sends nothing does, in a line.
 export const effectHint: Record<EffectType | "assign", string> = {
-  notify_team: "Emails the owners and admins of the team about it, with a link to the inbox. At most 20 emails a day.",
+  notify_team: "Emails the owners and admins of the team the text and a link to the inbox, nothing else about the person. At most 20 notifications a day.",
   assign: "Assigns it to a teammate. Set through the API; the builder keeps it as it is.",
   hide_comment: "Hides the comment on Facebook or Instagram: only its author and your account see it. Good for spam: pair it with the link rule.",
-  like_comment: "Likes the comment as your Page (Facebook only; Instagram has no like for a comment).",
+  like_comment: "Likes the comment or mention: as your Page on Facebook, from the account on Bluesky. Nothing happens on other networks (Instagram has no like for a comment).",
+  repost_comment: "Reposts the comment or mention from the account. Only Bluesky accounts can.",
+  follow_back: "Follows the person from the account, unless it follows them already. Only Bluesky accounts can.",
   stop_automations: "Newer automations do not run on this item once this one has.",
 };
 // One line on who pays for an AI send, under its prompt.
@@ -254,7 +261,11 @@ export function FlowEditor({
     document.getElementById("automation-flow-add")?.focus();
   }
 
-  const types = ["send_dm", ...(t.publicReply ? (["reply_publicly"] as const) : []), "ai_send_dm", ...(t.publicReply ? (["ai_reply_publicly"] as const) : []), "wait", "wait_for_reply", "tag_contact", "notify_team", ...(trigger === "comment_received" ? (["hide_comment", "like_comment"] as const) : []), "stop_automations"] as const;
+  const effects = EFFECTS.filter((e) => effectFits(e, trigger));
+  // A like or repost has nobody to message or tag, nobody to wait for: only what is done on the account or in the team.
+  const types = isActivity(trigger)
+    ? (["wait", ...effects] as const)
+    : (["send_dm", ...(t.publicReply ? (["reply_publicly"] as const) : []), "ai_send_dm", ...(t.publicReply ? (["ai_reply_publicly"] as const) : []), "wait", "wait_for_reply", "tag_contact", "notify_team", ...effects.filter((e) => e !== "notify_team")] as const);
   const whole = problems.filter((p) => p.step === null);
   const inSteps = problems.filter((p) => p.step !== null && steps[p.step]);
   return (

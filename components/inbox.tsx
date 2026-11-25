@@ -56,6 +56,7 @@ import { accountName, Avatar } from "@/components/connections";
 import { InboxEditor, inboxMessages } from "@/components/inbox-editor";
 import { DeleteReply, DmTools, ItemActionsMenu, MessageTools, useItemActions } from "@/components/inbox-actions";
 import { ModerationBar } from "@/components/inbox-moderation";
+import { ItemAutomations } from "@/components/item-automations";
 import { SnippetMenu } from "@/components/library";
 import { platformName } from "@/components/platform-icons";
 import { TagEditor } from "@/components/tag-editor";
@@ -1280,6 +1281,7 @@ function Detail({
       </ol>
 
       <XActions item={item} />
+      <ItemAutomations key={item.id} itemId={item.id} />
       {!dm && <ModerationBar key={item.id} item={item} canDelete={canManage} onChange={onChange} />}
 
       {deleted && <p className="text-sm text-ink-soft">This comment was deleted on {platform}, so it takes no reply.</p>}
