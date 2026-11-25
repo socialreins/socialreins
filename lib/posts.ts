@@ -408,6 +408,17 @@ export async function decidePost(p: Pick<Post, "id" | "group_id">, decision: "ap
   return typeof r === "string" ? r : [r];
 }
 
+// Sends the failed targets of a post (or of every post of a group) again. brain answers 202 with the post(s) queued;
+// 409 publish_in_progress, nothing_to_retry or outcome_unknown (every failure may already have posted).
+export async function retryPost(p: Pick<Post, "id" | "group_id">): Promise<Post[] | Failure> {
+  if (p.group_id) {
+    const r = await api<{ posts: Post[] }>(`/v1/post-groups/${enc(p.group_id)}/retry`, "POST");
+    return typeof r === "string" ? r : r.posts;
+  }
+  const r = await api<Post>(`/v1/posts/${enc(p.id)}/retry`, "POST");
+  return typeof r === "string" ? r : [r];
+}
+
 export type DeleteResult = "ok" | Post | Failure | { takedownFailed: string };
 
 // "ok": a draft or scheduled post is gone. A Post: a published post was taken down. brain answers
@@ -848,4 +859,70 @@ export function pageMeta(post: PublicPost): Metadata {
     openGraph: { title, description, type: "article", images: image ? [image] : undefined },
     twitter: { card: image ? "summary_large_image" : "summary", title, description, images: image ? [image] : undefined },
   };
+}
+
+// The one status of a post and the versions made with it (a group is one post to the person): published only when every
+// version went out, "partial" when some version or account did and some did not.
+export type Overall = PostStatus | "partial";
+export function overallStatus(members: Post[]): Overall {
+  if (members.some((m) => m.status === "queued")) return "queued";
+  if (members.every((m) => m.status === "draft")) return "draft";
+  if (members.some((m) => m.status === "scheduled" || m.status === "draft")) return "scheduled";
+  if (members.every((m) => m.status === "deleted")) return "deleted";
+  const live = members.filter((m) => m.status !== "deleted");
+  const failed = (m: Post) => m.status === "failed" || m.targets.some((t) => t.status === "failed");
+  const worked = (m: Post) => m.targets.some((t) => t.status === "published" || t.status === "deleted");
+  const bad = live.some(failed);
+  const good = live.some(worked);
+  return bad && good ? "partial" : bad ? "failed" : "published";
+}
+export const overallName: Record<Overall, string> = { draft: "Draft", scheduled: "Scheduled", queued: "Publishing", published: "Published", failed: "Failed", deleted: "Taken down", partial: "Partly published" };
+
+// brain's phrases for a failure that may already have posted: a retry would post twice, so brain offers none.
+const MAY_HAVE_POSTED = ["may have posted", "may still post", "may be live"];
+export const mayHavePosted = (error: string | null | undefined) => !!error && MAY_HAVE_POSTED.some((p) => error.includes(p));
+// Whether Retry can send a failed target again (brain's `retryable`): it failed before anything went out, or midway
+// through a thread, and the platform did not say it may have posted.
+export const canRetry = (t: Target, p: Pick<Post, "thread" | "status">) =>
+  (p.status === "published" || p.status === "failed") && t.status === "failed" && (!t.remote_id || (t.parts ?? []).length < (p.thread ?? []).length) && !mayHavePosted(t.error);
+
+// What to do about a failed target, in plain words, from what brain's error says. `link` names where in the app to go.
+export type Advice = { text: string; link?: "accounts" };
+export function failureAdvice(t: Pick<Target, "error" | "retry_at" | "retried">, retryable: boolean, zone: string): Advice {
+  const e = (t.error ?? "").toLowerCase();
+  if (t.retry_at) {
+    const at = new Date(t.retry_at).toLocaleString("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: zone });
+    return { text: `SocialReins sends it again by itself on ${at}. You do not need to do anything.` };
+  }
+  if (mayHavePosted(t.error)) return { text: "Check the account on the network first: the post may be live. If it is not, use Duplicate and publish the copy. Retry is not offered, since it could post twice." };
+  // The network refused the content: sending it again changes nothing.
+  if (/aspect|too large|too long|too many (images|files|characters|hashtags)|size|format|not supported|unsupported|dimension|resolution|duration|\b(image|video|media)\b/.test(e)) return { text: "The network refused the content. Use Duplicate, change the text or media as the message says, and publish the copy." };
+  if (/reconnect|(token|access|password).{0,30}(expired|invalid|revoked|denied)|revoked|unauthori[sz]ed|\b401\b|\b403\b|permission/.test(e)) return { text: "Reconnect the account on the Accounts page, then Retry.", link: "accounts" };
+  if (/tomorrow|daily (limit|quota)|per day/.test(e)) return { text: retryable ? "The network's daily limit was reached. Retry tomorrow." : "The network's daily limit was reached. Try again tomorrow with Duplicate." };
+  if (/rate.?limit|\b429\b|too many requests|slow down/.test(e)) return { text: retryable ? "Wait a few minutes, then Retry." : "Try again later with Duplicate." };
+  return { text: retryable ? `Retry once${t.retried ? " more" : ""}. If it fails again, use Duplicate and check the account on the Accounts page.` : "Use Duplicate, then check the account on the Accounts page." };
+}
+
+// One line of a post's history. brain keeps no event log, so these are the times it does store: when the post was made,
+// planned, decided on, published or taken down per account, and when it last changed (a failure).
+export type TimelineEvent = { at: string; text: string; tone: "ok" | "bad" | "info" };
+export function timeline(members: Post[], names: { account: (id: string | null) => string; network: (p: Platform) => string }, author?: string): TimelineEvent[] {
+  const first = [...members].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))[0];
+  if (!first) return [];
+  const out: TimelineEvent[] = [{ at: first.created_at, text: `Created${author ? ` by ${author}` : ""}${members.length > 1 ? ` for ${members.length} networks` : ""}`, tone: "info" }];
+  const plan = members.find((m) => m.scheduled_at)?.scheduled_at;
+  if (plan) out.push({ at: plan, text: "Planned for", tone: "info" });
+  const decided = members.find((m) => m.approval_at);
+  if (decided?.approval_at) out.push({ at: decided.approval_at, text: decided.approval === "approved" ? "Approved" : "Changes requested", tone: decided.approval === "approved" ? "ok" : "bad" });
+  for (const m of members) {
+    const net = names.network(m.platform);
+    for (const t of m.targets) {
+      const name = `${net}, ${names.account(t.social_account_id)}`;
+      if (t.status === "published" && t.published_at) out.push({ at: t.published_at, text: `Published on ${name}`, tone: "ok" });
+      if (t.status === "deleted") out.push({ at: m.updated_at, text: `Taken down from ${name}`, tone: "info" });
+      if (t.status === "failed") out.push({ at: m.updated_at, text: `Failed on ${name}${t.retried ? " after an automatic retry" : ""}`, tone: "bad" });
+      if (t.retry_at) out.push({ at: t.retry_at, text: `Automatic retry on ${name}`, tone: "info" });
+    }
+  }
+  return out.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
 }

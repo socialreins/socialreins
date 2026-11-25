@@ -503,7 +503,7 @@ test("publish now polls until the post is published", async ({ page }) => {
   // No "publishing" message is left behind once the post is out.
   await expect(page.getByText(/Publishing|Sent to Bluesky/)).toHaveCount(0);
   await expect(page.getByRole("link", { name: "View on Bluesky" })).toHaveAttribute("href", "https://bsky.app/profile/alice.bsky.social/post/1");
-  await expect(page.getByText("Alice: published")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Bluesky Published" }).getByText("Alice", { exact: true })).toBeVisible();
   expect(polls).toBe(2);
 });
 
@@ -559,14 +559,18 @@ test("a failed post is read-only with its error and target statuses", async ({ p
       json: post("p5", {
         status: "failed",
         error: "Alice: the image is over 1 MB.",
-        targets: [target({ status: "failed", remote_url: null, error: "image too large" })],
+        targets: [target({ status: "failed", remote_url: null, remote_id: null, error: "image too large" })],
       }),
     }),
   );
   await page.goto("/posts/p5");
   await expect(page.getByRole("status").filter({ hasText: "Failed." })).toBeVisible();
-  await expect(page.getByText("What went wrong: Alice: the image is over 1 MB.")).toBeVisible();
-  await expect(page.getByText("Alice: failed. image too large")).toBeVisible();
+  // The account's own error, with what to do about it, and Retry or Duplicate for it.
+  const why = page.getByRole("group", { name: "What went wrong for Alice" });
+  await expect(why).toContainText("image too large");
+  await expect(why).toContainText("What to do:");
+  await expect(why.getByRole("button", { name: "Retry Bluesky" })).toBeVisible();
+  await expect(why.getByRole("link", { name: "Duplicate" })).toHaveAttribute("href", "/t/acme22/posts/new?from=p5");
   await expect(page.getByRole("button", { name: /Delete|Take down|Save draft/ })).toHaveCount(0);
 });
 
@@ -651,16 +655,15 @@ test("a post for several platforms is one group, published on each", async ({ pa
   });
   expect(published).toEqual(["g-b", "g-t", "g-i"]);
   await expect(page.getByRole("link", { name: "View on Bluesky" })).toHaveAttribute("href", "https://example.com/bluesky/1");
-  // Every version is listed first, with its status; the open one is marked.
-  const versions = page.getByRole("navigation", { name: "Versions of this post" });
-  await expect(versions.getByRole("listitem")).toHaveText([/Bluesky\s*Published/, /Threads\s*Published/, /Instagram\s*Published/]);
-  await expect(versions.locator("[aria-current=page]")).toHaveText(/Bluesky/);
-  await expect(versions.getByRole("link", { name: /Bluesky/ })).toHaveCount(0);
-  await expect(versions.getByRole("link", { name: /Threads/ })).toHaveAttribute("href", "/t/acme22/posts/g-t");
-  const others = page.getByRole("region", { name: "Same post on other platforms" });
-  await expect(others.getByRole("link", { name: "Threads post" })).toHaveAttribute("href", "/t/acme22/posts/g-t");
-  await expect(others.getByRole("link", { name: "View on Threads" })).toHaveAttribute("href", "https://example.com/threads/1");
-  await expect(others.getByRole("link", { name: "View on Instagram" })).toHaveAttribute("href", "https://example.com/instagram/1");
+  // One post with a tab per network, each with its status; the opened one is selected.
+  const tabs = page.getByRole("tablist", { name: "Networks" });
+  await expect(tabs.getByRole("tab")).toHaveText([/Bluesky\s*Published/, /Threads\s*Published/, /Instagram\s*Published/]);
+  await expect(tabs.getByRole("tab", { selected: true })).toHaveText(/Bluesky/);
+  await tabs.getByRole("tab", { name: /Threads/ }).click();
+  await expect(page.getByRole("link", { name: "View on Threads" })).toHaveAttribute("href", "https://example.com/threads/1");
+  await page.keyboard.press("ArrowRight");
+  await expect(tabs.getByRole("tab", { name: /Instagram/ })).toBeFocused();
+  await expect(page.getByRole("link", { name: "View on Instagram" })).toHaveAttribute("href", "https://example.com/instagram/1");
 });
 
 test("Instagram without an image is flagged before brain is asked", async ({ page }) => {
@@ -1332,7 +1335,7 @@ test("a group publish that stops partway names what is left and carries on", asy
   await page.getByRole("button", { name: "Publish the rest" }).click();
   await expect(page.getByText(/Not published yet/)).toHaveCount(0);
   expect(published).toEqual(["g-b", "g-t", "g-t", "g-i"]);
-  await expect(page.getByRole("region", { name: "Same post on other platforms" }).getByText("Publishing")).toHaveCount(2);
+  await expect(page.getByRole("tab", { name: /Publishing/ })).toHaveCount(3);
 });
 
 test("calendar shows the versions of one post as one line, marked with each platform", async ({ page }) => {
@@ -1403,7 +1406,7 @@ test("take down all asks once, names the platforms and takes the group down in o
   await expect(report.getByRole("listitem")).toHaveText(["Bluesky: taken down", "Threads: taken down", "Instagram: taken down"]);
   expect(calls).toEqual([["g-b", "g-t", "g-i"]]);
   await expect(page.getByRole("button", { name: "Take down all" })).toHaveCount(0);
-  await expect(page.getByRole("region", { name: "Same post on other platforms" }).getByText("Taken down", { exact: true })).toHaveCount(2);
+  await expect(page.getByRole("tab", { name: /Taken down/ })).toHaveCount(3);
 });
 
 test("take down all names the platforms still up after a failure and retries only those", async ({ page }) => {
@@ -1446,14 +1449,14 @@ test("take down all is hidden when no post of the group is published", async ({ 
 test("take down all leaves TikTok out and says where to delete it", async ({ page }) => {
   const calls = await groupPage(page, { "g-b": "published", "g-t": "published", "g-k": "published" });
   const hint = "TikTok does not let other apps delete a post. Delete it in the TikTok app.";
-  await expect(page.getByRole("region", { name: "Same post on other platforms" }).getByText(hint)).toBeVisible();
+  await expect(page.getByText(hint)).toBeVisible();
   await page.getByRole("button", { name: "Take down all" }).click();
   await expect(page.getByText("Take these 2 posts down from Bluesky and Threads?")).toBeVisible();
   await page.getByRole("button", { name: "Yes, take them all down" }).click();
   const report = page.getByRole("status").filter({ hasText: "Taken down from Bluesky and Threads." });
   await expect(report.getByRole("listitem")).toHaveText(["Bluesky: taken down", "Threads: taken down"]);
   await expect(page.getByRole("button", { name: "Take down all" })).toHaveCount(0);
-  await expect(page.getByRole("region", { name: "Same post on other platforms" }).getByText(hint)).toBeVisible();
+  await expect(page.getByText(hint)).toBeVisible();
   expect(calls).toEqual([["g-b", "g-t"]]);
 });
 
