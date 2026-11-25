@@ -106,6 +106,13 @@ describe("WaitlistForm", () => {
     expect(JSON.parse(String(join[1].body))).toEqual({ email: "a@b.co", source: "landing" });
   });
 
+  it("shows no count while nobody has confirmed yet", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(Response.json({ count: 0 }))));
+    render(<WaitlistForm />);
+    await act(async () => {});
+    expect(screen.queryByText(/on the waitlist$/)).toBeNull();
+  });
+
   it("keeps the same live region for errors and the form usable", async () => {
     vi.stubGlobal("fetch", respond(422));
     render(<WaitlistForm />);
