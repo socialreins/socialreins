@@ -614,7 +614,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
             <div className="card grid gap-3 p-5">
               <p>
                 <strong className="block">No accounts connected</strong>
-                <span className="text-ink-soft">Connect a Bluesky, Facebook or Instagram account and its comments, mentions and DMs land here.</span>
+                <span className="text-ink-soft">Connect a Bluesky, Facebook, Instagram or X account and its comments, mentions and DMs land here.</span>
               </p>
               <Link href="/connections" className="btn btn-primary justify-self-start">
                 Connect an account

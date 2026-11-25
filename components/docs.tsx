@@ -507,7 +507,7 @@ const networkApps: { name: string; where: string; url: string; steps: ReactNode[
     scopes: "tweet.read, tweet.write, users.read, offline.access, media.write, dm.read, dm.write, like.write, tweet.moderate.write",
     env: ["X_CLIENT_ID", "X_CLIENT_SECRET"],
     redirect: ["/connect/x/callback"],
-    note: "X charges for API use under its own plans, and reading counts: each post, user and DM it returns is billed. SocialReins reads the account's plan to set the post length limit, and you can set it yourself on the account. The last four scopes are for the inbox (DMs, likes, hiding a reply); a person may untick them and still publish. The inbox is off for each account until a team turns it on and sets its monthly budget; accounts connected before these scopes existed are asked to reconnect once.",
+    note: "X charges for API use under its own plans, and reading counts: each post, user and DM it returns is billed. SocialReins reads the account's plan to set the post length limit, and you can set it yourself on the account. The last four scopes are for the inbox (DMs, likes, hiding a reply); a person may untick them and still publish. The inbox is off for each account until a team turns it on and sets its monthly budget; an account connected without them is asked to reconnect once to read DMs, like and hide.",
   },
   {
     name: "TikTok",

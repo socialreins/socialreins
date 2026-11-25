@@ -51,7 +51,8 @@ export const xAction = (itemId: string, action: XAction) => call<"ok">(`/v1/inbo
 export const xMessages: Record<string, string> = {
   invalid_poll: "Read every 15 minutes to once a day.",
   invalid_budget: "Choose a monthly budget between $0.10 and $100.",
-  reconnect_for_dms: "This account was connected before DMs were added. Reconnect it to read and send DMs.",
+  reconnect_for_dms: "This account was connected without the DM permissions. Reconnect it to read and send DMs.",
+  action_in_progress: "Another action on this item is still going out. Try again in a moment.",
   reconnect_required: "X refused this account's sign-in. Reconnect it first.",
   x_reconnect_required: "This account was connected without that permission, or X refused its sign-in. Reconnect it.",
   not_repliable: "That doesn't work on this item.",

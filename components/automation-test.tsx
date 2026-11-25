@@ -19,7 +19,7 @@ import { Status, useAction } from "@/components/team-ui";
 
 const messages: Partial<Record<Failure, string>> = {
   rate_limited: "You used today's tests (100, and each AI step counts as one more). Try again tomorrow.",
-  invalid_sample: "Write a sample of up to 2000 characters, and pick one of your Bluesky, Facebook or Instagram accounts.",
+  invalid_sample: "Write a sample of up to 2000 characters, and pick one of your Bluesky, Facebook, Instagram or X accounts.",
 };
 
 const stepName = (s: PlannedStep) => (s.type === "wait" ? "Wait" : actionName[s.type]);
@@ -139,7 +139,7 @@ export function AutomationTest({
           )}
         </div>
       ) : (
-        <p className="text-sm">Connect a Bluesky, Facebook or Instagram account to test with.</p>
+        <p className="text-sm">Connect a Bluesky, Facebook, Instagram or X account to test with.</p>
       )}
       <div className="flex flex-wrap items-center gap-3">
         <button type="button" className="btn btn-quiet" disabled={busy !== null || !can} onClick={() => void test()}>

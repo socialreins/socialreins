@@ -139,7 +139,7 @@ export function AutomationForm({
   // Everything that stops a save, with the field to fix it in, for the bar's count.
   const issues: { text: string; field: string }[] = [
     ...(d.name.trim() ? [] : [{ text: "Give it a name.", field: "automation-name" }]),
-    ...(stuck.length ? [{ text: `Untick ${stuck.join(", ")}: automations run only on Bluesky, Facebook and Instagram.`, field: "automation-scope" }] : []),
+    ...(stuck.length ? [{ text: `Untick ${stuck.join(", ")}: automations run only on Bluesky, Facebook, Instagram and X.`, field: "automation-scope" }] : []),
     ...(t.payloads && !d.payloads.length ? [{ text: "Add at least one button payload.", field: "automation-payloads" }] : []),
     ...(d.flow
       ? problems.map((p) => ({ text: p.step === null ? p.text : `Step ${p.step + 1}: ${p.text}`, field: p.step === null ? "automation-flow-add" : `step-${d.steps[p.step]!.id}-field` }))

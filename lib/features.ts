@@ -16,7 +16,7 @@ export type Feature = {
 };
 
 // Bluesky is live; Facebook Pages, Instagram and X are in testing (the same words as lib/compare.ts). LinkedIn is Not yet:
-// it lets an app read comments only after its own approval (plan/status.md, Waiting on Harun).
+// it lets an app read comments only after its own approval.
 const support: Record<string, Support> = { bluesky: "Yes", facebook: "In testing", instagram: "In testing", x: "In testing" };
 
 export const features: Feature[] = [

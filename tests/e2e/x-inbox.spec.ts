@@ -154,3 +154,25 @@ test("an X comment can be liked, reposted and hidden, a mention not hidden", asy
   await expect(page.getByRole("button", { name: "Like", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Hide reply" })).toHaveCount(0);
 });
+
+test("a budget typed with a dollar sign is refused on the page, not saved as nothing", async ({ page }) => {
+  const seen = await brain(page, inbox({ enabled: true }));
+  await page.goto("/connections");
+  await page.getByRole("button", { name: "Settings for Ann Lee" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Most to spend a month ($)").fill("$5");
+  await dialog.getByRole("button", { name: "Save inbox settings" }).click();
+  await expect(dialog.getByRole("alert").filter({ hasText: "Write the budget as a number of dollars" })).toBeVisible();
+  expect(seen.puts).toEqual([]);
+});
+
+test("DMs left on after the permission was lost do not block saving", async ({ page }) => {
+  const seen = await brain(page, inbox({ enabled: true, read_dms: true, can_read_dms: false }));
+  await page.goto("/connections");
+  await page.getByRole("button", { name: "Settings for Ann Lee" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByLabel("Read and send DMs")).not.toBeChecked();
+  await dialog.getByLabel("Most to spend a month ($)").fill("3");
+  await dialog.getByRole("button", { name: "Save inbox settings" }).click();
+  await expect.poll(() => seen.puts).toEqual([{ enabled: true, read_dms: false, poll_minutes: 60, budget_usd: 3 }]);
+});

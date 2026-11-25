@@ -80,7 +80,8 @@ export type ItemPage = { items: Item[]; next_cursor: string | null };
 export const MAX_PUBLIC = 300;
 export const MAX_DM = 1000;
 // Facebook takes comments of 8000 characters and messages of 2000; Instagram comments of 2200 and messages of 1000;
-// X replies of 280 (as X counts them: a link counts 23) and messages of 10,000.
+// X replies of 280 and messages of 10,000. The reply counter counts characters, X weights them (a link is 23), so brain
+// has the last word.
 const META_MAX: Record<string, { public: number; dm: number }> = { facebook: { public: 8000, dm: 2000 }, instagram: { public: 2200, dm: 1000 }, x: { public: 280, dm: 10000 } };
 export const maxFor = (kind: Item["kind"], provider?: string) => {
   const meta = provider ? META_MAX[provider] : undefined;

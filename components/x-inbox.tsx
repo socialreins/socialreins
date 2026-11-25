@@ -43,10 +43,15 @@ export function XInboxSettings({ id, canManage }: { id: string; canManage: boole
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (busy) return;
+    setSaved(false);
+    // A "$5" or "5,50" would go to brain as null, which keeps the old budget while this says Saved.
+    const { min_budget_usd: low, max_budget_usd: high } = state!.limits;
+    const dollars = /^\d+(\.\d{1,2})?$/.test(budget.trim()) ? Number(budget) : NaN;
+    if (!(dollars >= low && dollars <= high)) return setProblem(`Write the budget as a number of dollars, from ${usd(low)} to ${usd(high)}, for example 5 or 2.50.`);
     setBusy(true);
     setProblem(null);
-    setSaved(false);
-    const r = await setXInbox(id, { enabled: on, read_dms: on && dms, poll_minutes: every, budget_usd: Number(budget) });
+    const r = await setXInbox(id, { enabled: on, read_dms: on && dms && state!.can_read_dms, poll_minutes: every, budget_usd: dollars });
     setBusy(false);
     if (isFailure(r) || isRefusal(r)) return setProblem(said(r));
     show(r);
@@ -65,7 +70,7 @@ export function XInboxSettings({ id, canManage }: { id: string; canManage: boole
   const e = state.estimate;
   return (
     <form onSubmit={submit} className="grid gap-3" aria-labelledby={`x-inbox-${id}`}>
-      <fieldset className="grid gap-2" disabled={!canManage || busy}>
+      <fieldset className="grid gap-2" disabled={!canManage}>
         <legend id={`x-inbox-${id}`} className="mb-1 font-bold">
           X inbox
         </legend>
@@ -78,12 +83,12 @@ export function XInboxSettings({ id, canManage }: { id: string; canManage: boole
           Read this account&apos;s mentions and replies
         </label>
         <label className="flex items-center gap-2">
-          <input type="checkbox" checked={dms && on} disabled={!on || !state.can_read_dms} onChange={(ev) => setDms(ev.target.checked)} />
+          <input type="checkbox" checked={dms && on && state.can_read_dms} disabled={!on || !state.can_read_dms} onChange={(ev) => setDms(ev.target.checked)} />
           Read and send DMs
         </label>
         {!state.can_read_dms && (
           <p className="text-sm">
-            <strong>Reconnect for DMs, likes and hiding.</strong> <span className="text-ink-soft">This account was connected before the inbox existed, so X never gave those permissions.</span>{" "}
+            <strong>Reconnect for DMs, likes and hiding.</strong> <span className="text-ink-soft">This account was connected without those permissions, so X never gave them.</span>{" "}
             <a href={inboxConnect()} className="font-bold underline decoration-2 underline-offset-4">
               Reconnect
             </a>
@@ -130,7 +135,14 @@ export function XInboxSettings({ id, canManage }: { id: string; canManage: boole
         </p>
       )}
       {!state.paused && state.last_error && <p className="text-sm text-ink-soft">Last problem: {state.last_error}</p>}
-      {state.reconnect && <p role="alert" className="waitlist-error">X refused this account&apos;s sign-in, so nothing is read until you reconnect it.</p>}
+      {state.reconnect && (
+        <p role="alert" className="waitlist-error">
+          X refused this account&apos;s sign-in, so nothing is read until you reconnect it.{" "}
+          <a href={inboxConnect()} className="font-bold underline decoration-2 underline-offset-4">
+            Reconnect
+          </a>
+        </p>
+      )}
       {problem && (
         <p role="alert" className="waitlist-error">
           {problem}
@@ -170,8 +182,8 @@ export function XActions({ item }: { item: Pick<Item, "id" | "kind" | "platform"
   return (
     <div className="flex flex-wrap items-center gap-2 border-t border-ink/10 pt-3">
       {buttons.map(([action, label, done]) => (
-        <button key={action} type="button" className="btn btn-secondary btn-sm" disabled={busy !== null} onClick={() => press(action, done)}>
-          {busy === action ? "..." : label}
+        <button key={action} type="button" className="btn btn-secondary btn-sm" disabled={busy !== null} aria-busy={busy === action} onClick={() => press(action, done)}>
+          {label}
         </button>
       ))}
       {note && (
