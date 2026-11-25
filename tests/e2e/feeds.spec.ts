@@ -120,7 +120,7 @@ test("adds a feed for the picked set's networks", async ({ page }) => {
   // All sets: every connected network but TikTok and YouTube, all ticked.
   for (const name of ["Instagram", "Bluesky", "X"]) await expect(f.getByRole("checkbox", { name, exact: true })).toBeChecked();
   await expect(f.getByRole("checkbox")).toHaveCount(3);
-  await expect(f.getByText("TikTok and YouTube are left out")).toBeVisible();
+  await expect(f.getByText("TikTok, YouTube and Pinterest are left out")).toBeVisible();
   // Clients has only Bluesky left.
   await f.getByLabel("Set", { exact: true }).selectOption("s1");
   await expect(f.getByRole("checkbox")).toHaveCount(1);

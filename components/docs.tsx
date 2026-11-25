@@ -167,6 +167,7 @@ function Start({ mode }: { mode: Mode }) {
               ["X", "X_CLIENT_ID, X_CLIENT_SECRET", "/connect/x/callback"],
               ["TikTok", "TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET", "/connect/tiktok/callback"],
               ["YouTube", "GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET", "/connect/youtube/callback"],
+              ["Pinterest", "PINTEREST_APP_ID, PINTEREST_APP_SECRET", "/connect/pinterest/callback"],
             ].map(([network, values, path]) => (
               <tr key={network}>
                 <th scope="row" className="border-b border-ink/10 p-3 align-top">{network}</th>
@@ -311,7 +312,7 @@ function Use({ mode }: { mode: Mode }) {
       <h2 id="feeds">Post from an RSS or Atom feed</h2>
       <ol>
         <li>Open Feeds and choose Add feed.</li>
-        <li>Paste the feed&apos;s link, and pick the set and its networks. TikTok and YouTube are not offered, and an item needs an image to go to Instagram.</li>
+        <li>Paste the feed&apos;s link, and pick the set and its networks. TikTok, YouTube and Pinterest are not offered, and an item needs an image to go to Instagram.</li>
         <li>Choose what a new item becomes: Save a draft, Add to the queue or Post right away.</li>
         <li>
           Write the post text. <C>{"{title}"}</C>, <C>{"{link}"}</C> and <C>{"{summary}"}</C> are filled in from each item.
@@ -532,6 +533,21 @@ const networkApps: { name: string; where: string; url: string; steps: ReactNode[
     env: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"],
     redirect: ["/connect/youtube/callback", "/auth/google/callback (Google sign-in)"],
     note: "While the consent screen is in Testing, only your listed test users can connect and Google ends their access after 7 days. Publish the app, and finish Google's verification for these scopes, to lift that.",
+  },
+  {
+    name: "Pinterest",
+    where: "the Pinterest developer site",
+    url: "https://developers.pinterest.com/apps/",
+    steps: [
+      "Sign in with the Pinterest account that will own the app, and choose Connect app.",
+      "Give it a name, describe what it does and link your privacy policy, then ask for access. Pinterest answers with Trial access first, which can take a few days.",
+      "Open the app, and add the redirect address below as a redirect URI.",
+      "Copy the App id and App secret.",
+    ],
+    scopes: "boards:read, boards:write, pins:read, pins:write, user_accounts:read",
+    env: ["PINTEREST_APP_ID", "PINTEREST_APP_SECRET"],
+    redirect: ["/connect/pinterest/callback"],
+    note: "Pinterest has three levels of access. Sandbox is a separate test address (api-sandbox.pinterest.com) with its own token, which SocialReins does not use. Trial access, which a new app gets, works on the real address, but every pin and board the app makes is visible only to the account that made it, and Pinterest allows the whole app 1,000 requests and 300 pin or board changes a day. Standard access makes the pins public and allows 100 changes a minute for each user (Pinterest can change these limits): ask for it with Upgrade on the app's card, with a screen recording of the sign-in flow and of a pin made through your app. A pin goes to a board you pick, or to the account's default board, which you set under Accounts after connecting. Secret boards are not listed. Pinterest gives tools no way to read comments, so there is no Pinterest inbox or automation.",
   },
 ];
 

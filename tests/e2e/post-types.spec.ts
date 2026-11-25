@@ -13,7 +13,7 @@ test("post types page shows the table with every network", async ({ page }) => {
 });
 
 test("on a phone the post types table says it scrolls sideways, and the page does not", async ({ page }) => {
-  const hint = page.getByText("Scroll the table sideways to see all eight networks.");
+  const hint = page.getByText("Scroll the table sideways to see all nine networks.");
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/post-types");
   await expect(hint).toBeVisible();
@@ -32,6 +32,15 @@ test("each network page says what works there beyond posting", async ({ page }) 
   await expect(cell("Posts from an RSS or Atom feed")).toHaveText("No. Feeds are not offered for TikTok.");
   await expect(cell("Post analytics")).toHaveText("No.");
   await expect(cell("Inbox")).toHaveText("Not yet.");
+  // Pinterest has no inbox or automations: the same "Not yet" as the other networks without them.
+  await page.goto("/pinterest");
+  await expect(cell("Inbox")).toHaveText("Not yet.");
+  await expect(cell("Automations")).toHaveText("Not yet.");
+  await expect(cell("Posts from an RSS or Atom feed")).toContainText("No.");
+  await expect(cell("Post analytics")).toHaveText("No.");
+  await expect(cell("Alt text")).toContainText("cut to 500 characters");
+  await expect(cell("Description")).toContainText("up to 800 characters");
+  await expect(cell("Carousel of images")).toContainText("2 to 5");
   await page.goto("/youtube");
   await expect(cell("Posts from an RSS or Atom feed")).toContainText("No.");
   await expect(cell("Post analytics")).toHaveText("Yes: views, likes and comments for each post.");

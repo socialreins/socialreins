@@ -7,7 +7,7 @@ import { publicPage } from "@/lib/seo";
 
 export const metadata: Metadata = {
   title: "Supported social media: SocialReins",
-  description: "Every social network SocialReins posts to: Bluesky, Threads, LinkedIn, Facebook, Instagram, YouTube, X and TikTok, each with its own page.",
+  description: "Every social network SocialReins posts to: Bluesky, Threads, LinkedIn, Facebook, Instagram, YouTube, X, TikTok and Pinterest, each with its own page.",
   ...publicPage("/socials"),
 };
 

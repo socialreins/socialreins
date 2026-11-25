@@ -274,7 +274,7 @@ test("on a phone the posts list fits the screen", async ({ page }) => {
 test("a team without Bluesky sees a note linking to connections", async ({ page }) => {
   await brain(page, { accounts: [] });
   await page.goto("/posts/new");
-  const note = page.getByText("No Bluesky, Threads, LinkedIn, X, TikTok, YouTube, Facebook or Instagram account is connected to this team yet");
+  const note = page.getByText("No Bluesky, Threads, LinkedIn, X, TikTok, YouTube, Pinterest, Facebook or Instagram account is connected to this team yet");
   await expect(note).toBeVisible();
   await expect(page.getByRole("link", { name: "Connect an account" })).toHaveAttribute("href", "/t/acme22/connections");
 });
@@ -962,6 +962,120 @@ test("a published YouTube post shows its visibility", async ({ page }) => {
   // A post saved without a choice went up private.
   await page.goto("/posts/p9");
   await expect(shown).toContainText("Private");
+});
+
+const pinAcc = { ...account("c9", "pinterest", "Ann Pins"), handle: "annpins" };
+const pinBoards = [
+  { id: "111", name: "Recipes", privacy: "PUBLIC" },
+  { id: "222", name: "Travel", privacy: "PROTECTED" },
+];
+const pinterestBoards = (page: Page, id = "c9") => page.route(`**/v1/connections/${id}/pinterest/boards`, (route) => route.fulfill({ json: { boards: pinBoards } }));
+
+test("a pin goes to the picked board with its title and link, and the image's alt text", async ({ page }) => {
+  await brain(page, { accounts: [pinAcc] });
+  await pinterestBoards(page);
+  let sent: Record<string, unknown> | undefined;
+  await page.route("**/v1/posts", (route) => {
+    sent = route.request().postDataJSON();
+    return route.fulfill({ status: 201, json: post("p1", sent) });
+  });
+  await page.goto("/posts/new");
+  await page.getByLabel("Post", { exact: true }).fill("A recipe worth saving");
+  await page.getByRole("button", { name: "Add image" }).click();
+  await page.getByLabel("Image 1 link").fill("https://example.com/pie.jpg");
+  const board = page.getByLabel("Board", { exact: true });
+  await expect(board.getByRole("option", { name: "Travel (protected)" })).toHaveCount(1);
+  // The account has no default board, so one must be chosen.
+  await expect(page.getByText("This account has no default board, so choose one.")).toBeVisible();
+  await board.selectOption("222");
+  await page.getByLabel("Title (optional)").fill("  Apple pie  ");
+  await page.getByLabel("Link (optional)").fill("https://example.com/pie");
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page).toHaveURL("/t/acme22/posts/p1");
+  expect(sent).toMatchObject({ platform: "pinterest", body: "A recipe worth saving", pinterest: { board_id: "222", title: "Apple pie", link: "https://example.com/pie" } });
+});
+
+test("a pin without a board uses the account's default board", async ({ page }) => {
+  await brain(page, { accounts: [{ ...pinAcc, default_board_id: "111", default_board_name: "Recipes" }] });
+  await pinterestBoards(page);
+  let sent: Record<string, unknown> | undefined;
+  await page.route("**/v1/posts", (route) => {
+    sent = route.request().postDataJSON();
+    return route.fulfill({ status: 201, json: post("p1", sent) });
+  });
+  await page.goto("/posts/new");
+  await page.getByLabel("Post", { exact: true }).fill("Pasta");
+  await page.getByRole("button", { name: "Add image" }).click();
+  await page.getByLabel("Image 1 link").fill("https://example.com/pasta.jpg");
+  const board = page.getByLabel("Board", { exact: true });
+  await expect(board.getByRole("option", { name: "Default board: Recipes" })).toHaveCount(1);
+  await expect(page.getByText("This account has no default board")).toHaveCount(0);
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page).toHaveURL("/t/acme22/posts/p1");
+  expect(sent).toMatchObject({ platform: "pinterest", pinterest: { board_id: null, title: null, link: null } });
+});
+
+test("a pin needs an image, a title within 100 characters and a web link", async ({ page }) => {
+  await brain(page, { accounts: [{ ...pinAcc, default_board_id: "111", default_board_name: "Recipes" }] });
+  await pinterestBoards(page);
+  await page.goto("/posts/new");
+  await page.getByLabel("Post", { exact: true }).fill("Pasta");
+  await page.getByLabel("Title (optional)").fill("t".repeat(101));
+  await expect(page.getByText("101 of 100 characters")).toBeVisible();
+  await page.getByLabel("Link (optional)").fill("ftp://example.com");
+  await expect(page.getByText("Use a web address that starts with http:// or https://.")).toBeVisible();
+  await expect(page.getByLabel("Title (optional)")).toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByLabel("Link (optional)")).toHaveAttribute("aria-invalid", "true");
+});
+
+test("a group gives the Pinterest settings to its Pinterest post, and one account's boards are offered only for one account", async ({ page }) => {
+  await brain(page, { accounts: [pinAcc, facebookAcc] });
+  await pinterestBoards(page);
+  let sent: Record<string, unknown> | undefined;
+  await page.route("**/v1/post-groups", (route) => {
+    sent = route.request().postDataJSON();
+    return route.fulfill({ status: 201, json: { group_id: "g1", posts: [post("g-p", { platform: "pinterest", group_id: "g1" }), post("g-f", { platform: "facebook", group_id: "g1" })] } });
+  });
+  await page.goto("/posts/new");
+  await page.getByLabel("Post", { exact: true }).fill("Pasta night");
+  await page.getByRole("button", { name: "Add image" }).click();
+  await page.getByLabel("Image 1 link").fill("https://example.com/pasta.jpg");
+  await page.getByRole("tab", { name: "Pinterest" }).click();
+  await page.getByLabel("Board", { exact: true }).selectOption("111");
+  await page.getByLabel("Title (optional)").fill("Pasta");
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page).toHaveURL("/t/acme22/posts/g-p");
+  expect(sent).toMatchObject({ pinterest: { board_id: "111", title: "Pasta", link: null } });
+});
+
+test("with several Pinterest accounts the pin uses each default board, and a saved board that is not listed stays visible", async ({ page }) => {
+  const second = { ...account("c10", "pinterest", "Second Pins"), handle: "second", default_board_id: "111" };
+  await brain(page, { accounts: [{ ...pinAcc, default_board_id: "111" }, second] });
+  await pinterestBoards(page);
+  await page.goto("/posts/new");
+  await expect(page.getByText("This pin goes to 2 Pinterest accounts")).toBeVisible();
+  await expect(page.getByLabel("Board", { exact: true })).toHaveCount(0);
+
+  await brain(page, { accounts: [pinAcc] });
+  await page.route("**/v1/posts/p9", (route) => route.fulfill({ json: post("p9", { platform: "pinterest", media: ["https://example.com/pie.jpg"], pinterest: { board_id: "999", title: null, link: null } }) }));
+  await page.goto("/posts/p9");
+  const board = page.getByLabel("Board", { exact: true });
+  await expect(board.getByRole("option", { name: "Board 999 (not in the list)" })).toHaveCount(1);
+  await expect(board).toHaveValue("999");
+});
+
+test("a saved pin shows its settings", async ({ page }) => {
+  await brain(page, { accounts: [pinAcc] });
+  await page.route("**/v1/posts/p8", (route) =>
+    route.fulfill({
+      json: post("p8", { platform: "pinterest", status: "published", published_at: "2026-11-03T08:00:00Z", media: ["https://example.com/pie.jpg"], pinterest: { board_id: "222", title: "Apple pie", link: "https://example.com/pie" }, targets: [target({ social_account_id: "c9" })] }),
+    }),
+  );
+  await page.goto("/posts/p8");
+  const shown = page.getByRole("region", { name: "Pinterest settings" });
+  await expect(shown).toContainText("Board 222");
+  await expect(shown).toContainText("Title: Apple pie");
+  await expect(shown).toContainText("Link: https://example.com/pie");
 });
 
 const xAcc = { ...account("c6", "x", "Ann on X"), handle: "ann_lee" };

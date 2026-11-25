@@ -11,7 +11,7 @@ test("the Instagram page states the Motion Carousel and its 20-slide limit, and 
   await expect(page.getByRole("link", { name: "What you can post to Instagram" })).toHaveAttribute("href", "/instagram");
 });
 
-const pages = { bluesky: "Bluesky", threads: "Threads", linkedin: "LinkedIn", facebook: "Facebook", instagram: "Instagram", youtube: "YouTube", x: "X", tiktok: "TikTok" };
+const pages = { bluesky: "Bluesky", threads: "Threads", linkedin: "LinkedIn", facebook: "Facebook", instagram: "Instagram", youtube: "YouTube", x: "X", tiktok: "TikTok", pinterest: "Pinterest" };
 
 test("every network has its own page, linked from the post types page and from each other", async ({ page }) => {
   await page.goto("/post-types");
@@ -22,7 +22,7 @@ test("every network has its own page, linked from the post types page and from e
     await page.goto(`/${slug}`);
     await expect(page.getByRole("heading", { name: `What you can post to ${name}`, level: 1 })).toBeVisible();
     await expect(page.getByRole("columnheader", { name: `On ${name}`, exact: true })).toBeVisible();
-    await expect(page.getByRole("navigation", { name: "Other networks" }).getByRole("link")).toHaveCount(7);
+    await expect(page.getByRole("navigation", { name: "Other networks" }).getByRole("link")).toHaveCount(8);
   }
   await page.goto("/x");
   await expect(page.getByRole("row", { name: /Thread/ })).toContainText("up to 25 replies");
