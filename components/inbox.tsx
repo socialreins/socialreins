@@ -52,6 +52,7 @@ import { listMembers, manages } from "@/lib/teams";
 import { useSession } from "@/components/app-shell";
 import { accountName, Avatar } from "@/components/connections";
 import { InboxEditor, inboxMessages } from "@/components/inbox-editor";
+import { DeleteReply, ItemActionsMenu, useItemActions } from "@/components/inbox-actions";
 import { SnippetMenu } from "@/components/library";
 import { platformName } from "@/components/platform-icons";
 import { TagEditor } from "@/components/tag-editor";
@@ -757,6 +758,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
             focus={opened === detail.id}
             account={accountList.find((a) => a.id === detail.social_account_id)}
             me={user}
+            canManage={canManage}
             members={members}
             tagOptions={tagOptions}
             pending={outbox.filter((p) => p.thread === openKey)}
@@ -868,6 +870,7 @@ function Detail({
   account,
   focus,
   me,
+  canManage,
   members,
   tagOptions,
   pending,
@@ -881,6 +884,8 @@ function Detail({
   account?: Connection;
   focus: boolean;
   me: Person;
+  // Owners and admins block, hide, report and delete replies.
+  canManage: boolean;
   members: Person[];
   tagOptions: string[];
   // This thread's replies not yet confirmed, and the Inbox's setter over all of them.
@@ -929,6 +934,7 @@ function Detail({
     // Read again too when a reply of this thread settles: it may have gone out while another item was open.
   }, [dm, item.id, newest, reloads, pending.length]);
 
+  const acts = useItemActions(item);
   const aboveId = hasThread(item) ? item.id : null;
   // null while they load.
   const above = read?.id === aboveId ? read.context : null;
@@ -1094,6 +1100,7 @@ function Detail({
           )}
         </div>
         <Status problem={meta.problem} done={meta.done} overrides={metaMessages} />
+        {acts.wanted && <ItemActionsMenu item={item} canManage={canManage} state={acts.actions} reload={acts.reload} />}
       </header>
 
       {/* A conversation scrolls in its own box on every screen, so it can open at the newest message. */}
@@ -1205,6 +1212,9 @@ function Detail({
                     <Icon name="external" className="size-3.5" />
                     <span className="sr-only">reply on {platform}</span>
                   </a>
+                )}
+                {canManage && r.reply.kind === "public" && r.reply.remote_url && item.platform === "bluesky" && (
+                  <DeleteReply itemId={item.id} replyId={r.reply.id} state={acts.actions} reload={acts.reload} />
                 )}
               </p>
             </li>

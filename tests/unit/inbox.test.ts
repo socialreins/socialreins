@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { assignItem, chatRows, itemSummary, dayLabel, getConversation, getThread, hasThread, isActivity, listItems, maxFor, mergeConversation, mergeFresh, messageCount, relativeTime, replyToItem, sentAlready, setItemState, threadKey, type Item } from "@/lib/inbox";
+import { assignItem, chatRows, itemSummary, dayLabel, actionButtons, getConversation, getThread, runAction, hasThread, isActivity, listItems, maxFor, mergeConversation, mergeFresh, messageCount, relativeTime, replyToItem, sentAlready, setItemState, threadKey, type Item } from "@/lib/inbox";
 import { apiUrl } from "@/lib/waitlist";
 
 const call = (fetch: ReturnType<typeof vi.fn>) => fetch.mock.calls[0] as unknown as [string, RequestInit];
@@ -234,5 +234,32 @@ describe("activity and threads", () => {
     await listItems("in1", "open", null, "activity");
     expect(call(fetch)[0]).toContain("kind=activity");
     expect(call(fetch)[0]).not.toContain("state=");
+  });
+});
+
+describe("actions", () => {
+  const bob = { id: "did:plc:bob", handle: "bob.test", name: "Bob", avatar_url: null };
+  const comment = { kind: "comment" as const, platform: "bluesky", author: bob };
+  const none = { liked: false, reposted: false, following: false, blocking: false, muted: false, thread_muted: false };
+  const names = (buttons: { label: string }[]) => buttons.map((b) => b.label);
+
+  it("words each button by the live state and keeps managers' actions apart", () => {
+    expect(names(actionButtons(comment, none, false))).toEqual(["Like", "Repost", "Mute thread", "Follow back", "Mute person"]);
+    expect(names(actionButtons(comment, { ...none, liked: true, following: true, muted: true }, false))).toEqual(["Unlike", "Repost", "Mute thread", "Unfollow", "Unmute person"]);
+    expect(names(actionButtons(comment, none, true))).toEqual(["Like", "Repost", "Mute thread", "Follow back", "Mute person", "Block", "Hide reply"]);
+    // Without a read, the first choice; a like has no post of ours to answer, a DM none either; other networks have no actions.
+    expect(names(actionButtons({ ...comment, kind: "like" }, null, true))).toEqual(["Follow back", "Mute person", "Block"]);
+    expect(actionButtons({ ...comment, platform: "facebook" }, none, true)).toEqual([]);
+    expect(actionButtons(comment, { ...none, blocking: true }, true).find((b) => b.action === "unblock_author")?.danger).toBeUndefined();
+  });
+
+  it("always confirms, and turns brain's reasons into words", async () => {
+    const answers = [new Response(JSON.stringify({ action: "like", remote_id: "at://x" })), new Response(JSON.stringify({ error: "not_applicable", message: "That does not apply to this item." }), { status: 422 }), new Response(JSON.stringify({ error: "already_reported" }), { status: 409 })];
+    const fetch = vi.fn(async () => answers.shift()!);
+    vi.stubGlobal("fetch", fetch);
+    expect(await runAction("i1", { action: "like" })).toMatchObject({ remote_id: "at://x" });
+    expect(JSON.parse((call(fetch)[1] as { body: string }).body)).toEqual({ action: "like", confirm: true });
+    expect(await runAction("i1", { action: "like" })).toEqual({ code: "not_applicable", message: "That does not apply to this item." });
+    expect(await runAction("i1", { action: "report", reason_type: "spam" })).toMatchObject({ code: "already_reported" });
   });
 });

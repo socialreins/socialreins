@@ -81,6 +81,10 @@ async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items
     failPatch: 0,
     // The posts above an item, by item id; an item with none has an empty thread.
     above: {} as Record<string, unknown[]>,
+    // The account's live state toward the open item, and every action posted (with its body); `refuse` makes the next one fail with that message.
+    viewer: { liked: false, reposted: false, following: false, blocking: false, muted: false, thread_muted: false } as Record<string, boolean>,
+    acted: [] as Record<string, unknown>[],
+    refuse: null as string | null,
   };
   const dms = (i: Row) => state.items.filter((x) => x.kind === "dm" && thread(x) === thread(i)).sort(oldestFirst);
   await page.route("**/auth/me", (route) => route.fulfill({ json: me(role) }));
@@ -158,6 +162,18 @@ async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items
     const id = itemId(route.request().url());
     if (state.items.find((i) => i.id === id)?.kind === "dm") return route.fulfill({ status: 422, json: { error: "not_a_thread" } });
     return route.fulfill({ json: { posts: state.above[id] ?? [], truncated: false } });
+  });
+  await page.route(/\/v1\/inbox-items\/[^/]+\/actions$/, (route) => {
+    if (route.request().method() === "POST") {
+      const body = route.request().postDataJSON();
+      state.acted.push(body);
+      if (state.refuse) return route.fulfill({ status: 422, json: { error: "bluesky_refused", message: state.refuse } });
+      const flips: Record<string, [string, boolean]> = { like: ["liked", true], unlike: ["liked", false], follow: ["following", true], block_author: ["blocking", true] };
+      const flip = flips[body.action as string];
+      if (flip) state.viewer[flip[0]] = flip[1];
+      return route.fulfill({ json: { action: body.action, remote_id: null } });
+    }
+    return route.fulfill({ json: { viewer: state.viewer, viewer_error: null, hidden: false, log: [] } });
   });
   await page.route(/\/v1\/inbox-items\/[^/]+\/reply$/, (route) => {
     const found = state.items.find((i) => i.id === itemId(route.request().url()))!;
@@ -249,6 +265,49 @@ test("likes and reposts are quiet activity behind their own filter, and a reply 
   await expect(context.first()).toContainText("Our launch post");
   await expect(context.last()).toContainText("How does it work?");
   await expect(detail.getByLabel("Reply publicly")).toBeVisible();
+});
+
+test("actions on Bluesky are confirmed first, follow the live state, and the risky ones are for owners and admins", async ({ page }) => {
+  const state = await brain(page, "owner");
+  await page.goto("/inbox?item=p1");
+  const detail = page.getByRole("region", { name: "Item" });
+  await detail.getByText("Actions on Bluesky").click();
+  // Nothing is sent until it is confirmed.
+  await detail.getByRole("button", { name: "Like", exact: true }).click();
+  await expect(detail.getByRole("group", { name: "Confirm" })).toContainText("Like @bob.bsky.social's post");
+  expect(state.acted).toEqual([]);
+  await detail.getByRole("button", { name: "Confirm" }).click();
+  await expect(detail.getByRole("status").filter({ hasText: "Liked." })).toBeVisible();
+  expect(state.acted).toEqual([{ action: "like", confirm: true }]);
+  // The next read shows the state: now it can be undone.
+  await expect(detail.getByRole("button", { name: "Unlike" })).toBeVisible();
+  // Block asks, in words, and a refusal from Bluesky is said.
+  state.refuse = "Bluesky refused it (InvalidRequest).";
+  await detail.getByRole("button", { name: "Block", exact: true }).click();
+  await expect(detail.getByRole("group", { name: "Confirm" })).toContainText("can no longer see this account's posts");
+  await detail.getByRole("button", { name: "Confirm" }).click();
+  await expect(detail.getByRole("alert").filter({ hasText: "Bluesky refused it" })).toBeVisible();
+  // A report takes a reason and says who gets it.
+  state.refuse = null;
+  await detail.getByRole("button", { name: "Report", exact: true }).click();
+  const form = detail.getByRole("form", { name: "Report to Bluesky" });
+  await expect(form).toContainText("moderators");
+  await form.getByLabel("Reason").selectOption("rude");
+  await form.getByLabel("Details (optional)").fill("Insults");
+  await form.getByLabel("Report the account").check();
+  await form.getByRole("button", { name: "Send report" }).click();
+  await expect(detail.getByRole("status").filter({ hasText: "Reported to Bluesky." })).toBeVisible();
+  expect(state.acted.at(-1)).toEqual({ action: "report", reason_type: "rude", reason: "Insults", account: true, confirm: true });
+});
+
+test("a member can like and mute but is not offered block, hide or report", async ({ page }) => {
+  await brain(page, "member");
+  await page.goto("/inbox?item=p1");
+  const detail = page.getByRole("region", { name: "Item" });
+  await detail.getByText("Actions on Bluesky").click();
+  await expect(detail.getByRole("button", { name: "Like", exact: true })).toBeVisible();
+  await expect(detail.getByRole("button", { name: "Mute person" })).toBeVisible();
+  for (const name of ["Block", "Hide reply", "Report"]) await expect(detail.getByRole("button", { name, exact: true })).toHaveCount(0);
 });
 
 test("reply publicly, then mark done and reopen", async ({ page }) => {
