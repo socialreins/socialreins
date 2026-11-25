@@ -104,8 +104,8 @@ export default function Home() {
                 </dt>
                 <dd className="mt-2 text-ink-soft">{f.body}</dd>
                 <dd className="mt-3">
-                  <Link href={f.href} aria-label={`${f.title}: learn more`} className={headerLink}>
-                    Learn more
+                  <Link href={f.href} className={headerLink}>
+                    Learn more<span className="sr-only"> about {f.title}</span>
                   </Link>
                 </dd>
               </div>

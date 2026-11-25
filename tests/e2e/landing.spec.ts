@@ -139,11 +139,11 @@ test("the home page lists the seven feature groups and links each to its page", 
   for (const name of ["Publish", "Plan and schedule", "Engage", "Automate", "Team", "Measure", "Build on it"]) {
     await expect(section.getByRole("term").filter({ hasText: name })).toBeVisible();
   }
-  await expect(section.getByRole("link", { name: "Engage: learn more" })).toHaveAttribute("href", "/features/inboxes");
-  await expect(section.getByRole("link", { name: "Automate: learn more" })).toHaveAttribute("href", "/features/automations");
-  await expect(section.getByRole("link", { name: "Publish: learn more" })).toHaveAttribute("href", "/socials");
-  await expect(section.getByRole("link", { name: "Plan and schedule: learn more" })).toHaveAttribute("href", "/features#plan");
-  await expect(section.getByRole("link", { name: "Every feature: learn more" })).toHaveAttribute("href", "/features");
+  await expect(section.getByRole("link", { name: "Learn more about Engage" })).toHaveAttribute("href", "/features/inboxes");
+  await expect(section.getByRole("link", { name: "Learn more about Automate" })).toHaveAttribute("href", "/features/automations");
+  await expect(section.getByRole("link", { name: "Learn more about Publish" })).toHaveAttribute("href", "/socials");
+  await expect(section.getByRole("link", { name: "Learn more about Plan and schedule" })).toHaveAttribute("href", "/features#plan");
+  await expect(section.getByRole("link", { name: "Learn more about Every feature" })).toHaveAttribute("href", "/features");
   // The inbox and automations are not live on every network, so neither card may say "Live now".
   await expect(section.getByText("Live on Bluesky")).toHaveCount(2);
   // The old undersold claims are gone: approvals and analytics exist, and nothing is promised beyond them.
