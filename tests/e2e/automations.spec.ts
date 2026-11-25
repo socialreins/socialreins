@@ -1181,3 +1181,66 @@ test("run history names the model of an AI reply and says when credits ran out",
   await expect(history.getByRole("listitem").filter({ hasText: "AI DM: sent, written by claude-haiku-5-5" })).toHaveCount(1);
   await expect(history).toContainText("This month's AI replies and your AI credits are used up");
 });
+
+test("Test this automation tries the form as it stands, shows what would go and saves nothing", async ({ page }) => {
+  const state = await brain(page, "owner");
+  const tried: { automation: { trigger: string; actions: unknown[]; name: string }; sample: Record<string, unknown> }[] = [];
+  const step = { reason: null, text: null, wait_minutes: null, tag: null };
+  const answers = [
+    {
+      trigger: "comment_received",
+      matched: true,
+      mismatches: [],
+      blocks: [],
+      steps: [
+        { ...step, type: "send_dm", status: "would_send", text: "Hi Sam, here it is" },
+        { ...step, type: "ai_reply_publicly", status: "would_fail", reason: "ai_link", provider: "anthropic", model: "claude-haiku-5-5" },
+      ],
+    },
+    { trigger: "comment_received", matched: false, mismatches: ["no_keyword"], blocks: [], steps: [] },
+    { trigger: "comment_received", matched: true, mismatches: [], blocks: ["no_public_page"], steps: [] },
+    { trigger: "comment_received", matched: true, mismatches: [], blocks: [], steps: [{ ...step, type: "send_dm", status: "would_send", text: "Hi there" }] },
+  ];
+  await page.route("**/v1/automations/test", (route) => {
+    tried.push(route.request().postDataJSON());
+    return route.fulfill({ json: answers[tried.length - 1] });
+  });
+  await page.goto("/automations/new?template=comment-to-dm");
+  const panel = page.getByRole("group", { name: "Test this automation" });
+  await expect(panel.getByLabel("Their comment or message")).toHaveAttribute("placeholder", "Can I get the link?");
+  await expect(panel.getByLabel("As account")).toContainText("alice.bsky.social");
+  // Enter in any field tries it and does not save the form.
+  await panel.getByLabel("From").fill("Sam");
+  await panel.getByLabel("From").press("Enter");
+  await expect(panel).toContainText("It would run.");
+  await expect(panel).toContainText("Hi Sam, here it is");
+  await expect(panel).toContainText("AI public reply: Would fail");
+  await expect(panel).toContainText("the AI added a link");
+  await expect(panel).toContainText("Written by AI (claude-haiku-5-5)");
+  expect(tried[0]).toMatchObject({
+    automation: { trigger: "comment_received", name: "Comment to DM", actions: [{ type: "send_dm" }] },
+    sample: { account_id: "c1", text: "Can I get the link?", author_name: "Sam" },
+  });
+  expect(state.bodies).toHaveLength(0);
+  // A sample that does not match says why; a rule that would stop it is named.
+  await panel.getByLabel("Their comment or message").fill("hello");
+  await panel.getByRole("button", { name: "Test" }).click();
+  await expect(panel).toContainText("It would not run.");
+  await expect(panel).toContainText("The text has none of the keywords");
+  await panel.getByRole("button", { name: "Test" }).click();
+  await expect(panel).toContainText("this post has no open public page");
+  // An edit makes the answer stale, and a name is not needed to try.
+  await page.getByLabel("Name").fill("");
+  await expect(panel).not.toContainText("changed since this test");
+  await page.getByLabel("DM text").fill("Hi {name}, here is the guide");
+  await expect(panel).toContainText("changed since this test");
+  await panel.getByLabel("Their comment or message").press("Enter");
+  await expect(panel).toContainText("Hi there");
+  expect(tried).toHaveLength(4);
+  expect(tried[3]!.automation).toMatchObject({ name: "Test", actions: [{ type: "send_dm", text: "Hi {name}, here is the guide" }] });
+  // With the text gone the form can't be saved, so it can't be tried, and says why.
+  await page.getByLabel("DM text").fill("");
+  await expect(panel.getByRole("button", { name: "Test" })).toBeDisabled();
+  await expect(panel).toContainText("Fix this first: Write a DM text or a public reply.");
+  expect(state.bodies).toHaveLength(0);
+});
