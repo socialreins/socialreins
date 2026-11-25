@@ -18,7 +18,7 @@ import type { Connection } from "@/lib/connections";
 import { Status, useAction } from "@/components/team-ui";
 
 const messages: Partial<Record<Failure, string>> = {
-  rate_limited: "You used all 100 tests for today. Try again tomorrow.",
+  rate_limited: "You used today's tests (100, and each AI step counts as one more). Try again tomorrow.",
   invalid_sample: "Write a sample of up to 2000 characters, and pick one of your Bluesky, Facebook or Instagram accounts.",
 };
 
@@ -44,21 +44,24 @@ function StepResult({ step: s }: { step: PlannedStep }) {
 // Tries the automation as it stands in the form, even unsaved, on a sample from a stranger. Nothing is sent or stored.
 export function AutomationTest({
   input,
-  blocked,
+  stuck,
   accounts,
   scopeIds,
   placeholder,
+  needsText,
 }: {
   // The automation as brain takes it; null while a post link can't be read.
   input: AutomationInput | null;
-  // What the form still needs before it can be tried (not its name).
-  blocked: number;
+  // What the form still needs before it can be tried (its name is not needed), else null.
+  stuck: string | null;
   // Accounts that can run an automation.
   accounts: Connection[];
   // The ones the automation is limited to, which come first.
   scopeIds: string[];
   // What the trigger's sample says when none is typed.
   placeholder: string;
+  // The trigger reads the text (a new follower and a button tap do not).
+  needsText: boolean;
 }) {
   const first = accounts.find((a) => scopeIds.includes(a.id)) ?? accounts[0];
   const [pick, setPick] = useState("");
@@ -68,10 +71,13 @@ export function AutomationTest({
   const { busy, problem, run } = useAction();
   const account = accounts.find((a) => a.id === pick) ?? first;
   const sample = text.trim() || placeholder;
-  const now = JSON.stringify([input, account?.id, sample, name]);
+  // What changes the answer: not the name or the on switch.
+  const now = JSON.stringify([input && { ...input, name: "", active: true }, account?.id, sample, name]);
+  const can = Boolean(input && account && !stuck);
 
   async function test() {
-    if (!input || !account) return;
+    if (!input || !account || !can) return;
+    setResult(null);
     const body = {
       account_id: account.id,
       text: sample,
@@ -87,15 +93,24 @@ export function AutomationTest({
 
   const out = result?.outcome;
   const why = out ? [...out.mismatches.map((m) => mismatchText[m] ?? m), ...out.blocks.map((b) => blockText[b] ?? reason(b) ?? b)] : [];
+  const runs = Boolean(out?.matched) && !out?.blocks.includes("no_public_page");
   return (
     <fieldset id="automation-test" className="card grid gap-4 p-5">
       <legend className="px-1 font-display text-lg font-extrabold tracking-tight">Test this automation</legend>
       <p className="hint">
-        Type a comment or message from someone who is not on your team. brain checks it against the automation above, even before you save it, and shows what it would do. Nothing is sent and nothing is stored. An AI
+        Type a comment or message from someone who is not on your team. It is checked against the automation above, even before you save it, and shows what it would do. Nothing is sent and nothing is stored. An AI
         step is written for real and counts toward your AI replies.
       </p>
       {account ? (
-        <div className="grid gap-3 sm:grid-cols-2">
+        // Enter in any field tries it: it must not save the form.
+        <div
+          className="grid gap-3 sm:grid-cols-2"
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" || e.nativeEvent.isComposing || !(e.target instanceof HTMLInputElement)) return;
+            e.preventDefault();
+            if (busy === null) void test();
+          }}
+        >
           <div className="grid gap-1.5">
             <label htmlFor="automation-test-account" className="label">
               As account
@@ -114,52 +129,43 @@ export function AutomationTest({
             </label>
             <input id="automation-test-name" className="field" maxLength={64} placeholder="Sam" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
-          <div className="grid gap-1.5 sm:col-span-2">
-            <label htmlFor="automation-test-text" className="label">
-              Their comment or message
-            </label>
-            <input
-              id="automation-test-text"
-              className="field"
-              maxLength={2000}
-              value={text}
-              placeholder={placeholder}
-              onChange={(e) => setText(e.target.value)}
-              // Enter tries it: it must not save the form.
-              onKeyDown={(e) => {
-                if (e.key !== "Enter") return;
-                e.preventDefault();
-                if (busy === null) void test();
-              }}
-            />
-          </div>
+          {needsText && (
+            <div className="grid gap-1.5 sm:col-span-2">
+              <label htmlFor="automation-test-text" className="label">
+                Their comment or message
+              </label>
+              <input id="automation-test-text" className="field" maxLength={2000} value={text} placeholder={placeholder} onChange={(e) => setText(e.target.value)} />
+            </div>
+          )}
         </div>
       ) : (
         <p className="text-sm">Connect a Bluesky, Facebook or Instagram account to test with.</p>
       )}
       <div className="flex flex-wrap items-center gap-3">
-        <button type="button" className="btn btn-quiet" disabled={busy !== null || !input || !account || blocked > 0} onClick={() => void test()}>
+        <button type="button" className="btn btn-quiet" disabled={busy !== null || !can} onClick={() => void test()}>
           {busy ? "Testing..." : "Test"}
         </button>
-        {(blocked > 0 || !input) && <span className="hint">Fix the problems above first.</span>}
+        {account && stuck && <span className="hint">Fix this first: {stuck}</span>}
       </div>
       <Status problem={problem} done={null} overrides={messages} />
-      {out && (
-        <div aria-live="polite" className="grid gap-3">
-          {result.of !== now && <p className="hint">The automation or the sample changed since this test. Test again.</p>}
-          <p className="font-bold">
-            {why.length ? "It would not run." : "It would run."}
-            {why.length > 0 && <span className="block font-normal">{why.join(". ")}.</span>}
-          </p>
-          {out.steps.length > 0 && (
-            <ol className="grid gap-2" aria-label="What it would do">
-              {out.steps.map((s, i) => (
-                <StepResult key={i} step={s} />
-              ))}
-            </ol>
-          )}
-        </div>
-      )}
+      <div aria-live="polite" className="grid gap-3">
+        {out && result && (
+          <>
+            {result.of !== now && <p className="hint">The automation or the sample changed since this test. Test again.</p>}
+            <p className="font-bold">
+              {runs ? "It would run." : "It would not run."}
+              {why.length > 0 && <span className="block font-normal">{why.join(". ")}.</span>}
+            </p>
+            {out.steps.length > 0 && (
+              <ol className="grid gap-2" aria-label="What it would do">
+                {out.steps.map((s, i) => (
+                  <StepResult key={i} step={s} />
+                ))}
+              </ol>
+            )}
+          </>
+        )}
+      </div>
     </fieldset>
   );
 }

@@ -519,10 +519,15 @@ export function AutomationForm({
 
         <AutomationTest
           input={testable ? automationInput(d, scopeBody(scope), uris as string[]) : null}
-          blocked={issues.filter((i) => i.field !== "automation-name").length}
+          stuck={
+            testable
+              ? (issues.find((i) => i.field !== "automation-name")?.text ?? (tagsAlone ? "A tag needs something sent with it." : null))
+              : "A post link is not a post of a connected Bluesky account."
+          }
           accounts={accounts.filter((x) => AUTOMATED.includes(x.provider))}
           scopeIds={scope.mode === "accounts" ? scope.accountIds : []}
           placeholder={d.keywords[0] ? `Can I get the ${d.keywords[0]}?` : (sam.text ?? "Hello")}
+          needsText={sam.text !== null}
         />
 
         <div id="automation-bar" className="sticky bottom-3 z-10 grid gap-2 rounded-lg bg-paper/95 p-3 shadow-[0_0_0_1px_var(--line),0_-6px_20px_rgb(0_0_0/0.07)] backdrop-blur sm:px-4">

@@ -1199,6 +1199,7 @@ test("Test this automation tries the form as it stands, shows what would go and 
     },
     { trigger: "comment_received", matched: false, mismatches: ["no_keyword"], blocks: [], steps: [] },
     { trigger: "comment_received", matched: true, mismatches: [], blocks: ["no_public_page"], steps: [] },
+    { trigger: "comment_received", matched: true, mismatches: [], blocks: [], steps: [{ ...step, type: "send_dm", status: "would_send", text: "Hi there" }] },
   ];
   await page.route("**/v1/automations/test", (route) => {
     tried.push(route.request().postDataJSON());
@@ -1208,9 +1209,9 @@ test("Test this automation tries the form as it stands, shows what would go and 
   const panel = page.getByRole("group", { name: "Test this automation" });
   await expect(panel.getByLabel("Their comment or message")).toHaveAttribute("placeholder", "Can I get the link?");
   await expect(panel.getByLabel("As account")).toContainText("alice.bsky.social");
-  // Enter in the sample tries it and does not save the form.
+  // Enter in any field tries it and does not save the form.
   await panel.getByLabel("From").fill("Sam");
-  await panel.getByLabel("Their comment or message").press("Enter");
+  await panel.getByLabel("From").press("Enter");
   await expect(panel).toContainText("It would run.");
   await expect(panel).toContainText("Hi Sam, here it is");
   await expect(panel).toContainText("AI public reply: Would fail");
@@ -1230,6 +1231,16 @@ test("Test this automation tries the form as it stands, shows what would go and 
   await expect(panel).toContainText("this post has no open public page");
   // An edit makes the answer stale, and a name is not needed to try.
   await page.getByLabel("Name").fill("");
+  await expect(panel).not.toContainText("changed since this test");
+  await page.getByLabel("DM text").fill("Hi {name}, here is the guide");
   await expect(panel).toContainText("changed since this test");
-  expect(tried).toHaveLength(3);
+  await panel.getByLabel("Their comment or message").press("Enter");
+  await expect(panel).toContainText("Hi there");
+  expect(tried).toHaveLength(4);
+  expect(tried[3]!.automation).toMatchObject({ name: "Test", actions: [{ type: "send_dm", text: "Hi {name}, here is the guide" }] });
+  // With the text gone the form can't be saved, so it can't be tried, and says why.
+  await page.getByLabel("DM text").fill("");
+  await expect(panel.getByRole("button", { name: "Test" })).toBeDisabled();
+  await expect(panel).toContainText("Fix this first: Write a DM text or a public reply.");
+  expect(state.bodies).toHaveLength(0);
 });

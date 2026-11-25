@@ -692,9 +692,7 @@ export const blockText: Record<string, string> = {
   unsupported_account: "Automations run only on Bluesky, Facebook and Instagram accounts",
   meta_one_private_reply: "Facebook and Instagram allow one private reply per comment",
   meta_reply_window: "Facebook and Instagram take a DM only within 24 hours of the person's message (7 days for a comment)",
-  invalid_text: "A DM is too long for Instagram, which takes 1000 bytes",
   no_public_page: "A text holds {page}, and this post has no open public page, so it would not run",
-  daily_cap: "The team reached 500 automation runs today, so it would not run",
 };
 export const plannedStatus: Record<PlannedStatus, string> = {
   would_send: "Would send",
