@@ -29,6 +29,7 @@ import {
   messageCount,
   relativeTime,
   replyToItem,
+  runAction,
   sentAlready,
   setItemState,
   shortcutFor,
@@ -53,7 +54,7 @@ import { listMembers, manages } from "@/lib/teams";
 import { useSession } from "@/components/app-shell";
 import { accountName, Avatar } from "@/components/connections";
 import { InboxEditor, inboxMessages } from "@/components/inbox-editor";
-import { DeleteReply, ItemActionsMenu, useItemActions } from "@/components/inbox-actions";
+import { DeleteReply, DmTools, ItemActionsMenu, MessageTools, useItemActions } from "@/components/inbox-actions";
 import { ModerationBar } from "@/components/inbox-moderation";
 import { SnippetMenu } from "@/components/library";
 import { platformName } from "@/components/platform-icons";
@@ -372,6 +373,8 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
     const at = items.findIndex((x) => threadKey(x) === k);
     const row = state === "open" && at >= 0 ? items[at]! : null;
     const saved = setItemState(i.id, "done", i.kind === "dm");
+    // Bluesky is told the conversation was read, as its own app would; best effort.
+    if (i.kind === "dm" && i.platform === "bluesky") void runAction(i.id, { action: "mark_read" });
     const u: Undo = { id: ++lastId, item: i, row, saved };
     setUndos((l) => [...l, u]);
     // A line that turned into a failure stays until dismissed.
@@ -1115,6 +1118,7 @@ function Detail({
           )}
         </div>
         <Status problem={meta.problem} done={meta.done} overrides={metaMessages} />
+        {acts.wanted && dm && <DmTools itemId={item.id} canManage={canManage} state={acts.actions} reload={acts.reload} />}
         {acts.wanted && <ItemActionsMenu item={item} canManage={canManage} state={acts.actions} loading={acts.loading} failed={acts.failed} reload={acts.reload} />}
       </header>
 
@@ -1203,6 +1207,7 @@ function Detail({
             <li key={r.key} data-row="them" className="grid justify-items-start gap-1">
               {(r.text || !r.item.attachments?.length) && <p className="max-w-[90%] whitespace-pre-wrap break-words rounded-2xl rounded-tl-md bg-canvas px-4 py-3">{r.text || itemSummary(r.item)}</p>}
               <Attachments items={r.item.attachments} />
+              {dm && r.item.platform === "bluesky" && <MessageTools itemId={r.item.id} canManage={canManage} />}
               <p className="flex flex-wrap items-center gap-x-3 text-xs text-ink-soft">
                 <time dateTime={r.at}>{when(r.at)}</time>
                 {r.item.remote_url && (
@@ -1367,7 +1372,7 @@ function Detail({
 
       <div className="flex flex-wrap items-center gap-3 border-t border-ink/10 pt-4">
         {isOpen ? (
-          <button id="mark-done" type="button" className="btn btn-secondary btn-sm" onClick={() => onDone(item)}>
+          <button id="mark-done" type="button" className="btn btn-secondary btn-sm" onClick={() => onDone(dm ? latest : item)}>
             Mark done
           </button>
         ) : (

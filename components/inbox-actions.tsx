@@ -14,6 +14,7 @@ import {
   type Item,
 } from "@/lib/inbox";
 import { isFailure, problemText } from "@/components/team-ui";
+import { REACTIONS } from "@/lib/inbox";
 
 type Read = { id: string; actions: ItemActions | null; failed: boolean };
 
@@ -245,5 +246,128 @@ export function DeleteReply({ itemId, replyId, state, reload }: { itemId: string
     <button type="button" className="text-xs font-bold text-ink-soft hover:text-signal-deep" aria-label="Delete this reply from Bluesky" onClick={() => setAsking(true)}>
       Delete
     </button>
+  );
+}
+
+// A DM's conversation: a message request waits for a yes or a no, a group says a reply reaches everyone, and a mute stops its notifications.
+export function DmTools({ itemId, canManage, state, reload }: { itemId: string; canManage: boolean; state: ItemActions | null; reload: () => void }) {
+  const [busy, setBusy] = useState<ActionName | null>(null);
+  const [said, setSaid] = useState<Outcome | null>(null);
+  const [declining, setDeclining] = useState(false);
+  const convo = state?.convo;
+  if (!convo) return null;
+  async function go(action: ActionName) {
+    setBusy(action);
+    setSaid(null);
+    const r = await perform(itemId, { action });
+    setBusy(null);
+    setSaid(r);
+    if ("ok" in r) setDeclining(false);
+    // A success or an unsure answer may have changed the conversation: read it again.
+    if ("ok" in r || "unsure" in r) reload();
+  }
+  return (
+    <div className="grid gap-2 text-sm">
+      {convo.status === "request" && (
+        <div role="group" aria-label="Message request" className="grid gap-2 rounded-xl border border-ink/15 bg-canvas p-3">
+          <p>This is a message request. Bluesky keeps it apart until you accept; accepting lets the sender see that you read it.</p>
+          <p className="flex flex-wrap gap-2">
+            <button type="button" className="btn btn-primary btn-sm" disabled={busy !== null} onClick={() => go("accept_convo")}>
+              {busy === "accept_convo" ? "Accepting..." : "Accept"}
+            </button>
+            {canManage &&
+              (declining ? (
+                <>
+                  <span className="self-center">Decline and leave this conversation?</span>
+                  <button type="button" autoFocus className="btn btn-danger-solid btn-sm" disabled={busy !== null} onClick={() => go("leave_convo")}>
+                    {busy === "leave_convo" ? "Declining..." : "Yes, decline"}
+                  </button>
+                  <button type="button" className="btn btn-quiet btn-sm" onClick={() => setDeclining(false)}>
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <button type="button" className="btn btn-secondary btn-sm btn-danger" disabled={busy !== null} onClick={() => setDeclining(true)}>
+                  Decline
+                </button>
+              ))}
+          </p>
+        </div>
+      )}
+      {convo.group && <p className="text-ink-soft">A group conversation of {convo.members}{convo.members > 2 ? " or more" : ""} people: a reply goes to everyone in it.</p>}
+      <p className="flex flex-wrap items-center gap-3">
+        <button type="button" className="btn btn-secondary btn-sm" disabled={busy !== null} onClick={() => go(convo.muted ? "unmute_convo" : "mute_convo")}>
+          {convo.muted ? "Unmute conversation" : "Mute conversation"}
+        </button>
+        {convo.muted && <span className="text-xs text-ink-soft">Bluesky sends no notifications for it.</span>}
+      </p>
+      {said && "ok" in said && (
+        <p role="status" className="waitlist-done">
+          {said.ok}
+        </p>
+      )}
+      {said && "error" in said && (
+        <p role="alert" className="waitlist-error">
+          {said.error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// React to one message with an emoji, or (owners and admins) delete it for this account only.
+export function MessageTools({ itemId, canManage }: { itemId: string; canManage: boolean }) {
+  const [said, setSaid] = useState<Outcome | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [gone, setGone] = useState(false);
+  async function go(input: ActionInput) {
+    setBusy(true);
+    setSaid(null);
+    const r = await perform(itemId, input);
+    setBusy(false);
+    setSaid(r);
+    if ("ok" in r) {
+      setDeleting(false);
+      if (input.action === "delete_message") setGone(true);
+    }
+  }
+  // Gone for this account: nothing left to react to or delete (the row goes when the conversation is read again).
+  if (gone)
+    return (
+      <span role="status" className="text-xs text-ink-soft">
+        Deleted for this account
+      </span>
+    );
+  return (
+    <span className="flex flex-wrap items-center gap-1 text-xs">
+      {REACTIONS.map((emoji) => (
+        <button key={emoji} type="button" className="rounded-full px-1.5 py-0.5 hover:bg-ink/10" aria-label={`React ${emoji}`} disabled={busy} onClick={() => go({ action: "react", emoji })}>
+          {emoji}
+        </button>
+      ))}
+      {canManage &&
+        (deleting ? (
+          <>
+            <span>Delete for this account only?</span>
+            <button type="button" autoFocus className="font-bold underline decoration-signal-deep decoration-2 underline-offset-4" disabled={busy} onClick={() => go({ action: "delete_message" })}>
+              {busy ? "Deleting..." : "Yes, delete"}
+            </button>
+            <button type="button" className="font-bold text-ink-soft hover:text-ink" disabled={busy} onClick={() => setDeleting(false)}>
+              Cancel
+            </button>
+          </>
+        ) : (
+          <button type="button" className="font-bold text-ink-soft hover:text-signal-deep" aria-label="Delete this message for this account" disabled={busy} onClick={() => setDeleting(true)}>
+            Delete
+          </button>
+        ))}
+      {said && "ok" in said && <span role="status">{said.ok}</span>}
+      {said && "error" in said && (
+        <span role="alert" className="waitlist-error">
+          {said.error}
+        </span>
+      )}
+    </span>
   );
 }
