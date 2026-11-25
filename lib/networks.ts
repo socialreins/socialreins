@@ -165,6 +165,7 @@ export const networks: Network[] = [
         bullets: [
           "YouTube refuses the characters < and > in a title or description.",
           "YouTube only takes a custom thumbnail from a verified channel.",
+          "The YouTube inbox is in testing. It reads comments on your videos and Shorts, and it is off until you turn it on for a channel, because every SocialReins team shares one daily YouTube quota. You can reply in public, hold or reject a comment and delete your own reply. YouTube has no DMs, private replies or likes for comments in its API.",
         ],
       },
     ],

@@ -48,10 +48,12 @@ import { Status, useAction } from "@/components/team-ui";
 import { Icon, type IconName } from "@/components/ui";
 
 // Networks whose inbox can fire an automation; brain refuses an account on any other (unsupported_account).
-const AUTOMATED = ["bluesky", "facebook", "instagram", "threads", "x"];
+const AUTOMATED = ["bluesky", "facebook", "instagram", "threads", "x", "youtube"];
 
 export const automationMessages: Partial<Record<Failure, ReactNode>> = {
-  unsupported_account: "Automations run only on Bluesky, Facebook, Instagram, Threads and X accounts. Remove the others.",
+  unsupported_account: "Automations run only on Bluesky, Facebook, Instagram, Threads, X and YouTube accounts. Remove the others.",
+  youtube_unsupported_trigger: "YouTube only has comments to trigger on. Pick a comment, or leave the YouTube channel out.",
+  youtube_no_dm: "YouTube has no DMs and no private replies. Answer with a public reply, or leave the YouTube channel out.",
   threads_unsupported_trigger: "Threads has replies and mentions only. Pick a comment or a mention, or leave the Threads account out.",
   threads_no_dm: "Threads has no DMs and no private reply, so it takes a public reply only. Remove the DM, or leave the Threads account out.",
   threads_no_like: "Threads has no like for apps. Hiding a reply directly under your post and a public reply work; remove the like, or leave the Threads account out.",
@@ -168,7 +170,7 @@ export function AutomationForm({
   // Everything that stops a save, with the field to fix it in, for the bar's count.
   const issues: { text: string; field: string }[] = [
     ...(d.name.trim() ? [] : [{ text: "Give it a name.", field: "automation-name" }]),
-    ...(stuck.length ? [{ text: `Untick ${stuck.join(", ")}: automations run only on Bluesky, Facebook, Instagram, Threads and X.`, field: "automation-scope" }] : []),
+    ...(stuck.length ? [{ text: `Untick ${stuck.join(", ")}: automations run only on Bluesky, Facebook, Instagram, Threads, X and YouTube.`, field: "automation-scope" }] : []),
     ...(t.payloads && !d.payloads.length ? [{ text: "Add at least one button payload.", field: "automation-payloads" }] : []),
     ...(Number.isNaN(limitOf(d.cooldown, MAX_COOLDOWN)) ? [{ text: "The wait must be 1 to 10080 minutes, or empty.", field: "automation-cooldown" }] : []),
     ...(Number.isNaN(limitOf(d.dailyCap, MAX_DAILY_CAP)) ? [{ text: "Most runs a day must be 1 to 500, or empty.", field: "automation-daily-cap" }] : []),

@@ -446,7 +446,7 @@ test("owners create, edit and delete an inbox; All is not editable", async ({ pa
   // Every account with an inbox starts picked; one without (LinkedIn) is not offered.
   await expect(dialog.getByRole("checkbox", { name: "Alice, Bluesky" })).toBeChecked();
   await expect(dialog.getByRole("checkbox", { name: /Xavier/ })).toHaveCount(0);
-  await expect(dialog.getByText("Bluesky, Facebook, Instagram and X accounts have an inbox.")).toBeVisible();
+  await expect(dialog.getByText("Bluesky, Facebook, Instagram, X and YouTube accounts have an inbox.")).toBeVisible();
   await dialog.getByRole("checkbox", { name: "Alice, Bluesky" }).uncheck();
   await expect(dialog.getByRole("button", { name: "Create inbox" })).toBeDisabled();
   await dialog.getByRole("checkbox", { name: "Alice, Bluesky" }).check();

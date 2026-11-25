@@ -234,7 +234,7 @@ const activity = (what: string): Capability => ({
 export const triggers: Record<Trigger, Capability> = {
   like_received: activity("like"),
   repost_received: activity("repost"),
-  comment_received: { label: "When someone comments", keywords: true, posts: true, firstPerAuthor: true, firstMessage: false, publicReply: true, payloads: false, text: true, note: null, networks: ["bluesky", "facebook", "instagram", "threads", "x"] },
+  comment_received: { label: "When someone comments", keywords: true, posts: true, firstPerAuthor: true, firstMessage: false, publicReply: true, payloads: false, text: true, note: null, networks: ["bluesky", "facebook", "instagram", "threads", "x", "youtube"] },
   dm_received: { label: "When someone sends a DM", keywords: true, posts: false, firstPerAuthor: false, firstMessage: true, publicReply: false, payloads: false, text: true, note: null, networks: ["bluesky", "facebook", "instagram", "x"] },
   mention_received: { label: "When someone mentions you", keywords: true, posts: false, firstPerAuthor: false, firstMessage: false, publicReply: true, payloads: false, text: true, note: null, networks: ["bluesky", "threads", "x"] },
   new_follower: {
@@ -846,6 +846,7 @@ export const reasonText: Record<string, string> = {
   dm_not_allowed: "They only accept DMs from people they follow",
   no_public_page: "The post has no open public page for {page}",
   no_dm_access: "Reconnect with an app password that allows DMs",
+  youtube_no_dm: "YouTube has no DMs and no private replies: only a public reply can answer a comment",
   daily_cap: "The team reached 500 automation runs today",
   paused: "The team paused all its automations",
   paused_waiting: "Stopped: the team paused its automations while this flow waited",
@@ -939,10 +940,12 @@ export const whyNot = (code: string) => notRunText[code] ?? reason(code) ?? code
 export const blockText: Record<string, string> = {
   bluesky_only_trigger: "Likes and reposts come only from Bluesky: use a Bluesky account, or leave the others out",
   bluesky_only_action: "Reposting and following back go to Bluesky only: use a Bluesky account, or leave the others out",
-  unsupported_account: "Automations run only on Bluesky, Facebook, Instagram, Threads and X accounts",
+  unsupported_account: "Automations run only on Bluesky, Facebook, Instagram, Threads, X and YouTube accounts",
   threads_unsupported_trigger: "Threads has replies and mentions only: use a comment or a mention",
   threads_no_dm: "Threads has no DMs and no private reply: use a public reply",
   threads_no_like: "Threads has no like for apps: hiding a reply and a public reply work",
+  youtube_unsupported_trigger: "YouTube only has comments to trigger on",
+  youtube_no_dm: "YouTube has no DMs and no private replies: only a public reply can answer a comment",
   x_unsupported_trigger: "X has no follows, story replies or buttons to trigger on: use a comment, a mention or a DM",
   bluesky_unsupported_trigger: "Bluesky has no story replies or buttons to tap: use a comment, a mention, a DM, a follow, a like or a repost",
   meta_one_private_reply: "Facebook and Instagram allow one private reply per comment",

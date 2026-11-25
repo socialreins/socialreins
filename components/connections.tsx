@@ -42,6 +42,7 @@ import { getPinterestBoards, setDefaultBoard, type PinterestBoard } from "@/lib/
 import { isFailure, planLimit, problemText, Status, useAction } from "@/components/team-ui";
 import { EmptyState, Icon, LoadFailed, SkeletonRows } from "@/components/ui";
 import { XInboxSettings } from "@/components/x-inbox";
+import { YouTubeInboxSettings } from "@/components/youtube-inbox";
 
 const heading = "font-display text-xl font-extrabold tracking-tight";
 const date = (iso: string) => new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
@@ -615,6 +616,7 @@ function AccountSettings({
         </form>
       )}
       {c.provider === "x" && <XInboxSettings id={c.id} canManage={canManage} />}
+      {c.provider === "youtube" && <YouTubeInboxSettings id={c.id} canManage={canManage} />}
       {c.provider === "pinterest" && (
         <form onSubmit={onSaveBoard} className="grid gap-3">
           <fieldset className="grid gap-1.5" disabled={!canManage}>

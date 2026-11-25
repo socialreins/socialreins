@@ -64,6 +64,7 @@ import { isFailure, linkButton, planLimit, problemText, Status, useAction, useSe
 import { Icon } from "@/components/ui";
 import { ThreadsActions } from "@/components/threads-actions";
 import { XActions } from "@/components/x-inbox";
+import { YouTubeContext, YouTubeDeleteReply } from "@/components/youtube-inbox";
 
 // New comments arrive on brain's per-minute tick; the open list checks twice a minute.
 const REFRESH_MS = 30_000;
@@ -1165,6 +1166,7 @@ function Detail({
             </button>
           </li>
         )}
+        {item.platform === "youtube" && <YouTubeContext item={item} />}
         {aboveId && above === null && (
           <li role="status" className="h-16 rounded-2xl bg-ink/5 motion-safe:animate-pulse">
             <span className="sr-only">Loading the posts above...</span>
@@ -1251,6 +1253,7 @@ function Detail({
                 {canManage && r.reply.kind === "public" && r.reply.remote_url && item.platform === "bluesky" && (
                   <DeleteReply itemId={item.id} replyId={r.reply.id} state={acts.actions} reload={acts.reload} />
                 )}
+                {canManage && r.reply.kind === "public" && item.platform === "youtube" && <YouTubeDeleteReply itemId={item.id} replyId={r.reply.id} onChange={onChange} />}
               </p>
             </li>
           ),
@@ -1304,7 +1307,7 @@ function Detail({
       <ItemAutomations key={item.id} itemId={item.id} />
       {!dm && <ModerationBar key={item.id} item={item} canDelete={canManage} onChange={onChange} />}
 
-      {deleted && <p className="text-sm text-ink-soft">This comment was deleted on {platform}, so it takes no reply.</p>}
+      {deleted && <p className="text-sm text-ink-soft">This comment was {item.platform === "youtube" ? "rejected" : "deleted"} on {platform}, so it takes no reply.</p>}
       {/* A follow, like or repost has nothing to reply to, nor does a deleted comment. */}
       <form onSubmit={onReply} hidden={isActivity(item.kind) || deleted} className="grid gap-2 border-t border-ink/10 pt-4 [&[hidden]]:hidden">
         <div className="flex flex-wrap items-end justify-between gap-2">
