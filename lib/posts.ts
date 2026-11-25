@@ -416,6 +416,18 @@ const segmenter =typeof Intl !== "undefined" && "Segmenter" in Intl ? new Intl.S
 export const graphemes = (text: string) => (segmenter ? [...segmenter.segment(text)].length : [...text].length);
 export const utf8Bytes = (text: string) => new TextEncoder().encode(text).length;
 
+// What Threads counts against its 500 limit, as brain's threads_length does: each character 1, except an emoji, which
+// counts its UTF-8 bytes whole (4 for most). A grapheme is an emoji when it holds a character that shows as an emoji on
+// its own (the list is brain's emoji_base, kept the same by hand), a variation selector or a keycap; a zero width joiner
+// alone is not enough, since Bangla conjuncts use one. Text-style symbols like a check mark stay 1.
+const EMOJI =
+  /[\u{1F300}-\u{1FAFF}\u{1F1E6}-\u{1F1FF}\u{1F004}\u{1F0CF}\u{1F18E}\u{1F191}-\u{1F19A}\u{1F201}\u{1F21A}\u{1F22F}\u{1F232}-\u{1F23A}\u{1F250}-\u{1F251}\u{231A}-\u{231B}\u{23E9}-\u{23EC}\u{23F0}\u{23F3}\u{25FD}-\u{25FE}\u{2614}-\u{2615}\u{2648}-\u{2653}\u{267F}\u{2693}\u{26A1}\u{26AA}-\u{26AB}\u{26BD}-\u{26BE}\u{26C4}-\u{26C5}\u{26CE}\u{26D4}\u{26EA}\u{26F2}-\u{26F3}\u{26F5}\u{26FA}\u{26FD}\u{2705}\u{270A}-\u{270B}\u{2728}\u{274C}\u{274E}\u{2753}-\u{2755}\u{2757}\u{2795}-\u{2797}\u{27B0}\u{27BF}\u{2B1B}-\u{2B1C}\u{2B50}\u{2B55}\u{FE0F}\u{20E3}]/u;
+// Without Intl.Segmenter the text is split by code point, so a symbol joined to a variation selector counts 1, not its bytes.
+export const threadsLength = (text: string) => {
+  const parts = segmenter ? [...segmenter.segment(text)].map((s) => s.segment) : [...text];
+  return parts.reduce((n, g) => n + (EMOJI.test(g) ? utf8Bytes(g) : [...g].length), 0);
+};
+
 // A YouTube post's title (the body's first line) and description (the rest), as brain's youtube_text splits them.
 export function youtubeText(body: string) {
   const text = body.trim();
@@ -461,7 +473,9 @@ export const charCount = (platform: Platform, text: string) =>
       ? xWeight(text)
       : platform === "tiktok"
         ? text.length
-        : [...(platform === "youtube" ? youtubeText(text).title : text)].length;
+        : platform === "threads"
+          ? threadsLength(text)
+          : [...(platform === "youtube" ? youtubeText(text).title : text)].length;
 
 // Whether the text is over the platform's limit; YouTube also limits its description's bytes.
 export const overLimit = (platform: Platform, text: string, xLong = false) =>

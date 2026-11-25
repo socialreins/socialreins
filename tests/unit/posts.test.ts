@@ -43,6 +43,7 @@ import {
   toZoneInput,
   updatePost,
   utf8Bytes,
+  threadsLength,
   xWeight,
   youtubeText,
 } from "@/lib/posts";
@@ -173,6 +174,21 @@ describe("post checks", () => {
     expect(graphemes("👨‍👩‍👧")).toBe(1);
     expect(graphemes("é")).toBe(1);
     expect(utf8Bytes("é")).toBe(2);
+  });
+
+  it("counts a Threads emoji as its UTF-8 bytes, as brain does", () => {
+    expect(threadsLength("abc é©™")).toBe(7);
+    expect(threadsLength("😀")).toBe(4);
+    expect(threadsLength("👩‍👩‍👧")).toBe(18);
+    expect(threadsLength("❤️")).toBe(6);
+    expect(threadsLength("🇧🇩")).toBe(8);
+    expect(threadsLength("1️⃣")).toBe(7);
+    expect(threadsLength("👍🏽")).toBe(8);
+    // Text-style symbols stay 1, and a Bangla conjunct (ra, joiner, virama, ya) is four characters.
+    expect(threadsLength("✓★♥©™")).toBe(5);
+    expect(threadsLength("র\u200D্য")).toBe(4);
+    expect(charCount("threads", "a".repeat(496) + "😀")).toBe(500);
+    expect(charCount("threads", "😀".repeat(126))).toBeGreaterThan(limits.threads.chars);
   });
 
   it("mirrors brain's save rules", () => {
