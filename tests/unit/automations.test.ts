@@ -39,6 +39,8 @@ import {
   type Run,
   type Draft,
   type StepDraft,
+  limitOf,
+  reasonLabel,
 } from "@/lib/automations";
 import { apiUrl } from "@/lib/waitlist";
 
@@ -151,9 +153,38 @@ const full: Draft = {
   flow: false,
   steps: [],
   payloads: [],
+  cooldown: "",
+  dailyCap: "",
 };
 const scope = { social_set_id: null, account_ids: ["c1"] };
 const uris = ["at://did:plc:bob/app.bsky.feed.post/3abc"];
+
+describe("limits", () => {
+  it("reads a limit as a whole number in range, or none", () => {
+    expect(limitOf("", 500)).toBeNull();
+    expect(limitOf(" 60 ", 10080)).toBe(60);
+    for (const bad of ["0", "-1", "1.5", "abc", "501"]) expect(limitOf(bad, 500)).toBeNaN();
+  });
+
+  it("sends the cool-down and the daily limit, and reads them back", () => {
+    const input = automationInput({ ...full, cooldown: "60", dailyCap: "25" }, scope, uris);
+    expect(input).toMatchObject({ cooldown_minutes: 60, daily_cap: 25 });
+    const saved = { ...input, id: "a1", activated_at: "", created_by: null, created_at: "", updated_at: "" } as Automation;
+    expect(draftOf(saved)).toMatchObject({ cooldown: "60", dailyCap: "25" });
+  });
+
+  it("never sends a wrong limit as none", () => {
+    // NaN would be written as null by JSON.stringify and clear a working limit: the form stops before that.
+    expect(Number.isNaN(limitOf("0", 500))).toBe(true);
+    expect(JSON.stringify({ n: limitOf("0", 500) })).toBe('{"n":null}');
+  });
+
+  it("names why runs were held back", () => {
+    for (const code of ["paused", "own_account", "connected_account", "cooldown", "automation_cap"]) expect(reason(code)).not.toBe(code.replaceAll("_", " "));
+    expect(reasonLabel("automation_cap")).toBe("daily limit");
+    expect(reasonLabel("something_new")).toBe("something new");
+  });
+});
 
 describe("triggers", () => {
   it("mirrors what brain's validate takes for each trigger", () => {
