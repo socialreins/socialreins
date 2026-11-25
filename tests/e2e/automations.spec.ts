@@ -181,7 +181,7 @@ for (const t of templates) {
     // Seven templates and Start from scratch.
     await expect(page.getByRole("region", { name: "Start from a template" }).getByRole("link")).toHaveCount(8);
     await page.getByRole("link", { name: t.title }).click();
-    await expect(page.getByLabel("Name")).toHaveValue(t.title);
+    await expect(page.getByLabel("Name", { exact: true })).toHaveValue(t.title);
     await page.getByRole("button", { name: "Create automation" }).click();
     await expect(page).toHaveURL("/t/acme22/automations/a2");
     const body = state.bodies[0] as { conditions: unknown; actions: { type: string; text: string }[] };
@@ -255,7 +255,7 @@ test("switching the trigger drops what the new one does not take, and says so", 
 test("creates a comment-to-DM automation with post links", async ({ page }) => {
   const state = await brain(page, "admin");
   await page.goto("/automations/new?template=comment-to-dm");
-  await page.getByLabel("Name").fill("Guide");
+  await page.getByLabel("Name", { exact: true }).fill("Guide");
   await page.getByRole("button", { name: "Remove link" }).click();
   await page.getByRole("textbox", { name: "Contains" }).fill("guide");
   await page.getByRole("textbox", { name: "Contains" }).press("Enter");
@@ -364,7 +364,7 @@ test("post ids the automation came with are saved as they are, whatever they loo
   await page.goto("/automations/a1");
   await page.getByRole("button", { name: "Edit" }).click();
   await expect(page.getByLabel("Post links")).toHaveValue(ids.join("\n"));
-  await page.getByLabel("Name").fill("Renamed");
+  await page.getByLabel("Name", { exact: true }).fill("Renamed");
   await page.getByRole("button", { name: "Save automation" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Automation saved." })).toBeVisible();
   expect(state.bodies[0]).toMatchObject({ name: "Renamed", conditions: { post_remote_ids: ids } });
@@ -446,7 +446,7 @@ const step = (page: Page, n: number) => page.getByRole("group", { name: "Do this
 test("builds a flow of three steps with a wait and buttons, and saves steps without actions or a fallback", async ({ page }) => {
   const state = await brain(page, "owner");
   await page.goto("/automations/new?template=dm-keyword");
-  await page.getByLabel("Name").fill("Price flow");
+  await page.getByLabel("Name", { exact: true }).fill("Price flow");
   const doThis = page.getByRole("group", { name: "Do this" });
   await expect(doThis.getByRole("radio", { name: "One reply" })).toBeChecked();
   await doThis.getByLabel("DM text").fill("Hi {name}, want the price list?");
@@ -866,7 +866,7 @@ test("a card's menu closes on Escape, duplicates into a prefilled builder that s
   await menu.click();
   await card.getByRole("link", { name: "Duplicate" }).click();
   await expect(page).toHaveURL("/t/acme22/automations/new?from=flow");
-  await expect(page.getByLabel("Name")).toHaveValue("Guide flow (copy)");
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Guide flow (copy)");
   await expect(page.getByRole("switch", { name: "On" })).toHaveAttribute("aria-checked", "false");
   await expect(step(page, 1).getByLabel("Button 1 label")).toHaveValue("Yes please");
   await expect(step(page, 3).getByLabel("Wait for")).toHaveValue("1");
@@ -934,12 +934,12 @@ test("the gallery groups the templates, marks the popular ones and the networks,
 
   await page.getByRole("link", { name: "Start from scratch" }).click();
   await expect(page).toHaveURL("/t/acme22/automations/new?template=blank");
-  await expect(page.getByLabel("Name")).toHaveValue("");
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("");
   await expect(page.getByRole("radio", { name: "When someone comments" })).toBeChecked();
   // The bar counts what is missing and jumps to the first of it.
   await page.getByRole("button", { name: "2 problems" }).click();
-  await expect(page.getByLabel("Name")).toBeFocused();
-  await page.getByLabel("Name").fill("My own");
+  await expect(page.getByLabel("Name", { exact: true })).toBeFocused();
+  await page.getByLabel("Name", { exact: true }).fill("My own");
   await page.getByRole("button", { name: "1 problem" }).click();
   await expect(page.getByLabel("DM text")).toBeFocused();
   await page.getByLabel("DM text").fill("Hello {name}");
@@ -989,7 +989,7 @@ test("saving changed steps asks first when people wait in the flow, and only the
   state.list.push(guideFlow({ runs: { ...stats, waiting: 2 } }));
   await page.goto("/automations/flow?edit=1");
   // A new name leaves the steps alone, so nothing is asked.
-  await page.getByLabel("Name").fill("Guide flow 2");
+  await page.getByLabel("Name", { exact: true }).fill("Guide flow 2");
   await page.getByRole("button", { name: "Save automation" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Automation saved." })).toBeVisible();
   expect(state.bodies).toHaveLength(1);
@@ -1037,9 +1037,9 @@ test("leaving the builder with unsaved changes asks first", async ({ page }) => 
       window.dispatchEvent(e);
       return e.defaultPrevented;
     });
-  await expect(page.getByLabel("Name")).toHaveValue("Welcome message");
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Welcome message");
   expect(await unload()).toBe(false);
-  await page.getByLabel("Name").fill("Hello there");
+  await page.getByLabel("Name", { exact: true }).fill("Hello there");
   expect(await unload()).toBe(true);
 
   const asked: string[] = [];
@@ -1050,12 +1050,12 @@ test("leaving the builder with unsaved changes asks first", async ({ page }) => 
   await page.getByRole("main").getByRole("link", { name: "Templates" }).click();
   expect(asked).toEqual(["Leave without saving? Your changes to this automation will be lost."]);
   await expect(page).toHaveURL("/t/acme22/automations/new?template=welcome");
-  await expect(page.getByLabel("Name")).toHaveValue("Hello there");
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Hello there");
 
   // Cancel asks the same, and a yes leaves.
   page.once("dialog", (d) => d.dismiss());
   await page.getByRole("button", { name: "Cancel" }).click();
-  await expect(page.getByLabel("Name")).toHaveValue("Hello there");
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Hello there");
   page.once("dialog", (d) => d.accept());
   await page.getByRole("main").getByRole("link", { name: "Templates" }).click();
   await expect(page.getByRole("heading", { name: "Start from a template" })).toBeVisible();
@@ -1068,7 +1068,7 @@ test("the browser's Back button asks before unsaved changes are lost, and only t
   const open = async () => {
     await page.goto("/automations/new");
     await page.getByRole("main").getByRole("link", { name: /Welcome message/ }).first().click();
-    await expect(page.getByLabel("Name")).toHaveValue("Welcome message");
+    await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Welcome message");
   };
 
   // Nothing changed: Back just goes back.
@@ -1083,18 +1083,18 @@ test("the browser's Back button asks before unsaved changes are lost, and only t
 
   // Changed: a no keeps the page and what was typed, as often as Back is pressed; a yes leaves.
   await open();
-  await page.getByLabel("Name").fill("Hello there");
+  await page.getByLabel("Name", { exact: true }).fill("Hello there");
   await page.goBack();
   await expect.poll(() => asked).toHaveLength(1);
   await expect(page).toHaveURL("/t/acme22/automations/new?template=welcome");
-  await expect(page.getByLabel("Name")).toHaveValue("Hello there");
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Hello there");
   await page.goBack();
   await expect(gallery).toBeVisible();
   expect(asked).toEqual(Array(2).fill("Leave without saving? Your changes to this automation will be lost."));
 
   // Saved: Back never asks.
   await open();
-  await page.getByLabel("Name").fill("Hello there");
+  await page.getByLabel("Name", { exact: true }).fill("Hello there");
   await page.getByRole("button", { name: "Create automation" }).click();
   await expect(page).toHaveURL(/\/automations\/(?!new)[^/?]+$/);
   await page.goBack();
@@ -1155,7 +1155,7 @@ test("the automation pages have no sideways scroll on a 375 wide phone", async (
 test("an AI step takes a prompt, says who pays, and saves as ai_send_dm", async ({ page }) => {
   const state = await brain(page, "owner");
   await page.goto("/automations/new?template=comment-to-dm");
-  await page.getByLabel("Name").fill("AI answers");
+  await page.getByLabel("Name", { exact: true }).fill("AI answers");
   const doThis = page.getByRole("group", { name: "Do this" });
   await doThis.getByRole("radio", { name: "A flow of steps" }).check();
   await step(page, 1).getByRole("button", { name: "Remove step 1" }).click();
@@ -1230,7 +1230,7 @@ test("Test this automation tries the form as it stands, shows what would go and 
   await panel.getByRole("button", { name: "Test" }).click();
   await expect(panel).toContainText("this post has no open public page");
   // An edit makes the answer stale, and a name is not needed to try.
-  await page.getByLabel("Name").fill("");
+  await page.getByLabel("Name", { exact: true }).fill("");
   await expect(panel).not.toContainText("changed since this test");
   await page.getByLabel("DM text").fill("Hi {name}, here is the guide");
   await expect(panel).toContainText("changed since this test");
