@@ -32,11 +32,11 @@ export const features: Feature[] = [
         heading: "Triggers and flows",
         bullets: [
           "Triggers: a comment keyword, a DM keyword, a first message (welcome), a new follower, a like of your post, a repost of your post (those three on Bluesky), a mention, a story reply, a story mention (Instagram, in testing) and a button tap. A like or repost trigger can be limited to the posts you name.",
-          "Conditions: the accounts, a set or only the posts you name, keywords, a person's first comment or message, weekdays and hours in your time zone, a text with or without a link, and a question or a positive or negative mood (read by AI).",
+          "Conditions: the accounts, a set or only the posts you name, keywords, a person's first comment or message, weekdays and hours in your time zone, one of 23 languages, a person's first mention, a text with or without a link, and a question or a positive or negative mood (read by AI).",
           "A flow runs several steps in turn, with waits and buttons. It can wait for the person to answer before it goes on, and stops if they never do.",
           "On Threads, only a reply or a mention can start one, and the answer is a public reply (or hiding the reply): Threads has no DMs and no private reply.",
           "A step can write its reply with AI from your prompt, using your own AI key or the AI replies that come with the Scheduler and Automation plan. It never adds a link or @handle your prompt does not hold.",
-          "An automation can also tag the contact, so you can find those people later or send them a broadcast. Besides replying it can mail your team, assign the conversation, hide a comment (Facebook and Instagram), like one (Facebook and Bluesky), repost or follow back (Bluesky) and keep newer automations off the same item. Hide comments that carry a link, and spam never shows.",
+          "An automation can also tag the contact, so you can find those people later or send them a broadcast. Besides replying it can mail your team, assign the conversation, hide a comment (Facebook and Instagram), like one (Facebook, Bluesky and X), repost (Bluesky and X) or follow back (Bluesky) and keep newer automations off the same item. Hide comments that carry a link, and spam never shows.",
         ],
       },
       {
@@ -55,6 +55,7 @@ export const features: Feature[] = [
         bullets: [
           "A comment is acted on once and never tried again, so nobody gets the same message twice.",
           "On YouTube only the comment trigger exists, and the answer is a public reply: YouTube has no DMs and no private reply to a comment.",
+          "An automation never answers an account connected to SocialReins, yours or another team's, so two automated accounts cannot answer each other in a loop.",
           "A team's automations can answer 500 comments a day. Each automation can have its own daily limit and a cool-down so one person cannot trigger it again and again, and one switch on the Team page pauses every automation.",
           "Facebook and Instagram: a private reply goes within 7 days of the comment and only one per comment; any other message within 24 hours of the person's last, and their answer starts a new 24 hours. An Instagram DM is at most 1000 bytes. A person answering by hand can use Meta's Human Agent tag for up to 7 days once the app holds that feature; an automation never does.",
           "A send a network refused for rate limiting went nowhere, so a flow tries it again by itself and you can retry it from the run. Any other failure is final, so nobody gets a message twice.",
@@ -64,8 +65,26 @@ export const features: Feature[] = [
         ],
       },
       {
+        heading: "What it costs on X",
+        bullets: [
+          "X bills every post, user and message it returns or takes. The editor shows about what one run costs: the read that brought the item (a post and its author, $0.015) plus $0.015 for each message, like, hide or repost, and the test shows it for a sample.",
+          "Each X account has a monthly budget that pays for reading and for what automations write. An automation stops when it is used up, when the team has no X credits, or when X says the app is out of credits, and the run log says which.",
+          "X replies hold 280 characters, or 25,000 with a paid X plan. A DM holds 10,000 and goes only to a person who follows you or has DMs open; otherwise the fallback public reply answers.",
+          "Following you and quoting your post are not triggers on X yet: X bills each follower and each quote it returns, and a follower list has no cursor to read only what is new.",
+        ],
+      },
+      {
         heading: "Why not every network",
         text: "Each network decides what an app may read and send. Some do not let an app send a DM at all, and some need their own review first. A network moves to Yes here when it works end to end.",
+      },
+      {
+        heading: "What blocks the other networks",
+        bullets: [
+          "LinkedIn: an app may read comments on a member's posts only with a permission LinkedIn gives to select developers (no application is open), and on a Page's posts only through its Community Management API, approved for each app. It offers apps no messages at all.",
+          "TikTok: the API we post with has no comment or message calls. Replying to comments exists only in TikTok's Business API for Business accounts, which needs its own access, and it has no DMs.",
+          "Pinterest: we found no Pinterest API call to read comments on a Pin or messages, and no webhooks.",
+          "YouTube and Threads work for public replies, within limits: YouTube's daily quota is shared by every team and every upload (a reply costs 50 of 10,000 units), and Threads replies and mentions reach people outside the app's testers only after Meta's App Review. Neither has DMs.",
+        ],
       },
     ],
   },
