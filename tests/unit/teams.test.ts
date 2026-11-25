@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   acceptInvitation,
+  checkSlug,
   createTeam,
   deleteTeam,
   grantable,
@@ -13,6 +14,7 @@ import {
   roleArticle,
   revokeInvitation,
   setRole,
+  setSlug,
   switchTeam,
 } from "@/lib/teams";
 import { apiUrl } from "@/lib/waitlist";
@@ -28,6 +30,9 @@ describe("team requests", () => {
 
   it.each([
     ["createTeam", () => createTeam("Acme"), "/v1/teams", "POST", { name: "Acme" }],
+    ["createTeam with an address", () => createTeam("Acme", "acme"), "/v1/teams", "POST", { name: "Acme", slug: "acme" }],
+    ["setSlug", () => setSlug("acme"), "/v1/team/slug", "PATCH", { slug: "acme" }],
+    ["setSlug to the default", () => setSlug(null), "/v1/team/slug", "PATCH", { slug: null }],
     ["switchTeam", () => switchTeam("t1"), "/v1/current-team", "PUT", { team_id: "t1" }],
     ["renameTeam", () => renameTeam("Acme"), "/v1/team", "PATCH", { name: "Acme" }],
     ["setRole", () => setRole("u/1", "admin"), "/v1/team/members/u%2F1", "PATCH", { role: "admin" }],
@@ -40,6 +45,15 @@ describe("team requests", () => {
     expect(url).toBe(`${apiUrl}${path}`);
     expect(init).toMatchObject({ method, credentials: "include" });
     expect(JSON.parse(init.body as string)).toEqual(body);
+  });
+
+  it("checks an address with the team it is for", async () => {
+    const fetch = reply(200, { slug: "acme", available: true, reason: null });
+    vi.stubGlobal("fetch", fetch);
+    expect(await checkSlug("acme", "k7q2mf")).toEqual({ slug: "acme", available: true, reason: null });
+    expect(call(fetch)[0]).toBe(`${apiUrl}/v1/slugs/check?slug=acme&for_team=k7q2mf`);
+    await checkSlug("a&b");
+    expect((fetch.mock.calls[1] as unknown as [string])[0]).toBe(`${apiUrl}/v1/slugs/check?slug=a%26b`);
   });
 
   it("deletes the team with an empty body, relying on a recent sign-in", async () => {
