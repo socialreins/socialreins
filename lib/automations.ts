@@ -281,10 +281,13 @@ const knownAction = (a: unknown) => {
 // Whether the builder can show and save this automation without losing anything: a trigger it knows,
 // with plain actions or a flow of steps it knows. brain may send a newer trigger or shape, whatever
 // the type above says.
+const KNOWN_CONDITIONS = ["social_set_id", "account_ids", "post_remote_ids", "keywords", "first_per_author", "first_message", "payloads", "has_link", "sentiment"];
 export function canEdit(a: Automation) {
   const x = a as { trigger: string; actions?: unknown; steps?: unknown; conditions?: { payloads?: unknown } | null };
   if (!Object.hasOwn(triggers, x.trigger) || typeof x.conditions !== "object" || x.conditions === null || !Array.isArray(x.actions)) return false;
   if (triggers[x.trigger as Trigger].payloads && !Array.isArray(x.conditions.payloads)) return false;
+  // A condition the builder has no field for (a time window, a question rule, a language) would be dropped by a save.
+  if (Object.keys(x.conditions).some((k) => !KNOWN_CONDITIONS.includes(k))) return false;
   if (x.steps === null || x.steps === undefined) return x.actions.length > 0 && x.actions.every(knownAction);
   return Array.isArray(x.steps) && x.steps.length > 0 && x.actions.length === 0 && x.steps.every(knownStep);
 }
@@ -471,7 +474,12 @@ export function toFlow(d: Draft): { steps: StepDraft[]; dropped: string[] } {
   const pub = triggers[d.trigger].publicReply;
   const steps = [...(d.dm.trim() ? [newStep("send_dm", d.dm)] : []), ...(pub && d.publicReply.trim() ? [newStep("reply_publicly", d.publicReply.trim())] : [])];
   return {
-    steps: [...(steps.length ? steps : [newStep("send_dm")]), ...d.tags.map((t) => newStep("tag_contact", t)), ...EFFECTS.filter((e) => d.also.includes(e)).map((e) => newStep(e))],
+    // A DM to fill in only when nothing else in the reply does something.
+    steps: [
+      ...(steps.length || d.tags.length || d.also.some((e) => e !== "stop_automations") ? steps : [newStep("send_dm")]),
+      ...d.tags.map((t) => newStep("tag_contact", t)),
+      ...EFFECTS.filter((e) => d.also.includes(e)).map((e) => newStep(e)),
+    ],
     dropped: pub && d.fallbackOn && d.dm.trim() && d.fallback.trim() ? ["the fallback reply"] : [],
   };
 }
@@ -709,9 +717,9 @@ export function changeTrigger(d: Draft, to: Trigger): { draft: Draft; dropped: s
   drop(!t.payloads && d.payloads.length > 0, "button payloads", { payloads: [] });
   drop(!t.text && d.hasLink !== "any", "the link rule", { hasLink: "any" });
   drop(!t.text && d.sentiment.length > 0, "the mood rule", { sentiment: [] });
-  const onlyComments = (e: EffectType) => e === "hide_comment" || e === "like_comment";
+  const onlyComments = (t: string) => t === "hide_comment" || t === "like_comment";
   drop(to !== "comment_received" && d.also.some(onlyComments), "hide and like", { also: d.also.filter((e) => !onlyComments(e)) });
-  drop(to !== "comment_received" && d.steps.some((s) => onlyComments(s.type as EffectType)), "hide and like steps", { steps: d.steps.filter((s) => !onlyComments(s.type as EffectType)) });
+  drop(to !== "comment_received" && d.steps.some((s) => onlyComments(s.type)), "hide and like steps", { steps: d.steps.filter((s) => !onlyComments(s.type)) });
   const replyStep = (s: StepDraft) => s.type === "reply_publicly" || s.type === "ai_reply_publicly";
   drop(!t.publicReply && d.steps.some(replyStep), "public reply steps", { steps: d.steps.filter((s) => !replyStep(s)) });
   drop(!t.publicReply && draft.steps.some((s) => s.type === "send_dm" && s.text.includes("{page}")), "{page} in the steps", {

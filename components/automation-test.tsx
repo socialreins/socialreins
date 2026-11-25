@@ -91,7 +91,8 @@ export function AutomationTest({
   const sample = text.trim() || placeholder;
   // What changes the answer: not the name or the on switch.
   const meta = account?.provider === "facebook" || account?.provider === "instagram";
-  const now = JSON.stringify([input && { ...input, name: "", active: true }, account?.id, sample, name, closed, meta && age, meta && replied]);
+  const comment = input?.trigger === "comment_received";
+  const now = JSON.stringify([input && { ...input, name: "", active: true }, account?.id, sample, name, closed, meta && age, meta && comment && replied]);
   const can = Boolean(input && account && !stuck);
 
   async function test() {
@@ -105,7 +106,7 @@ export function AutomationTest({
       button_payload: input.conditions.payloads?.[0],
       author_can_dm: account.provider === "bluesky" && closed ? false : undefined,
       age_minutes: meta && age > 0 ? age : undefined,
-      private_reply_sent: meta && replied ? true : undefined,
+      private_reply_sent: meta && comment && replied ? true : undefined,
     };
     // A name is only needed to save, not to try.
     await run("test", () => testAutomation({ ...input, name: input.name.trim() || "Test" }, body), (outcome) => {
@@ -171,7 +172,7 @@ export function AutomationTest({
                   ))}
                 </select>
               </div>
-              {input?.trigger === "comment_received" && (
+              {comment && (
                 <label className="flex items-center gap-2 self-end">
                   <input type="checkbox" className="shrink-0 accent-[var(--color-signal-deep)]" checked={replied} onChange={(e) => setReplied(e.target.checked)} />
                   It already got its private reply

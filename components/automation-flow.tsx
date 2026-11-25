@@ -287,7 +287,7 @@ export function FlowEditor({
                       id={field}
                       inputMode="numeric"
                       className="field w-12 px-1 py-0.5 text-center"
-                      aria-label="Wait for"
+                      aria-label={s.type === "wait" ? "Wait for" : "Wait for their reply up to"}
                       value={s.amount}
                       onChange={(e) => patch(i, { amount: e.target.value })}
                       aria-describedby={`${field}-hint`}

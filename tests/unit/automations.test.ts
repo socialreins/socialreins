@@ -689,6 +689,10 @@ describe("waiting for a reply and the steps that send nothing", () => {
     const a = (steps: unknown[]) => ({ trigger: "comment_received", conditions: { account_ids: [] }, actions: [], steps }) as unknown as Parameters<typeof canEdit>[0];
     expect(canEdit(a([{ type: "send_dm", text: "x" }, { type: "wait_for_reply", minutes: 5 }, { type: "hide_comment" }]))).toBe(true);
     expect(canEdit(a([{ type: "send_dm", text: "x" }, { type: "assign", user_id: "u1" }]))).toBe(false);
+    // A condition the builder has no field for would be lost on a save.
+    const withCondition = (conditions: object) => ({ trigger: "comment_received", conditions: { account_ids: [], ...conditions }, actions: [{ type: "send_dm", text: "x" }] }) as unknown as Parameters<typeof canEdit>[0];
+    expect(canEdit(withCondition({ has_link: true, sentiment: ["negative"] }))).toBe(true);
+    for (const c of [{ when: { zone: "UTC" } }, { question: true }, { languages: ["en"] }]) expect(canEdit(withCondition(c))).toBe(false);
     expect(sameSteps([{ type: "wait_for_reply", minutes: 5 }, { type: "notify_team" }], [{ type: "wait_for_reply", minutes: 5 }, { type: "notify_team" }])).toBe(true);
     expect(sameSteps([{ type: "wait_for_reply", minutes: 5 }], [{ type: "wait", minutes: 5 }])).toBe(false);
     expect(flowOutline([{ type: "send_dm", text: "x" }, { type: "wait_for_reply", minutes: 60 }, { type: "hide_comment" }])).toBe("DM, wait for a reply up to 1 hour, hide the comment");
@@ -705,6 +709,13 @@ describe("the link rule, the mood and the extra actions of one reply", () => {
     const dm = automationInput({ ...d, trigger: "dm_received", payloads: [] }, scope, uris);
     expect(dm.actions).toEqual([{ type: "notify_team" }, { type: "stop_automations" }]);
     expect(automationInput({ ...d, trigger: "story_mention" }, scope, uris).conditions).not.toHaveProperty("has_link");
+  });
+
+  it("turns an effect-only reply into a flow without an empty DM, and back", () => {
+    const d = { ...full, dm: "", publicReply: "", tags: [], also: ["hide_comment" as const] };
+    const flow = toFlow(d);
+    expect(flow.steps.map((s) => s.type)).toEqual(["hide_comment"]);
+    expect(toSimple(flow.steps).also).toEqual(["hide_comment"]);
   });
 
   it("reads them back, drops them with a trigger that cannot take them, and says them in the notes", () => {

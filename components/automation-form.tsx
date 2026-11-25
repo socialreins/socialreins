@@ -439,10 +439,10 @@ export function AutomationForm({
                   <option value="no">Only text without a link</option>
                 </select>
                 <p id="automation-link-hint" className="hint">
-                  A link, a web address or an email. Pair &quot;with a link&quot; with Hide the comment to keep spam off your posts.
+                  A link, a web address or an email.{d.trigger === "comment_received" && " Pair \"with a link\" with Hide the comment to keep spam off your posts."}
                 </p>
               </div>
-              <fieldset className="grid gap-1.5">
+              <fieldset className="grid gap-1.5" aria-describedby="automation-mood-hint">
                 <legend className="label">Their mood</legend>
                 {SENTIMENTS.map((m) => (
                   <label key={m} className="flex items-center gap-2">
@@ -454,7 +454,9 @@ export function AutomationForm({
                     {m === "positive" ? "Positive (thanks, praise)" : "Negative (a complaint, anger)"}
                   </label>
                 ))}
-                <p className="hint">Read by AI after the other conditions match, and counted like an AI reply. Neither ticked: any mood.</p>
+                <p id="automation-mood-hint" className="hint">
+                  Read by AI after the other conditions match, and counted like an AI reply. Neither ticked: any mood.
+                </p>
               </fieldset>
             </div>
           )}
@@ -566,7 +568,7 @@ export function AutomationForm({
                 max={MAX_TAG_ACTIONS}
               />
               <fieldset className="grid gap-2">
-                <legend className="label">Also</legend>
+                <legend className="label">Also (optional)</legend>
                 {EFFECTS.filter((e) => d.trigger === "comment_received" || (e !== "hide_comment" && e !== "like_comment")).map((e) => (
                   <label key={e} className="flex items-start gap-2">
                     <input
@@ -620,7 +622,7 @@ export function AutomationForm({
           input={testable ? automationInput(d, scopeBody(scope), uris as string[]) : null}
           stuck={
             testable
-              ? (issues.find((i) => i.field !== "automation-name")?.text ?? (tagsAlone ? "A tag needs something sent with it." : null))
+              ? (issues.find((i) => i.field !== "automation-name")?.text ?? (tagsAlone ? "A tag or a stop needs something done with it: a DM, a reply, a mail or a moderation action." : null))
               : "A post link is not a post of a connected Bluesky account."
           }
           accounts={accounts.filter((x) => AUTOMATED.includes(x.provider))}

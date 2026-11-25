@@ -813,16 +813,26 @@ export function AutomationDetail({ id }: { id: string }) {
                               onClick={() =>
                                 retrying.run(
                                   `retry-${r.id}`,
-                                  () => retryRun(id, r.id),
-                                  (next) => setRuns((cur) => (cur && !isFailure(cur) ? { ...cur, runs: cur.runs.map((x) => (x.id === next.id ? next : x)) } : cur)),
+                                  async () => {
+                                    const res = await retryRun(id, r.id);
+                                    // A refusal means it can't be retried now: take the button away so it isn't tried again.
+                                    if (isFailure(res) && res !== "error" && res !== "timeout" && res !== "signed_out")
+                                      setRuns((cur) => (cur && !isFailure(cur) ? { ...cur, runs: cur.runs.map((x) => (x.id === r.id ? { ...x, can_retry: false } : x)) } : cur));
+                                    return res;
+                                  },
+                                  (next) => {
+                                    setRuns((cur) => (cur && !isFailure(cur) ? { ...cur, runs: cur.runs.map((x) => (x.id === next.id ? next : x)) } : cur));
+                                    // The button is gone: the focus goes to the row's link instead of the page.
+                                    requestAnimationFrame(() => document.getElementById(`run-${r.id}-open`)?.focus());
+                                  },
                                 )
                               }
                             >
                               {retrying.busy === `retry-${r.id}` ? "Retrying..." : "Retry"}
-                              <span className="sr-only"> this run, which the network refused for rate limiting and sent nothing</span>
+                              <span className="sr-only"> the run of {when(r.created_at)}, which the network refused for rate limiting and sent nothing</span>
                             </button>
                           )}
-                          <Link href={`/inbox?item=${encodeURIComponent(r.inbox_item_id)}`} className="font-bold underline decoration-signal decoration-2 underline-offset-4">
+                          <Link id={`run-${r.id}-open`} href={`/inbox?item=${encodeURIComponent(r.inbox_item_id)}`} className="font-bold underline decoration-signal decoration-2 underline-offset-4">
                             Open in inbox<span className="sr-only">, {when(r.created_at)}</span>
                           </Link>
                         </td>
@@ -847,7 +857,7 @@ export function AutomationDetail({ id }: { id: string }) {
               </button>
             )}
             <Status problem={more.problem} done={null} />
-            <Status problem={retrying.problem} done={null} overrides={{ not_retryable: "This run can't be retried: it did not end on a rate limit, or was retried already.", paused: "Your automations are paused. Resume them first.", daily_cap: "The team's 500 automation runs for today are used." }} />
+            <Status problem={retrying.problem} done={null} overrides={{ not_retryable: "This run can't be retried: it did not end on a rate limit, it was retried already, or the automation is switched off.", paused: "Your automations are paused. Resume them first.", daily_cap: "The team's 500 automation runs for today are used." }} />
           </>
         )}
       </section>
