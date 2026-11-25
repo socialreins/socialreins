@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { brainUrl } from "@/lib/brain-url";
 import { gaId } from "@/lib/ga";
+import { retiredAddress, retiredRedirect } from "@/lib/slug-redirect";
 import { splitTeamPath } from "@/lib/team-path";
 
 const dev = process.env.NODE_ENV === "development";
@@ -32,9 +33,22 @@ const csp = (api: string, anyImage: boolean, ga: boolean) =>
     "frame-ancestors 'none'",
   ].join("; ");
 
-export function proxy(req: NextRequest) {
-  const res = NextResponse.next();
+export async function proxy(req: NextRequest) {
   const path = req.nextUrl.pathname;
+  // /t/<address that a team gave up>/...: a permanent redirect to the team's address now, keeping the path and the query.
+  const team = splitTeamPath(path)[0];
+  if (team) {
+    const address = await retiredAddress(team, brainUrl());
+    if (address) {
+      const to = req.nextUrl.clone();
+      to.pathname = retiredRedirect(path, address);
+      const res = NextResponse.redirect(to, 308);
+      // Never kept by a browser: a team that takes its old address back would otherwise send that browser round in a circle.
+      res.headers.set("Cache-Control", "no-store");
+      return res;
+    }
+  }
+  const res = NextResponse.next();
   const anyImage = path.startsWith("/p/") || splitTeamPath(path)[0] !== null;
   res.headers.set("Content-Security-Policy", csp(new URL(brainUrl()).origin, anyImage, gaId() !== null));
   return res;

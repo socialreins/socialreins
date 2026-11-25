@@ -6,7 +6,10 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { addPasskey, getMe, safeNext, type AddResult, type MeResult, type Passkey } from "@/lib/auth";
 import { snoozePasskeyPrompt } from "@/components/passkey-prompt";
-import { linkButton, reverify } from "@/components/team-ui";
+import { linkButton, reverify, Status, useAction } from "@/components/team-ui";
+import { SlugField, slugOk, useSlugCheck } from "@/components/slug-field";
+import { setSlug } from "@/lib/teams";
+import type { Team } from "@/lib/auth";
 
 const noSubscribe = () => () => {};
 const hasWebAuthn = () => typeof window.PublicKeyCredential === "function";
@@ -43,7 +46,7 @@ export function Welcome() {
     if (webauthn === false) router.replace(next);
   }, [webauthn, router, next]);
 
-  if (me === null || me === "signed_out" || !webauthn) return <p className="text-ink-soft">Checking your sign-in...</p>;
+  if (me === null || me === "signed_out" || me === "not_found" || !webauthn) return <p className="text-ink-soft">Checking your sign-in...</p>;
   if (me === "error") return <p role="alert" className="waitlist-error">Sign-in couldn&apos;t be checked. Reload to try again.</p>;
 
   async function onAdd() {
@@ -56,6 +59,7 @@ export function Welcome() {
   const failed = state !== "idle" && state !== "adding";
   return (
     <div className="grid gap-6">
+      {me.user.current_team.role === "owner" && !me.user.current_team.slug && <AddressStep team={me.user.current_team} />}
       <div className="grid gap-3">
         <h1 className="font-display text-4xl font-extrabold leading-tight tracking-tight text-balance">
           Add a passkey to sign in faster
@@ -78,5 +82,41 @@ export function Welcome() {
         Skip for now
       </Link>
     </div>
+  );
+}
+
+// The first-run choice of the team address: optional, and it can be changed later in Team settings.
+function AddressStep({ team }: { team: Team }) {
+  const [slug, setText] = useState("");
+  const [saved, setSaved] = useState<string | null>(team.slug ?? null);
+  const state = useSlugCheck(slug, team.code);
+  const { busy, problem, done, run } = useAction();
+  const prefix = `${window.location.host}/t/`;
+  return (
+    <form
+      className="grid gap-3 rounded-lg border border-[var(--line)] p-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (slug && slugOk(state))
+          run("slug", () => setSlug(slug), (t) => {
+            setSaved(t.slug ?? null);
+            setText("");
+            return `Your team address is now ${prefix}${t.slug}.`;
+          });
+      }}
+    >
+      <h2 className="text-base font-semibold">Choose your team address</h2>
+      <p className="hint">
+        Your team <strong className="text-ink">{team.name}</strong> is at <code>{prefix + (saved ?? team.code)}</code>. Pick a shorter, nicer one now, or keep it
+        and change it later in Team settings.
+      </p>
+      <SlugField id="welcome-slug" label="Address" value={slug} onChange={setText} state={state} prefix={prefix} placeholder={saved ?? team.code} suggestFrom={team.name} />
+      <div>
+        <button type="submit" className="btn btn-secondary btn-sm" disabled={busy !== null || !slug || !slugOk(state)}>
+          {busy ? "Saving..." : "Save address"}
+        </button>
+      </div>
+      <Status problem={problem} done={done} />
+    </form>
   );
 }

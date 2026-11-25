@@ -9,6 +9,8 @@ import { createTeam, listTeams, switchTeam } from "@/lib/teams";
 import { isActive, useCurrentSet, useSession, type NavItem } from "@/components/app-shell";
 import { Icon } from "@/components/ui";
 import { isFailure, problemText, roleName, Status, useAction } from "@/components/team-ui";
+import { SlugField, slugOk, useSlugCheck } from "@/components/slug-field";
+import { teamSegment } from "@/lib/team-path";
 
 const crumb = "flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 font-bold hover:bg-ink/[0.045]";
 const item = "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-ink/[0.045]";
@@ -94,6 +96,8 @@ export function TeamMenu({ collapsed }: { collapsed: boolean }) {
   const [teams, setTeams] = useState<Team[] | Failure | null>(null);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
+  const [slug, setSlug] = useState("");
+  const slugState = useSlugCheck(slug);
   const nameRef = useRef<HTMLInputElement>(null);
   const newRef = useRef<HTMLButtonElement>(null);
   const { busy, problem, done, run } = useAction();
@@ -113,11 +117,12 @@ export function TeamMenu({ collapsed }: { collapsed: boolean }) {
 
   async function onCreate(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    await run("create", () => createTeam(name), (team) => {
+    await run("create", () => createTeam(name, slug), (team) => {
       setTeam(team);
       setTeams((ts) => (Array.isArray(ts) ? [...ts, team] : [team]));
       setCreating(false);
       setName("");
+      setSlug("");
       return `Created ${team.name}. It is now your current team.`;
     });
   }
@@ -167,7 +172,10 @@ export function TeamMenu({ collapsed }: { collapsed: boolean }) {
                 <span aria-hidden="true" className="grid size-5 shrink-0 place-items-center rounded bg-ink/10 text-[0.6875rem] font-bold">
                   {t.name.charAt(0).toUpperCase()}
                 </span>
-                <span className="min-w-0 flex-1 truncate">{t.name}</span>
+                <span className="min-w-0 flex-1 truncate">
+                  {t.name}
+                  <span className="block truncate text-xs text-ink-soft">/t/{teamSegment(t)}</span>
+                </span>
                 <span className="text-xs text-ink-soft">{roleName[t.role]}</span>
                 {t.id === current.id && <Icon name="check" className="size-4 text-signal-deep" />}
               </button>
@@ -191,8 +199,19 @@ export function TeamMenu({ collapsed }: { collapsed: boolean }) {
             aria-invalid={problem === "invalid_name" || undefined}
             className="field"
           />
+          <SlugField
+            id="new-team-slug"
+            label="Address (optional)"
+            value={slug}
+            onChange={setSlug}
+            state={slugState}
+            prefix="/t/"
+            placeholder="automatic"
+            suggestFrom={name}
+            help="Left empty, the team gets a short code. You can pick or change it later."
+          />
           <div className="flex gap-2">
-            <button type="submit" className="btn btn-primary btn-sm" disabled={busy !== null}>
+            <button type="submit" className="btn btn-primary btn-sm" disabled={busy !== null || (!!slug && !slugOk(slugState))}>
               {busy === "create" ? "Creating..." : "Create team"}
             </button>
             <button type="button" className="btn btn-quiet btn-sm" onClick={() => openCreate(false)}>
