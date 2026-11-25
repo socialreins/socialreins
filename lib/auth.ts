@@ -246,6 +246,8 @@ export const codes = [
   "bluesky_unsupported_trigger",
   "youtube_unsupported_trigger",
   "youtube_no_dm",
+  "bluesky_only_trigger",
+  "bluesky_only_action",
   "meta_one_private_reply",
   "meta_reply_window",
   "has_paid_plan",
