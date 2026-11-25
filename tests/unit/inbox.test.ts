@@ -207,6 +207,7 @@ describe("reply limits", () => {
     expect(maxFor("dm", "facebook")).toBe(2000);
     expect(maxFor("comment", "instagram")).toBe(2200);
     expect(maxFor("dm", "instagram")).toBe(1000);
+    expect(maxFor("comment", "youtube")).toBe(10000);
   });
 });
 
@@ -298,5 +299,16 @@ describe("moderateItem", () => {
     expect(await moderateItem("i1", "delete")).toEqual({ code: "meta_denied", message: "Meta did not allow it." });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(new Response("{}", { status: 403 })));
     expect(await moderateItem("i1", "delete")).toBe("error");
+  });
+
+  it("takes back a YouTube reply with its id, and holds a YouTube comment", async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ id: "i1" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetch);
+    await moderateItem("i1", "delete_reply", "r1");
+    expect(JSON.parse(String(call(fetch)[1].body))).toEqual({ action: "delete_reply", reply_id: "r1" });
+    const hold = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ id: "i1" }), { status: 200 }));
+    vi.stubGlobal("fetch", hold);
+    await moderateItem("i1", "hold");
+    expect(JSON.parse(String(call(hold)[1].body))).toEqual({ action: "hold" });
   });
 });

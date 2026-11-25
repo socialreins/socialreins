@@ -157,10 +157,10 @@ export function providerState(platform: string, providers: Provider[]): Provider
   return connectable.has(platform) ? "available" : "coming_soon";
 }
 
-// Only Bluesky's image CDN path, Meta's image CDNs, YouTube's channel pictures, X's and Pinterest's profile pictures and TikTok's avatars are allowed by the
+// Only Bluesky's image CDN path, Meta's image CDNs, YouTube's channel pictures and video thumbnails, X's and Pinterest's profile pictures and TikTok's avatars are allowed by the
 // CSP's img-src (proxy.ts), so anything else falls back to an initial.
 const metaImageHosts = [".fbcdn.net", ".cdninstagram.com", ".tiktokcdn.com", ".tiktokcdn-us.com"];
-const exactImageHosts = ["yt3.ggpht.com", "yt3.googleusercontent.com", "pbs.twimg.com", "i.pinimg.com"];
+const exactImageHosts = ["yt3.ggpht.com", "yt3.googleusercontent.com", "i.ytimg.com", "pbs.twimg.com", "i.pinimg.com"];
 export function safeAvatar(url: string | null) {
   if (!url) return null;
   if (url.startsWith("https://cdn.bsky.app/img/")) return url;

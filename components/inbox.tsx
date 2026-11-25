@@ -62,6 +62,7 @@ import { TagEditor } from "@/components/tag-editor";
 import { isFailure, linkButton, planLimit, problemText, Status, useAction, useSearchInUrl } from "@/components/team-ui";
 import { Icon } from "@/components/ui";
 import { XActions } from "@/components/x-inbox";
+import { YouTubeContext, YouTubeDeleteReply } from "@/components/youtube-inbox";
 
 // New comments arrive on brain's per-minute tick; the open list checks twice a minute.
 const REFRESH_MS = 30_000;
@@ -1150,6 +1151,7 @@ function Detail({
             </button>
           </li>
         )}
+        {item.platform === "youtube" && <YouTubeContext item={item} />}
         {aboveId && above === null && (
           <li role="status" className="h-16 rounded-2xl bg-ink/5 motion-safe:animate-pulse">
             <span className="sr-only">Loading the posts above...</span>
@@ -1236,6 +1238,7 @@ function Detail({
                 {canManage && r.reply.kind === "public" && r.reply.remote_url && item.platform === "bluesky" && (
                   <DeleteReply itemId={item.id} replyId={r.reply.id} state={acts.actions} reload={acts.reload} />
                 )}
+                {canManage && r.reply.kind === "public" && item.platform === "youtube" && <YouTubeDeleteReply itemId={item.id} replyId={r.reply.id} onChange={onChange} />}
               </p>
             </li>
           ),

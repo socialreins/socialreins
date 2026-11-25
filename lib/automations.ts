@@ -155,7 +155,7 @@ export type Capability = {
   networks: string[];
 };
 export const triggers: Record<Trigger, Capability> = {
-  comment_received: { label: "When someone comments", keywords: true, posts: true, firstPerAuthor: true, firstMessage: false, publicReply: true, payloads: false, note: null, networks: ["bluesky", "facebook", "instagram", "x"] },
+  comment_received: { label: "When someone comments", keywords: true, posts: true, firstPerAuthor: true, firstMessage: false, publicReply: true, payloads: false, note: null, networks: ["bluesky", "facebook", "instagram", "x", "youtube"] },
   dm_received: { label: "When someone sends a DM", keywords: true, posts: false, firstPerAuthor: false, firstMessage: true, publicReply: false, payloads: false, note: null, networks: ["bluesky", "facebook", "instagram", "x"] },
   mention_received: { label: "When someone mentions you", keywords: true, posts: false, firstPerAuthor: false, firstMessage: false, publicReply: true, payloads: false, note: null, networks: ["bluesky", "x"] },
   new_follower: {
@@ -668,6 +668,7 @@ export const reasonText: Record<string, string> = {
   dm_not_allowed: "They only accept DMs from people they follow",
   no_public_page: "The post has no open public page for {page}",
   no_dm_access: "Reconnect with an app password that allows DMs",
+  youtube_no_dm: "YouTube has no DMs and no private replies: only a public reply can answer a comment",
   daily_cap: "The team reached 500 automation runs today",
   paused: "The team paused all its automations",
   paused_waiting: "Stopped: the team paused its automations while this flow waited",
@@ -724,7 +725,7 @@ export const mismatchText: Record<string, string> = {
   button_not_named: "That button payload is not one this automation listens for",
 };
 export const blockText: Record<string, string> = {
-  unsupported_account: "Automations run only on Bluesky, Facebook, Instagram and X accounts",
+  unsupported_account: "Automations run only on Bluesky, Facebook, Instagram, X and YouTube accounts",
   x_unsupported_trigger: "X has no follows, story replies or buttons to trigger on: use a comment, a mention or a DM",
   bluesky_unsupported_trigger: "Bluesky has no story replies or buttons to tap: use a comment, a mention, a DM or a follow",
   meta_one_private_reply: "Facebook and Instagram allow one private reply per comment",

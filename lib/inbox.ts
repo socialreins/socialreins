@@ -16,7 +16,7 @@ export type Filters = { kinds: Kind[]; keywords: string[]; unanswered: boolean }
 export type Inbox = { id: string; name: string; is_all: boolean; account_ids: string[]; filters: Filters; open_count?: number; created_at: string; updated_at: string };
 
 // Platforms whose accounts have an inbox.
-export const INBOX_PLATFORMS = ["bluesky", "facebook", "instagram", "x"];
+export const INBOX_PLATFORMS = ["bluesky", "facebook", "instagram", "x", "youtube"];
 export const inboxCapable = <A extends { provider: string }>(accounts: A[]) => accounts.filter((a) => INBOX_PLATFORMS.includes(a.provider));
 export const inboxName = (i: Inbox) => (i.is_all ? "All inboxes" : i.name);
 // Inbox-capable accounts no custom inbox holds: their items show only in All inboxes.
@@ -71,8 +71,12 @@ export type Item = {
   moderation?: Moderation | null;
   // Facebook and Instagram DMs: how long Meta takes a reply. Missing for anything else or from an older brain.
   reply_window?: ReplyWindow | null;
+  // YouTube comments: the video it is on (as last read), and for a reply the comment it answers. Missing for anything else.
+  video?: { id: string; title: string; thumbnail_url: string | null; url: string } | null;
+  reply_to?: { author_name: string | null; text: string } | null;
 };
-export type ModerationAction = "hide" | "unhide" | "delete" | "like" | "unlike";
+// Facebook and Instagram: hide, unhide, delete, like, unlike. YouTube: hold (for review), publish again, reject (for good), ban the author too.
+export type ModerationAction = "hide" | "unhide" | "delete" | "like" | "unlike" | "hold" | "publish" | "reject" | "ban";
 export type Moderation = { hidden: boolean; liked: boolean; deleted: boolean; can: ModerationAction[] };
 export type ReplyWindow = { last_message_at: string; closes_at: string; human_agent_until: string | null; open: boolean };
 export type Attachment = { kind: "image" | "video" | "sticker" | "gif" | "audio" | "file" | "link"; url: string; preview_url?: string };
@@ -94,9 +98,9 @@ export type ItemPage = { items: Item[]; next_cursor: string | null };
 export const MAX_PUBLIC = 300;
 export const MAX_DM = 1000;
 // Facebook takes comments of 8000 characters and messages of 2000; Instagram comments of 2200 and messages of 1000;
-// X replies of 280 and messages of 10,000. The reply counter counts characters, X weights them (a link is 23), so brain
+// X replies of 280 and messages of 10,000; YouTube replies of 10,000 (it has no messages). The reply counter counts characters, X weights them (a link is 23), so brain
 // has the last word.
-const META_MAX: Record<string, { public: number; dm: number }> = { facebook: { public: 8000, dm: 2000 }, instagram: { public: 2200, dm: 1000 }, x: { public: 280, dm: 10000 } };
+const META_MAX: Record<string, { public: number; dm: number }> = { facebook: { public: 8000, dm: 2000 }, instagram: { public: 2200, dm: 1000 }, x: { public: 280, dm: 10000 }, youtube: { public: 10000, dm: 0 } };
 export const maxFor = (kind: Item["kind"], provider?: string) => {
   const meta = provider ? META_MAX[provider] : undefined;
   if (meta) return kind === "dm" ? meta.dm : meta.public;
@@ -297,8 +301,9 @@ export async function replyToItem(id: string, text: string, conversation = false
 }
 
 // A moderation that Meta did not take, or took: the item brain now holds. Delete and the rest are one call each.
-export async function moderateItem(id: string, action: ModerationAction): Promise<Item | Failure | SendError> {
-  const res = await request(`/v1/inbox-items/${enc(id)}/moderate`, "POST", { action }, CONNECT_TIMEOUT_MS);
+// On YouTube `delete_reply` with a reply id takes back one of the channel's own replies.
+export async function moderateItem(id: string, action: ModerationAction | "delete_reply", replyId?: string): Promise<Item | Failure | SendError> {
+  const res = await request(`/v1/inbox-items/${enc(id)}/moderate`, "POST", replyId ? { action, reply_id: replyId } : { action }, CONNECT_TIMEOUT_MS);
   if (typeof res === "string") return res;
   if (res.ok) return (await res.json().catch(() => null)) ?? "error";
   const body = await res.clone().json().catch(() => null);

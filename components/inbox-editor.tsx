@@ -130,7 +130,7 @@ export function InboxEditor({
               ))}
             </ul>
           )}
-          <p className="hint">Bluesky, Facebook, Instagram and X accounts have an inbox. An X inbox is off until it is turned on in the account&apos;s settings. An account can be in more than one.</p>
+          <p className="hint">Bluesky, Facebook, Instagram, X and YouTube accounts have an inbox. An X or YouTube inbox is off until it is turned on in the account&apos;s settings. An account can be in more than one.</p>
         </fieldset>
         <fieldset className="grid gap-1">
           <legend className="label mb-1">Kinds</legend>
