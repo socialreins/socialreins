@@ -23,7 +23,7 @@ const alice = {
   dm_access: true,
   created_at: "2026-10-20T10:00:00Z",
 };
-const xavier = { ...alice, id: "x1", provider: "x", external_id: "x-1", handle: "xavier", display_name: "Xavier" };
+const xavier = { ...alice, id: "x1", provider: "linkedin", external_id: "x-1", handle: "xavier", display_name: "Xavier" };
 const fbPage = { ...alice, id: "f1", provider: "facebook", external_id: "101", handle: null, display_name: "Acme Page" };
 const filters = { kinds: [], keywords: [], unanswered: false };
 const inbox = (id: string, name: string, extra = {}) => ({
@@ -321,10 +321,10 @@ test("owners create, edit and delete an inbox; All is not editable", async ({ pa
   await page.getByRole("button", { name: "New inbox" }).click();
   const dialog = page.getByRole("dialog", { name: "New inbox" });
   await dialog.getByLabel("Name").fill("DMs");
-  // Every account with an inbox starts picked; one without (X) is not offered.
+  // Every account with an inbox starts picked; one without (LinkedIn) is not offered.
   await expect(dialog.getByRole("checkbox", { name: "Alice, Bluesky" })).toBeChecked();
   await expect(dialog.getByRole("checkbox", { name: /Xavier/ })).toHaveCount(0);
-  await expect(dialog.getByText("Bluesky, Facebook and Instagram accounts have an inbox.")).toBeVisible();
+  await expect(dialog.getByText("Bluesky, Facebook, Instagram and X accounts have an inbox.")).toBeVisible();
   await dialog.getByRole("checkbox", { name: "Alice, Bluesky" }).uncheck();
   await expect(dialog.getByRole("button", { name: "Create inbox" })).toBeDisabled();
   await dialog.getByRole("checkbox", { name: "Alice, Bluesky" }).check();

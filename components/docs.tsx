@@ -333,7 +333,7 @@ function Use({ mode }: { mode: Mode }) {
 
       <h2 id="inbox">Answer comments and DMs in the inbox</h2>
       <p>
-        Open Inbox. Comments and DMs arrive in one list, and DMs with one person are grouped into one conversation that opens as a chat. Search the list by text or author, switch between Open and Done, and filter with the Kind and Assigned menus. In the reader you reply, choose Mark done, assign the item to a teammate and insert a saved reply. The inbox is live on Bluesky; Facebook Pages and Instagram are in testing.
+        Open Inbox. Comments and DMs arrive in one list, and DMs with one person are grouped into one conversation that opens as a chat. Search the list by text or author, switch between Open and Done, and filter with the Kind and Assigned menus. In the reader you reply, choose Mark done, assign the item to a teammate and insert a saved reply. The inbox is live on Bluesky; Facebook Pages and Instagram are in testing. X is in testing too: under Accounts, open an X account&apos;s settings and turn on X inbox, choose how often it is read and the most it may spend a month (X charges for every post and message it returns), and reconnect the account once so X grants the DM permissions.
       </p>
       <p>Keyboard shortcuts, which wait while you type in a box:</p>
       <ul>
@@ -353,7 +353,7 @@ function Use({ mode }: { mode: Mode }) {
         <li>Under Do this, choose One reply (a DM, a public reply, or both) or A flow of steps. A flow has up to 10 steps: a DM with up to 3 buttons, a public reply, a wait, or Tag the contact.</li>
         <li>Save it and switch it on. Its page lists every run with what was sent and, when something was skipped or refused, the reason.</li>
       </ol>
-      <p>Automations are live on Bluesky; Facebook and Instagram are in testing.</p>
+      <p>Automations are live on Bluesky; Facebook and Instagram are in testing, and so is X (comments, mentions and DMs; X has no private reply, so keep a fallback public reply).</p>
 
       <h2 id="broadcasts">Send a broadcast</h2>
       <ol>
@@ -492,7 +492,7 @@ const networkApps: { name: string; where: string; url: string; steps: ReactNode[
     scopes: "openid, profile, email, w_member_social",
     env: ["LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET"],
     redirect: ["/connect/linkedin/callback"],
-    note: "This connects a personal profile. LinkedIn tokens last about 60 days and only approved partner apps get a refresh token, so you reconnect when SocialReins shows the account as expiring.",
+    note: "This connects a personal profile. LinkedIn tokens last about 60 days and only approved partner apps get a refresh token, so you reconnect when SocialReins shows the account as expiring. There is no LinkedIn inbox: LinkedIn lets an app read comments only after it approves the app for its Community Management API, and gives apps no access to messages.",
   },
   {
     name: "X",
@@ -504,10 +504,10 @@ const networkApps: { name: string; where: string; url: string; steps: ReactNode[
       "Add the redirect address below as the callback URI and any address you own as the website URL.",
       "Copy the OAuth 2.0 Client ID and Client Secret. These are not the API key and secret.",
     ],
-    scopes: "tweet.read, tweet.write, users.read, offline.access, media.write",
+    scopes: "tweet.read, tweet.write, users.read, offline.access, media.write, dm.read, dm.write, like.write, tweet.moderate.write",
     env: ["X_CLIENT_ID", "X_CLIENT_SECRET"],
     redirect: ["/connect/x/callback"],
-    note: "X charges for API use under its own plans. SocialReins reads the account's plan to set the post length limit, and you can set it yourself on the account.",
+    note: "X charges for API use under its own plans, and reading counts: each post, user and DM it returns is billed. SocialReins reads the account's plan to set the post length limit, and you can set it yourself on the account. The last four scopes are for the inbox (DMs, likes, hiding a reply); a person may untick them and still publish. The inbox is off for each account until a team turns it on and sets its monthly budget; an account connected without them is asked to reconnect once to read DMs, like and hide.",
   },
   {
     name: "TikTok",

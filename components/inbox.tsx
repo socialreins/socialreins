@@ -57,6 +57,7 @@ import { platformName } from "@/components/platform-icons";
 import { TagEditor } from "@/components/tag-editor";
 import { isFailure, linkButton, planLimit, problemText, Status, useAction, useSearchInUrl } from "@/components/team-ui";
 import { Icon } from "@/components/ui";
+import { XActions } from "@/components/x-inbox";
 
 // New comments arrive on brain's per-minute tick; the open list checks twice a minute.
 const REFRESH_MS = 30_000;
@@ -618,7 +619,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
             <div className="card grid gap-3 p-5">
               <p>
                 <strong className="block">No accounts connected</strong>
-                <span className="text-ink-soft">Connect a Bluesky, Facebook or Instagram account and its comments, mentions and DMs land here.</span>
+                <span className="text-ink-soft">Connect a Bluesky, Facebook, Instagram or X account and its comments, mentions and DMs land here.</span>
               </p>
               <Link href="/connections" className="btn btn-primary justify-self-start">
                 Connect an account
@@ -1249,6 +1250,7 @@ function Detail({
         ))}
       </ol>
 
+      <XActions item={item} />
       {/* A follow, like or repost has nothing to reply to. */}
       <form onSubmit={onReply} hidden={isActivity(item.kind)} className="grid gap-2 border-t border-ink/10 pt-4 [&[hidden]]:hidden">
         <div className="flex flex-wrap items-end justify-between gap-2">

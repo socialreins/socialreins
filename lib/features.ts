@@ -15,8 +15,9 @@ export type Feature = {
   sections: { heading: string; text?: string; bullets?: string[] }[];
 };
 
-// Bluesky is live; Facebook Pages and Instagram are in testing (the same words as lib/compare.ts).
-const support: Record<string, Support> = { bluesky: "Yes", facebook: "In testing", instagram: "In testing" };
+// Bluesky is live; Facebook Pages, Instagram and X are in testing (the same words as lib/compare.ts). LinkedIn is Not yet:
+// it lets an app read comments only after its own approval.
+const support: Record<string, Support> = { bluesky: "Yes", facebook: "In testing", instagram: "In testing", x: "In testing" };
 
 export const features: Feature[] = [
   {
@@ -42,7 +43,7 @@ export const features: Feature[] = [
           "Pick the accounts or the set it runs on, or only the posts you name.",
           "Set keywords, or leave them out to answer every comment.",
           "Write the DM, and add a public reply if you want one. {name} in the text becomes the commenter's name, and {page} the link to the post's public page.",
-          "Add a public reply to fall back on when the network refuses the DM, for example when the person only takes DMs from accounts they follow.",
+          "Add a public reply to fall back on when the network refuses the DM, for example when the person only takes DMs from accounts they follow. X has no private reply to a comment, so there the fallback is the way to answer.",
           "Answer each person once, or every time they comment.",
           "Test it before it goes live: type a sample comment and see what it would match and send, AI text included. Nothing is sent. An AI step is written for real and counts toward your AI replies.",
         ],
@@ -89,6 +90,7 @@ export const features: Feature[] = [
           "Keyboard shortcuts move between items, mark one done, assign it and start a reply.",
           "New items are fetched about once a minute, and an open inbox refreshes by itself.",
           "On Bluesky, DMs are read only when the app password allows them.",
+          "X charges for every post, user and DM it returns, so an X inbox is off until you turn it on for an account. You choose how often it is read and the most it may spend a month, and it stops when that is used up or X is out of credits. Reply, like, repost and hide a reply from the inbox. X takes a DM only from an account the person follows or when their DMs are open.",
         ],
       },
       {
@@ -119,7 +121,7 @@ export type Group = {
   items: { name: string; text: string }[];
 };
 
-const TESTING = "Live on Bluesky. Facebook Pages and Instagram are in testing.";
+const TESTING = "Live on Bluesky. Facebook Pages and Instagram are in testing. So is X, which stays off until a team turns it on.";
 
 export const groups: Group[] = [
   {

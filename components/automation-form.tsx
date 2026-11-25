@@ -37,10 +37,11 @@ import { Status, useAction } from "@/components/team-ui";
 import { Icon, type IconName } from "@/components/ui";
 
 // Networks whose inbox can fire an automation; brain refuses an account on any other (unsupported_account).
-const AUTOMATED = ["bluesky", "facebook", "instagram"];
+const AUTOMATED = ["bluesky", "facebook", "instagram", "x"];
 
 export const automationMessages: Partial<Record<Failure, ReactNode>> = {
-  unsupported_account: "Automations run only on Bluesky, Facebook and Instagram accounts. Remove the others.",
+  unsupported_account: "Automations run only on Bluesky, Facebook, Instagram and X accounts. Remove the others.",
+  x_unsupported_trigger: "X has no follows, story replies or buttons to trigger on. Pick a comment, a mention or a DM, or leave the X account out.",
   meta_one_private_reply: "Facebook and Instagram allow one private reply per comment. Keep one DM in this flow.",
   meta_reply_window: "Facebook and Instagram take a DM only within 24 hours of the person's message. Shorten the waits.",
   invalid_conditions: "One of the accounts, the set or a post link is no longer valid, a keyword is too long, or a condition does not fit this trigger. Check them and try again.",
@@ -138,7 +139,7 @@ export function AutomationForm({
   // Everything that stops a save, with the field to fix it in, for the bar's count.
   const issues: { text: string; field: string }[] = [
     ...(d.name.trim() ? [] : [{ text: "Give it a name.", field: "automation-name" }]),
-    ...(stuck.length ? [{ text: `Untick ${stuck.join(", ")}: automations run only on Bluesky, Facebook and Instagram.`, field: "automation-scope" }] : []),
+    ...(stuck.length ? [{ text: `Untick ${stuck.join(", ")}: automations run only on Bluesky, Facebook, Instagram and X.`, field: "automation-scope" }] : []),
     ...(t.payloads && !d.payloads.length ? [{ text: "Add at least one button payload.", field: "automation-payloads" }] : []),
     ...(d.flow
       ? problems.map((p) => ({ text: p.step === null ? p.text : `Step ${p.step + 1}: ${p.text}`, field: p.step === null ? "automation-flow-add" : `step-${d.steps[p.step]!.id}-field` }))

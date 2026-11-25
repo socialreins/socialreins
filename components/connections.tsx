@@ -41,6 +41,7 @@ import { PlatformMark } from "@/components/posts";
 import { getPinterestBoards, setDefaultBoard, type PinterestBoard } from "@/lib/posts";
 import { isFailure, planLimit, problemText, Status, useAction } from "@/components/team-ui";
 import { EmptyState, Icon, LoadFailed, SkeletonRows } from "@/components/ui";
+import { XInboxSettings } from "@/components/x-inbox";
 
 const heading = "font-display text-xl font-extrabold tracking-tight";
 const date = (iso: string) => new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
@@ -608,6 +609,7 @@ function AccountSettings({
           )}
         </form>
       )}
+      {c.provider === "x" && <XInboxSettings id={c.id} canManage={canManage} />}
       {c.provider === "pinterest" && (
         <form onSubmit={onSaveBoard} className="grid gap-3">
           <fieldset className="grid gap-1.5" disabled={!canManage}>

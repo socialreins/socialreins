@@ -16,7 +16,7 @@ export type Filters = { kinds: Kind[]; keywords: string[]; unanswered: boolean }
 export type Inbox = { id: string; name: string; is_all: boolean; account_ids: string[]; filters: Filters; open_count?: number; created_at: string; updated_at: string };
 
 // Platforms whose accounts have an inbox.
-export const INBOX_PLATFORMS = ["bluesky", "facebook", "instagram"];
+export const INBOX_PLATFORMS = ["bluesky", "facebook", "instagram", "x"];
 export const inboxCapable = <A extends { provider: string }>(accounts: A[]) => accounts.filter((a) => INBOX_PLATFORMS.includes(a.provider));
 export const inboxName = (i: Inbox) => (i.is_all ? "All inboxes" : i.name);
 // Inbox-capable accounts no custom inbox holds: their items show only in All inboxes.
@@ -86,8 +86,10 @@ export type ItemPage = { items: Item[]; next_cursor: string | null };
 // Bluesky's limits as brain checks them: a public reply is a post, a DM is a chat message.
 export const MAX_PUBLIC = 300;
 export const MAX_DM = 1000;
-// Facebook takes comments of 8000 characters and messages of 2000; Instagram comments of 2200 and messages of 1000.
-const META_MAX: Record<string, { public: number; dm: number }> = { facebook: { public: 8000, dm: 2000 }, instagram: { public: 2200, dm: 1000 } };
+// Facebook takes comments of 8000 characters and messages of 2000; Instagram comments of 2200 and messages of 1000;
+// X replies of 280 and messages of 10,000. The reply counter counts characters, X weights them (a link is 23), so brain
+// has the last word.
+const META_MAX: Record<string, { public: number; dm: number }> = { facebook: { public: 8000, dm: 2000 }, instagram: { public: 2200, dm: 1000 }, x: { public: 280, dm: 10000 } };
 export const maxFor = (kind: Item["kind"], provider?: string) => {
   const meta = provider ? META_MAX[provider] : undefined;
   if (meta) return kind === "dm" ? meta.dm : meta.public;
