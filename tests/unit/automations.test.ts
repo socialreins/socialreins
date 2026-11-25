@@ -485,6 +485,17 @@ describe("tag the contact", () => {
     expect(canEdit({ ...saved, actions: [], steps: [{ type: "send_dm", text: "Hi" }, { type: "tag_contact", tag: "vip", extra: 1 } as never] })).toBe(false);
   });
 
+  it("takes a post's own number as a post to watch, and says why a Threads action did not go", () => {
+    const accounts = [{ provider: "threads", handle: "the_nomadic_dev", external_id: "1" }];
+    expect(postUri("17900000000000001", accounts)).toBe("17900000000000001");
+    expect(postUri(" 17900000000000001 ", accounts)).toBe("17900000000000001");
+    expect(postUri("123", accounts)).toBeNull();
+    expect(postUri("https://www.threads.com/@the_nomadic_dev/post/DAbc", accounts)).toBeNull();
+    for (const code of ["threads_no_dm", "threads_no_like", "threads_nested", "threads_replies_closed", "threads_permission_missing"]) {
+      expect(reason(code), code).not.toBe(code.replaceAll("_", " "));
+    }
+  });
+
   it("holds a Threads flow to replies and mentions, a public reply and 500 bytes", () => {
     const reply = (text: string): StepDraft => ({ ...newStep("reply_publicly"), text }) as StepDraft;
     expect(flowProblems([reply("Thanks!")], "comment_received", ["threads"])).toEqual([]);

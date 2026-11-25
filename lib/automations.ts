@@ -185,6 +185,8 @@ const plain = /^[A-Za-z0-9.\-_~:]+$/;
 // their posts), so no lookup leaves the browser. null when it isn't one.
 export function postUri(input: string, accounts: Pick<Connection, "provider" | "handle" | "external_id">[]): string | null {
   const s = input.trim();
+  // A post's own number as brain keeps it (a Threads post's `remote_id`): a Threads link holds a code, not this number, so the form lists the posts to pick.
+  if (/^\d{8,25}$/.test(s)) return s;
   const at = /^at:\/\/([^/\s]+)\/app\.bsky\.feed\.post\/([^/\s]+)$/.exec(s);
   if (at) return at[1]!.startsWith("did:") && plain.test(at[1]!) && plain.test(at[2]!) ? s : null;
   const link = /^https:\/\/bsky\.app\/profile\/([^/\s?#]+)\/post\/([^/\s?#]+)\/?(?:[?#]\S*)?$/.exec(s);
@@ -874,6 +876,14 @@ export const reasonText: Record<string, string> = {
   ai_leak: "Not sent: the AI repeated your prompt",
   no_reply: "They did not answer in time, so the rest of the flow never went out",
   reply_gone: "Their answer was deleted, so the flow stopped rather than send a second private reply",
+  threads_no_dm: "Threads has no DMs and no private reply, so only a public reply was possible",
+  threads_no_like: "Threads has no like for apps",
+  threads_nested: "Threads can only hide a reply directly under a post of this account, not one deeper in the thread",
+  not_our_thread: "Only a reply under a post of this account can be hidden",
+  threads_replies_closed: "The author of the post limited who can reply, so no reply was sent",
+  threads_reconnect_required: "Threads refused the account's token. Reconnect the account",
+  threads_permission_missing: "This Threads account was connected without the permission to reply. Reconnect it",
+  threads_failed: "Threads refused it",
   not_supported: "This network does not allow this on this item (Reposting and following back are Bluesky only; Instagram has no like for a comment)",
   already_done: "The account followed this person a moment ago, so it was not done twice",
   action_in_progress: "The same action on this item was being done at that moment",
@@ -898,6 +908,9 @@ export const reasonWhy: Record<string, string> = {
   ai_leak: "The reply quoted a long part of your prompt word for word, so it was held back.",
   daily_cap: "A team's automations run at most 500 times a day.",
   paused: "Someone switched on Pause all automations on the Team page. Nothing is sent, and flows waiting at a wait end, until it is switched off.",
+  threads_no_dm: "Threads has no direct messages and no private reply to a comment, so an automation on a Threads account answers with a public reply only. Keep a public reply in the automation.",
+  threads_replies_closed: "Threads lets the author of a post choose who may reply to it. This one takes replies from its own author only.",
+  threads_permission_missing: "The account was connected before SocialReins asked Threads to let it read and send replies. Reconnect it under Accounts and accept the new permissions.",
   own_account: "Automations never answer your own connected accounts, so two accounts cannot reply to each other in a loop.",
   connected_account: "Automations never answer an account that is connected to SocialReins, so two automated accounts cannot reply to each other in a loop.",
   cooldown: "This automation has a cool-down for each person. Change it under Limits in the automation.",

@@ -45,6 +45,7 @@ import { effectHint, FlowEditor, FlowPreview, TagLine, TextField } from "@/compo
 import { AutomationTest } from "@/components/automation-test";
 import { KeywordsField, ScopeField, scopeBody, scopeOf } from "@/components/scope-fields";
 import { Status, useAction } from "@/components/team-ui";
+import { ThreadsPostPicker } from "@/components/threads-post-picker";
 import { Icon, type IconName } from "@/components/ui";
 
 // Networks whose inbox can fire an automation; brain refuses an account on any other (unsupported_account).
@@ -422,11 +423,17 @@ export function AutomationForm({
                     aria-invalid={badLinks.length > 0 || undefined}
                   />
                   <p id="automation-posts-hint" className="hint">
-                    One Bluesky post link per line, from a connected account. Posts already listed here stay as they are.
+                    One Bluesky post link per line, from a connected account, or a post&apos;s number (for Threads, pick the post below). Posts already listed here stay as they are.
                   </p>
+                  {picked.some((x) => x.provider === "threads") && (
+                    <ThreadsPostPicker
+                      accountIds={picked.filter((x) => x.provider === "threads").map((x) => x.id)}
+                      onPick={(id) => set({ posts: d.posts.split("\n").some((l) => l.trim() === id) ? d.posts : `${d.posts.trimEnd()}${d.posts.trim() ? "\n" : ""}${id}` })}
+                    />
+                  )}
                   {badLinks.length > 0 && (
                     <p id="automation-posts-error" role="alert" className="waitlist-error">
-                      {badLinks.length === 1 ? "This link isn't" : "These links aren't"} a post of a connected Bluesky account: {badLinks.join(", ")}
+                      {badLinks.length === 1 ? "This link isn't" : "These links aren't"} a post of a connected Bluesky account or a post number: {badLinks.join(", ")}
                     </p>
                   )}
                 </div>
