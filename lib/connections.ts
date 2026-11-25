@@ -17,6 +17,9 @@ export type Connection = {
   dm_access: boolean;
   // The platform refused the account's token (a publish, a renewal or the inbox found out), so it must be connected again. Absent otherwise.
   reconnect?: boolean;
+  // Threads: Threads refused reading replies because the account was connected before that permission was asked for, so no replies
+  // reach the inbox until it is connected again. Absent otherwise.
+  replies_denied?: boolean;
   // ok; expiring: the token ends within 7 days (token_expires_at) and nothing renews it; reconnect: it expired or was refused.
   status?: ConnectionStatus;
   created_at: string;

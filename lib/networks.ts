@@ -55,7 +55,15 @@ export const networks: Network[] = [
       ["First comment", "No. Use a thread instead."],
       ["Polls", NOT_YET("Threads")],
     ],
-    sections: [],
+    sections: [
+      {
+        heading: "Good to know",
+        bullets: [
+          "The Threads inbox is in testing. Replies to your posts and posts that mention you arrive, you can reply (500 characters, an emoji counts as its bytes) and hide a reply under your post. Threads has no DMs, and an app cannot like, repost or follow there.",
+          "An account connected before replies were added needs to be connected again once, to allow reading them.",
+        ],
+      },
+    ],
   },
   {
     slug: "linkedin",

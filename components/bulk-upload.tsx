@@ -10,7 +10,7 @@ import { isFailure, linkButton, problemText } from "@/components/team-ui";
 import { Icon } from "@/components/ui";
 import { failuresCsv, MAX_FILE_BYTES, MAX_ROWS, readCsv, rowInput, templateCsv, validateRow, type BulkRow, type Problem, type Validation } from "@/lib/bulk";
 import { listConnections, type Connection } from "@/lib/connections";
-import { createPost, createPostGroup, isPlatform, type Platform, type Post } from "@/lib/posts";
+import { createPost, createPostGroup, isPlatform, postRef, type Platform, type Post } from "@/lib/posts";
 import { listSets, type SocialSet } from "@/lib/sets";
 
 const th = "border-b border-ink/10 px-4 py-2 font-bold";
@@ -326,7 +326,7 @@ function Row({ row, check, unchecked, result, errors, waiting }: { row: BulkRow;
               {created.post.status === "scheduled" ? "Scheduled" : "Draft saved"}
               {created.count > 1 ? `, ${created.count} posts` : ""}
             </span>
-            <Link href={`/posts/${created.post.id}`} className={linkButton}>
+            <Link href={`/posts/${postRef(created.post)}`} className={linkButton}>
               Open post {row.n}
             </Link>
           </span>

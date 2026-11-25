@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { assignItem, chatRows, moderateItem, windowNote, itemSummary, dayLabel, actionButtons, getConversation, getThread, runAction, hasThread, isActivity, listItems, maxFor, mergeConversation, mergeFresh, messageCount, relativeTime, replyToItem, sentAlready, setItemState, threadKey, type Item } from "@/lib/inbox";
+import { assignItem, chatRows, moderateItem, windowNote, itemSummary, dayLabel, actionButtons, getConversation, getThread, runAction, hasThread, isActivity, listItems, maxFor, replyLength, mergeConversation, mergeFresh, messageCount, relativeTime, replyToItem, sentAlready, setItemState, threadKey, type Item } from "@/lib/inbox";
 import { apiUrl } from "@/lib/waitlist";
 
 const call = (fetch: ReturnType<typeof vi.fn>) => fetch.mock.calls[0] as unknown as [string, RequestInit];
@@ -208,6 +208,15 @@ describe("reply limits", () => {
     expect(maxFor("comment", "instagram")).toBe(2200);
     expect(maxFor("dm", "instagram")).toBe(1000);
     expect(maxFor("comment", "youtube")).toBe(10000);
+    expect(maxFor("comment", "threads")).toBe(500);
+  });
+
+  it("counts a Threads reply with an emoji as its UTF-8 bytes, any other network by characters", () => {
+    expect(replyLength("threads", "abc")).toBe(3);
+    expect(replyLength("threads", "😀")).toBe(4);
+    expect(replyLength("threads", "😀".repeat(126))).toBe(504);
+    expect(replyLength("bluesky", "😀")).toBe(1);
+    expect(replyLength(undefined, "ab")).toBe(2);
   });
 });
 
@@ -224,6 +233,8 @@ describe("activity and threads", () => {
     const has = (kind: Item["kind"], platform = "bluesky") => hasThread({ kind, platform });
     expect([has("comment"), has("mention"), has("like"), has("repost")]).toEqual([true, true, true, true]);
     expect([has("dm"), has("follow"), has("comment", "facebook")]).toEqual([false, false, false]);
+    // Threads has a thread for a reply or mention, and nothing for a like or repost (it has none).
+    expect([has("comment", "threads"), has("mention", "threads"), has("like", "threads")]).toEqual([true, true, false]);
   });
 
   it("asks brain for the thread of an item and for activity by kind", async () => {

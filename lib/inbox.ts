@@ -1,5 +1,6 @@
 import { api, failure, request, type Failure } from "@/lib/auth";
 import { CONNECT_TIMEOUT_MS } from "@/lib/connections";
+import { graphemes, threadsLength } from "@/lib/posts";
 
 export type Kind = "comment" | "mention" | "dm";
 export const KINDS: Kind[] = ["comment", "mention", "dm"];
@@ -16,7 +17,7 @@ export type Filters = { kinds: Kind[]; keywords: string[]; unanswered: boolean }
 export type Inbox = { id: string; name: string; is_all: boolean; account_ids: string[]; filters: Filters; open_count?: number; created_at: string; updated_at: string };
 
 // Platforms whose accounts have an inbox.
-export const INBOX_PLATFORMS = ["bluesky", "facebook", "instagram", "x", "youtube"];
+export const INBOX_PLATFORMS = ["bluesky", "facebook", "instagram", "threads", "x", "youtube"];
 export const inboxCapable = <A extends { provider: string }>(accounts: A[]) => accounts.filter((a) => INBOX_PLATFORMS.includes(a.provider));
 export const inboxName = (i: Inbox) => (i.is_all ? "All inboxes" : i.name);
 // Inbox-capable accounts no custom inbox holds: their items show only in All inboxes.
@@ -98,9 +99,17 @@ export type ItemPage = { items: Item[]; next_cursor: string | null };
 export const MAX_PUBLIC = 300;
 export const MAX_DM = 1000;
 // Facebook takes comments of 8000 characters and messages of 2000; Instagram comments of 2200 and messages of 1000;
-// X replies of 280 and messages of 10,000; YouTube replies of 10,000 (it has no messages). The reply counter counts characters, X weights them (a link is 23), so brain
-// has the last word.
-const META_MAX: Record<string, { public: number; dm: number }> = { facebook: { public: 8000, dm: 2000 }, instagram: { public: 2200, dm: 1000 }, x: { public: 280, dm: 10000 }, youtube: { public: 10000, dm: 0 } };
+// X replies of 280 and messages of 10,000; Threads replies of 500 and no messages; YouTube replies of 10,000 and no messages. The reply counter counts characters, X weights them
+// (a link is 23) and Threads counts an emoji as its UTF-8 bytes (`replyLength`), so brain has the last word.
+const META_MAX: Record<string, { public: number; dm: number }> = {
+  facebook: { public: 8000, dm: 2000 },
+  instagram: { public: 2200, dm: 1000 },
+  threads: { public: 500, dm: 0 },
+  x: { public: 280, dm: 10000 },
+  youtube: { public: 10000, dm: 0 },
+};
+// What a reply counts against `maxFor`: Threads counts an emoji as its UTF-8 bytes, every other network a character.
+export const replyLength = (provider: string | undefined, text: string) => (provider === "threads" ? threadsLength(text) : graphemes(text));
 export const maxFor = (kind: Item["kind"], provider?: string) => {
   const meta = provider ? META_MAX[provider] : undefined;
   if (meta) return kind === "dm" ? meta.dm : meta.public;
@@ -171,7 +180,10 @@ export type ThreadPost = { uri: string; url: string | null; author: Author; text
 export type ThreadContext = { posts: ThreadPost[]; truncated: boolean };
 export const getThread = (id: string) => api<ThreadContext>(`/v1/inbox-items/${enc(id)}/thread`);
 // Whether an item has a thread to read: replies and mentions, and the posts a like or repost points at.
-export const hasThread = (i: Pick<Item, "kind" | "platform">) => i.platform === "bluesky" && (i.kind === "comment" || i.kind === "mention" || i.kind === "like" || i.kind === "repost");
+// On Threads, the posts a reply or mention answers.
+export const hasThread = (i: Pick<Item, "kind" | "platform">) =>
+  (i.platform === "bluesky" && (i.kind === "comment" || i.kind === "mention" || i.kind === "like" || i.kind === "repost")) ||
+  (i.platform === "threads" && (i.kind === "comment" || i.kind === "mention"));
 
 // What a person does from a Bluesky item beyond replying. Brain asks for `confirm`, logs every attempt, and
 // leaves block, hide, delete and report to owners and admins.
