@@ -26,7 +26,9 @@ export const MAX_TAG_ACTIONS = 3;
 export type Button = { label: string; payload: string };
 // One step of a flow. brain leaves `buttons` out when a DM has none.
 export type Step = { type: "send_dm"; text: string; buttons?: Button[] } | { type: "reply_publicly"; text: string } | AiSend | { type: "wait"; minutes: number } | TagAction;
-export type RunStats = { sent: number; skipped: number; failed: number; running: number; waiting?: number; total: number; count: number; last_at: string | null };
+// Why runs were skipped or failed, with how many each, most first.
+export type RunReason = { reason: string; count: number };
+export type RunStats = { sent: number; skipped: number; failed: number; running: number; waiting?: number; total: number; count: number; last_at: string | null; reasons?: RunReason[] };
 export type Automation = {
   id: string;
   name: string;
@@ -36,6 +38,9 @@ export type Automation = {
   conditions: Conditions;
   actions: Action[];
   fallback_public_reply: string | null;
+  // Safety: minutes before it answers the same person again, and most runs a day. null: off.
+  cooldown_minutes?: number | null;
+  daily_cap?: number | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -45,7 +50,7 @@ export type Automation = {
   steps?: Step[] | null;
 };
 // brain takes actions or steps, never both, and a fallback only with actions.
-export type AutomationInput = Pick<Automation, "name" | "trigger" | "conditions" | "active"> & { actions?: Action[]; steps?: Step[]; fallback_public_reply?: string | null };
+export type AutomationInput = Pick<Automation, "name" | "trigger" | "conditions" | "active"> & { actions?: Action[]; steps?: Step[]; fallback_public_reply?: string | null; cooldown_minutes?: number | null; daily_cap?: number | null };
 export type RunStatus = "running" | "waiting" | "sent" | "failed" | "skipped";
 export type ActionResult = {
   type: "send_dm" | "reply_publicly" | AiType | "fallback_public_reply" | "tag_contact";
@@ -444,7 +449,19 @@ export type Draft = {
   steps: StepDraft[];
   // button_clicked: the payloads it listens for.
   payloads: string[];
+  // Safety limits as typed: whole minutes and runs a day, empty for none.
+  cooldown: string;
+  dailyCap: string;
 };
+export const MAX_COOLDOWN = 10_080;
+export const MAX_DAILY_CAP = 500;
+// A limit as typed: a whole number in range, or null when empty. NaN when it is something else.
+export function limitOf(text: string, max: number) {
+  const t = text.trim();
+  if (!t) return null;
+  const n = Number(t);
+  return Number.isInteger(n) && n >= 1 && n <= max ? n : Number.NaN;
+}
 const empty: Draft = {
   name: "",
   trigger: "comment_received",
@@ -462,6 +479,8 @@ const empty: Draft = {
   flow: false,
   steps: [],
   payloads: [],
+  cooldown: "",
+  dailyCap: "",
 };
 
 // The gallery's groups, in order, and the id that opens the builder empty.
@@ -546,6 +565,8 @@ export function draftOf(a?: Automation, templateId?: string | null, payload?: st
     flow: Boolean(a.steps),
     steps: (a.steps ?? []).map(stepDraft),
     payloads: c.payloads ?? [],
+    cooldown: a.cooldown_minutes ? String(a.cooldown_minutes) : "",
+    dailyCap: a.daily_cap ? String(a.daily_cap) : "",
   };
 }
 
@@ -620,6 +641,9 @@ export function automationInput(d: Draft, scope: ScopeBody, uris: string[]): Aut
       ...(t.firstMessage && { first_message: d.firstMessage }),
       ...(t.payloads && { payloads: d.payloads }),
     },
+    // Left out when empty: a save replaces the automation, so a missing limit is none.
+    ...(limitOf(d.cooldown, MAX_COOLDOWN) !== null && { cooldown_minutes: limitOf(d.cooldown, MAX_COOLDOWN) }),
+    ...(limitOf(d.dailyCap, MAX_DAILY_CAP) !== null && { daily_cap: limitOf(d.dailyCap, MAX_DAILY_CAP) }),
   };
   // A flow goes without actions and without a fallback: brain refuses either next to steps.
   if (d.flow) return { ...head, steps: stepsBody(d.steps), active: d.active };
@@ -645,6 +669,12 @@ export const reasonText: Record<string, string> = {
   no_public_page: "The post has no open public page for {page}",
   no_dm_access: "Reconnect with an app password that allows DMs",
   daily_cap: "The team reached 500 automation runs today",
+  paused: "The team paused all its automations",
+  paused_waiting: "Stopped: the team paused its automations while this flow waited",
+  own_account: "It came from one of your own connected accounts",
+  connected_account: "It came from an account connected to SocialReins by another team",
+  cooldown: "It already answered this person within the cool-down",
+  automation_cap: "This automation reached its daily limit",
   rate_limited: "Bluesky is rate limiting this account",
   reconnect_required: "Bluesky refused the app password. Reconnect the account",
   interrupted: "Cut off by a restart, not retried",
@@ -677,6 +707,11 @@ export const reasonWhy: Record<string, string> = {
   ai_link: "The AI may only use links and @handles that are in your prompt, so this reply was held back.",
   ai_leak: "The reply quoted a long part of your prompt word for word, so it was held back.",
   daily_cap: "A team's automations run at most 500 times a day.",
+  paused: "Someone switched on Pause all automations on the Team page. Nothing is sent, and flows waiting at a wait end, until it is switched off.",
+  own_account: "Automations never answer your own connected accounts, so two accounts cannot reply to each other in a loop.",
+  connected_account: "Automations never answer an account that is connected to SocialReins, so two automated accounts cannot reply to each other in a loop.",
+  cooldown: "This automation has a cool-down for each person. Change it under Limits in the automation.",
+  automation_cap: "This automation has a daily limit. Change it under Limits in the automation.",
 };
 // Why a sample would not run an automation, in words: the conditions that fail, then the rules that stop it.
 export const mismatchText: Record<string, string> = {
@@ -695,6 +730,7 @@ export const blockText: Record<string, string> = {
   meta_one_private_reply: "Facebook and Instagram allow one private reply per comment",
   meta_reply_window: "Facebook and Instagram take a DM only within 24 hours of the person's message (7 days for a comment)",
   no_public_page: "A text holds {page}, and this post has no open public page, so it would not run",
+  paused: "The team paused all its automations, so nothing would be sent",
 };
 export const plannedStatus: Record<PlannedStatus, string> = {
   would_send: "Would send",
@@ -704,6 +740,20 @@ export const plannedStatus: Record<PlannedStatus, string> = {
   would_wait: "Would wait",
   not_reached: "Never reached",
 };
+// A reason in two or three words, for the counts on a card.
+export const reasonShort: Record<string, string> = {
+  paused: "paused",
+  paused_waiting: "stopped by the pause",
+  own_account: "own account",
+  connected_account: "connected account",
+  cooldown: "cool-down",
+  automation_cap: "daily limit",
+  daily_cap: "team daily limit",
+  dm_not_allowed: "DM not allowed",
+  no_dm_access: "no DM access",
+  automation_changed: "changed",
+};
+export const reasonLabel = (code: string) => reasonShort[code] ?? code.replaceAll("_", " ");
 export const reason = (code: string | null) => (code ? (reasonText[code] ?? code.replaceAll("_", " ")) : null);
 
 export const actionName: Record<ActionResult["type"], string> = {

@@ -26,6 +26,7 @@ export const createTeam = (name: string, slug?: string) => api<Team>("/v1/teams"
 export const switchTeam = (teamId: string) => api<Team>("/v1/current-team", "PUT", { team_id: teamId });
 export const setPublicPages = (on: boolean) => api<Team>("/v1/team", "PATCH", { public_pages: on });
 export const setNewsletter = (on: boolean) => api<Team>("/v1/team", "PATCH", { newsletter: on });
+export const setAutomationsPaused = (on: boolean) => api<Team>("/v1/team", "PATCH", { automations_paused: on });
 export const setRequireApproval = (on: boolean) => api<Team>("/v1/team", "PATCH", { require_approval: on });
 export const listSubscribers = () => api<{ subscribers: Subscriber[] }>("/v1/subscribers");
 export const removeSubscriber = (id: string) => api(`/v1/subscribers/${enc(id)}`, "DELETE");

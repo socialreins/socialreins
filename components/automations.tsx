@@ -19,6 +19,7 @@ import {
   listRuns,
   proportions,
   reason,
+  reasonLabel,
   reasonWhy,
   RUN_FILTERS,
   sameSteps,
@@ -177,6 +178,17 @@ function Stats({ runs }: { runs: Automation["runs"] }) {
           )}
         </p>
       </div>
+      {(runs.reasons?.length ?? 0) > 0 && (
+        <p className="text-xs text-ink-soft">
+          Held back or failed:{" "}
+          {runs.reasons!.slice(0, 4).map((r, i) => (
+            <span key={r.reason}>
+              {i > 0 && ", "}
+              {r.count} {reasonLabel(r.reason)}
+            </span>
+          ))}
+        </p>
+      )}
       <div
         role="img"
         aria-label={share ? `${Math.round(share.sent)}% sent, ${Math.round(share.skipped)}% skipped, ${Math.round(share.failed)}% failed` : "No runs yet"}
@@ -413,6 +425,7 @@ export function Automations() {
         Your automations
       </h2>
       {!canManage && <p className="text-ink-soft">Only team owners and admins can create or change automations.</p>}
+      <PausedNotice />
       <p role="status" className="sr-only">
         {said}
       </p>
@@ -486,6 +499,22 @@ export function Automations() {
         </>
       )}
     </section>
+  );
+}
+
+// Shown while the team's "Pause all automations" is on: nothing goes out, whatever each switch says.
+function PausedNotice() {
+  const { user } = useSession();
+  if (!user.current_team.automations_paused) return null;
+  return (
+    <p className="card border-signal-deep p-4 text-sm">
+      <strong>All automations are paused.</strong> Nothing is sent, whatever each switch says.{" "}
+      {manages(user.current_team.role) && (
+        <Link href="/team" className="underline">
+          Switch it off on the Team page
+        </Link>
+      )}
+    </p>
   );
 }
 
@@ -602,6 +631,7 @@ export function AutomationDetail({ id }: { id: string }) {
 
   return (
     <div className="enter grid grid-cols-[minmax(0,1fr)] gap-10">
+      <PausedNotice />
       {editing && canManage && canEdit(a) ? (
         <AutomationForm
           automation={a}
