@@ -669,6 +669,23 @@ export function whenOf(d: Draft): When | undefined {
   return { zone: d.zone.trim() || "UTC", weekdays: [...d.weekdays].sort(), ...(hours && { from_hour: Number(d.fromHour), to_hour: Number(d.toHour) }) };
 }
 
+// Why the "only at certain times" box can't be saved as it stands, in words: empty when it can, or when it is off.
+export function timeProblems(d: Draft): string[] {
+  if (!d.timed) return [];
+  const out: string[] = [];
+  const [from, to] = [d.fromHour, d.toHour];
+  if ((from === "") !== (to === "")) out.push("Set both the start and the end hour, or neither.");
+  else if (from !== "" && Number(from) === Number(to)) out.push("The start and the end of the hours must differ.");
+  if (from === "" && d.weekdays.length === 0) out.push("Pick the days or the hours it may run, or untick Only at certain times.");
+  const zone = d.zone.trim() || "UTC";
+  try {
+    new Intl.DateTimeFormat(undefined, { timeZone: zone });
+  } catch {
+    out.push(`"${zone}" is not a time zone. Use a name such as Asia/Dhaka or America/New_York.`);
+  }
+  return out;
+}
+
 // What brain gets: only the conditions and actions the trigger takes, whatever the draft still holds.
 export function automationInput(d: Draft, scope: ScopeBody, uris: string[]): AutomationInput {
   const t = triggers[d.trigger];

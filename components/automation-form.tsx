@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import type { Failure } from "@/lib/auth";
 import {
@@ -13,6 +13,7 @@ import {
   MAX_TAG_ACTIONS,
   LANGUAGES,
   limitOf,
+  timeProblems,
   whenOf,
   WEEKDAYS,
   MAX_COOLDOWN,
@@ -131,6 +132,9 @@ export function AutomationForm({
   const [badLinks, setBadLinks] = useState<string[]>([]);
   const { busy, problem, done, run } = useAction();
   const set = (patch: Partial<Draft>) => setD((cur) => ({ ...cur, ...patch }));
+  // The languages list stays open once used, and a zone the person chose is never replaced by the browser's.
+  const langsOpen = useRef(false);
+  const touchedZone = useRef(d.zone !== "UTC");
 
   const t = triggers[d.trigger];
   const tokens = t.publicReply ? ["{name}", "{page}"] : ["{name}"];
@@ -150,9 +154,7 @@ export function AutomationForm({
     ...(d.name.trim() ? [] : [{ text: "Give it a name.", field: "automation-name" }]),
     ...(stuck.length ? [{ text: `Untick ${stuck.join(", ")}: automations run only on Bluesky, Facebook, Instagram and X.`, field: "automation-scope" }] : []),
     ...(t.payloads && !d.payloads.length ? [{ text: "Add at least one button payload.", field: "automation-payloads" }] : []),
-    ...(d.timed && !whenOf(d) ? [{ text: "Pick the days or the hours it may run, or untick Only at certain times.", field: "automation-from-hour" }] : []),
-    ...(d.timed && d.fromHour !== "" && d.fromHour === String(Number(d.toHour) % 24) ? [{ text: "The start and the end of the hours must differ.", field: "automation-to-hour" }] : []),
-    ...(d.timed && (d.fromHour === "") !== (d.toHour === "") ? [{ text: "Set both the start and the end hour, or neither.", field: "automation-to-hour" }] : []),
+    ...timeProblems(d).map((text) => ({ text, field: "automation-from-hour" })),
     ...(Number.isNaN(limitOf(d.cooldown, MAX_COOLDOWN)) ? [{ text: "The wait must be 1 to 10080 minutes, or empty.", field: "automation-cooldown" }] : []),
     ...(Number.isNaN(limitOf(d.dailyCap, MAX_DAILY_CAP)) ? [{ text: "Most runs a day must be 1 to 500, or empty.", field: "automation-daily-cap" }] : []),
     ...(d.flow
@@ -281,6 +283,11 @@ export function AutomationForm({
     if (wrong) {
       setTried(true);
       document.getElementById(wrong[0])?.focus();
+      return;
+    }
+    if (timeProblems(d).length) {
+      setTried(true);
+      document.getElementById("automation-from-hour")?.focus();
       return;
     }
     if (problems.length) {
@@ -437,21 +444,29 @@ export function AutomationForm({
             <p className="hint pl-6">A message with a question mark counts at once. Any other is read by AI, which counts against your AI replies (or your AI key).</p>
           )}
           {t.keywords && (
-            <details className="grid gap-2" open={d.languages.length > 0}>
+            <details className="grid gap-2" open={langsOpen.current || d.languages.length > 0}>
               <summary className="cursor-pointer font-medium">Only certain languages{d.languages.length > 0 && ` (${d.languages.length})`}</summary>
               <div role="group" aria-label="Languages" className="flex flex-wrap gap-x-4 gap-y-1">
                 {LANGUAGES.map(([code, name]) => (
                   <label key={code} className="flex items-center gap-1.5">
-                    <input type="checkbox" checked={d.languages.includes(code)} onChange={(e) => set({ languages: e.target.checked ? [...d.languages, code].slice(0, 10) : d.languages.filter((x) => x !== code) })} />
+                    <input
+                      type="checkbox"
+                      checked={d.languages.includes(code)}
+                      disabled={d.languages.length >= 10 && !d.languages.includes(code)}
+                      onChange={(e) => {
+                        langsOpen.current = true;
+                        set({ languages: e.target.checked ? [...d.languages, code] : d.languages.filter((x) => x !== code) });
+                      }}
+                    />
                     {name}
                   </label>
                 ))}
               </div>
-              <p className="hint">Up to 10. The language is guessed from the text: a very short message may not be recognized, and then the automation does not run.</p>
+              <p className="hint">Up to 10, then the rest are greyed out. The language is guessed from the text: a very short message may not be recognized, and then the automation does not run.</p>
             </details>
           )}
           <label className="flex items-center gap-2">
-            <input type="checkbox" checked={d.timed} onChange={(e) => set({ timed: e.target.checked, ...(e.target.checked && d.zone === "UTC" && { zone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" }) })} />
+            <input type="checkbox" checked={d.timed} onChange={(e) => set({ timed: e.target.checked, ...(e.target.checked && !touchedZone.current && { zone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" }) })} />
             Only at certain times
           </label>
           {d.timed && (
@@ -480,9 +495,19 @@ export function AutomationForm({
                   ))}
                 </select>
                 <label htmlFor="automation-zone">in</label>
-                <input id="automation-zone" className="field w-auto" value={d.zone} onChange={(e) => set({ zone: e.target.value })} placeholder="Asia/Dhaka" />
+                <input
+                  id="automation-zone"
+                  className="field w-auto"
+                  value={d.zone}
+                  onChange={(e) => {
+                    touchedZone.current = true;
+                    set({ zone: e.target.value });
+                  }}
+                  placeholder="Asia/Dhaka"
+                  aria-describedby="automation-zone-hint"
+                />
               </div>
-              <p className="hint">Pick days, hours, or both. The time zone is an IANA name such as Asia/Dhaka or America/New_York. A later start than end runs overnight.</p>
+              <p id="automation-zone-hint" className="hint">Pick days, hours, or both. The time zone is an IANA name such as Asia/Dhaka or America/New_York. A later start than end runs overnight.</p>
             </div>
           )}
         </fieldset>

@@ -38,6 +38,8 @@ import {
   type Draft,
   type StepDraft,
   limitOf,
+  timeProblems,
+  whenOf,
   reasonLabel,
 } from "@/lib/automations";
 import { apiUrl } from "@/lib/waitlist";
@@ -215,6 +217,26 @@ describe("conditions", () => {
     const { draft, dropped } = changeTrigger({ ...full, question: true, languages: ["en"] }, "new_follower");
     expect(draft).toMatchObject({ question: false, languages: [] });
     expect(dropped).toEqual(expect.arrayContaining(["only questions", "languages"]));
+  });
+});
+
+describe("time conditions", () => {
+  it("names what keeps the times from being saved", () => {
+    const timed = { ...full, timed: true, zone: "Asia/Dhaka" };
+    expect(timeProblems({ ...full, timed: false })).toEqual([]);
+    expect(timeProblems(timed)).toEqual(["Pick the days or the hours it may run, or untick Only at certain times."]);
+    expect(timeProblems({ ...timed, weekdays: [1] })).toEqual([]);
+    expect(timeProblems({ ...timed, fromHour: "9" })).toEqual(["Set both the start and the end hour, or neither."]);
+    expect(timeProblems({ ...timed, fromHour: "9", toHour: "9" })).toEqual(["The start and the end of the hours must differ."]);
+    // 0 to 24 is the whole day, which brain takes.
+    expect(timeProblems({ ...timed, fromHour: "0", toHour: "24" })).toEqual([]);
+    expect(timeProblems({ ...timed, weekdays: [1], zone: "Dhaka" })[0]).toContain("is not a time zone");
+    expect(whenOf({ ...timed, fromHour: "9" })).toBeUndefined();
+    expect(whenOf({ ...timed, fromHour: "22", toHour: "6" })).toEqual({ zone: "Asia/Dhaka", weekdays: [], from_hour: 22, to_hour: 6 });
+  });
+
+  it("says every day when all seven are named", () => {
+    expect(conditionNotes({ account_ids: [], when: { zone: "UTC", weekdays: [0, 1, 2, 3, 4, 5, 6] } })).toEqual(["Only every day UTC"]);
   });
 });
 
