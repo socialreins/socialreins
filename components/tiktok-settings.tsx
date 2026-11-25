@@ -93,7 +93,7 @@ export function TikTokPanel({
         <label htmlFor="tiktok-privacy" className="label">
           Who can view this {label}
         </label>
-        <select id="tiktok-privacy" className="field" value={level} onChange={(e) => set({ privacy_level: e.target.value || null })} aria-describedby="tiktok-privacy-note">
+        <select id="tiktok-privacy" className="field" value={level} onChange={(e) => set({ privacy_level: e.target.value || null })} aria-describedby="tiktok-privacy-note tiktok-audit-note">
           <option value="">Select who can view this {label}</option>
           {creator.privacy_level_options.map((o) => (
             <option key={o} value={o} disabled={o === "SELF_ONLY" && branded}>
@@ -103,6 +103,9 @@ export function TikTokPanel({
         </select>
         <p id="tiktok-privacy-note" className="hint">
           {branded ? "Branded content visibility cannot be set to private." : "Only the options TikTok offers this account are listed."}
+        </p>
+        <p id="tiktok-audit-note" className="hint">
+          TikTok keeps every post from an app that has not passed its audit private (only you see it), whatever you choose here. You can change who sees it in the TikTok app after it posts.
         </p>
       </div>
       <fieldset className="flex flex-wrap gap-x-5 gap-y-2">

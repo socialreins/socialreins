@@ -1414,6 +1414,8 @@ test("TikTok settings: privacy is chosen, the disclosure and consent follow TikT
   const privacy = page.getByLabel("Who can view this video");
   await expect(privacy).toHaveValue("");
   await expect(page.locator("#tiktok-privacy-note")).toHaveText("Only the options TikTok offers this account are listed.");
+  await expect(page.locator("#tiktok-audit-note")).toContainText("has not passed its audit private");
+  await expect(privacy).toHaveAccessibleDescription(/Only the options TikTok offers.*has not passed its audit/);
   await expect(privacy.getByRole("option")).toHaveText(["Select who can view this video", "Followers", "Everyone", "Only me"]);
   for (const name of ["Comment", "Stitch"]) await expect(page.getByLabel(name)).not.toBeChecked();
   // Duets are off in the creator's TikTok settings, so the box is greyed out.
