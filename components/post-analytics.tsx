@@ -6,7 +6,7 @@ import { TeamLink as Link } from "@/components/team-link";
 import type { Failure } from "@/lib/auth";
 import { compact, engagement, getAnalytics, hasStats, parseRange, postTotals, RANGES, REFRESH_NOTE, refreshMetrics, STAT_NETWORKS, STATS, statWords, type Analytics, type Stat } from "@/lib/analytics";
 import { relativeTime } from "@/lib/inbox";
-import { publishing, type Metrics, type Post } from "@/lib/posts";
+import { postRef, publishing, type Metrics, type Post } from "@/lib/posts";
 import { useCurrentSet } from "@/components/app-shell";
 import { platformName } from "@/components/platform-icons";
 import { PlatformMark, postMessages, snippet } from "@/components/posts";
@@ -167,7 +167,7 @@ function Report({ data, range }: { data: Analytics; range: number }) {
               const n = postTotals([p]);
               return (
                 <li key={p.id}>
-                  <Link href={`/posts/${p.id}`} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-0.5 px-4 py-2.5 hover:bg-ink/[0.025]">
+                  <Link href={`/posts/${postRef(p)}`} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-0.5 px-4 py-2.5 hover:bg-ink/[0.025]">
                     <span className="min-w-0 truncate">
                       <PlatformMark platform={p.platform} /> {snippet(p)}
                     </span>

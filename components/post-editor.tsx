@@ -1,6 +1,8 @@
 "use client";
 
 import { PostPagePanel } from "@/components/post-page-panel";
+import { PostDetail, PostSummary } from "@/components/post-detail";
+import { Preview } from "@/components/post-preview";
 
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
@@ -42,7 +44,6 @@ import {
   mergeCreators,
   noTikTok,
   overLimit,
-  privacyName,
   publishing,
   publishPost,
   noRepeat,
@@ -54,6 +55,8 @@ import {
   takeDownGroup as takeDownGroupCall,
   toZoneInput,
   updatePost,
+  postRef,
+  retryPost,
   utf8Bytes,
   YOUTUBE_DESCRIPTION_BYTES,
   youtubeText,
@@ -74,9 +77,9 @@ import { listSets, type SocialSet } from "@/lib/sets";
 import { getQueue, startZone, type Queue } from "@/lib/queue";
 import { UPLOAD_ACCEPT, uploadFile } from "@/lib/uploads";
 import { apiUrl } from "@/lib/waitlist";
-import { accountName, Avatar } from "@/components/connections";
+import { accountName } from "@/components/connections";
 import { platformName } from "@/components/platform-icons";
-import { AccountNote, ApprovalBadge, ChangesDialog, PlatformMark, postMessages, snippet, StatusBadge, statusName } from "@/components/posts";
+import { AccountNote, ApprovalBadge, ChangesDialog, PlatformMark, postMessages, snippet, StatusBadge } from "@/components/posts";
 import { isFailure, problemText, Status, useAction } from "@/components/team-ui";
 import { RefreshStats, TargetStats } from "@/components/post-analytics";
 import { hasStats } from "@/lib/analytics";
@@ -84,7 +87,7 @@ import { useCurrentSet, useSession } from "@/components/app-shell";
 import { ReconnectNotice } from "@/components/connections";
 import { TikTokConsent, TikTokPanel } from "@/components/tiktok-settings";
 import { noPin, PinterestPanel, pinForm, pinLinkOk, pinNeedsBoard, pinOut, pinTitleOk, type PinForm } from "@/components/pinterest-settings";
-import { manages } from "@/lib/teams";
+import { listMembers, manages } from "@/lib/teams";
 import { Icon } from "@/components/ui";
 import { RepeatControl } from "@/components/repeat";
 import { LibraryPicker, SaveToLibrary, SnippetMenu } from "@/components/library";
@@ -201,6 +204,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const [copied, setCopied] = useState<Post | Failure | null>(null);
   // The "Request changes" dialog is open.
   const [rejecting, setRejecting] = useState(false);
+  const [authors, setAuthors] = useState<Record<string, string>>({});
   const statusRef = useRef<HTMLParagraphElement>(null);
   const addPartRef = useRef<HTMLButtonElement>(null);
   const partRefs = useRef<(HTMLTextAreaElement | null)[]>([]);
@@ -289,9 +293,13 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
       setAccountsLoaded(true);
     });
     listLists().then((r) => Array.isArray(r) && setLists(r));
+    // Who made the post; left out when the member list can't be read.
+    if (id) listMembers().then((r) => Array.isArray(r) && setAuthors(Object.fromEntries(r.map((m) => [m.id, m.name || m.email]))));
     if (id)
       getPost(id).then((r) => {
         if (isFailure(r)) return setPost(r);
+        // An old address with the UUID moves to the post's number.
+        if (id !== postRef(r)) window.history.replaceState(null, "", to(`/posts/${postRef(r)}`));
         load(r);
         if (r.group_id) listPosts({ group_id: r.group_id }).then((g) => Array.isArray(g) && setGroup(g));
       });
@@ -307,6 +315,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   }, [id, from]);
 
   const postId = post && !isFailure(post) ? post.id : undefined;
+  const postNumber = post && !isFailure(post) ? postRef(post) : undefined;
   const status = post && !isFailure(post) ? post.status : undefined;
   // TikTok's guidelines have the editor show the account's live creator info while a TikTok post is edited.
   // X takes 25,000 characters when every X account of the picked set is on a paid plan, else 280.
@@ -468,7 +477,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
         const saved = postId ? await updatePost(postId, input) : await createPost(input);
         if (isFailure(saved)) return saved;
         // Keep this editor mounted on the new post's own address.
-        if (!postId) window.history.replaceState(null, "", to(`/posts/${saved.id}`));
+        if (!postId) window.history.replaceState(null, "", to(`/posts/${postRef(saved)}`));
         load(saved);
         if (mode !== "publish") return repeating(saved);
         // Group posts a failed Publish now left behind go out with this one.
@@ -483,7 +492,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
       const posts = g.posts;
       made = posts.length;
       // The editor carries on as the first post; the others are listed below it.
-      window.history.replaceState(null, "", to(`/posts/${posts[0]!.id}`));
+      window.history.replaceState(null, "", to(`/posts/${postRef(posts[0]!)}`));
       load(posts[0]!);
       setGroup(posts);
       if (mode !== "publish") return repeating(posts[0]!);
@@ -604,6 +613,39 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     });
   }
 
+  // Takes one version of a post down (the page's own, or another of its group); `true` when it came down.
+  async function takeDownOne(p: Post) {
+    flushSync(() => setLocal(null));
+    let refused: string | null = null;
+    const ok = await run("takedown", async () => {
+      const r = await deletePost(p.id);
+      if (typeof r === "object" && "takedownFailed" in r) {
+        refused = r.takedownFailed;
+        return "error" as const;
+      }
+      return r;
+    }, (r) => {
+      if (r === "ok") return;
+      setGroup((g) => g.map((x) => (x.id === r.id ? r : x)));
+      if (r.id === postId) setPost(r);
+      return `Taken down from ${platformName(r.platform)}.`;
+    });
+    // brain's message says what to do, e.g. which account still has the post.
+    if (refused !== null) flushSync(() => setLocal(refused || postMessages.not_deletable));
+    return ok;
+  }
+
+  // Sends the failed accounts of a post, or of its whole group, again; the page polls until they settle.
+  async function retry(p: Pick<Post, "id" | "group_id">) {
+    flushSync(() => setLocal(null));
+    await run("retry", () => retryPost(p), (out) => {
+      setGroup((g) => g.map((x) => out.find((o) => o.id === x.id) ?? x));
+      const mine = out.find((o) => o.id === postId);
+      if (mine) setPost(mine);
+      return "Retrying. This page updates by itself.";
+    });
+  }
+
   const inLists = post && !isFailure(post) ? post.lists : [];
   // Lists this set's post can join; one it is already in is left out, since sending it would move the post to the end.
   // With every version open, a list any of them is in is left out too.
@@ -623,6 +665,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   // A queue that couldn't be read leaves the button on: brain answers queue_empty if need be.
   const queueEmpty = queue?.slots.length === 0;
   const queueNext = queue?.next[0];
+  const authorName = post && !isFailure(post) && post.created_by ? authors[post.created_by] : undefined;
   const setName = Array.isArray(sets) ? sets.find((s) => s.id === (post as Post | null)?.social_set_id)?.name : undefined;
   const byId = new Map(accounts.map((a) => [a.id, a]));
   const shownProblem = local ? null : problem;
@@ -815,7 +858,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
                   {mark}
                 </span>
               ) : (
-                <Link href={`/posts/${g.id}`} className={`${box} border-ink/10 hover:bg-ink/5`}>
+                <Link href={`/posts/${postRef(g)}`} className={`${box} border-ink/10 hover:bg-ink/5`}>
                   {mark}
                 </Link>
               )}
@@ -846,7 +889,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
         {others.map((g) => (
           <li key={g.id} className="flex flex-wrap items-center gap-3 p-4 text-sm">
             <PlatformMark platform={g.platform} className="size-5" />
-            <Link href={`/posts/${g.id}`} className="min-w-0 flex-1 font-bold hover:underline">
+            <Link href={`/posts/${postRef(g)}`} className="min-w-0 flex-1 font-bold hover:underline">
               {platformName(g.platform)} post
             </Link>
             <StatusBadge status={g.status} />
@@ -975,7 +1018,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
 
   // A saved post, read-only or not, starts a new one with its content.
   const duplicate = postId && (
-    <Link href={`/posts/new?from=${encodeURIComponent(postId)}`} className="btn btn-secondary btn-sm justify-self-start">
+    <Link href={`/posts/new?from=${postNumber}`} className="btn btn-secondary btn-sm justify-self-start">
       <Icon name="copy" className="size-4" />
       Duplicate
     </Link>
@@ -983,139 +1026,27 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
 
   if (!editable && post) {
     return (
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_26rem]">
-        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5">
-          {versions}
-          <div className="card grid gap-2 p-5">
-            <div className="flex flex-wrap items-center gap-3">
-              <span aria-hidden="true" className="tone size-3 shrink-0 rounded-full bg-current" data-status={post.status} />
-              <p ref={statusRef} tabIndex={-1} role="status" className="font-bold">
-                {statusName[post.status]}
-                {post.status === "published" && post.published_at ? ` on ${when(post.published_at, zone)}` : ""}
-                {post.status === "queued" ? ". This page updates by itself." : "."}
-              </p>
-            </div>
-            <p className="text-sm text-ink-soft">
-              {setName ? `Set: ${setName}. ` : ""}
-              {post.scheduled_at ? `Planned for ${when(post.scheduled_at, zone)}.` : ""}
-            </p>
-            {pollNote && <p className="text-ink-soft">{pollNote}</p>}
-            {post.error && <p className="waitlist-error">What went wrong: {post.error}</p>}
-          </div>
-          {messages}
-          {post.first_comment && (
-            <section aria-labelledby="comment-heading" className="card grid gap-2 p-5">
-              <h2 id="comment-heading" className="font-display text-lg font-extrabold tracking-tight">
-                First comment
-              </h2>
-              <p className="whitespace-pre-wrap break-words text-sm">{post.first_comment}</p>
-            </section>
-          )}
-          {post.tiktok && (
-            <section aria-labelledby="tiktok-summary-heading" className="card grid gap-2 p-5">
-              <h2 id="tiktok-summary-heading" className="font-display text-lg font-extrabold tracking-tight">
-                TikTok settings
-              </h2>
-              <p className="text-sm">
-                Visible to: {privacyName[post.tiktok.privacy_level ?? ""] ?? "not chosen"}. Allowed: {[post.tiktok.allow_comment && "comments", post.tiktok.allow_duet && "duets", post.tiktok.allow_stitch && "stitches"].filter(Boolean).join(", ") || "no interactions"}.
-                {post.tiktok.commercial_content ? ` Disclosed as ${post.tiktok.branded_content ? "a paid partnership" : "promotional content"}.` : ""}
-                {post.tiktok.ai_generated ? " Marked as AI-generated." : ""}
-              </p>
-            </section>
-          )}
-          {post.platform === "youtube" && (
-            <section aria-labelledby="youtube-summary-heading" className="card grid gap-2 p-5">
-              <h2 id="youtube-summary-heading" className="font-display text-lg font-extrabold tracking-tight">
-                YouTube visibility
-              </h2>
-              <p className="text-sm">{youtubePrivacyName[post.youtube?.privacy ?? "private"]}</p>
-            </section>
-          )}
-          {post.platform === "pinterest" && (
-            <section aria-labelledby="pinterest-summary-heading" className="card grid gap-2 p-5">
-              <h2 id="pinterest-summary-heading" className="font-display text-lg font-extrabold tracking-tight">
-                Pinterest settings
-              </h2>
-              <p className="text-sm">
-                {post.pinterest?.board_id ? `Board ${post.pinterest.board_id}` : "The account's default board"}.
-                {post.pinterest?.title ? ` Title: ${post.pinterest.title}.` : ""}
-                {post.pinterest?.link ? ` Link: ${post.pinterest.link}` : ""}
-              </p>
-            </section>
-          )}
-          {post.cover && (
-            <section aria-labelledby="cover-heading" className="card grid gap-2 p-5">
-              <h2 id="cover-heading" className="font-display text-lg font-extrabold tracking-tight">
-                Cover image
-              </h2>
-              <p className="break-all text-sm">{post.cover}</p>
-            </section>
-          )}
-          {post.targets.length > 0 && (
-            <section aria-labelledby="targets-heading" className="grid gap-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 id="targets-heading" className="font-display text-lg font-extrabold tracking-tight">
-                  Accounts
-                </h2>
-                {post.status === "published" && hasStats(post.platform) && <RefreshStats post={post} onPost={setPost} />}
-              </div>
-              <ul className="card divide-y divide-ink/10">
-                {post.targets.map((t) => {
-                  const a = t.social_account_id ? byId.get(t.social_account_id) : undefined;
-                  return (
-                    <li key={t.id} className="flex flex-wrap items-center gap-3 p-4 text-sm">
-                      {a && <Avatar connection={a} size="size-8" />}
-                      <span className="min-w-0 flex-1">
-                        <strong>{a ? accountName(a) : "A disconnected account"}</strong>: {t.status}
-                        {t.error ? `. ${t.error}` : ""}
-                      </span>
-                      {t.remote_url && t.status === "published" && (
-                        <a href={t.remote_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm">
-                          View on {platformName(post.platform)}
-                          <Icon name="external" className="size-4" />
-                        </a>
-                      )}
-                      {t.status === "published" && <TargetStats platform={post.platform} metrics={t.metrics} />}
-                      {t.alt_error && (
-                        <span className="basis-full text-ink-soft" data-alt-error>
-                          Alt text: {t.alt_error} The post went out without it.
-                        </span>
-                      )}
-                      {t.cover_error && (
-                        <span className="basis-full text-ink-soft" data-cover-error>
-                          Cover image: {t.cover_error} It is not tried again: set the cover on the platform yourself.
-                        </span>
-                      )}
-                      {post.first_comment && (
-                        <span className="basis-full text-ink-soft" data-comment-status={t.comment_status ?? "none"}>
-                          First comment: {commentStatus(t)}
-                        </span>
-                      )}
-                      {(post.thread ?? []).length > 0 && (
-                        <span className="basis-full text-ink-soft">
-                          Thread: {(t.parts ?? []).length} of {post.thread.length} follow-up posts out.
-                          {(t.parts ?? []).map((p, i) =>
-                            p.remote_url ? (
-                              <a key={p.remote_id} href={p.remote_url} target="_blank" rel="noopener noreferrer" className="ml-2 font-bold underline" aria-label={`Post ${i + 2} on ${a ? accountName(a) : "a disconnected account"}`}>
-                                Post {i + 2}
-                              </a>
-                            ) : null,
-                          )}
-                        </span>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
-          )}
-          {siblings}
-          <PostPagePanel id={post.id} />
-          {duplicate}
-          {post.status === "published" && confirm}
-        </div>
-        {preview}
-      </div>
+      <PostDetail
+        post={post}
+        members={members.length > 0 ? members : [post]}
+        zone={zone}
+        setName={setName}
+        author={authorName}
+        accounts={accounts}
+        messages={messages}
+        pollNote={pollNote}
+        statusRef={statusRef}
+        busy={busy}
+        downs={downs}
+        downsShown={downsShown}
+        onPost={(p) => {
+          setPost(p);
+          setGroup((g) => g.map((x) => (x.id === p.id ? p : x)));
+        }}
+        onRetry={retry}
+        onTakeDown={takeDownOne}
+        onTakeDownAll={takeDownGroup}
+      />
     );
   }
 
@@ -1493,12 +1424,8 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
             {isFailure(copied) ? <>The post to copy couldn&apos;t be loaded. {problemText(copied, postMessages)}</> : <>Copied from {snippet(copied)}. Pick a time, and on TikTok who can see it, again.</>}
           </p>
         )}
-        {status === "scheduled" && post && (
-          <p className="flex flex-wrap items-center gap-3 font-bold">
-            <StatusBadge status="scheduled" />
-            Scheduled for {when(post.scheduled_at!, zone)}.
-            {post.repeat && <span className="font-normal text-ink-soft">{repeatSummary(post.repeat)}.</span>}
-          </p>
+        {post && (status === "scheduled" || status === "draft") && (
+          <PostSummary post={post} zone={zone} setName={setName} author={authorName} repeat={post.repeat ? repeatSummary(post.repeat) : undefined} />
         )}
         {post && approvalState(post) && (
           <section aria-label="Approval" className="card flex flex-wrap items-center gap-x-3 gap-y-2 p-4">
@@ -2195,93 +2122,5 @@ function AltText({ n, of, value, onChange }: { n: number; of: string; value: str
       )}
       {!value.trim() && <p className="hint">Add alt text so screen reader users can follow your post.</p>}
     </div>
-  );
-}
-
-// Links, mentions and tags, coloured as Bluesky shows them.
-const rich = /(https?:\/\/\S+|(?<!\w)@[a-z0-9.-]+\.[a-z]{2,}|(?<!\w)#[^\s#.,!?;:]+)/gi;
-const fileName = (url: string) => {
-  try {
-    const u = new URL(url);
-    return u.pathname.split("/").filter(Boolean).pop() || u.host;
-  } catch {
-    return url;
-  }
-};
-
-// Roughly how the post looks on its first platform. Images show as tiles: the CSP only allows Bluesky's own image CDN.
-function Preview({ posts, platform, account }: { posts: ThreadPart[]; platform: Platform; account?: Connection }) {
-  return (
-    <section aria-labelledby="preview-heading" className="grid gap-3 rounded-lg bg-[var(--line-soft)] p-3 sm:p-4 lg:sticky lg:top-16 lg:max-h-[calc(100dvh-5rem)] lg:overflow-y-auto">
-      <h2 id="preview-heading" className="flex items-baseline justify-between gap-2 font-display text-lg font-extrabold tracking-tight">
-        Preview
-        <span className="text-xs font-normal text-ink-soft">
-          <span className="sr-only">as on </span>
-          <PlatformMark platform={platform} className="size-3.5" named />
-        </span>
-      </h2>
-      {posts.map((p, i) => (
-        <PreviewPost key={i} body={p.body} media={p.media} alt={p.media_alt} platform={platform} account={account} />
-      ))}
-    </section>
-  );
-}
-
-function PreviewPost({ body, media, alt = [], platform, account }: { body: string; media: string[]; alt?: string[]; platform: Platform; account?: Connection }) {
-  const video = platform === "youtube" ? youtubeText(body) : null;
-  const parts = (video ? video.description : body).split(rich);
-  return (
-      <div className="card flex gap-3 p-4">
-        {account ? (
-          <Avatar connection={account} />
-        ) : (
-          <span aria-hidden="true" className="size-10 shrink-0 rounded-full bg-ink/10" />
-        )}
-        <div className="grid min-w-0 flex-1 gap-1.5">
-          <p className="truncate text-[0.95rem] leading-tight">
-            <strong>{account ? accountName(account) : `Your ${platformName(platform)} account`}</strong>{" "}
-            <span className="text-ink-soft">{account?.handle ? `@${account.handle}` : ""} now</span>
-          </p>
-          {video?.title && <p className="break-words text-[0.95rem] font-bold leading-snug">{video.title}</p>}
-          {(video ? video.description : body.trim()) ? (
-            <p className="whitespace-pre-wrap break-words text-[0.95rem] leading-snug">
-              {parts.map((part, i) =>
-                i % 2 ? (
-                  <span key={i} className="text-[#1185FE]">
-                    {part}
-                  </span>
-                ) : (
-                  part
-                ),
-              )}
-            </p>
-          ) : (
-            media.length === 0 && !video?.title && <p className="text-[0.95rem] text-ink-soft">Your post shows here as you write.</p>
-          )}
-          {media.length > 0 && (
-            <ul className={`mt-1 grid gap-1 overflow-hidden rounded-xl ${media.length > 1 ? "grid-cols-2" : ""}`}>
-              {media.map((m, i) => (
-                <li
-                  key={i}
-                  className={`grid place-items-center gap-1 bg-ink/5 p-3 text-center text-xs text-ink-soft ${
-                    media.length === 1 ? "aspect-video" : media.length === 3 && i === 0 ? "row-span-2" : "aspect-square"
-                  }`}
-                >
-                  <span className="grid justify-items-center gap-1">
-                    <Icon name="image" className="size-6" />
-                    <span className="max-w-full truncate">{fileName(m)}</span>
-                  </span>
-                  {alt[i]?.trim() && (
-                    <span className="flex max-w-full items-start gap-1 text-left" data-preview-alt>
-                      <span className="rounded bg-ink/70 px-1 text-[0.65rem] font-bold text-white">ALT</span>
-                      <span className="line-clamp-3 break-words">{alt[i]}</span>
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
   );
 }

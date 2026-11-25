@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  canRetry,
+  failureAdvice,
+  overallStatus,
+  timeline,
+  type Post,
+  type Target,
   altList,
   capAlt,
   keepsAlt,
@@ -783,5 +789,47 @@ describe("alt text", () => {
     expect([...capAlt("😀".repeat(1000))]).toHaveLength(1000);
     expect([...capAlt("😀".repeat(1001))]).toHaveLength(1000);
     expect(capAlt("short")).toBe("short");
+  });
+});
+
+describe("the page of a saved post", () => {
+  const tg = (extra: Partial<Target> = {}): Target => ({ id: "t", social_account_id: "c1", status: "published", remote_id: "r", remote_url: null, error: null, published_at: "2026-11-03T08:00:00Z", parts: [], ...extra });
+  const mk = (extra: Partial<Post> = {}) => ({ id: "p", number: 1, platform: "bluesky", status: "published", thread: [], targets: [tg()], created_at: "2026-11-01T10:00:00Z", updated_at: "2026-11-03T09:00:00Z", scheduled_at: "2026-11-03T08:00:00Z", approval_at: null, ...extra }) as unknown as Post;
+
+  it("gives a post and its versions one status", () => {
+    expect(overallStatus([mk(), mk()])).toBe("published");
+    expect(overallStatus([mk(), mk({ status: "failed", targets: [tg({ status: "failed" })] })])).toBe("partial");
+    expect(overallStatus([mk({ targets: [tg(), tg({ status: "failed" })] })])).toBe("partial");
+    expect(overallStatus([mk({ status: "failed", targets: [tg({ status: "failed" })] })])).toBe("failed");
+    expect(overallStatus([mk({ status: "deleted", targets: [tg({ status: "deleted" })] })])).toBe("deleted");
+    expect(overallStatus([mk({ status: "queued" }), mk()])).toBe("queued");
+    expect(overallStatus([mk({ status: "draft" })])).toBe("draft");
+    expect(overallStatus([mk({ status: "scheduled" }), mk()])).toBe("scheduled");
+  });
+
+  it("offers Retry only where brain would send the target again", () => {
+    const p = { thread: [{ body: "two", media: [] }] };
+    expect(canRetry(tg({ status: "failed", remote_id: null }), p)).toBe(true);
+    expect(canRetry(tg({ status: "failed", remote_id: "r", parts: [] }), p)).toBe(true);
+    expect(canRetry(tg({ status: "failed", remote_id: "r", parts: [{ remote_id: "a", remote_url: null, published_at: null }] }), p)).toBe(false);
+    expect(canRetry(tg({ status: "published" }), p)).toBe(false);
+    expect(canRetry(tg({ status: "failed", remote_id: null, error: "Timed out, it may have posted." }), p)).toBe(false);
+  });
+
+  it("says what to do about a failure", () => {
+    const e = (error: string, extra: object = {}) => ({ error, retry_at: null, retried: false, ...extra });
+    expect(failureAdvice(e("The token expired."), true, "UTC")).toMatchObject({ link: "accounts" });
+    expect(failureAdvice(e("X is rate limiting this account (429)."), true, "UTC").text).toContain("Wait a few minutes");
+    expect(failureAdvice(e("It may have posted."), false, "UTC").text).toContain("Check the account");
+    expect(failureAdvice(e("Image aspect ratio refused."), true, "UTC").text).toContain("Duplicate");
+    expect(failureAdvice(e("429", { retry_at: "2026-11-03T08:05:00Z" }), false, "UTC").text).toContain("sends it again by itself at");
+    expect(failureAdvice(e("Something odd."), true, "UTC").text).toContain("Retry once");
+  });
+
+  it("lists the times it keeps, oldest first", () => {
+    const names = { account: () => "Alice", network: () => "Bluesky" };
+    const out = timeline([mk({ targets: [tg(), tg({ status: "failed", retry_at: "2026-11-04T08:00:00Z", retried: true })] })], names, "Maya");
+    expect(out.map((x) => x.text)).toEqual(["Created by Maya", "Planned for", "Published on Bluesky, Alice", "Failed on Bluesky, Alice after an automatic retry", "Automatic retry on Bluesky, Alice"]);
+    expect(out.map((x) => x.at)).toEqual([...out.map((x) => x.at)].sort());
   });
 });
