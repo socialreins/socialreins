@@ -715,7 +715,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const mediaProblems: Issue[] = selected.flatMap((p) => {
     const files = mediaFor(p);
     const where = { platform: p, inline: true, ...place(p, mediaCustomFor(p) !== undefined, `media-${p}`, "media-shared") };
-    if ((p === "instagram" || p === "youtube") && files.length === 0) return [{ ...where, text: platformProblem(p, "media_required") }];
+    if ((p === "instagram" || p === "youtube" || p === "tiktok") && files.length === 0) return [{ ...where, text: platformProblem(p, "media_required") }];
     if (files.length > limits[p].media) return [{ ...where, text: platformProblem(p, "too_many_images") }];
     // Hints only: brain reads the files when the post is saved and has the last word.
     const bad = checkMediaTypes(files, p) ?? (coverFor(p) ? coverTypeHint(coverFor(p)!, p) : null);
