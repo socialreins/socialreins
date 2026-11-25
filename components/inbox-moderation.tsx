@@ -80,10 +80,10 @@ export function ModerationBar({ item, canDelete, onChange }: { item: Item; canDe
           (confirming ? (
             <span className="flex flex-wrap items-center gap-2">
               <span id="delete-warning">Delete it on {on} for good?</span>
-              <button type="button" className="btn btn-secondary btn-sm" aria-describedby="delete-warning" autoFocus disabled={busy !== null} onClick={() => run("delete")}>
+              <button type="button" className="btn btn-secondary btn-sm" aria-describedby="delete-warning" disabled={busy !== null} onClick={() => run("delete")}>
                 {busy === "delete" ? "Working..." : "Yes, delete"}
               </button>
-              <button type="button" className="font-bold text-ink-soft hover:text-ink" onClick={() => setConfirming(false)}>
+              <button type="button" className="font-bold text-ink-soft hover:text-ink" autoFocus onClick={() => setConfirming(false)}>
                 Cancel
               </button>
             </span>

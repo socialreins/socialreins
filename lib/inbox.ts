@@ -307,7 +307,7 @@ const hoursLeft = (ms: number) => {
     const m = minutes % 60;
     return `${h} ${h === 1 ? "hour" : "hours"}${m ? ` ${m} min` : ""}`;
   }
-  return `${Math.round(minutes / 1440)} days`;
+  return `${Math.floor(minutes / 1440)} days`;
 };
 // What a Meta DM's window says to the person replying: how long Meta still takes a message, or why none goes out.
 // `blocked` is true when a send would be refused (the 24 hours are over and no Human Agent tag applies).

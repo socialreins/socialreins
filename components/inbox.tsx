@@ -899,7 +899,6 @@ function Detail({
   onDone: (i: Item) => void;
 }) {
   const dm = item.kind === "dm";
-  const { user } = useSession();
   const [text, setText] = useState("");
   // A DM opens as its whole conversation: null while it loads.
   const [convo, setConvo] = useState<ConversationPage | null>(null);
@@ -962,8 +961,15 @@ function Detail({
   const count = graphemes(text);
   const sending = pending.some((p) => !settled(p));
   // Meta: how long a DM can still be answered (never for Bluesky), and a deleted comment takes no reply.
-  const window = dm ? (latest.reply_window ?? item.reply_window) : null;
-  const note = window ? windowNote(window) : null;
+  const win = dm ? (latest.reply_window ?? item.reply_window) : null;
+  // The note counts down while the item stays open.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!win) return;
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, [win]);
+  const note = win ? windowNote(win, now) : null;
   const deleted = item.moderation?.deleted === true;
 
   const assign = (id: string | null) =>
@@ -1269,7 +1275,7 @@ function Detail({
       </ol>
 
       <XActions item={item} />
-      {!dm && <ModerationBar key={item.id} item={item} canDelete={manages(user.current_team.role)} onChange={onChange} />}
+      {!dm && <ModerationBar key={item.id} item={item} canDelete={canManage} onChange={onChange} />}
 
       {deleted && <p className="text-sm text-ink-soft">This comment was deleted on {platform}, so it takes no reply.</p>}
       {/* A follow, like or repost has nothing to reply to, nor does a deleted comment. */}
@@ -1290,7 +1296,7 @@ function Detail({
           onKeyDown={(e) => {
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) e.currentTarget.form?.requestSubmit();
           }}
-          aria-describedby="reply-count"
+          aria-describedby={note ? "reply-count window-note" : "reply-count"}
           aria-invalid={count > max || undefined}
           placeholder={dm ? `Message ${authorName(item.author)}` : `Reply to ${authorName(item.author)} on ${platform}`}
         />
