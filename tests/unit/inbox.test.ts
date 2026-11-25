@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { assignItem, chatRows, itemSummary, dayLabel, actionButtons, getConversation, getThread, runAction, hasThread, isActivity, listItems, maxFor, mergeConversation, mergeFresh, messageCount, relativeTime, replyToItem, sentAlready, setItemState, threadKey, type Item } from "@/lib/inbox";
+import { assignItem, chatRows, moderateItem, windowNote, itemSummary, dayLabel, actionButtons, getConversation, getThread, runAction, hasThread, isActivity, listItems, maxFor, mergeConversation, mergeFresh, messageCount, relativeTime, replyToItem, sentAlready, setItemState, threadKey, type Item } from "@/lib/inbox";
 import { apiUrl } from "@/lib/waitlist";
 
 const call = (fetch: ReturnType<typeof vi.fn>) => fetch.mock.calls[0] as unknown as [string, RequestInit];
@@ -261,5 +261,42 @@ describe("actions", () => {
     expect(JSON.parse((call(fetch)[1] as { body: string }).body)).toEqual({ action: "like", confirm: true });
     expect(await runAction("i1", { action: "like" })).toEqual({ code: "not_applicable", message: "That does not apply to this item." });
     expect(await runAction("i1", { action: "report", reason_type: "spam" })).toMatchObject({ code: "already_reported" });
+  });
+});
+
+describe("windowNote", () => {
+  const now = Date.parse("2026-11-25T12:00:00Z");
+  const at = (h: number) => new Date(now + h * 3_600_000).toISOString();
+  const w = (closes: number, agent: number | null = null) => ({ last_message_at: at(closes - 24), closes_at: at(closes), human_agent_until: agent === null ? null : at(agent), open: closes > 0 });
+
+  it("counts the 24 hours down, then says why nothing goes out", () => {
+    expect(windowNote(w(5.5), now)).toEqual({ text: "Meta takes a reply for 5 hours 30 min more, 24 hours after their last message.", blocked: false });
+    expect(windowNote(w(0.25), now).text).toContain("15 minutes more");
+    const closed = windowNote(w(-1), now);
+    expect(closed.blocked).toBe(true);
+    expect(closed.text).toContain("Human Agent permission");
+  });
+
+  it("lets a person reply after 24 hours only while the Human Agent window runs", () => {
+    expect(windowNote(w(-1, 100), now)).toEqual({ text: "The 24 hours are over. A reply still goes out as a person's reply for 4 days more.", blocked: false });
+    expect(windowNote(w(-100, -1), now)).toEqual({ text: "Meta takes no reply now: it is more than 7 days since their last message.", blocked: true });
+  });
+});
+
+describe("moderateItem", () => {
+  it("posts the action and gives back the item, or Meta's reason", async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ id: "i1", moderation: { hidden: true } }), { status: 200 }));
+    vi.stubGlobal("fetch", fetch);
+    expect(await moderateItem("i 1", "hide")).toEqual({ id: "i1", moderation: { hidden: true } });
+    const [url, init] = call(fetch);
+    expect(url).toBe(`${apiUrl}/v1/inbox-items/i%201/moderate`);
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ action: "hide" });
+
+    const refused = new Response(JSON.stringify({ error: "meta_denied", message: "Meta did not allow it." }), { status: 422 });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(refused));
+    expect(await moderateItem("i1", "delete")).toEqual({ code: "meta_denied", message: "Meta did not allow it." });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(new Response("{}", { status: 403 })));
+    expect(await moderateItem("i1", "delete")).toBe("error");
   });
 });

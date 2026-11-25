@@ -35,6 +35,7 @@ import {
   stepInbox,
   threadKey,
   unboxed,
+  windowNote,
   type Attachment,
   type Author,
   type ConversationPage,
@@ -53,6 +54,7 @@ import { useSession } from "@/components/app-shell";
 import { accountName, Avatar } from "@/components/connections";
 import { InboxEditor, inboxMessages } from "@/components/inbox-editor";
 import { DeleteReply, ItemActionsMenu, useItemActions } from "@/components/inbox-actions";
+import { ModerationBar } from "@/components/inbox-moderation";
 import { SnippetMenu } from "@/components/library";
 import { platformName } from "@/components/platform-icons";
 import { TagEditor } from "@/components/tag-editor";
@@ -77,6 +79,7 @@ const accountsLink = (
   </Link>
 );
 const sendMessages: Record<string, ReactNode> = {
+  meta_reconnect_required: <>Meta refused this account&apos;s sign-in. Reconnect it. {accountsLink}</>,
   no_dm_access: <>This account&apos;s app password doesn&apos;t allow DMs. Reconnect with an app password that allows DMs. {accountsLink}</>,
   dm_not_allowed: "They only accept DMs from people they follow, so Bluesky didn't take it.",
   reconnect_required: <>Bluesky refused the app password. Reconnect the account. {accountsLink}</>,
@@ -896,6 +899,7 @@ function Detail({
   onDone: (i: Item) => void;
 }) {
   const dm = item.kind === "dm";
+  const { user } = useSession();
   const [text, setText] = useState("");
   // A DM opens as its whole conversation: null while it loads.
   const [convo, setConvo] = useState<ConversationPage | null>(null);
@@ -957,6 +961,10 @@ function Detail({
   const platform = platformName(account?.provider ?? "bluesky");
   const count = graphemes(text);
   const sending = pending.some((p) => !settled(p));
+  // Meta: how long a DM can still be answered (never for Bluesky), and a deleted comment takes no reply.
+  const window = dm ? (latest.reply_window ?? item.reply_window) : null;
+  const note = window ? windowNote(window) : null;
+  const deleted = item.moderation?.deleted === true;
 
   const assign = (id: string | null) =>
     meta.run("assign", () => assignItem(item.id, id, dm), (r) => {
@@ -1043,7 +1051,7 @@ function Detail({
   function onReply(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     // Ctrl+Enter submits even while the button is disabled.
-    if (sending || !text.trim() || count > max) return;
+    if (sending || !text.trim() || count > max || note?.blocked) return;
     send({ id: ++lastId, thread: threadKey(item), itemId: item.id, name: authorName(item.author), text });
     setText("");
   }
@@ -1261,8 +1269,11 @@ function Detail({
       </ol>
 
       <XActions item={item} />
-      {/* A follow, like or repost has nothing to reply to. */}
-      <form onSubmit={onReply} hidden={isActivity(item.kind)} className="grid gap-2 border-t border-ink/10 pt-4 [&[hidden]]:hidden">
+      {!dm && <ModerationBar key={item.id} item={item} canDelete={manages(user.current_team.role)} onChange={onChange} />}
+
+      {deleted && <p className="text-sm text-ink-soft">This comment was deleted on {platform}, so it takes no reply.</p>}
+      {/* A follow, like or repost has nothing to reply to, nor does a deleted comment. */}
+      <form onSubmit={onReply} hidden={isActivity(item.kind) || deleted} className="grid gap-2 border-t border-ink/10 pt-4 [&[hidden]]:hidden">
         <div className="flex flex-wrap items-end justify-between gap-2">
           <label htmlFor="reply-text" className="label">
             {dm ? "Send DM" : "Reply publicly"}
@@ -1283,8 +1294,13 @@ function Detail({
           aria-invalid={count > max || undefined}
           placeholder={dm ? `Message ${authorName(item.author)}` : `Reply to ${authorName(item.author)} on ${platform}`}
         />
+        {note && (
+          <p id="window-note" className={`text-sm ${note.blocked ? "font-bold text-signal-deep" : "text-ink-soft"}`}>
+            {note.text}
+          </p>
+        )}
         <div className="flex flex-wrap items-center gap-3">
-          <button type="submit" className="btn btn-primary" disabled={sending || !text.trim() || count > max}>
+          <button type="submit" className="btn btn-primary" disabled={sending || !text.trim() || count > max || note?.blocked}>
             <Icon name="send" className="size-4" />
             {dm ? "Send DM" : "Reply publicly"}
           </button>

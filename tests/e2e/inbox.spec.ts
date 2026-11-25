@@ -1173,3 +1173,92 @@ test("a create past the plan says so with an Upgrade link", async ({ page }) => 
   await expect(dialog.getByText("Your plan's inbox limit is reached.")).toBeVisible();
   await expect(dialog.getByRole("link", { name: "Upgrade" })).toBeVisible();
 });
+
+const igPage = { ...alice, id: "i1", provider: "instagram", external_id: "1784", handle: "acme", display_name: "acme" };
+const can = (...actions: string[]) => ({ hidden: false, liked: false, deleted: false, can: actions });
+
+test("Facebook and Instagram comments are hidden, liked and deleted from the inbox, with Meta's refusals said", async ({ page }) => {
+  const state = await brain(page, "owner", {
+    accounts: [alice, fbPage, igPage],
+    items: [
+      item("p1", "comment", "Love it", { platform: "facebook", social_account_id: "f1", moderation: can("hide", "delete", "like") }),
+      item("p2", "comment", "So nice", { platform: "instagram", social_account_id: "i1", received_at: ago(60), moderation: can("hide", "delete") }),
+    ],
+  });
+  const asked: { id: string; action: string }[] = [];
+  await page.route(/\/v1\/inbox-items\/[^/]+\/moderate$/, (route) => {
+    const id = new URL(route.request().url()).pathname.split("/")[3]!;
+    const { action } = route.request().postDataJSON();
+    asked.push({ id, action });
+    const found = state.items.find((i) => i.id === id) as unknown as { moderation: ReturnType<typeof can>; state: string };
+    // Instagram's token is refused, as Meta does for a dead one.
+    if (id === "p2") return route.fulfill({ status: 422, json: { error: "meta_reconnect_required", message: "Meta refused the Page's token." } });
+    const m = found.moderation;
+    if (action === "hide" || action === "unhide") m.hidden = action === "hide";
+    if (action === "like" || action === "unlike") m.liked = action === "like";
+    if (action === "delete") Object.assign(m, { deleted: true, can: [] }, { state: undefined });
+    else m.can = [m.hidden ? "unhide" : "hide", "delete", m.liked ? "unlike" : "like"];
+    if (action === "delete") found.state = "done";
+    return route.fulfill({ json: found });
+  });
+  await page.goto("/inbox?item=p1");
+  const detail = page.getByRole("region", { name: "Item" });
+  const bar = detail.getByRole("region", { name: "Moderate" });
+  await bar.getByRole("button", { name: "Hide", exact: true }).click();
+  await expect(bar.getByText("Hidden.", { exact: true })).toBeVisible();
+  await expect(bar.getByText("Hidden", { exact: true }).first()).toBeVisible();
+  await expect(bar.getByRole("button", { name: "Show again" })).toBeVisible();
+  await bar.getByRole("button", { name: "Like", exact: true }).click();
+  await expect(bar.getByText("Liked as your Page.")).toBeVisible();
+  await expect(bar.getByRole("button", { name: "Remove like" })).toBeVisible();
+  // Delete asks first, and the comment then takes no reply.
+  await bar.getByRole("button", { name: "Delete", exact: true }).click();
+  expect(asked.map((a) => a.action)).toEqual(["hide", "like"]);
+  await bar.getByRole("button", { name: "Yes, delete" }).click();
+  await expect(bar.getByText("Deleted.", { exact: true })).toBeVisible();
+  expect(asked.map((a) => a.action)).toEqual(["hide", "like", "delete"]);
+  await expect(detail.getByText("This comment was deleted on Facebook, so it takes no reply.")).toBeVisible();
+  await expect(detail.getByLabel("Reply publicly")).toBeHidden();
+
+  // Instagram has no like. Meta refusing the token says what to do.
+  await page.goto("/inbox?item=p2");
+  const ig = detail.getByRole("region", { name: "Moderate" });
+  await expect(ig.getByRole("button", { name: "Like" })).toHaveCount(0);
+  await expect(ig.getByText("Like: not available on Instagram")).toBeVisible();
+  await ig.getByRole("button", { name: "Hide", exact: true }).click();
+  await expect(ig.getByRole("alert")).toContainText("Meta refused this account's sign-in.");
+  await expect(ig.getByRole("alert").getByRole("link", { name: "Reconnect it under Accounts" })).toHaveAttribute("href", "/t/acme22/connections");
+});
+
+test("a member can hide a comment but not delete it", async ({ page }) => {
+  await brain(page, "member", {
+    accounts: [alice, fbPage],
+    items: [item("p1", "comment", "Love it", { platform: "facebook", social_account_id: "f1", moderation: can("hide", "delete", "like") })],
+  });
+  await page.goto("/inbox?item=p1");
+  const bar = page.getByRole("region", { name: "Item" }).getByRole("region", { name: "Moderate" });
+  await expect(bar.getByRole("button", { name: "Hide", exact: true })).toBeVisible();
+  await expect(bar.getByRole("button", { name: "Delete" })).toHaveCount(0);
+  await expect(bar.getByText("Deleting is for owners and admins.")).toBeVisible();
+});
+
+test("a Meta DM says how long it can be answered, and blocks a send Meta would refuse", async ({ page }) => {
+  const hours = (h: number) => new Date(Date.now() + h * 3_600_000).toISOString();
+  const win = (closes: number, agent: number | null) => ({ last_message_at: hours(closes - 24), closes_at: hours(closes), human_agent_until: agent === null ? null : hours(agent), open: closes > 0 });
+  const dm = (id: string, window: object) => item(id, "dm", "Hi there", { platform: "facebook", social_account_id: "f1", reply_window: window });
+  for (const [id, window, note, blocked] of [
+    ["p3", win(3, null), /Meta takes a reply for [23] hours?( \d+ min)? more/, false],
+    ["p4", win(-2, null), /Human Agent permission, which SocialReins has not been granted yet/, true],
+    ["p5", win(-2, 72), /still goes out as a person's reply for 2 days|for 3 days/, false],
+  ] as const) {
+    await brain(page, "owner", { accounts: [alice, fbPage], items: [dm(id, window)] });
+    await page.goto(`/inbox?item=${id}`);
+    const detail = page.getByRole("region", { name: "Item" });
+    await expect(detail.locator("#window-note")).toHaveText(note);
+    await detail.getByLabel("Send DM").fill("Sure");
+    const send = detail.getByRole("button", { name: "Send DM" });
+    if (blocked) await expect(send).toBeDisabled();
+    else await expect(send).toBeEnabled();
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+  }
+});
