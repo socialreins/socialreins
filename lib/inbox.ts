@@ -162,6 +162,66 @@ export const getThread = (id: string) => api<ThreadContext>(`/v1/inbox-items/${e
 // Whether an item has a thread to read: replies and mentions, and the posts a like or repost points at.
 export const hasThread = (i: Pick<Item, "kind" | "platform">) => i.platform === "bluesky" && (i.kind === "comment" || i.kind === "mention" || i.kind === "like" || i.kind === "repost");
 
+// What a person does from a Bluesky item beyond replying. Brain asks for `confirm`, logs every attempt, and
+// leaves block, hide, delete and report to owners and admins.
+export type ActionName =
+  | "like" | "unlike" | "repost" | "unrepost" | "follow" | "unfollow" | "mute_author" | "unmute_author" | "mute_thread" | "unmute_thread"
+  | "block_author" | "unblock_author" | "hide_reply" | "unhide_reply" | "delete_reply" | "report";
+export type Viewer = { liked: boolean; reposted: boolean; following: boolean; blocking: boolean; muted: boolean; thread_muted: boolean };
+export type ActionLog = { id: string; action: ActionName; status: "done" | "failed"; target: string; error: string | null; reply_id: string | null; done_by: string | null; created_at: string };
+// `viewer` is null when Bluesky could not be read (`viewer_error` says why); `hidden` is the state the last hide or unhide here left.
+export type ItemActions = { viewer: Viewer | null; viewer_error: string | null; hidden: boolean; log: ActionLog[] };
+export const getActions = (id: string) => api<ItemActions>(`/v1/inbox-items/${enc(id)}/actions`);
+export const REPORT_REASONS: [string, string][] = [
+  ["spam", "Spam"],
+  ["violation", "Breaks the rules"],
+  ["misleading", "Misleading"],
+  ["sexual", "Sexual content"],
+  ["rude", "Rude or harassing"],
+  ["other", "Something else"],
+];
+export type ActionInput = { action: ActionName; reply_id?: string; reason_type?: string; reason?: string; account?: boolean };
+export type ActionResult = { remote_id: string | null } | Failure | SendError;
+// Sends one action, confirmed. A 4xx with a code and message from brain is a SendError saying what to do.
+export async function runAction(id: string, input: ActionInput): Promise<ActionResult> {
+  const res = await request(`/v1/inbox-items/${enc(id)}/actions`, "POST", { ...input, confirm: true }, CONNECT_TIMEOUT_MS);
+  if (typeof res === "string") return res === "timeout" ? "timeout" : "error";
+  if (res.ok) return ((await res.json().catch(() => null)) as { remote_id: string | null } | null) ?? { remote_id: null };
+  const body = await res.clone().json().catch(() => null);
+  if (res.status === 422 && typeof body?.message === "string") return { code: String(body.error), message: body.message };
+  if (res.status === 409 && body?.error === "already_reported") return { code: "already_reported", message: "This was already reported from here." };
+  return failure(res);
+}
+
+export type ActionButton = { action: ActionName; label: string; confirm: string; danger?: boolean };
+// The actions an item offers, worded by the account's live state. Like, repost and thread mute need a post of ours to answer (a comment or
+// mention); hiding needs one too; the rest act on its author. Block, hide and report are for owners and admins.
+export function actionButtons(item: Pick<Item, "kind" | "platform" | "author">, v: Viewer | null, canManage: boolean): ActionButton[] {
+  if (item.platform !== "bluesky") return [];
+  const who = item.author.handle ? `@${item.author.handle}` : (item.author.name ?? "this person");
+  const post = item.kind === "comment" || item.kind === "mention";
+  const out: ActionButton[] = [];
+  if (post) {
+    out.push(v?.liked ? { action: "unlike", label: "Unlike", confirm: "Remove your like from this post?" } : { action: "like", label: "Like", confirm: `Like ${who}'s post as this account?` });
+    out.push(v?.reposted ? { action: "unrepost", label: "Undo repost", confirm: "Remove your repost of this post?" } : { action: "repost", label: "Repost", confirm: `Repost ${who}'s post to this account's followers?` });
+    out.push(v?.thread_muted ? { action: "unmute_thread", label: "Unmute thread", confirm: "Get notifications from this thread again?" } : { action: "mute_thread", label: "Mute thread", confirm: "Stop notifications from this thread on Bluesky?" });
+  }
+  out.push(v?.following ? { action: "unfollow", label: "Unfollow", confirm: `Unfollow ${who}?` } : { action: "follow", label: "Follow back", confirm: `Follow ${who} from this account?` });
+  out.push(v?.muted ? { action: "unmute_author", label: "Unmute person", confirm: `Unmute ${who}?` } : { action: "mute_author", label: "Mute person", confirm: `Mute ${who} on this account? They are not told.` });
+  if (canManage) {
+    out.push(v?.blocking ? { action: "unblock_author", label: "Unblock", confirm: `Unblock ${who}?` } : { action: "block_author", label: "Block", confirm: `Block ${who}? They can no longer see this account's posts or reply to them.`, danger: true });
+    if (post) out.push({ action: "hide_reply", label: "Hide reply", confirm: "Hide this reply from the thread? It stays on Bluesky, but is folded away for others.", danger: true });
+  }
+  return out;
+}
+
+// What each action says once it went through.
+export const actionDone: Record<ActionName, string> = {
+  like: "Liked.", unlike: "Like removed.", repost: "Reposted.", unrepost: "Repost removed.", follow: "Followed.", unfollow: "Unfollowed.",
+  mute_author: "Muted.", unmute_author: "Unmuted.", mute_thread: "Thread muted.", unmute_thread: "Thread unmuted.", block_author: "Blocked.", unblock_author: "Unblocked.",
+  hide_reply: "Reply hidden.", unhide_reply: "Reply shown again.", delete_reply: "Reply deleted from Bluesky.", report: "Reported to Bluesky.",
+};
+
 // What a list row or an open item belongs to: a DM to its person and account, anything else to itself.
 export const threadKey = (i: Item) => (i.kind === "dm" ? `dm:${i.social_account_id}:${i.author.id}` : i.id);
 
