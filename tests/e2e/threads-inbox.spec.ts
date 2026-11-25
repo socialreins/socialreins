@@ -93,7 +93,9 @@ test("a Threads reply shows the post above it, counts an emoji by its bytes and 
   const detail = page.getByRole("region", { name: "Item" });
   await expect(detail.getByRole("heading", { name: "@ann" })).toBeVisible();
   await expect(detail.getByText("Our free plan launch post")).toBeVisible();
-  await expect(detail.getByRole("link", { name: "View on Threads" }).first()).toBeVisible();
+  // The post above and the reply itself both link to Threads, not to Bluesky.
+  await expect(detail.getByRole("link", { name: "View on Threads" })).toHaveCount(2);
+  await expect(detail.getByRole("link", { name: /View on Bluesky/ })).toHaveCount(0);
   const box = detail.getByLabel("Reply publicly");
   await expect(box).toHaveAttribute("placeholder", "Reply to @ann on Threads");
   // 3 emoji are 12 bytes: Threads counts bytes, so 125 of them (500) fit and 126 do not.
@@ -129,7 +131,7 @@ test("hiding a Threads reply is confirmed, logged, and can be undone; only hidin
   await expect(actions.getByRole("list", { name: "Recent actions" })).toContainText("Showed the reply again");
 });
 
-test("a refused hide says what Threads said, and a member is not offered it", async ({ page }) => {
+test("a refused hide says what Threads said", async ({ page }) => {
   await brain(page, "owner", { refuse: { error: "threads_nested", message: "Threads can only hide a reply directly under a post of this account, not one deeper in the thread." } });
   await page.goto("/inbox/all?item=t1");
   const actions = page.getByRole("region", { name: "Item" }).getByRole("region", { name: "Actions on Threads" });

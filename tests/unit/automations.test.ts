@@ -13,6 +13,8 @@ import {
   TEMPLATE_GROUPS,
   flowOutline,
   flowProblems,
+  replyLimit,
+  threadsProblems,
   newStep,
   payloadOk,
   postIds,
@@ -448,6 +450,13 @@ describe("tag the contact", () => {
     expect(flowProblems([newStep("send_dm", "Hi")], "comment_received", ["threads"])).toEqual([{ step: 0, text: "Threads has no DMs and no private reply. Use a public reply." }]);
     expect(flowProblems([reply("Hi")], "new_follower", ["threads"]).map((p) => p.step)).toEqual([0, null]);
     expect(flowProblems([newStep("send_dm", "Hi")], "comment_received", ["threads", "bluesky"])).toEqual([]);
+    // A Threads reply may be 400 characters (the limit is 500), where any other network stops at 300.
+    expect(flowProblems([reply("a".repeat(400))], "comment_received", ["threads"])).toEqual([]);
+    expect(flowProblems([reply("a".repeat(400))], "comment_received", ["bluesky"]).length).toBe(1);
+    expect(replyLimit(["threads"]).max).toBe(500);
+    expect(replyLimit(["threads", "x"]).max).toBe(300);
+    expect(threadsProblems("comment_received", false)).toEqual([]);
+    expect(threadsProblems("dm_received", true).length).toBe(2);
     // 126 emoji are 504 bytes.
     expect(flowProblems([reply("😀".repeat(126))], "comment_received", ["threads"])[0]?.text).toContain("Too long for Threads");
     expect(flowProblems([reply("😀".repeat(125))], "comment_received", ["threads"])).toEqual([]);

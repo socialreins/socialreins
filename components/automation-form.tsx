@@ -15,7 +15,10 @@ import {
   sample,
   sameSteps,
   slug,
+  replyLimit,
   templateLength,
+  threadsOnly,
+  threadsProblems,
   toFlow,
   toSimple,
   TRIGGERS,
@@ -28,7 +31,7 @@ import {
 } from "@/lib/automations";
 import type { Connection } from "@/lib/connections";
 import { cleanTag } from "@/lib/contacts";
-import { MAX_DM, MAX_PUBLIC } from "@/lib/inbox";
+import { MAX_DM } from "@/lib/inbox";
 import type { SocialSet } from "@/lib/sets";
 import { FlowEditor, FlowPreview, TagLine, TextField } from "@/components/automation-flow";
 import { AutomationTest } from "@/components/automation-test";
@@ -49,7 +52,7 @@ export const automationMessages: Partial<Record<Failure, ReactNode>> = {
   meta_reply_window: "Facebook and Instagram take a DM only within 24 hours of the person's message. Shorten the waits.",
   invalid_conditions: "One of the accounts, the set or a post link is no longer valid, a keyword is too long, or a condition does not fit this trigger. Check them and try again.",
   invalid_actions: "Add a DM text or a public reply that this trigger can send.",
-  invalid_text: "A text is too long or holds {page} where it can't go. DMs take 1000 characters and public replies 300, with {name} counted as 64 and {page} as 100. {page} works only for comments and mentions, and needs a space before it and a space or the end after it.",
+  invalid_text: "A text is too long or holds {page} where it can't go. DMs take 1000 characters and public replies 300 (500 on Threads, with an emoji counted as its bytes), with {name} counted as 64 and {page} as 100. {page} works only for comments and mentions, and needs a space before it and a space or the end after it.",
   invalid_fallback: "The fallback reply does not work: it needs a DM text, at most 300 characters, with {name} counted as 64 and {page} as 100, and {page} needs a space before it and a space or the end after it.",
   invalid_steps: "A step does not work. A flow takes 1 to 10 steps, can't start or end with a wait (1 minute to 7 days), sends only what its trigger can send, and each DM takes up to 3 buttons with a label of 1 to 20 characters.",
   actions_and_steps: "An automation is one reply or a flow of steps, not both. Reload the page and try again.",
@@ -138,18 +141,20 @@ export function AutomationForm({
   // Accounts saved before automations were limited to these networks stay listed so they can be unticked.
   const stuck = picked.filter((x) => !AUTOMATED.includes(x.provider)).map((x) => x.handle ?? x.display_name ?? x.provider);
   const problems = d.flow ? flowProblems(d.steps, d.trigger, providers) : [];
+  const limit = replyLimit(providers);
   const waiting = a?.runs?.waiting ?? 0;
   // Everything that stops a save, with the field to fix it in, for the bar's count.
   const issues: { text: string; field: string }[] = [
     ...(d.name.trim() ? [] : [{ text: "Give it a name.", field: "automation-name" }]),
-    ...(stuck.length ? [{ text: `Untick ${stuck.join(", ")}: automations run only on Bluesky, Facebook, Instagram and X.`, field: "automation-scope" }] : []),
+    ...(stuck.length ? [{ text: `Untick ${stuck.join(", ")}: automations run only on Bluesky, Facebook, Instagram, Threads and X.`, field: "automation-scope" }] : []),
     ...(t.payloads && !d.payloads.length ? [{ text: "Add at least one button payload.", field: "automation-payloads" }] : []),
     ...(d.flow
       ? problems.map((p) => ({ text: p.step === null ? p.text : `Step ${p.step + 1}: ${p.text}`, field: p.step === null ? "automation-flow-add" : `step-${d.steps[p.step]!.id}-field` }))
       : [
           ...(hasDm || (t.publicReply && d.publicReply.trim()) ? [] : [{ text: t.publicReply ? "Write a DM text or a public reply." : "Write the DM text.", field: "automation-dm" }]),
           ...(templateLength(d.dm) > MAX_DM ? [{ text: "The DM text is too long.", field: "automation-dm" }] : []),
-          ...(t.publicReply && templateLength(d.publicReply) > MAX_PUBLIC ? [{ text: "The public reply is too long.", field: "automation-public-reply" }] : []),
+          ...(t.publicReply && limit.size(d.publicReply) > limit.max ? [{ text: "The public reply is too long.", field: "automation-public-reply" }] : []),
+          ...(threadsOnly(providers) ? threadsProblems(d.trigger, hasDm).map((text) => ({ text, field: hasDm ? "automation-dm" : "automation-scope" })) : []),
         ]),
   ];
 
@@ -447,6 +452,7 @@ export function AutomationForm({
                 setPending(null);
               }}
               trigger={d.trigger}
+              providers={providers}
               problems={tried ? problems : []}
               followUp={followUp}
             />
@@ -476,7 +482,8 @@ export function AutomationForm({
                     label={<>Public reply <span className="font-normal text-ink-soft">(optional, goes every time)</span></>}
                     value={d.publicReply}
                     onChange={(publicReply) => set({ publicReply })}
-                    max={MAX_PUBLIC}
+                    max={limit.max}
+                    length={limit.size(d.publicReply)}
                     tokens={tokens}
                     placeholder="Sent you a DM, {name}!"
                   />
@@ -494,7 +501,8 @@ export function AutomationForm({
                         label="Fallback reply"
                         value={d.fallback}
                         onChange={(fallback) => set({ fallback })}
-                        max={MAX_PUBLIC}
+                        max={limit.max}
+                        length={limit.size(d.fallback)}
                         tokens={tokens}
                         required
                         placeholder="I couldn't DM you, {name}. Follow us and comment again!"

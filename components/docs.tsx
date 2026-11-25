@@ -162,7 +162,7 @@ function Start({ mode }: { mode: Mode }) {
           <tbody>
             {[
               ["Facebook and Instagram", "META_APP_ID, META_APP_SECRET, META_WEBHOOK_VERIFY_TOKEN", "/connect/meta/callback"],
-              ["Threads", "THREADS_APP_ID, THREADS_APP_SECRET, THREADS_WEBHOOK_VERIFY_TOKEN", "/connect/threads/callback"],
+              ["Threads", "THREADS_APP_ID, THREADS_APP_SECRET", "/connect/threads/callback"],
               ["LinkedIn", "LINKEDIN_CLIENT_ID, LINKEDIN_CLIENT_SECRET", "/connect/linkedin/callback"],
               ["X", "X_CLIENT_ID, X_CLIENT_SECRET", "/connect/x/callback"],
               ["TikTok", "TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET", "/connect/tiktok/callback"],
@@ -478,7 +478,7 @@ const networkApps: { name: string; where: string; url: string; steps: ReactNode[
       "Optional: the replies and mentions webhook. Add the Threads webhooks sub-use case, set its callback URL to the webhook address below and the verify token to any long random string (THREADS_WEBHOOK_VERIFY_TOKEN), and subscribe replies and mentions. Threads delivers it only to an approved app, and SocialReins reads replies and mentions about every 5 minutes without it.",
     ],
     scopes: "threads_basic, threads_content_publish, threads_manage_replies, threads_delete, threads_read_replies, threads_manage_mentions",
-    env: ["THREADS_APP_ID", "THREADS_APP_SECRET", "THREADS_WEBHOOK_VERIFY_TOKEN"],
+    env: ["THREADS_APP_ID", "THREADS_APP_SECRET"],
     redirect: ["/connect/threads/callback", "/webhooks/threads (webhook)"],
   },
   {

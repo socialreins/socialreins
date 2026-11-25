@@ -629,7 +629,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
           {accountList.some((a) => a.provider === "threads" && a.replies_denied) && (
             <p role="note" className="card mb-3 p-3 text-sm">
               <strong className="block">Reconnect to enable replies</strong>
-              {accountList.filter((a) => a.provider === "threads" && a.replies_denied).map(accountName).join(", ")} was connected before SocialReins could read Threads replies, so none reach this inbox yet.{" "}
+              {accountList.filter((a) => a.provider === "threads" && a.replies_denied).map(accountName).join(", ")} {accountList.filter((a) => a.provider === "threads" && a.replies_denied).length === 1 ? "was" : "were"} connected before SocialReins could read Threads replies, so none reach this inbox yet. Until Meta approves the new permissions, only the app&apos;s testers can reconnect with them.{" "}
               <Link href="/connections" className="font-bold underline decoration-signal decoration-2 underline-offset-4">
                 Reconnect it under Accounts
               </Link>
@@ -1297,7 +1297,7 @@ function Detail({
       <ThreadsActions item={item} canManage={canManage} />
       {account?.provider === "threads" && account.replies_denied && (
         <p role="note" className="rounded-xl border border-ink/15 bg-canvas p-3 text-sm">
-          <strong>Reconnect to enable replies.</strong> This Threads account was connected before SocialReins could read and send replies. {accountsLink}, reconnect it and accept the new permissions.
+          <strong>Reconnect to enable replies.</strong> This Threads account was connected before SocialReins could read and send replies. Reconnect it under Accounts and accept the new permissions. Until Meta approves them, only the app&apos;s testers can. {accountsLink}.
         </p>
       )}
       {!dm && <ModerationBar key={item.id} item={item} canDelete={canManage} onChange={onChange} />}

@@ -682,12 +682,12 @@ function AccountSettings({
         {c.provider === "threads" && c.replies_denied && !state && (
           <p className="rounded-xl bg-canvas p-3 text-sm">
             <strong>Reconnect to enable replies.</strong>{" "}
-            <span className="text-ink-soft">This account was connected before SocialReins could read and send Threads replies. Connect it again and accept the new permissions (replies and mentions) and they reach the inbox.</span>
+            <span className="text-ink-soft">This account was connected before SocialReins could read and send Threads replies. Connect it again and accept the new permissions (replies and mentions) and they reach the inbox. Until Meta approves them, only the app&apos;s testers can.</span>
           </p>
         )}
         {c.provider === "threads" && (
           <p className="text-sm text-ink-soft">
-            The Threads inbox has replies to your posts and posts that mention you, and you can reply and hide a reply. Threads has no DMs, and an app cannot like, repost or follow there.
+            The Threads inbox is in testing: replies to your posts and posts that mention you arrive, and you can reply and hide a reply. Until Meta approves the reply and mention permissions, only the app&apos;s testers can use it. Threads has no DMs, and an app cannot like, repost or follow there.
           </p>
         )}
         {!canManage ? (

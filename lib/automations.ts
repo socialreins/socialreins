@@ -107,6 +107,21 @@ export const listRuns = (id: string, cursor?: string | null) =>
 const LONGEST_NAME = "n".repeat(64);
 const LONGEST_PAGE = "p".repeat(100);
 export const templateLength = (text: string) => graphemes(text.replaceAll("{name}", LONGEST_NAME).replaceAll("{page}", LONGEST_PAGE));
+// Whether every account the automation is limited to by name is on Threads.
+export const threadsOnly = (providers: string[]) => providers.length > 0 && providers.every((p) => p === "threads");
+// A public reply's limit and what counts against it: Threads takes 500 and counts an emoji as its UTF-8 bytes (brain's threads_length),
+// every other network 300 characters. {name} and {page} count at their longest.
+export const replyLimit = (providers: string[]) =>
+  threadsOnly(providers)
+    ? { max: 500, size: (text: string) => threadsLength(text.replaceAll("{name}", "\u{10348}".repeat(64)).replaceAll("{page}", "p".repeat(100))) }
+    : { max: 300, size: templateLength };
+// What a Threads account cannot do, for the one-reply form: it has replies and mentions, and answers publicly.
+export function threadsProblems(trigger: Trigger, hasDm: boolean): string[] {
+  return [
+    ...(trigger === "comment_received" || trigger === "mention_received" ? [] : ["Threads has replies and mentions only: use a comment or a mention, or leave the Threads account out."]),
+    ...(hasDm ? ["Threads has no DMs and no private reply. Remove the DM text and write a public reply."] : []),
+  ];
+}
 // What a commenter called Sam would get, for the preview.
 export const sample = (text: string, name = "Sam") => text.replaceAll("{name}", name).replaceAll("{page}", "(link to the public page)");
 
@@ -346,7 +361,8 @@ export function flowProblems(steps: StepDraft[], trigger: Trigger, providers: st
     const buttons = s.type === "send_dm" ? s.buttons : [];
     const max = s.type === "send_dm" ? 1000 : 300;
     if (!s.text.trim()) say("Write the text.");
-    else if (templateLength(numbered(s.text, buttons)) > max) say(`Too long: at most ${max} characters${buttons.length ? ", the button labels included" : ""}.`);
+    else if (templateLength(numbered(s.text, buttons)) > max && !(threadsOnly(providers) && s.type === "reply_publicly"))
+      say(`Too long: at most ${max} characters${buttons.length ? ", the button labels included" : ""}.`);
     if (!pub && s.text.includes("{page}")) say("{page} works only for comments and mentions.");
     if (buttons.length > MAX_BUTTONS) say(`A DM takes up to ${MAX_BUTTONS} buttons.`);
     for (const b of buttons) {
@@ -357,11 +373,11 @@ export function flowProblems(steps: StepDraft[], trigger: Trigger, providers: st
     }
   });
   // Threads: replies and mentions only, a public reply of 500 UTF-8-counted characters, never a DM.
-  if (providers.length && providers.every((p) => p === "threads")) {
+  if (threadsOnly(providers)) {
     if (trigger !== "comment_received" && trigger !== "mention_received") out.push({ step: null, text: blockText.threads_unsupported_trigger! + "." });
     steps.forEach((s, step) => {
       if (s.type === "send_dm" || s.type === "ai_send_dm") out.push({ step, text: "Threads has no DMs and no private reply. Use a public reply." });
-      else if (s.type === "reply_publicly" && threadsLength(s.text.replaceAll("{name}", "\u{10348}".repeat(64)).replaceAll("{page}", "p".repeat(100))) > 500)
+      else if (s.type === "reply_publicly" && replyLimit(providers).size(s.text) > 500)
         out.push({ step, text: "Too long for Threads, which takes 500 characters and counts an emoji as its bytes (4 for most), with {name} up to 256." });
     });
   }

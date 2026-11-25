@@ -22,6 +22,7 @@ function Hide({ id, canManage }: { id: string; canManage: boolean }) {
   const [said, setSaid] = useState<{ ok: boolean; text: ReactNode } | null>(null);
   const [n, setN] = useState(0);
   const ask = useRef<HTMLDivElement>(null);
+  const opener = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     let live = true;
     getActions(id).then((r) => {
@@ -41,6 +42,11 @@ function Hide({ id, canManage }: { id: string; canManage: boolean }) {
   }, [asking]);
 
   const hidden = state?.hidden === true;
+  // The confirmation takes its buttons with it, so focus goes back to the button that opened it.
+  function close() {
+    setAsking(false);
+    opener.current?.focus();
+  }
   async function go() {
     setBusy(true);
     setSaid(null);
@@ -53,8 +59,9 @@ function Hide({ id, canManage }: { id: string; canManage: boolean }) {
     }
     if (typeof r === "string") return setSaid({ ok: false, text: problemText(r) });
     if ("message" in r) return setSaid({ ok: false, text: r.message });
-    setAsking(false);
+    close();
     setSaid({ ok: true, text: hidden ? "The reply is shown again." : "The reply is hidden." });
+    setState((s) => s && { ...s, hidden: !hidden });
     setN((x) => x + 1);
   }
 
@@ -64,7 +71,7 @@ function Hide({ id, canManage }: { id: string; canManage: boolean }) {
       <div className="flex flex-wrap items-center gap-2">
         <p className="font-bold text-ink-soft">Actions on Threads</p>
         {canManage ? (
-          <button type="button" className="btn btn-secondary btn-sm" disabled={busy || (!state && !failed)} onClick={() => { setSaid(null); setAsking(true); }}>
+          <button ref={opener} type="button" className="btn btn-secondary btn-sm" disabled={busy || !state} onClick={() => { setSaid(null); setAsking(true); }}>
             {hidden ? "Show reply" : "Hide reply"}
           </button>
         ) : (
@@ -82,7 +89,7 @@ function Hide({ id, canManage }: { id: string; canManage: boolean }) {
             <button type="button" className={`btn btn-sm ${hidden ? "btn-primary" : "btn-danger-solid"}`} disabled={busy} onClick={go}>
               {busy ? "Working..." : "Confirm"}
             </button>
-            <button type="button" className="btn btn-quiet btn-sm" disabled={busy} onClick={() => setAsking(false)}>
+            <button type="button" className="btn btn-quiet btn-sm" disabled={busy} onClick={close}>
               Cancel
             </button>
           </p>
@@ -93,7 +100,14 @@ function Hide({ id, canManage }: { id: string; canManage: boolean }) {
           {said.text}
         </p>
       )}
-      {failed && !state && <p className="text-xs text-ink-soft">What was done here before could not be read.</p>}
+      {failed && !state && (
+        <p className="text-xs text-ink-soft">
+          Whether this reply is hidden could not be read from SocialReins.{" "}
+          <button type="button" className="font-bold underline" onClick={() => setN((x) => x + 1)}>
+            Retry
+          </button>
+        </p>
+      )}
       {log.length > 0 && (
         <ul aria-label="Recent actions" className="grid gap-0.5 text-xs text-ink-soft">
           {log.map((l) => (

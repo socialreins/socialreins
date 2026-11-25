@@ -16,6 +16,7 @@ import {
   sample,
   slug,
   stepName,
+  replyLimit,
   templateLength,
   triggers,
   uniquePayload,
@@ -29,7 +30,7 @@ import {
   type WaitUnit,
 } from "@/lib/automations";
 import { cleanTag, MAX_TAG } from "@/lib/contacts";
-import { MAX_DM, MAX_PUBLIC } from "@/lib/inbox";
+import { MAX_DM } from "@/lib/inbox";
 import { TeamLink as Link } from "@/components/team-link";
 import { ActionMenu, menuItem } from "@/components/menu";
 import { Icon, type IconName } from "@/components/ui";
@@ -184,12 +185,15 @@ export function FlowEditor({
   steps,
   onChange,
   trigger,
+  providers = [],
   problems,
   followUp,
 }: {
   steps: StepDraft[];
   onChange: (steps: StepDraft[]) => void;
   trigger: Trigger;
+  // The networks of the accounts the automation is limited to by name: Threads-only ones take 500 characters, counted by bytes.
+  providers?: string[];
   // What to show of `flowProblems`: empty until a save was tried.
   problems: FlowProblem[];
   // The new-automation address for a button's follow-up.
@@ -318,10 +322,10 @@ export function FlowEditor({
                           label={s.type === "send_dm" ? "DM text" : "Public reply"}
                           value={s.text}
                           onChange={(text) => patch(i, { text })}
-                          max={s.type === "send_dm" ? MAX_DM : MAX_PUBLIC}
+                          max={s.type === "send_dm" ? MAX_DM : replyLimit(providers).max}
                           tokens={tokens}
                           placeholder={s.type === "send_dm" ? "Hi {name}, here is the link you asked for: ..." : "Sent you a DM, {name}!"}
-                          length={templateLength(numbered(s.text, s.type === "send_dm" ? s.buttons : []))}
+                          length={s.type === "send_dm" ? templateLength(numbered(s.text, s.buttons)) : replyLimit(providers).size(s.text)}
                           hint={s.type === "send_dm" && s.buttons.length ? "The button labels count too." : undefined}
                         />
                       )}
