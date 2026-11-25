@@ -565,7 +565,7 @@ test("a flow says what is wrong before it saves, and maps brain's refusals", asy
   // Removing every step leaves nothing to send.
   await step(page, 2).getByRole("button", { name: "Remove step 2" }).click();
   await step(page, 1).getByRole("button", { name: "Remove step 1" }).click();
-  await expect(doThis.getByRole("alert")).toHaveText("A flow needs at least one step that does something: a DM, a reply, a mail to your team or a moderation step.");
+  await expect(doThis.getByRole("alert")).toHaveText("A flow needs at least one step that sends something. Add a DM, or a mail to your team or a moderation step.");
   await expect(doThis.getByRole("button", { name: "Send a DM", exact: true })).toBeFocused();
 
   // Ten steps at most.

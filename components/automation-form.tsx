@@ -586,7 +586,9 @@ export function AutomationForm({
               </fieldset>
               {tried && tagsAlone && (
                 <p role="alert" className="waitlist-error">
-                  A tag or a stop needs something done with it. Write {t.publicReply ? "a DM text or a public reply" : "a DM text"}, tick a mail or a moderation action, or remove them.
+                  {d.also.length === 0
+                    ? `A tag needs something sent with it. Write ${t.publicReply ? "a DM text or a public reply" : "a DM text"}, or remove the tags.`
+                    : `A tag or a stop needs something done with it. Write ${t.publicReply ? "a DM text or a public reply" : "a DM text"}, tick a mail or a moderation action, or remove them.`}
                 </p>
               )}
             </>
@@ -622,7 +624,7 @@ export function AutomationForm({
           input={testable ? automationInput(d, scopeBody(scope), uris as string[]) : null}
           stuck={
             testable
-              ? (issues.find((i) => i.field !== "automation-name")?.text ?? (tagsAlone ? "A tag or a stop needs something done with it: a DM, a reply, a mail or a moderation action." : null))
+              ? (issues.find((i) => i.field !== "automation-name")?.text ?? (tagsAlone ? (d.also.length === 0 ? "A tag needs something sent with it." : "A tag or a stop needs something done with it: a DM, a reply, a mail or a moderation action.") : null))
               : "A post link is not a post of a connected Bluesky account."
           }
           accounts={accounts.filter((x) => AUTOMATED.includes(x.provider))}

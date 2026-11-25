@@ -396,7 +396,7 @@ export function flowProblems(steps: StepDraft[], trigger: Trigger, providers: st
   const out: FlowProblem[] = [];
   const pub = triggers[trigger].publicReply;
   const acts = (s: StepDraft) => isSend(s) || s.type === "notify_team" || s.type === "hide_comment" || s.type === "like_comment";
-  if (!steps.some(acts)) out.push({ step: null, text: "A flow needs at least one step that does something: a DM, a reply, a mail to your team or a moderation step." });
+  if (!steps.some(acts)) out.push({ step: null, text: "A flow needs at least one step that sends something. Add a DM, or a mail to your team or a moderation step." });
   else {
     if (isWait(steps[0]!)) out.push({ step: null, text: "A flow can't start with a wait. Move a DM above it." });
     if (isWait(steps.at(-1)!)) out.push({ step: null, text: "A flow can't end with a wait. Add a step after it, or remove it." });

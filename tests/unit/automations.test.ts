@@ -333,8 +333,8 @@ describe("flows", () => {
 
   it("finds what brain would refuse in a flow", () => {
     expect(texts([dm("Hi", "Yes", "No"), wait("1", "days"), dm("Still there?")])).toEqual([]);
-    expect(texts([])).toEqual([[null, "A flow needs at least one step that does something: a DM, a reply, a mail to your team or a moderation step."]]);
-    expect(texts([wait("5")])).toEqual([[null, "A flow needs at least one step that does something: a DM, a reply, a mail to your team or a moderation step."]]);
+    expect(texts([])).toEqual([[null, "A flow needs at least one step that sends something. Add a DM, or a mail to your team or a moderation step."]]);
+    expect(texts([wait("5")])).toEqual([[null, "A flow needs at least one step that sends something. Add a DM, or a mail to your team or a moderation step."]]);
     expect(texts([wait("5"), dm("Hi"), wait("5")])).toEqual([
       [null, "A flow can't start with a wait. Move a DM above it."],
       [null, "A flow can't end with a wait. Add a step after it, or remove it."],
@@ -482,7 +482,7 @@ describe("tag the contact", () => {
     expect(stepsBody(steps)).toEqual([{ type: "send_dm", text: "Hi" }, { type: "tag_contact", tag: "vip gold" }]);
     expect(flowOutline(stepsBody(steps))).toBe("DM, tag: vip gold");
     expect(canEdit({ id: "f", name: "F", active: true, activated_at: "", trigger: "dm_received", conditions: scope, actions: [], fallback_public_reply: null, created_by: null, created_at: "", updated_at: "", steps: stepsBody(steps) })).toBe(true);
-    expect(flowProblems([tag], "dm_received")).toEqual([{ step: null, text: "A flow needs at least one step that does something: a DM, a reply, a mail to your team or a moderation step." }]);
+    expect(flowProblems([tag], "dm_received")).toEqual([{ step: null, text: "A flow needs at least one step that sends something. Add a DM, or a mail to your team or a moderation step." }]);
     expect(flowProblems([newStep("send_dm", "Hi"), newStep("tag_contact")], "dm_received")).toEqual([{ step: 1, text: "Write the tag: 1 to 30 characters, no commas." }]);
   });
 
