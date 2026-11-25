@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import type { Failure } from "@/lib/auth";
 import {
@@ -133,8 +133,8 @@ export function AutomationForm({
   const { busy, problem, done, run } = useAction();
   const set = (patch: Partial<Draft>) => setD((cur) => ({ ...cur, ...patch }));
   // The languages list stays open once used, and a zone the person chose is never replaced by the browser's.
-  const langsOpen = useRef(false);
-  const touchedZone = useRef(d.zone !== "UTC");
+  const [langsOpen, setLangsOpen] = useState(false);
+  const [touchedZone, setTouchedZone] = useState(d.zone !== "UTC");
 
   const t = triggers[d.trigger];
   const tokens = t.publicReply ? ["{name}", "{page}"] : ["{name}"];
@@ -444,7 +444,7 @@ export function AutomationForm({
             <p className="hint pl-6">A message with a question mark counts at once. Any other is read by AI, which counts against your AI replies (or your AI key).</p>
           )}
           {t.keywords && (
-            <details className="grid gap-2" open={langsOpen.current || d.languages.length > 0}>
+            <details className="grid gap-2" open={langsOpen || d.languages.length > 0}>
               <summary className="cursor-pointer font-medium">Only certain languages{d.languages.length > 0 && ` (${d.languages.length})`}</summary>
               <div role="group" aria-label="Languages" className="flex flex-wrap gap-x-4 gap-y-1">
                 {LANGUAGES.map(([code, name]) => (
@@ -454,7 +454,7 @@ export function AutomationForm({
                       checked={d.languages.includes(code)}
                       disabled={d.languages.length >= 10 && !d.languages.includes(code)}
                       onChange={(e) => {
-                        langsOpen.current = true;
+                        setLangsOpen(true);
                         set({ languages: e.target.checked ? [...d.languages, code] : d.languages.filter((x) => x !== code) });
                       }}
                     />
@@ -466,7 +466,7 @@ export function AutomationForm({
             </details>
           )}
           <label className="flex items-center gap-2">
-            <input type="checkbox" checked={d.timed} onChange={(e) => set({ timed: e.target.checked, ...(e.target.checked && !touchedZone.current && { zone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" }) })} />
+            <input type="checkbox" checked={d.timed} onChange={(e) => set({ timed: e.target.checked, ...(e.target.checked && !touchedZone && { zone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" }) })} />
             Only at certain times
           </label>
           {d.timed && (
@@ -500,7 +500,7 @@ export function AutomationForm({
                   className="field w-auto"
                   value={d.zone}
                   onChange={(e) => {
-                    touchedZone.current = true;
+                    setTouchedZone(true);
                     set({ zone: e.target.value });
                   }}
                   placeholder="Asia/Dhaka"
