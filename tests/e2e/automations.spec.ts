@@ -196,6 +196,8 @@ for (const t of templates) {
 
 test("an automation on X shows what a run costs while it is edited", async ({ page }) => {
   const state = await brain(page, "owner");
+  // The price is asked for only when the team has an X account.
+  await page.route("**/v1/connections", (route) => route.fulfill({ json: [alice, { ...alice, id: "x1", provider: "x", handle: "us.x" }] }));
   await page.goto("/automations/new?template=comment-to-dm");
   await expect(page.getByText("About $")).toHaveCount(0);
   state.estimate = { x: true, cost: { writes: 2, read_usd: 0.015, write_usd: 0.03, total_usd: 0.045, credits: 2.3 } };
