@@ -104,8 +104,8 @@ export function TikTokPanel({
         <p id="tiktok-privacy-note" className="hint">
           {branded ? "Branded content visibility cannot be set to private." : "Only the options TikTok offers this account are listed."}
         </p>
-        <p id="tiktok-audit-note" className="hint" data-tiktok-audit-note>
-          Until TikTok has approved this server&apos;s app in its audit, TikTok keeps every post private (only you see it), whatever you choose here. You can change who sees it in the TikTok app after it posts.
+        <p id="tiktok-audit-note" className="hint">
+          TikTok keeps every post from an app that has not passed its audit private (only you see it), whatever you choose here. You can change who sees it in the TikTok app after it posts.
         </p>
       </div>
       <fieldset className="flex flex-wrap gap-x-5 gap-y-2">
