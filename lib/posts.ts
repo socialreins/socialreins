@@ -116,8 +116,12 @@ export const setDefaultBoard = (accountId: string, boardId: string | null) =>
 export const PIN_TITLE_MAX = 100;
 export const PIN_LINK_MAX = 2048;
 export type Platform = "bluesky" | "threads" | "linkedin" | "facebook" | "instagram" | "youtube" | "x" | "tiktok" | "pinterest";
+// What a post's address holds: its number. A brain from before numbers sends none, so the id stands in (it works in brain's API too).
+export const postRef = (p: Pick<Post, "id"> & Partial<Pick<Post, "number">>) => String(p.number ?? p.id);
 export type Post = {
   id: string;
+  // The number in the post's address (/posts/48213); the UUID `id` still works in brain's API and in old links.
+  number: number;
   social_set_id: string;
   platform: Platform;
   // The accounts picked for it; null or absent: every account of its platform in its set.

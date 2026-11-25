@@ -54,6 +54,7 @@ import {
   takeDownGroup as takeDownGroupCall,
   toZoneInput,
   updatePost,
+  postRef,
   utf8Bytes,
   YOUTUBE_DESCRIPTION_BYTES,
   youtubeText,
@@ -292,6 +293,8 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     if (id)
       getPost(id).then((r) => {
         if (isFailure(r)) return setPost(r);
+        // An old address with the UUID moves to the post's number.
+        if (id !== postRef(r)) window.history.replaceState(null, "", to(`/posts/${postRef(r)}`));
         load(r);
         if (r.group_id) listPosts({ group_id: r.group_id }).then((g) => Array.isArray(g) && setGroup(g));
       });
@@ -307,6 +310,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   }, [id, from]);
 
   const postId = post && !isFailure(post) ? post.id : undefined;
+  const postNumber = post && !isFailure(post) ? postRef(post) : undefined;
   const status = post && !isFailure(post) ? post.status : undefined;
   // TikTok's guidelines have the editor show the account's live creator info while a TikTok post is edited.
   // X takes 25,000 characters when every X account of the picked set is on a paid plan, else 280.
@@ -468,7 +472,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
         const saved = postId ? await updatePost(postId, input) : await createPost(input);
         if (isFailure(saved)) return saved;
         // Keep this editor mounted on the new post's own address.
-        if (!postId) window.history.replaceState(null, "", to(`/posts/${saved.id}`));
+        if (!postId) window.history.replaceState(null, "", to(`/posts/${postRef(saved)}`));
         load(saved);
         if (mode !== "publish") return repeating(saved);
         // Group posts a failed Publish now left behind go out with this one.
@@ -483,7 +487,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
       const posts = g.posts;
       made = posts.length;
       // The editor carries on as the first post; the others are listed below it.
-      window.history.replaceState(null, "", to(`/posts/${posts[0]!.id}`));
+      window.history.replaceState(null, "", to(`/posts/${postRef(posts[0]!)}`));
       load(posts[0]!);
       setGroup(posts);
       if (mode !== "publish") return repeating(posts[0]!);
@@ -815,7 +819,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
                   {mark}
                 </span>
               ) : (
-                <Link href={`/posts/${g.id}`} className={`${box} border-ink/10 hover:bg-ink/5`}>
+                <Link href={`/posts/${postRef(g)}`} className={`${box} border-ink/10 hover:bg-ink/5`}>
                   {mark}
                 </Link>
               )}
@@ -846,7 +850,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
         {others.map((g) => (
           <li key={g.id} className="flex flex-wrap items-center gap-3 p-4 text-sm">
             <PlatformMark platform={g.platform} className="size-5" />
-            <Link href={`/posts/${g.id}`} className="min-w-0 flex-1 font-bold hover:underline">
+            <Link href={`/posts/${postRef(g)}`} className="min-w-0 flex-1 font-bold hover:underline">
               {platformName(g.platform)} post
             </Link>
             <StatusBadge status={g.status} />
@@ -975,7 +979,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
 
   // A saved post, read-only or not, starts a new one with its content.
   const duplicate = postId && (
-    <Link href={`/posts/new?from=${encodeURIComponent(postId)}`} className="btn btn-secondary btn-sm justify-self-start">
+    <Link href={`/posts/new?from=${postNumber}`} className="btn btn-secondary btn-sm justify-self-start">
       <Icon name="copy" className="size-4" />
       Duplicate
     </Link>
