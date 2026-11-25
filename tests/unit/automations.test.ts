@@ -43,6 +43,8 @@ import {
   type Draft,
   type StepDraft,
   limitOf,
+  timeProblems,
+  whenOf,
   reasonLabel,
 } from "@/lib/automations";
 import { apiUrl } from "@/lib/waitlist";
@@ -118,7 +120,7 @@ describe("texts", () => {
 
   it("summarizes conditions, actions and reasons in plain words", () => {
     expect(conditionNotes({ account_ids: [], keywords: ["price"] })).toEqual([]);
-    expect(conditionNotes({ account_ids: [], post_remote_ids: ["a", "b"], first_per_author: true })).toEqual(["On 2 posts", "First comment per person"]);
+    expect(conditionNotes({ account_ids: [], post_remote_ids: ["a", "b"], first_per_author: true })).toEqual(["On 2 posts", "First one per person"]);
     expect(conditionNotes({ account_ids: [], first_message: true })).toEqual(["First message only"]);
     const dm = { type: "send_dm" as const, text: "x" };
     const reply = { type: "reply_publicly" as const, text: "y" };
@@ -161,6 +163,13 @@ const full: Draft = {
   payloads: [],
   cooldown: "",
   dailyCap: "",
+  question: false,
+  languages: [],
+  timed: false,
+  zone: "UTC",
+  weekdays: [],
+  fromHour: "",
+  toHour: "",
 };
 const scope = { social_set_id: null, account_ids: ["c1"] };
 const uris = ["at://did:plc:bob/app.bsky.feed.post/3abc"];
@@ -192,6 +201,53 @@ describe("limits", () => {
   });
 });
 
+describe("conditions", () => {
+  it("sends question, languages and times only where they apply", () => {
+    const base = { ...full, trigger: "comment_received" as const };
+    const input = automationInput({ ...base, question: true, languages: ["en"], timed: true, zone: "Asia/Dhaka", weekdays: [4, 0], fromHour: "9", toHour: "17" }, scope, uris);
+    expect(input.conditions).toMatchObject({ question: true, languages: ["en"], when: { zone: "Asia/Dhaka", weekdays: [0, 4], from_hour: 9, to_hour: 17 } });
+    // A follow has no text to judge; its times still apply.
+    const follow = automationInput({ ...base, trigger: "new_follower", question: true, languages: ["en"], timed: true, weekdays: [1] }, scope, uris);
+    expect(follow.conditions).toEqual({ ...scope, when: { zone: "UTC", weekdays: [1] } });
+    // Nothing named means no time limit.
+    expect(automationInput({ ...base, timed: true }, scope, uris).conditions).not.toHaveProperty("when");
+    expect(automationInput({ ...base, timed: false, weekdays: [1] }, scope, uris).conditions).not.toHaveProperty("when");
+  });
+
+  it("reads them back and says them in words", () => {
+    const c = { account_ids: [], question: true, languages: ["bn", "en"], when: { zone: "Asia/Dhaka", weekdays: [0, 1], from_hour: 9, to_hour: 17 } };
+    expect(conditionNotes(c)).toEqual(["Only questions", "In Bangla, English", "Only Mon, Tue 9:00 to 17:00 Asia/Dhaka"]);
+    const back = draftOf({ conditions: c, actions: [], steps: null, trigger: "mention_received", name: "n", active: true } as unknown as Automation);
+    expect(back).toMatchObject({ question: true, languages: ["bn", "en"], timed: true, zone: "Asia/Dhaka", weekdays: [0, 1], fromHour: "9", toHour: "17" });
+  });
+
+  it("drops the text conditions under a trigger with no text", () => {
+    const { draft, dropped } = changeTrigger({ ...full, question: true, languages: ["en"] }, "new_follower");
+    expect(draft).toMatchObject({ question: false, languages: [] });
+    expect(dropped).toEqual(expect.arrayContaining(["only questions", "languages"]));
+  });
+});
+
+describe("time conditions", () => {
+  it("names what keeps the times from being saved", () => {
+    const timed = { ...full, timed: true, zone: "Asia/Dhaka" };
+    expect(timeProblems({ ...full, timed: false })).toEqual([]);
+    expect(timeProblems(timed)).toEqual(["Pick the days or the hours it may run, or untick Only at certain times."]);
+    expect(timeProblems({ ...timed, weekdays: [1] })).toEqual([]);
+    expect(timeProblems({ ...timed, fromHour: "9" })).toEqual(["Set both the start and the end hour, or neither."]);
+    expect(timeProblems({ ...timed, fromHour: "9", toHour: "9" })).toEqual(["The start and the end of the hours must differ."]);
+    // 0 to 24 is the whole day, which brain takes.
+    expect(timeProblems({ ...timed, fromHour: "0", toHour: "24" })).toEqual([]);
+    expect(timeProblems({ ...timed, weekdays: [1], zone: "Dhaka" })[0]).toContain("is not a time zone");
+    expect(whenOf({ ...timed, fromHour: "9" })).toBeUndefined();
+    expect(whenOf({ ...timed, fromHour: "22", toHour: "6" })).toEqual({ zone: "Asia/Dhaka", weekdays: [], from_hour: 22, to_hour: 6 });
+  });
+
+  it("says every day when all seven are named", () => {
+    expect(conditionNotes({ account_ids: [], when: { zone: "UTC", weekdays: [0, 1, 2, 3, 4, 5, 6] } })).toEqual(["Only every day UTC"]);
+  });
+});
+
 describe("triggers", () => {
   it("mirrors what brain's validate takes for each trigger", () => {
     const row = (t: keyof typeof triggers) => {
@@ -209,7 +265,7 @@ describe("triggers", () => {
     expect(triggers.button_clicked.note).toContain("Facebook and Instagram only");
     expect(row("comment_received")).toEqual([true, true, true, false, true]);
     expect(row("dm_received")).toEqual([true, false, false, true, false]);
-    expect(row("mention_received")).toEqual([true, false, false, false, true]);
+    expect(row("mention_received")).toEqual([true, false, true, false, true]);
     expect(row("new_follower")).toEqual([false, false, false, false, false]);
     expect(row("story_reply")).toEqual([true, false, false, false, false]);
     expect(triggers.new_follower.note).toContain("Bluesky only");

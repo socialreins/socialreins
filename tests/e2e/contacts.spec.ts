@@ -333,7 +333,7 @@ test("a saved reply goes in at the cursor, the typed text is saved as one, and t
 test("an automation tags the contact beside its reply, and a flow takes a tag step that sends nothing", async ({ page }) => {
   const state = await brain(page);
   await page.goto("/automations/new?template=dm-keyword");
-  await page.getByLabel("Name").fill("Price tag");
+  await page.getByLabel("Name", { exact: true }).fill("Price tag");
   const doThis = page.getByRole("group", { name: "Do this" });
   const tags = doThis.getByRole("textbox", { name: "Tag the contact" });
   for (const t of ["VIP", "Lead", "Asked price", "Fourth"]) {
@@ -360,7 +360,7 @@ test("an automation tags the contact beside its reply, and a flow takes a tag st
 
   // Tags with nothing sent beside them are refused here, in plain words, before brain is asked.
   await page.goto("/automations/new?template=dm-keyword");
-  await page.getByLabel("Name").fill("Only tags");
+  await page.getByLabel("Name", { exact: true }).fill("Only tags");
   await tags.fill("vip");
   await tags.press("Enter");
   await doThis.getByLabel("DM text").fill("  ");
@@ -372,7 +372,7 @@ test("an automation tags the contact beside its reply, and a flow takes a tag st
   await expect(doThis.getByRole("alert")).toHaveCount(0);
 
   await page.goto("/automations/new?template=dm-keyword");
-  await page.getByLabel("Name").fill("Tag flow");
+  await page.getByLabel("Name", { exact: true }).fill("Tag flow");
   await doThis.getByRole("radio", { name: "A flow of steps" }).check();
   await doThis.getByRole("button", { name: "Tag the contact" }).click();
   const step = doThis.getByRole("listitem", { name: "Step 2: Tag the contact" });
@@ -396,7 +396,7 @@ test("an automation tags the contact beside its reply, and a flow takes a tag st
 
   // A flow of only a tag still needs something to send.
   await page.goto("/automations/new?template=dm-keyword");
-  await page.getByLabel("Name").fill("Only a tag");
+  await page.getByLabel("Name", { exact: true }).fill("Only a tag");
   await doThis.getByRole("radio", { name: "A flow of steps" }).check();
   await doThis.getByRole("button", { name: "Tag the contact" }).click();
   await doThis.getByRole("listitem", { name: "Step 2: Tag the contact" }).getByLabel("Tag").fill("vip");

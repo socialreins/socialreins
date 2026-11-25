@@ -14,11 +14,24 @@ export type Conditions = ScopeBody & {
   first_message?: boolean;
   // button_clicked only: the payloads of the buttons whose click runs it.
   payloads?: string[];
+  // Weekdays and hours it may act in, and the text conditions (all but follows and button taps).
+  when?: When | null;
+  question?: boolean;
+  languages?: string[];
   // Only text with a link (true) or without one (false): the spam rule. Not for a follow or a tap.
   has_link?: boolean;
   // Only text an AI model reads as one of these moods. Counts as an AI reply, read last.
   sentiment?: Sentiment[];
 };
+// When it may act: weekdays (0 is Monday) and hours of the day in an IANA zone; from_hour after to_hour is overnight.
+export type When = { zone: string; weekdays?: number[]; from_hour?: number | null; to_hour?: number | null };
+export const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+// The languages brain can tell apart, by the ISO 639-1 codes it takes. Vietnamese is written in its own language: "Vietnamese" holds the word "name", which breaks a test that looks a field up by its label.
+export const LANGUAGES: [string, string][] = [
+  ["ar", "Arabic"], ["bn", "Bangla"], ["zh", "Chinese"], ["nl", "Dutch"], ["en", "English"], ["fa", "Persian"], ["fr", "French"], ["de", "German"],
+  ["he", "Hebrew"], ["hi", "Hindi"], ["id", "Indonesian"], ["it", "Italian"], ["ja", "Japanese"], ["ko", "Korean"], ["pl", "Polish"], ["pt", "Portuguese"],
+  ["ru", "Russian"], ["es", "Spanish"], ["th", "Thai"], ["tr", "Turkish"], ["uk", "Ukrainian"], ["ur", "Urdu"], ["vi", "Tiếng Việt"],
+];
 export type Sentiment = "positive" | "negative";
 export const SENTIMENTS: Sentiment[] = ["positive", "negative"];
 // tag_contact sends nothing: it puts a tag on the contact behind the item.
@@ -236,7 +249,7 @@ export const triggers: Record<Trigger, Capability> = {
   repost_received: activity("repost"),
   comment_received: { label: "When someone comments", keywords: true, posts: true, firstPerAuthor: true, firstMessage: false, publicReply: true, payloads: false, text: true, note: null, networks: ["bluesky", "facebook", "instagram", "threads", "x", "youtube"] },
   dm_received: { label: "When someone sends a DM", keywords: true, posts: false, firstPerAuthor: false, firstMessage: true, publicReply: false, payloads: false, text: true, note: null, networks: ["bluesky", "facebook", "instagram", "x"] },
-  mention_received: { label: "When someone mentions you", keywords: true, posts: false, firstPerAuthor: false, firstMessage: false, publicReply: true, payloads: false, text: true, note: null, networks: ["bluesky", "threads", "x"] },
+  mention_received: { label: "When someone mentions you", keywords: true, posts: false, firstPerAuthor: true, firstMessage: false, publicReply: true, payloads: false, text: true, note: null, networks: ["bluesky", "threads", "x"] },
   new_follower: {
     label: "When someone follows you",
     keywords: false,
@@ -611,6 +624,15 @@ export type Draft = {
   // Safety limits as typed: whole minutes and runs a day, empty for none.
   cooldown: string;
   dailyCap: string;
+  // Text conditions: only a question, only these languages (ISO codes).
+  question: boolean;
+  languages: string[];
+  // Only at certain times: a zone, weekdays (0 is Monday) and hours as typed ("" is no limit).
+  timed: boolean;
+  zone: string;
+  weekdays: number[];
+  fromHour: string;
+  toHour: string;
 };
 export const MAX_COOLDOWN = 10_080;
 export const MAX_DAILY_CAP = 500;
@@ -643,6 +665,13 @@ const empty: Draft = {
   payloads: [],
   cooldown: "",
   dailyCap: "",
+  question: false,
+  languages: [],
+  timed: false,
+  zone: "UTC",
+  weekdays: [],
+  fromHour: "",
+  toHour: "",
 };
 
 // The gallery's groups, in order, and the id that opens the builder empty.
@@ -732,6 +761,13 @@ export function draftOf(a?: Automation, templateId?: string | null, payload?: st
     payloads: c.payloads ?? [],
     cooldown: a.cooldown_minutes ? String(a.cooldown_minutes) : "",
     dailyCap: a.daily_cap ? String(a.daily_cap) : "",
+    question: c.question ?? false,
+    languages: c.languages ?? [],
+    timed: Boolean(c.when),
+    zone: c.when?.zone ?? "UTC",
+    weekdays: c.when?.weekdays ?? [],
+    fromHour: c.when?.from_hour != null ? String(c.when.from_hour) : "",
+    toHour: c.when?.to_hour != null ? String(c.when.to_hour) : "",
   };
 }
 
@@ -774,6 +810,8 @@ export function changeTrigger(d: Draft, to: Trigger): { draft: Draft; dropped: s
   drop(!t.keywords && d.keywords.length > 0, "keywords", { keywords: [] });
   drop(!t.posts && d.specific, "specific posts", { specific: false, posts: "" });
   drop(!t.firstPerAuthor && d.firstPerAuthor, "first comment per person", { firstPerAuthor: false });
+  drop(!t.keywords && d.question, "only questions", { question: false });
+  drop(!t.keywords && d.languages.length > 0, "languages", { languages: [] });
   drop(!t.firstMessage && d.firstMessage, "first message only", { firstMessage: false });
   drop(!t.publicReply && Boolean(d.publicReply.trim()), "public reply", { publicReply: "" });
   drop(!t.publicReply && (d.fallbackOn || Boolean(d.fallback.trim())), "fallback reply", { fallbackOn: false, fallback: "" });
@@ -798,6 +836,31 @@ export function changeTrigger(d: Draft, to: Trigger): { draft: Draft; dropped: s
   return { draft, dropped };
 }
 
+// The times the draft limits it to, as brain takes them; undefined when it is not limited or names nothing.
+export function whenOf(d: Draft): When | undefined {
+  if (!d.timed) return undefined;
+  const hours = d.fromHour !== "" && d.toHour !== "";
+  if (!hours && d.weekdays.length === 0) return undefined;
+  return { zone: d.zone.trim() || "UTC", weekdays: [...d.weekdays].sort(), ...(hours && { from_hour: Number(d.fromHour), to_hour: Number(d.toHour) }) };
+}
+
+// Why the "only at certain times" box can't be saved as it stands, in words: empty when it can, or when it is off.
+export function timeProblems(d: Draft): string[] {
+  if (!d.timed) return [];
+  const out: string[] = [];
+  const [from, to] = [d.fromHour, d.toHour];
+  if ((from === "") !== (to === "")) out.push("Set both the start and the end hour, or neither.");
+  else if (from !== "" && Number(from) === Number(to)) out.push("The start and the end of the hours must differ.");
+  if (from === "" && d.weekdays.length === 0) out.push("Pick the days or the hours it may run, or untick Only at certain times.");
+  const zone = d.zone.trim() || "UTC";
+  try {
+    new Intl.DateTimeFormat(undefined, { timeZone: zone });
+  } catch {
+    out.push(`"${zone}" is not a time zone. Use a name such as Asia/Dhaka or America/New_York.`);
+  }
+  return out;
+}
+
 // What brain gets: only the conditions and actions the trigger takes, whatever the draft still holds.
 export function automationInput(d: Draft, scope: ScopeBody, uris: string[]): AutomationInput {
   const t = triggers[d.trigger];
@@ -815,6 +878,9 @@ export function automationInput(d: Draft, scope: ScopeBody, uris: string[]): Aut
       ...(t.firstPerAuthor && { first_per_author: d.firstPerAuthor }),
       ...(t.firstMessage && { first_message: d.firstMessage }),
       ...(t.payloads && { payloads: d.payloads }),
+      ...(t.text && d.question && { question: true }),
+      ...(t.text && d.languages.length > 0 && { languages: d.languages }),
+      ...(whenOf(d) && { when: whenOf(d) }),
       ...(t.text && d.hasLink !== "any" && { has_link: d.hasLink === "yes" }),
       ...(t.text && d.sentiment.length > 0 && { sentiment: d.sentiment }),
     },
@@ -850,6 +916,8 @@ export const reasonText: Record<string, string> = {
   daily_cap: "The team reached 500 automation runs today",
   paused: "The team paused all its automations",
   paused_waiting: "Stopped: the team paused its automations while this flow waited",
+  no_question: "The text was judged not to ask a question",
+  question_cap: "The team judged 300 messages with AI today, the most a day",
   own_account: "It came from one of your own connected accounts",
   connected_account: "It came from an account connected to SocialReins by another team",
   cooldown: "It already answered this person within the cool-down",
@@ -914,6 +982,10 @@ export const mismatchText: Record<string, string> = {
   no_keyword: "The text has none of the keywords",
   not_first_from_author: "It is only for a person's first comment",
   not_first_message: "It is only for a person's first message",
+  wrong_weekday: "It is not one of the days this automation runs on",
+  outside_hours: "It is outside the hours this automation runs in",
+  wrong_language: "The text is not in one of the languages chosen, or is too short to tell",
+  no_question: "The text does not ask a question",
   button_not_named: "That button payload is not one this automation listens for",
   wrong_link: "The text does not match the link rule (with or without a link)",
   sentiment_mismatch: "The AI did not read the text as one of the moods chosen",
@@ -954,6 +1026,9 @@ export const blockText: Record<string, string> = {
   meta_unsupported_trigger: "Facebook and Instagram bring no follows or mentions of your account: use a comment or a DM",
   no_public_page: "A text holds {page}, and this post has no open public page, so it would not run",
   paused: "The team paused all its automations, so nothing would be sent",
+  no_ai_key: "The question condition needs an AI key: add your own on the Billing page",
+  no_ai_credits: "The question condition could not be judged: this month's AI replies and your AI credits are used up",
+  ai_failed: "The question condition could not be judged: the AI provider gave no answer",
 };
 export const plannedStatus: Record<PlannedStatus, string> = {
   would_send: "Would send",
@@ -968,6 +1043,8 @@ export const plannedStatus: Record<PlannedStatus, string> = {
 export const reasonShort: Record<string, string> = {
   paused: "paused",
   paused_waiting: "stopped by the pause",
+  no_question: "not a question",
+  question_cap: "question limit",
   own_account: "own account",
   connected_account: "connected account",
   cooldown: "cool-down",
@@ -999,12 +1076,18 @@ export const actionName: Record<ActionResult["type"], string> = {
 // "On 2 posts", "First comment per person", "First message only".
 export function conditionNotes(c: Conditions) {
   const n = c.post_remote_ids?.length ?? 0;
+  const w = c.when;
+  const days = w?.weekdays?.length ? (w.weekdays.length === 7 ? "every day" : w.weekdays.map((x) => WEEKDAYS[x]).join(", ")) : null;
+  const hours = w?.from_hour != null && w.to_hour != null ? `${w.from_hour}:00 to ${w.to_hour}:00` : null;
   return [
     n ? `On ${n === 1 ? "1 post" : `${n} posts`}` : null,
-    c.first_per_author ? "First comment per person" : null,
+    c.first_per_author ? "First one per person" : null,
     c.first_message ? "First message only" : null,
     c.has_link === undefined ? null : c.has_link ? "Only text with a link" : "Only text without a link",
     c.sentiment?.length ? `Mood: ${c.sentiment.join(" or ")}` : null,
+    c.question ? "Only questions" : null,
+    c.languages?.length ? `In ${c.languages.map((l) => LANGUAGES.find((x) => x[0] === l)?.[1] ?? l).join(", ")}` : null,
+    w ? `Only ${[days, hours, w.zone].filter(Boolean).join(" ")}` : null,
   ].filter(
     (x): x is string => x !== null,
   );
