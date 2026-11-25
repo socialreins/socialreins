@@ -1,7 +1,7 @@
 import { api } from "@/lib/auth";
 import { cleanTag } from "@/lib/contacts";
 import type { Connection } from "@/lib/connections";
-import { graphemes } from "@/lib/posts";
+import { graphemes, threadsLength } from "@/lib/posts";
 
 export type Trigger = "comment_received" | "dm_received" | "mention_received" | "new_follower" | "story_reply" | "button_clicked";
 export type ScopeBody = { social_set_id?: string | null; account_ids: string[] };
@@ -150,9 +150,9 @@ export type Capability = {
   networks: string[];
 };
 export const triggers: Record<Trigger, Capability> = {
-  comment_received: { label: "When someone comments", keywords: true, posts: true, firstPerAuthor: true, firstMessage: false, publicReply: true, payloads: false, note: null, networks: ["bluesky", "facebook", "instagram", "x"] },
+  comment_received: { label: "When someone comments", keywords: true, posts: true, firstPerAuthor: true, firstMessage: false, publicReply: true, payloads: false, note: null, networks: ["bluesky", "facebook", "instagram", "threads", "x"] },
   dm_received: { label: "When someone sends a DM", keywords: true, posts: false, firstPerAuthor: false, firstMessage: true, publicReply: false, payloads: false, note: null, networks: ["bluesky", "facebook", "instagram", "x"] },
-  mention_received: { label: "When someone mentions you", keywords: true, posts: false, firstPerAuthor: false, firstMessage: false, publicReply: true, payloads: false, note: null, networks: ["bluesky", "x"] },
+  mention_received: { label: "When someone mentions you", keywords: true, posts: false, firstPerAuthor: false, firstMessage: false, publicReply: true, payloads: false, note: null, networks: ["bluesky", "threads", "x"] },
   new_follower: {
     label: "When someone follows you",
     keywords: false,
@@ -356,6 +356,15 @@ export function flowProblems(steps: StepDraft[], trigger: Trigger, providers: st
       else if (payloads.indexOf(b.payload) !== payloads.lastIndexOf(b.payload)) say(`Two buttons share the payload "${b.payload}". Give each its own under Advanced.`);
     }
   });
+  // Threads: replies and mentions only, a public reply of 500 UTF-8-counted characters, never a DM.
+  if (providers.length && providers.every((p) => p === "threads")) {
+    if (trigger !== "comment_received" && trigger !== "mention_received") out.push({ step: null, text: blockText.threads_unsupported_trigger! + "." });
+    steps.forEach((s, step) => {
+      if (s.type === "send_dm" || s.type === "ai_send_dm") out.push({ step, text: "Threads has no DMs and no private reply. Use a public reply." });
+      else if (s.type === "reply_publicly" && threadsLength(s.text.replaceAll("{name}", "\u{10348}".repeat(64)).replaceAll("{page}", "p".repeat(100))) > 500)
+        out.push({ step, text: "Too long for Threads, which takes 500 characters and counts an emoji as its bytes (4 for most), with {name} up to 256." });
+    });
+  }
   if (providers.length && providers.every((p) => p === "facebook" || p === "instagram")) {
     const dms = steps.flatMap((s, i) => (s.type === "send_dm" ? [i] : []));
     if (trigger === "comment_received" && dms.length > 1)
@@ -689,7 +698,9 @@ export const mismatchText: Record<string, string> = {
   button_not_named: "That button payload is not one this automation listens for",
 };
 export const blockText: Record<string, string> = {
-  unsupported_account: "Automations run only on Bluesky, Facebook, Instagram and X accounts",
+  unsupported_account: "Automations run only on Bluesky, Facebook, Instagram, Threads and X accounts",
+  threads_unsupported_trigger: "Threads has replies and mentions only: use a comment or a mention",
+  threads_no_dm: "Threads has no DMs and no private reply: use a public reply",
   x_unsupported_trigger: "X has no follows, story replies or buttons to trigger on: use a comment, a mention or a DM",
   bluesky_unsupported_trigger: "Bluesky has no story replies or buttons to tap: use a comment, a mention, a DM or a follow",
   meta_one_private_reply: "Facebook and Instagram allow one private reply per comment",

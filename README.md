@@ -110,7 +110,7 @@ Create your own app with each platform (the [Network apps guide](https://socialr
 | Platform | Variables | Redirect URI |
 |---|---|---|
 | Meta (Facebook Pages, Instagram) | `META_APP_ID`, `META_APP_SECRET`, `META_WEBHOOK_VERIFY_TOKEN` | `https://api.example.com/connect/meta/callback`, webhook `https://api.example.com/webhooks/meta` |
-| Threads | `THREADS_APP_ID`, `THREADS_APP_SECRET` | `https://api.example.com/connect/threads/callback` |
+| Threads | `THREADS_APP_ID`, `THREADS_APP_SECRET`, `THREADS_WEBHOOK_VERIFY_TOKEN` | `https://api.example.com/connect/threads/callback`, webhook `https://api.example.com/webhooks/threads` |
 | LinkedIn | `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET` | `https://api.example.com/connect/linkedin/callback` |
 | X | `X_CLIENT_ID`, `X_CLIENT_SECRET` | `https://api.example.com/connect/x/callback` |
 | TikTok | `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` | `https://api.example.com/connect/tiktok/callback` |

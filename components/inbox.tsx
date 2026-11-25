@@ -28,6 +28,7 @@ import {
   mergeFresh,
   messageCount,
   relativeTime,
+  replyLength,
   replyToItem,
   runAction,
   sentAlready,
@@ -48,7 +49,6 @@ import {
   type ThreadContext,
 } from "@/lib/inbox";
 import { createSnippet, isProblem, libraryText, type Problem } from "@/lib/library";
-import { graphemes } from "@/lib/posts";
 import { getBilling, type Billing } from "@/lib/billing";
 import { listMembers, manages } from "@/lib/teams";
 import { useSession } from "@/components/app-shell";
@@ -61,6 +61,7 @@ import { platformName } from "@/components/platform-icons";
 import { TagEditor } from "@/components/tag-editor";
 import { isFailure, linkButton, planLimit, problemText, Status, useAction, useSearchInUrl } from "@/components/team-ui";
 import { Icon } from "@/components/ui";
+import { ThreadsActions } from "@/components/threads-actions";
 import { XActions } from "@/components/x-inbox";
 
 // New comments arrive on brain's per-minute tick; the open list checks twice a minute.
@@ -84,6 +85,9 @@ const sendMessages: Record<string, ReactNode> = {
   no_dm_access: <>This account&apos;s app password doesn&apos;t allow DMs. Reconnect with an app password that allows DMs. {accountsLink}</>,
   dm_not_allowed: "They only accept DMs from people they follow, so Bluesky didn't take it.",
   reconnect_required: <>Bluesky refused the app password. Reconnect the account. {accountsLink}</>,
+  threads_reconnect_required: <>Threads refused this account&apos;s token (it expired or was revoked). Reconnect it. {accountsLink}</>,
+  threads_permission_missing: <>This Threads account was connected before SocialReins could reply. Reconnect it and accept the new permissions. {accountsLink}</>,
+  threads_no_dm: "Threads has no direct messages, so nothing was sent.",
 };
 
 const kindOptions: { value: ListKind | "all"; label: string }[] = [
@@ -622,11 +626,21 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
         ))}
         {/* p-px keeps the card's 1px ring inside the scroller. */}
         <div className="grid content-start gap-3 lg:block lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain lg:p-px">
+          {accountList.some((a) => a.provider === "threads" && a.replies_denied) && (
+            <p role="note" className="card mb-3 p-3 text-sm">
+              <strong className="block">Reconnect to enable replies</strong>
+              {accountList.filter((a) => a.provider === "threads" && a.replies_denied).map(accountName).join(", ")} was connected before SocialReins could read Threads replies, so none reach this inbox yet.{" "}
+              <Link href="/connections" className="font-bold underline decoration-signal decoration-2 underline-offset-4">
+                Reconnect it under Accounts
+              </Link>
+              .
+            </p>
+          )}
           {noAccounts ? (
             <div className="card grid gap-3 p-5">
               <p>
                 <strong className="block">No accounts connected</strong>
-                <span className="text-ink-soft">Connect a Bluesky, Facebook, Instagram or X account and its comments, mentions and DMs land here.</span>
+                <span className="text-ink-soft">Connect a Bluesky, Facebook, Instagram, Threads or X account and its comments, mentions and DMs land here. Threads has replies and mentions, no DMs.</span>
               </p>
               <Link href="/connections" className="btn btn-primary justify-self-start">
                 Connect an account
@@ -961,7 +975,7 @@ function Detail({
   const isOpen = item.state === "open" || (dm && ((row?.conversation?.open_count ?? 0) > 0 || thread.some((i) => i.state === "open")));
   const max = maxFor(item.kind, account?.provider);
   const platform = platformName(account?.provider ?? "bluesky");
-  const count = graphemes(text);
+  const count = replyLength(account?.provider, text);
   const sending = pending.some((p) => !settled(p));
   // Meta: how long a DM can still be answered (never for Bluesky), and a deleted comment takes no reply.
   const win = dm ? (latest.reply_window ?? item.reply_window) : null;
@@ -1177,7 +1191,7 @@ function Detail({
                 <Attachments items={p.attachments} />
                 {p.url && (
                   <a href={p.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs font-bold text-ink-soft hover:text-ink">
-                    View on Bluesky
+                    View on {platformName(item.platform)}
                     <Icon name="external" className="size-3.5" />
                     <span className="sr-only">(opens in a new tab)</span>
                   </a>
@@ -1280,6 +1294,12 @@ function Detail({
       </ol>
 
       <XActions item={item} />
+      <ThreadsActions item={item} canManage={canManage} />
+      {account?.provider === "threads" && account.replies_denied && (
+        <p role="note" className="rounded-xl border border-ink/15 bg-canvas p-3 text-sm">
+          <strong>Reconnect to enable replies.</strong> This Threads account was connected before SocialReins could read and send replies. {accountsLink}, reconnect it and accept the new permissions.
+        </p>
+      )}
       {!dm && <ModerationBar key={item.id} item={item} canDelete={canManage} onChange={onChange} />}
 
       {deleted && <p className="text-sm text-ink-soft">This comment was deleted on {platform}, so it takes no reply.</p>}

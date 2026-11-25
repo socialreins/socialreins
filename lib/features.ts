@@ -15,9 +15,9 @@ export type Feature = {
   sections: { heading: string; text?: string; bullets?: string[] }[];
 };
 
-// Bluesky is live; Facebook Pages, Instagram and X are in testing (the same words as lib/compare.ts). LinkedIn is Not yet:
+// Bluesky is live; Facebook Pages, Instagram, Threads and X are in testing (the same words as lib/compare.ts). LinkedIn is Not yet:
 // it lets an app read comments only after its own approval.
-const support: Record<string, Support> = { bluesky: "Yes", facebook: "In testing", instagram: "In testing", x: "In testing" };
+const support: Record<string, Support> = { bluesky: "Yes", facebook: "In testing", instagram: "In testing", threads: "In testing", x: "In testing" };
 
 export const features: Feature[] = [
   {
@@ -33,6 +33,7 @@ export const features: Feature[] = [
         bullets: [
           "Triggers: a comment keyword, a DM keyword, a first message (welcome), a new follower (Bluesky), a mention, a story reply and a button tap.",
           "A flow runs several steps in turn, with waits and buttons.",
+          "On Threads, only a reply or a mention can start one, and the answer is a public reply: Threads has no DMs and no private reply.",
           "A step can write its reply with AI from your prompt, using your own AI key or the AI replies that come with the Scheduler and Automation plan. It never adds a link or @handle your prompt does not hold.",
           "An automation can also tag the contact, so you can find those people later or send them a broadcast.",
         ],
@@ -91,6 +92,7 @@ export const features: Feature[] = [
           "Keyboard shortcuts move between items, mark one done, assign it and start a reply.",
           "New items are fetched about once a minute, and an open inbox refreshes by itself.",
           "On Bluesky, DMs are read only when the app password allows them.",
+          "Threads: replies to your posts and posts that mention you arrive, about every 5 minutes. Threads has no DMs, so there are none to read or send. Reply under a reply or a mention, and hide or show a reply directly under your post. An app cannot like, repost or follow there. An account connected before replies were added needs to be connected again once, and until Meta approves the reply and mention permissions only the app's testers can use them.",
           "X charges for every post, user and DM it returns, so an X inbox is off until you turn it on for an account. You choose how often it is read and the most it may spend a month, and it stops when that is used up or X is out of credits. Reply, like, repost and hide a reply from the inbox. X takes a DM only from an account the person follows or when their DMs are open.",
         ],
       },
@@ -122,7 +124,7 @@ export type Group = {
   items: { name: string; text: string }[];
 };
 
-const TESTING = "Live on Bluesky. Facebook Pages and Instagram are in testing. So is X, which stays off until a team turns it on.";
+const TESTING = "Live on Bluesky. Facebook Pages and Instagram are in testing. So is X, which stays off until a team turns it on, and so is Threads (replies and mentions, no DMs).";
 
 export const groups: Group[] = [
   {

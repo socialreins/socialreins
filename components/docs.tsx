@@ -162,7 +162,7 @@ function Start({ mode }: { mode: Mode }) {
           <tbody>
             {[
               ["Facebook and Instagram", "META_APP_ID, META_APP_SECRET, META_WEBHOOK_VERIFY_TOKEN", "/connect/meta/callback"],
-              ["Threads", "THREADS_APP_ID, THREADS_APP_SECRET", "/connect/threads/callback"],
+              ["Threads", "THREADS_APP_ID, THREADS_APP_SECRET, THREADS_WEBHOOK_VERIFY_TOKEN", "/connect/threads/callback"],
               ["LinkedIn", "LINKEDIN_CLIENT_ID, LINKEDIN_CLIENT_SECRET", "/connect/linkedin/callback"],
               ["X", "X_CLIENT_ID, X_CLIENT_SECRET", "/connect/x/callback"],
               ["TikTok", "TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET", "/connect/tiktok/callback"],
@@ -333,7 +333,7 @@ function Use({ mode }: { mode: Mode }) {
 
       <h2 id="inbox">Answer comments and DMs in the inbox</h2>
       <p>
-        Open Inbox. Comments and DMs arrive in one list, and DMs with one person are grouped into one conversation that opens as a chat. Search the list by text or author, switch between Open and Done, and filter with the Kind and Assigned menus. In the reader you reply, choose Mark done, assign the item to a teammate and insert a saved reply. The inbox is live on Bluesky; Facebook Pages and Instagram are in testing. X is in testing too: under Accounts, open an X account&apos;s settings and turn on X inbox, choose how often it is read and the most it may spend a month (X charges for every post and message it returns), and reconnect the account once so X grants the DM permissions.
+        Open Inbox. Comments and DMs arrive in one list, and DMs with one person are grouped into one conversation that opens as a chat. Search the list by text or author, switch between Open and Done, and filter with the Kind and Assigned menus. In the reader you reply, choose Mark done, assign the item to a teammate and insert a saved reply. The inbox is live on Bluesky; Facebook Pages and Instagram are in testing. Threads is in testing too: replies to your posts and posts that mention you arrive, you can reply and hide a reply, and Threads has no DMs (an account connected before replies were added needs to be connected again once). X is in testing too: under Accounts, open an X account&apos;s settings and turn on X inbox, choose how often it is read and the most it may spend a month (X charges for every post and message it returns), and reconnect the account once so X grants the DM permissions.
       </p>
       <p>Keyboard shortcuts, which wait while you type in a box:</p>
       <ul>
@@ -353,7 +353,7 @@ function Use({ mode }: { mode: Mode }) {
         <li>Under Do this, choose One reply (a DM, a public reply, or both) or A flow of steps. A flow has up to 10 steps: a DM with up to 3 buttons, a public reply, a wait, or Tag the contact.</li>
         <li>Save it and switch it on. Its page lists every run with what was sent and, when something was skipped or refused, the reason.</li>
       </ol>
-      <p>Automations are live on Bluesky; Facebook and Instagram are in testing, and so is X (comments, mentions and DMs; X has no private reply, so keep a fallback public reply).</p>
+      <p>Automations are live on Bluesky; Facebook and Instagram are in testing, and so is X (comments, mentions and DMs; X has no private reply, so keep a fallback public reply). Threads is in testing too, with a public reply to a reply or a mention: it has no DMs and no private reply.</p>
 
       <h2 id="broadcasts">Send a broadcast</h2>
       <ol>
@@ -475,10 +475,11 @@ const networkApps: { name: string; where: string; url: string; steps: ReactNode[
       "Create a second app and add the Threads API use case. Threads has its own app ID and secret, separate from the Meta app above.",
       "In the Threads settings, add the redirect address below. Add your Threads account as a Threads tester and accept the invite in Threads while the app is in development.",
       "Copy the Threads app ID and Threads app secret from the Threads settings, not from Settings, Basic.",
+      "Optional: the replies and mentions webhook. Add the Threads webhooks sub-use case, set its callback URL to the webhook address below and the verify token to any long random string (THREADS_WEBHOOK_VERIFY_TOKEN), and subscribe replies and mentions. Threads delivers it only to an approved app, and SocialReins reads replies and mentions about every 5 minutes without it.",
     ],
-    scopes: "threads_basic, threads_content_publish, threads_manage_replies, threads_delete",
-    env: ["THREADS_APP_ID", "THREADS_APP_SECRET"],
-    redirect: ["/connect/threads/callback"],
+    scopes: "threads_basic, threads_content_publish, threads_manage_replies, threads_delete, threads_read_replies, threads_manage_mentions",
+    env: ["THREADS_APP_ID", "THREADS_APP_SECRET", "THREADS_WEBHOOK_VERIFY_TOKEN"],
+    redirect: ["/connect/threads/callback", "/webhooks/threads (webhook)"],
   },
   {
     name: "LinkedIn",

@@ -364,6 +364,11 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
                           {attention(c) === "reconnect" ? "Reconnect needed" : `Ends ${endDate(c)}`}
                         </span>
                       )}
+                      {c.provider === "threads" && c.replies_denied && !attention(c) && (
+                        <span className="badge tone justify-self-start" data-status="scheduled">
+                          Reconnect to enable replies
+                        </span>
+                      )}
                       {Array.isArray(sets) && own(c.set_ids, sets).length > 0 && (
                         <ul aria-label={`Sets for ${name}`} className="flex flex-wrap gap-1">
                           {own(c.set_ids, sets).map((n) => (
@@ -674,10 +679,21 @@ function AccountSettings({
             </span>
           </p>
         )}
+        {c.provider === "threads" && c.replies_denied && !state && (
+          <p className="rounded-xl bg-canvas p-3 text-sm">
+            <strong>Reconnect to enable replies.</strong>{" "}
+            <span className="text-ink-soft">This account was connected before SocialReins could read and send Threads replies. Connect it again and accept the new permissions (replies and mentions) and they reach the inbox.</span>
+          </p>
+        )}
+        {c.provider === "threads" && (
+          <p className="text-sm text-ink-soft">
+            The Threads inbox has replies to your posts and posts that mention you, and you can reply and hide a reply. Threads has no DMs, and an app cannot like, repost or follow there.
+          </p>
+        )}
         {!canManage ? (
-          state && <p className="text-sm text-ink-soft">Ask a team owner or admin to reconnect it.</p>
+          (state || c.replies_denied) && <p className="text-sm text-ink-soft">Ask a team owner or admin to reconnect it.</p>
         ) : oauth ? (
-          <a href={connectUrl(c.provider)} className={`btn btn-sm justify-self-start ${state ? "btn-primary" : "btn-secondary"}`}>
+          <a href={connectUrl(c.provider)} className={`btn btn-sm justify-self-start ${state || c.replies_denied ? "btn-primary" : "btn-secondary"}`}>
             Reconnect {name}
           </a>
         ) : (
