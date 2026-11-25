@@ -52,7 +52,7 @@ export default function Features() {
                 </Link>
               )}
             </div>
-            {g.note && <p className="justify-self-start rounded-lg bg-signal/15 px-3 py-1.5 text-sm font-bold text-signal-deep">{g.note}</p>}
+            {g.note && <p className="justify-self-start rounded-lg bg-signal/10 px-3 py-1.5 text-sm font-bold text-signal-deep">{g.note}</p>}
             <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {g.items.map((i) => (
                 <div key={i.name} className="rounded-2xl border border-ink/10 bg-paper p-4">
