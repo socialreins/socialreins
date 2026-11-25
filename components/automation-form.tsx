@@ -270,7 +270,10 @@ export function AutomationForm({
 
   // The post links as ids, `null` where a link is none.
   const specific = t.posts && d.specific;
-  const uris = specific ? postIds(lines, (a ?? copyOf)?.conditions.post_remote_ids ?? [], accounts) : [];
+  // The accounts the scope reaches, for what the post lines may be: a set or all accounts reach every account in them.
+  const reached = scope.mode === "accounts" ? picked : scope.mode === "set" ? accounts.filter((x) => x.set_ids.includes(scope.setId)) : accounts;
+  const numbered = reached.some((x) => ["threads", "facebook", "instagram"].includes(x.provider));
+  const uris = specific ? postIds(lines, (a ?? copyOf)?.conditions.post_remote_ids ?? [], accounts, numbered) : [];
   const testable = !specific || (lines.length > 0 && uris.every(Boolean));
 
   // `sure`: the yes to stopping the runs that wait in the flow.
@@ -425,9 +428,9 @@ export function AutomationForm({
                   <p id="automation-posts-hint" className="hint">
                     One Bluesky post link per line, from a connected account, or a post&apos;s number (for Threads, pick the post below). Posts already listed here stay as they are.
                   </p>
-                  {picked.some((x) => x.provider === "threads") && (
+                  {reached.some((x) => x.provider === "threads") && (
                     <ThreadsPostPicker
-                      accountIds={picked.filter((x) => x.provider === "threads").map((x) => x.id)}
+                      accountIds={reached.filter((x) => x.provider === "threads").map((x) => x.id)}
                       onPick={(id) => set({ posts: d.posts.split("\n").some((l) => l.trim() === id) ? d.posts : `${d.posts.trimEnd()}${d.posts.trim() ? "\n" : ""}${id}` })}
                     />
                   )}

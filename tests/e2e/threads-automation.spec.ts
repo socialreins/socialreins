@@ -52,11 +52,16 @@ test("a Threads account's automation picks its post from the posts made here and
   await page.getByLabel("Specific posts").check();
   const picker = page.getByLabel("Add a Threads post");
   await expect(picker).toBeVisible();
+  const add = page.getByRole("button", { name: "Add", exact: true });
+  await expect(add).toBeDisabled();
   await picker.selectOption({ label: "Our free plan launch (17900000000000001)" });
+  await add.click();
   await picker.selectOption({ label: "A second post (17900000000000002)" });
+  await add.click();
   await expect(page.getByLabel("Post links")).toHaveValue("17900000000000001\n17900000000000002");
   // Picking one twice adds it once.
   await picker.selectOption({ label: "A second post (17900000000000002)" });
+  await add.click();
   await expect(page.getByLabel("Post links")).toHaveValue("17900000000000001\n17900000000000002");
   // A DM on Threads is said to be impossible before anything is saved.
   await page.getByLabel("DM text").fill("Hi {name}");

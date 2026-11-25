@@ -354,7 +354,7 @@ function Use({ mode }: { mode: Mode }) {
         <li>Save it and switch it on. Its page lists every run with what was sent and, when something was skipped or refused, the reason, and under it the recent items it did not run on and why. The same reasons show under an item in the inbox.</li>
       </ol>
       <p>On Bluesky a like or repost of your post can also start an automation. It has nobody to message or tag, so it can follow the person back, mail your team, assign the item or stop newer automations. Reposting and following back are done on Bluesky accounts only, and liking on Bluesky and Facebook.</p>
-      <p>Automations are live on Bluesky; Facebook and Instagram are in testing, and so is X (comments, mentions and DMs; X has no private reply, so keep a fallback public reply). Threads is in testing too: its replies and mentions can start an automation that answers with a public reply, hides the reply or tags the person. Threads has no DMs, no private reply and no like, so a DM or a like on a Threads account is refused when you save it and in Test this automation.</p>
+      <p>Automations are live on Bluesky; Facebook and Instagram are in testing, and so is X (comments, mentions and DMs; X has no private reply, so keep a fallback public reply). Threads is in testing too: its replies and mentions can start an automation that answers with a public reply, hides the reply or tags the person. Threads has no DMs, no private reply and no like, so a DM or a like is refused when only Threads accounts are picked, and with other networks beside them the Threads items are skipped and the run log says why.</p>
 
       <h2 id="broadcasts">Send a broadcast</h2>
       <ol>
