@@ -32,7 +32,7 @@ export const features: Feature[] = [
         heading: "Triggers and flows",
         bullets: [
           "Triggers: a comment keyword, a DM keyword, a first message (welcome), a new follower, a like of your post, a repost of your post (those three on Bluesky), a mention, a story reply, a story mention (Instagram, in testing) and a button tap. A like or repost trigger can be limited to the posts you name.",
-          "Conditions: the accounts, a set or only the posts you name, keywords, a person's first comment or message, weekdays and hours in your time zone, one of 23 languages, a person's first mention, a text with or without a link, and a question or a positive or negative mood (read by AI).",
+          "Conditions: the accounts, a set or only the posts you name, keywords, a person's first comment or message, weekdays and hours in your time zone, one of 23 languages (a very short text never matches), a person's first mention, a text with or without a link, and a question or a positive or negative mood (read by AI).",
           "A flow runs several steps in turn, with waits and buttons. It can wait for the person to answer before it goes on, and stops if they never do.",
           "On Threads, only a reply or a mention can start one, and the answer is a public reply (or hiding the reply): Threads has no DMs and no private reply.",
           "A step can write its reply with AI from your prompt, using your own AI key or the AI replies that come with the Scheduler and Automation plan. It never adds a link or @handle your prompt does not hold.",
@@ -69,8 +69,8 @@ export const features: Feature[] = [
         bullets: [
           "X bills every post, user and message it returns or takes. The editor shows about what one run costs: the read that brought the item (a post and its author, $0.015) plus $0.015 for each message, like, hide or repost, and the test shows it for a sample.",
           "Each X account has a monthly budget that pays for reading and for what automations write. An automation stops when it is used up, when the team has no X credits, or when X says the app is out of credits, and the run log says which.",
-          "X replies hold 280 characters, or 25,000 with a paid X plan. A DM holds 10,000 and goes only to a person who follows you or has DMs open; otherwise the fallback public reply answers.",
-          "Following you and quoting your post are not triggers on X yet: X bills each follower and each quote it returns, and a follower list has no cursor to read only what is new.",
+          "An automation's reply on X holds 280 characters as X counts them (a link counts 23, some characters 2), or up to 300 with a paid X plan, the most any automation text takes; its DM holds 1000. A DM goes only to a person who follows you or has DMs open; otherwise the fallback public reply answers.",
+          "Following you and quoting your post are not triggers on X yet: X bills each follower and each quote it returns, and its follower list has no way to ask for only the new ones.",
         ],
       },
       {
