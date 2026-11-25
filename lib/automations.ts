@@ -641,8 +641,9 @@ export function automationInput(d: Draft, scope: ScopeBody, uris: string[]): Aut
       ...(t.firstMessage && { first_message: d.firstMessage }),
       ...(t.payloads && { payloads: d.payloads }),
     },
-    cooldown_minutes: limitOf(d.cooldown, MAX_COOLDOWN),
-    daily_cap: limitOf(d.dailyCap, MAX_DAILY_CAP),
+    // Left out when empty: a save replaces the automation, so a missing limit is none.
+    ...(limitOf(d.cooldown, MAX_COOLDOWN) !== null && { cooldown_minutes: limitOf(d.cooldown, MAX_COOLDOWN) }),
+    ...(limitOf(d.dailyCap, MAX_DAILY_CAP) !== null && { daily_cap: limitOf(d.dailyCap, MAX_DAILY_CAP) }),
   };
   // A flow goes without actions and without a fallback: brain refuses either next to steps.
   if (d.flow) return { ...head, steps: stepsBody(d.steps), active: d.active };

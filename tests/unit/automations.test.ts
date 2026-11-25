@@ -215,8 +215,6 @@ describe("triggers", () => {
       actions: both,
       active: true,
       fallback_public_reply: "Check your DMs",
-      cooldown_minutes: null,
-      daily_cap: null,
     });
     expect(automationInput({ ...full, trigger: "mention_received" }, scope, uris)).toMatchObject({
       conditions: { ...scope, keywords: ["price"] },
@@ -279,7 +277,7 @@ describe("triggers", () => {
       fallback_public_reply: "fallback",
     } as unknown as Automation;
     const again = automationInput(draftOf(saved), { social_set_id: null, account_ids: [] }, uris);
-    expect(again).toEqual({ name: "Both", trigger: "comment_received", active: false, conditions: saved.conditions, actions: saved.actions, fallback_public_reply: "fallback", cooldown_minutes: null, daily_cap: null });
+    expect(again).toEqual({ name: "Both", trigger: "comment_received", active: false, conditions: saved.conditions, actions: saved.actions, fallback_public_reply: "fallback" });
   });
 });
 
@@ -407,7 +405,7 @@ describe("flows", () => {
     const d = draftOf(saved);
     expect(d).toMatchObject({ flow: true, dm: "", publicReply: "", fallbackOn: false });
     const input = automationInput(d, { social_set_id: null, account_ids: ["c1"] }, []);
-    expect(input).toEqual({ name: "Guide flow", trigger: "comment_received", conditions: saved.conditions, steps: saved.steps, active: true, cooldown_minutes: null, daily_cap: null });
+    expect(input).toEqual({ name: "Guide flow", trigger: "comment_received", conditions: saved.conditions, steps: saved.steps, active: true });
     expect(Object.keys(input)).not.toContain("actions");
     expect(Object.keys(input)).not.toContain("fallback_public_reply");
     // A simple one still goes with actions and no steps.
