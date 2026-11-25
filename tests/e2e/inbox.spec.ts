@@ -37,7 +37,7 @@ const inbox = (id: string, name: string, extra = {}) => ({
   ...extra,
 });
 const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
-const item = (id: string, kind: "comment" | "mention" | "dm", text: string, extra = {}) => ({
+const item = (id: string, kind: "comment" | "mention" | "dm" | "like" | "repost" | "follow", text: string, extra = {}) => ({
   id,
   social_account_id: "c1",
   platform: "bluesky",
@@ -79,6 +79,8 @@ async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items
     convos: [] as { id: string; before: string | null }[],
     // Set to a status to make the next PATCHes fail.
     failPatch: 0,
+    // The posts above an item, by item id; an item with none has an empty thread.
+    above: {} as Record<string, unknown[]>,
   };
   const dms = (i: Row) => state.items.filter((x) => x.kind === "dm" && thread(x) === thread(i)).sort(oldestFirst);
   await page.route("**/auth/me", (route) => route.fulfill({ json: me(role) }));
@@ -110,7 +112,9 @@ async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items
     const kind = q.get("kind");
     const search = q.get("q")?.toLowerCase();
     state.asked.push(q);
-    const match = (i: Row) => (!kind || i.kind === kind) && (!search || i.text.toLowerCase().includes(search));
+    // Activity (follows, likes, reposts) is listed only when asked for.
+    const quiet = (i: Row) => ["follow", "like", "repost"].includes(i.kind);
+    const match = (i: Row) => (kind === "activity" ? quiet(i) : kind ? i.kind === kind : !quiet(i)) && (!search || i.text.toLowerCase().includes(search));
     // One row per conversation: its latest DM. Open while any of its DMs is open, done once none is.
     const rows = state.items.filter(match).flatMap((i): (Row & { conversation: object | null })[] => {
       if (i.kind !== "dm" || q.get("group") !== "conversations") return i.state === q.get("state") ? [{ ...i, conversation: null }] : [];
@@ -147,6 +151,11 @@ async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items
     const older = before ? all.slice(0, all.findIndex((i) => i.id === before)) : all;
     const size = opts.convoPage ?? 50;
     return route.fulfill({ json: { items: older.slice(-size), has_more: older.length > size } });
+  });
+  await page.route(/\/v1\/inbox-items\/[^/]+\/thread$/, (route) => {
+    const id = itemId(route.request().url());
+    if (state.items.find((i) => i.id === id)?.kind === "dm") return route.fulfill({ status: 422, json: { error: "not_a_thread" } });
+    return route.fulfill({ json: { posts: state.above[id] ?? [], truncated: false } });
   });
   await page.route(/\/v1\/inbox-items\/[^/]+\/reply$/, (route) => {
     const found = state.items.find((i) => i.id === itemId(route.request().url()))!;
@@ -207,6 +216,37 @@ test("inbox lists items, filters by kind, and opens one by URL", async ({ page }
     "https://bsky.app/profile/did:plc:bob/post/p1",
   );
   await expect(page.getByRole("navigation", { name: "Inboxes" }).getByRole("link", { name: "Questions" })).toHaveAttribute("aria-current", "page");
+});
+
+test("likes and reposts are quiet activity behind their own filter, and a reply shows the posts above it", async ({ page }) => {
+  const state = await brain(page, "owner", {
+    items: [
+      item("p1", "comment", "Thanks, that helped", { parent_remote_id: "at://did:plc:alice/app.bsky.feed.post/mid" }),
+      item("l1", "like", "", { state: "done", received_at: ago(10), remote_url: "https://bsky.app/profile/did:plc:alice/post/root" }),
+      item("r1", "repost", "", { state: "done", received_at: ago(20) }),
+    ],
+  });
+  const post = (author: string, text: string) => ({ uri: `at://${author}/p`, url: `https://bsky.app/profile/${author}/post/p`, author: { id: author, handle: `${author}.test`, name: author, avatar_url: null }, text, created_at: ago(300), attachments: [] });
+  state.above.p1 = [post("alice", "Our launch post"), post("carol", "How does it work?")];
+  await page.goto("/inbox?state=done");
+  const list = page.getByRole("region", { name: "All" }).getByRole("list", { name: "Items" });
+  await expect(list.getByRole("listitem")).toHaveCount(0);
+  await page.getByRole("combobox", { name: "Kind" }).selectOption({ label: "Activity (likes, reposts, follows)" });
+  await expect(list.getByRole("listitem")).toHaveCount(2);
+  await expect(list).toContainText("Liked your post");
+  await expect(list).toContainText("Reposted your post");
+  // Activity has nothing to answer.
+  await list.getByRole("link", { name: /Liked your post/ }).click();
+  const detail = page.getByRole("region", { name: "Item" });
+  await expect(detail.getByRole("heading", { name: "Bob" })).toBeVisible();
+  await expect(detail.getByLabel("Reply publicly")).toBeHidden();
+  // A reply shows what it answers, oldest first.
+  await page.goto("/inbox?item=p1");
+  const context = detail.locator('[data-row="context"]');
+  await expect(context).toHaveCount(2);
+  await expect(context.first()).toContainText("Our launch post");
+  await expect(context.last()).toContainText("How does it work?");
+  await expect(detail.getByLabel("Reply publicly")).toBeVisible();
 });
 
 test("reply publicly, then mark done and reopen", async ({ page }) => {
