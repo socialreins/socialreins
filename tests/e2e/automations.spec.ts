@@ -71,7 +71,7 @@ const flowConditions = { social_set_id: null, account_ids: ["c1"], post_remote_i
 const guideFlow = (extra = {}) => automation("flow", "Guide flow", { conditions: flowConditions, actions: [], fallback_public_reply: null, steps: flowSteps, ...extra });
 
 async function brain(page: Page, role: Role) {
-  const state = { list: [automation("a1", "Price to DM", { runs: stats })], bodies: [] as unknown[] };
+  const state = { list: [automation("a1", "Price to DM", { runs: stats })], bodies: [] as unknown[], misses: [] as unknown[] };
   await page.route("**/auth/me", (route) => route.fulfill({ json: me(role) }));
   await page.route("**/v1/connections", (route) => route.fulfill({ json: [alice] }));
   await page.route(/\/v1\/social-sets$/, (route) => route.fulfill({ json: [{ id: "d", name: "All sets", is_default: true, account_ids: ["c1"], account_count: 1, created_at: "", deleted_at: null }] }));
@@ -104,6 +104,7 @@ async function brain(page: Page, role: Role) {
     state.list[at] = { ...state.list[at]!, active: verb === "enable" };
     return route.fulfill({ json: state.list[at] });
   });
+  await page.route(/\/v1\/automations\/[^/]+\/misses$/, (route) => route.fulfill({ json: { misses: state.misses } }));
   await page.route(/\/v1\/automations\/(a1|a2|flow)\/runs/, (route) => {
     const url = new URL(route.request().url());
     if (!url.pathname.includes("/a1/")) return route.fulfill({ json: { runs: [], next_cursor: null } });
@@ -1292,4 +1293,72 @@ test("Test this automation tries the form as it stands, shows what would go and 
   await expect(panel.getByRole("button", { name: "Test" })).toBeDisabled();
   await expect(panel).toContainText("Fix this first: Write a DM text or a public reply.");
   expect(state.bodies).toHaveLength(0);
+});
+
+test("a like trigger offers only what has nobody to message, and saves it", async ({ page }) => {
+  const state = await brain(page, "owner");
+  await page.goto("/automations/new?template=blank");
+  await page.getByLabel("Name").fill("Follow likers");
+  await page.getByText("When someone likes a post").click();
+  await expect(page.getByText("Bluesky only. Runs when someone likes one of your posts")).toBeVisible();
+  const doThis = page.getByRole("group", { name: "Do this" });
+  // Nobody to message or tag, no comment to like or repost: only follow back, mail, stop remain.
+  await expect(doThis.getByLabel("DM text")).toHaveCount(0);
+  await expect(doThis.getByLabel("Tag the contact")).toHaveCount(0);
+  await expect(doThis.getByLabel("Like the comment")).toHaveCount(0);
+  await expect(doThis.getByLabel("Hide the comment")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Preview" })).toContainText("Sam liked your post");
+  await expect(page.getByRole("button", { name: /\d problem/ })).toContainText("1 problem");
+  await doThis.getByLabel("Follow them back").check();
+  await doThis.getByLabel("Mail your team").check();
+  await page.getByRole("button", { name: "Create automation" }).click();
+  await expect(page).toHaveURL("/t/acme22/automations/a2");
+  expect(state.bodies[0]).toEqual({
+    name: "Follow likers",
+    trigger: "like_received",
+    conditions: { social_set_id: null, account_ids: [], post_remote_ids: [] },
+    actions: [{ type: "notify_team" }, { type: "follow_back" }],
+    active: true,
+    fallback_public_reply: null,
+  });
+  // Under a comment, like and repost are offered; moving to a like drops them and the DM, and says so.
+  await page.goto("/automations/new?template=comment-to-dm");
+  const comment = page.getByRole("group", { name: "Do this" });
+  await comment.getByLabel("Like the comment").check();
+  await comment.getByLabel("Repost the comment").check();
+  await page.getByText("When someone likes a post").click();
+  await expect(page.getByRole("status").filter({ hasText: "were removed: " })).toContainText("hide, like and repost");
+  await expect(page.getByRole("status").filter({ hasText: "were removed: " })).toContainText("DM");
+});
+
+test("a flow adds follow back and repost where there is a post, and none of the messages behind a like", async ({ page }) => {
+  const state = await brain(page, "owner");
+  await page.goto("/automations/new?template=comment-to-dm");
+  await page.getByRole("radio", { name: "A flow of steps" }).check();
+  await page.getByRole("button", { name: "Repost the comment", exact: true }).click();
+  await expect(page.getByRole("listitem", { name: /Repost the comment/ })).toContainText("Only Bluesky accounts can");
+  await page.getByRole("button", { name: "Follow them back", exact: true }).click();
+  await page.getByRole("button", { name: "Create automation" }).click();
+  await expect(page).toHaveURL("/t/acme22/automations/a2");
+  expect((state.bodies[0] as { steps: { type: string }[] }).steps.map((s) => s.type)).toEqual(["send_dm", "repost_comment", "follow_back"]);
+});
+
+test("the automation page lists items it did not run on, with why", async ({ page }) => {
+  const state = await brain(page, "owner");
+  state.misses = [
+    { inbox_item_id: "p1", reasons: ["no_keyword"], created_at: "2026-10-29T10:00:00Z", kind: "comment", platform: "bluesky", author: "Bob", text: "nice post" },
+    { inbox_item_id: "p9", reasons: ["wrong_post", "not_yet_on"], created_at: "2026-10-29T09:00:00Z", kind: "like", platform: "bluesky", author: null, text: "" },
+  ];
+  await page.goto("/automations/a1");
+  const list = page.getByRole("list", { name: "Items it did not run on" });
+  await expect(list.getByRole("listitem")).toHaveCount(2);
+  await expect(list.getByRole("listitem").first()).toContainText("Bob");
+  await expect(list.getByRole("listitem").first()).toContainText("commented");
+  await expect(list.getByRole("listitem").first()).toContainText("Not run: The text has none of the keywords");
+  await expect(list.getByRole("listitem").nth(1)).toContainText("Someone");
+  await expect(list.getByRole("listitem").nth(1)).toContainText("It is not on one of the posts this automation is limited to; The automation was switched on after this came");
+  await expect(list.getByRole("link", { name: "Open in inbox" }).first()).toHaveAttribute("href", "/t/acme22/inbox?item=p1");
+  state.misses = [];
+  await page.reload();
+  await expect(page.getByText("No item it listens for failed to match")).toBeVisible();
 });

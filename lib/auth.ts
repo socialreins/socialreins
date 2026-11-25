@@ -244,6 +244,8 @@ export const codes = [
   "unsupported_account",
   "x_unsupported_trigger",
   "bluesky_unsupported_trigger",
+  "bluesky_only_trigger",
+  "bluesky_only_action",
   "meta_one_private_reply",
   "meta_reply_window",
   "has_paid_plan",
