@@ -17,6 +17,7 @@ import {
   getAutomation,
   listAutomations,
   listRuns,
+  retryRun,
   proportions,
   reason,
   reasonLabel,
@@ -290,7 +291,7 @@ export function TemplateGallery() {
   );
 }
 
-const triggerShort: Record<Trigger, string> = { comment_received: "Comments", dm_received: "DMs", mention_received: "Mentions", new_follower: "Followers", story_reply: "Story replies", button_clicked: "Button taps" };
+const triggerShort: Record<Trigger, string> = { comment_received: "Comments", dm_received: "DMs", mention_received: "Mentions", new_follower: "Followers", story_reply: "Story replies", story_mention: "Story mentions", button_clicked: "Button taps" };
 type ListFilter = "all" | "on" | "off" | Trigger;
 
 // One automation on the list: what starts it, what it does, its switch, its numbers and a menu.
@@ -571,6 +572,7 @@ export function AutomationDetail({ id }: { id: string }) {
   const { accounts, ready, sets } = useScopeData();
   const del = useAction();
   const more = useAction();
+  const retrying = useAction();
   const editRef = useRef<HTMLButtonElement>(null);
   const deleteRef = useRef<HTMLButtonElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
@@ -803,7 +805,34 @@ export function AutomationDetail({ id }: { id: string }) {
                           )}
                         </td>
                         <td className="whitespace-nowrap px-4 py-3 text-right">
-                          <Link href={`/inbox?item=${encodeURIComponent(r.inbox_item_id)}`} className="font-bold underline decoration-signal decoration-2 underline-offset-4">
+                          {r.can_retry && canManage && (
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm mb-1.5"
+                              disabled={retrying.busy !== null}
+                              onClick={() =>
+                                retrying.run(
+                                  `retry-${r.id}`,
+                                  async () => {
+                                    const res = await retryRun(id, r.id);
+                                    // A refusal means it can't be retried now: take the button away so it isn't tried again.
+                                    if (isFailure(res) && res !== "error" && res !== "timeout" && res !== "signed_out")
+                                      setRuns((cur) => (cur && !isFailure(cur) ? { ...cur, runs: cur.runs.map((x) => (x.id === r.id ? { ...x, can_retry: false } : x)) } : cur));
+                                    return res;
+                                  },
+                                  (next) => {
+                                    setRuns((cur) => (cur && !isFailure(cur) ? { ...cur, runs: cur.runs.map((x) => (x.id === next.id ? next : x)) } : cur));
+                                    // The button is gone: the focus goes to the row's link instead of the page.
+                                    requestAnimationFrame(() => document.getElementById(`run-${r.id}-open`)?.focus());
+                                  },
+                                )
+                              }
+                            >
+                              {retrying.busy === `retry-${r.id}` ? "Retrying..." : "Retry"}
+                              <span className="sr-only"> the run of {when(r.created_at)}, which the network refused for rate limiting and sent nothing</span>
+                            </button>
+                          )}
+                          <Link id={`run-${r.id}-open`} href={`/inbox?item=${encodeURIComponent(r.inbox_item_id)}`} className="font-bold underline decoration-signal decoration-2 underline-offset-4">
                             Open in inbox<span className="sr-only">, {when(r.created_at)}</span>
                           </Link>
                         </td>
@@ -828,6 +857,7 @@ export function AutomationDetail({ id }: { id: string }) {
               </button>
             )}
             <Status problem={more.problem} done={null} />
+            <Status problem={retrying.problem} done={null} overrides={{ not_retryable: "This run can't be retried: it did not end on a rate limit, it was retried already, or the automation is switched off.", paused: "Your automations are paused. Resume them first.", daily_cap: "The team's 500 automation runs for today are used." }} />
           </>
         )}
       </section>

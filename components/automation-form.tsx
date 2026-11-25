@@ -9,6 +9,7 @@ import {
   createAutomation,
   draftOf,
   duplicateDraft,
+  EFFECTS,
   flowProblems,
   MAX_TAG_ACTIONS,
   LANGUAGES,
@@ -21,7 +22,9 @@ import {
   postIds,
   sample,
   sameSteps,
+  SENTIMENTS,
   slug,
+  stepName,
   templateLength,
   toFlow,
   toSimple,
@@ -37,7 +40,7 @@ import type { Connection } from "@/lib/connections";
 import { cleanTag } from "@/lib/contacts";
 import { MAX_DM, MAX_PUBLIC } from "@/lib/inbox";
 import type { SocialSet } from "@/lib/sets";
-import { FlowEditor, FlowPreview, TagLine, TextField } from "@/components/automation-flow";
+import { effectHint, FlowEditor, FlowPreview, TagLine, TextField } from "@/components/automation-flow";
 import { AutomationTest } from "@/components/automation-test";
 import { KeywordsField, ScopeField, scopeBody, scopeOf } from "@/components/scope-fields";
 import { Status, useAction } from "@/components/team-ui";
@@ -72,6 +75,7 @@ export const triggerIcon: Record<Trigger, IconName> = {
   mention_received: "mention",
   new_follower: "follower",
   story_reply: "story",
+  story_mention: "story",
   button_clicked: "check",
 };
 
@@ -82,6 +86,7 @@ const incoming: Record<Trigger, { did: string; text: string | null }> = {
   mention_received: { did: "mentioned you", text: "Just tried this, so good!" },
   new_follower: { did: "followed you", text: null },
   story_reply: { did: "replied to your story", text: "Wow, where is this?" },
+  story_mention: { did: "mentioned you in their story", text: null },
   button_clicked: { did: "tapped a button", text: null },
 };
 
@@ -141,7 +146,8 @@ export function AutomationForm({
   const lines = d.posts.split("\n").map((l) => l.trim()).filter(Boolean);
   const hasDm = Boolean(d.dm.trim());
   // brain refuses tags with nothing sent beside them (422 invalid_actions).
-  const tagsAlone = !d.flow && d.tags.length > 0 && !hasDm && !(t.publicReply && d.publicReply.trim());
+  const acts = d.also.some((e) => e !== "stop_automations");
+  const tagsAlone = !d.flow && (d.tags.length > 0 || d.also.length > 0) && !hasDm && !(t.publicReply && d.publicReply.trim()) && !acts;
   const sam = incoming[d.trigger];
   const picked = scope.mode === "accounts" ? accounts.filter((x) => scope.accountIds.includes(x.id)) : [];
   const providers = picked.map((x) => x.provider);
@@ -217,7 +223,7 @@ export function AutomationForm({
 
   function onMode(flow: boolean) {
     if (flow === d.flow) return;
-    const patch: Partial<Draft> = { flow, steps: [], tags: [] };
+    const patch: Partial<Draft> = { flow, steps: [], tags: [], also: [] };
     let dropped: string[];
     if (flow) {
       const next = toFlow(d);
@@ -225,7 +231,7 @@ export function AutomationForm({
       dropped = next.dropped;
     } else {
       const next = toSimple(d.steps);
-      Object.assign(patch, { dm: next.dm, publicReply: next.publicReply, tags: next.tags });
+      Object.assign(patch, { dm: next.dm, publicReply: next.publicReply, tags: next.tags, also: next.also });
       dropped = next.dropped;
     }
     if (dropped.length) setPending({ patch, dropped });
@@ -434,7 +440,7 @@ export function AutomationForm({
               Only their first message ever
             </label>
           )}
-          {t.keywords && (
+          {t.text && (
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={d.question} onChange={(e) => set({ question: e.target.checked })} />
               Only messages that ask a question
@@ -443,7 +449,7 @@ export function AutomationForm({
           {t.keywords && d.question && (
             <p className="hint pl-6">A message with a question mark counts at once. Any other is read by AI, which counts against your AI replies (or your AI key).</p>
           )}
-          {t.keywords && (
+          {t.text && (
             <details className="grid gap-2" open={langsOpen || d.languages.length > 0}>
               <summary className="cursor-pointer font-medium">Only certain languages{d.languages.length > 0 && ` (${d.languages.length})`}</summary>
               <div role="group" aria-label="Languages" className="flex flex-wrap gap-x-4 gap-y-1">
@@ -510,6 +516,39 @@ export function AutomationForm({
               <p id="automation-zone-hint" className="hint">Pick days, hours, or both. The time zone is an IANA name such as Asia/Dhaka or America/New_York. A later start than end runs overnight.</p>
             </div>
           )}
+          {t.text && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-1.5">
+                <label htmlFor="automation-link-rule" className="label">
+                  Links in their text
+                </label>
+                <select id="automation-link-rule" className="field" value={d.hasLink} onChange={(e) => set({ hasLink: e.target.value as Draft["hasLink"] })} aria-describedby="automation-link-hint">
+                  <option value="any">Any text</option>
+                  <option value="yes">Only text with a link (spam)</option>
+                  <option value="no">Only text without a link</option>
+                </select>
+                <p id="automation-link-hint" className="hint">
+                  A link, a web address or an email.{d.trigger === "comment_received" && " Pair \"with a link\" with Hide the comment to keep spam off your posts."}
+                </p>
+              </div>
+              <fieldset className="grid gap-1.5" aria-describedby="automation-mood-hint">
+                <legend className="label">Their mood</legend>
+                {SENTIMENTS.map((m) => (
+                  <label key={m} className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={d.sentiment.includes(m)}
+                      onChange={(e) => set({ sentiment: e.target.checked ? [...d.sentiment, m] : d.sentiment.filter((x) => x !== m) })}
+                    />
+                    {m === "positive" ? "Positive (thanks, praise)" : "Negative (a complaint, anger)"}
+                  </label>
+                ))}
+                <p id="automation-mood-hint" className="hint">
+                  Read by AI after the other conditions match, and counted like an AI reply. Neither ticked: any mood.
+                </p>
+              </fieldset>
+            </div>
+          )}
         </fieldset>
 
         <fieldset className="card grid gap-5 p-5">
@@ -566,7 +605,7 @@ export function AutomationForm({
                 tokens={tokens}
                 // A comment or mention may get a public reply alone.
                 // With tags the form says what is missing itself, in its own words.
-                required={(!t.publicReply || !d.publicReply.trim()) && !d.tags.length}
+                required={(!t.publicReply || !d.publicReply.trim()) && !d.tags.length && !d.also.length}
                 placeholder="Hi {name}, here is the link you asked for: ..."
                 hint={
                   t.publicReply
@@ -617,9 +656,28 @@ export function AutomationForm({
                 clean={cleanTag}
                 max={MAX_TAG_ACTIONS}
               />
+              <fieldset className="grid gap-2">
+                <legend className="label">Also (optional)</legend>
+                {EFFECTS.filter((e) => d.trigger === "comment_received" || (e !== "hide_comment" && e !== "like_comment")).map((e) => (
+                  <label key={e} className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={d.also.includes(e)}
+                      onChange={(ev) => set({ also: ev.target.checked ? [...d.also, e] : d.also.filter((x) => x !== e) })}
+                    />
+                    <span>
+                      {stepName[e]}
+                      <span className="hint block">{effectHint[e]}</span>
+                    </span>
+                  </label>
+                ))}
+              </fieldset>
               {tried && tagsAlone && (
                 <p role="alert" className="waitlist-error">
-                  A tag needs something sent with it. Write {t.publicReply ? "a DM text or a public reply" : "a DM text"}, or remove the tags.
+                  {d.also.length === 0
+                    ? `A tag needs something sent with it. Write ${t.publicReply ? "a DM text or a public reply" : "a DM text"}, or remove the tags.`
+                    : `A tag or a stop needs something done with it. Write ${t.publicReply ? "a DM text or a public reply" : "a DM text"}, tick a mail or a moderation action, or remove them.`}
                 </p>
               )}
             </>
@@ -655,7 +713,7 @@ export function AutomationForm({
           input={testable ? automationInput(d, scopeBody(scope), uris as string[]) : null}
           stuck={
             testable
-              ? (issues.find((i) => i.field !== "automation-name")?.text ?? (tagsAlone ? "A tag needs something sent with it." : null))
+              ? (issues.find((i) => i.field !== "automation-name")?.text ?? (tagsAlone ? (d.also.length === 0 ? "A tag needs something sent with it." : "A tag or a stop needs something done with it: a DM, a reply, a mail or a moderation action.") : null))
               : "A post link is not a post of a connected Bluesky account."
           }
           accounts={accounts.filter((x) => AUTOMATED.includes(x.provider))}
