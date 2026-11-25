@@ -115,6 +115,8 @@ async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items
     // Activity (follows, likes, reposts) is listed only when asked for.
     const quiet = (i: Row) => ["follow", "like", "repost"].includes(i.kind);
     const match = (i: Row) => (kind === "activity" ? quiet(i) : kind ? i.kind === kind : !quiet(i)) && (!search || i.text.toLowerCase().includes(search));
+    // Activity is listed whatever the state asked for, as brain does.
+    if (kind === "activity") return route.fulfill({ json: { items: state.items.filter(match).map((i) => ({ ...i, conversation: null })), next_cursor: null } });
     // One row per conversation: its latest DM. Open while any of its DMs is open, done once none is.
     const rows = state.items.filter(match).flatMap((i): (Row & { conversation: object | null })[] => {
       if (i.kind !== "dm" || q.get("group") !== "conversations") return i.state === q.get("state") ? [{ ...i, conversation: null }] : [];
@@ -228,9 +230,9 @@ test("likes and reposts are quiet activity behind their own filter, and a reply 
   });
   const post = (author: string, text: string) => ({ uri: `at://${author}/p`, url: `https://bsky.app/profile/${author}/post/p`, author: { id: author, handle: `${author}.test`, name: author, avatar_url: null }, text, created_at: ago(300), attachments: [] });
   state.above.p1 = [post("alice", "Our launch post"), post("carol", "How does it work?")];
-  await page.goto("/inbox?state=done");
+  await page.goto("/inbox");
   const list = page.getByRole("region", { name: "All" }).getByRole("list", { name: "Items" });
-  await expect(list.getByRole("listitem")).toHaveCount(0);
+  await expect(list.getByRole("listitem")).toHaveCount(1);
   await page.getByRole("combobox", { name: "Kind" }).selectOption({ label: "Activity (likes, reposts, follows)" });
   await expect(list.getByRole("listitem")).toHaveCount(2);
   await expect(list).toContainText("Liked your post");

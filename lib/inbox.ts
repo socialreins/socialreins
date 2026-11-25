@@ -108,7 +108,9 @@ export const deleteInbox = (id: string) => api(`/v1/inboxes/${enc(id)}`, "DELETE
 // `assigned` is "me", "none" or a user id; `tag` is a contact tag.
 // `conversations` asks for DMs as one row per person and account; comments and mentions come as they are.
 export function listItems(inboxId: string, state: ItemState, cursor?: string | null, kind?: ListKind | null, search?: string, more: { assigned?: string; tag?: string; conversations?: boolean } = {}) {
+  // Activity is stored done and never open work: it is listed whatever the Open / Done choice is.
   const q = new URLSearchParams(more.conversations ? { state, group: "conversations" } : { state });
+  if (kind === "activity") q.delete("state");
   if (kind) q.set("kind", kind);
   if (search) q.set("q", search);
   if (more.assigned) q.set("assigned", more.assigned);

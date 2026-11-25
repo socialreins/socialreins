@@ -231,7 +231,8 @@ describe("activity and threads", () => {
     await getThread("i 1");
     expect(call(fetch)[0]).toContain("/v1/inbox-items/i%201/thread");
     fetch.mockClear();
-    await listItems("in1", "done", null, "activity");
+    await listItems("in1", "open", null, "activity");
     expect(call(fetch)[0]).toContain("kind=activity");
+    expect(call(fetch)[0]).not.toContain("state=");
   });
 });

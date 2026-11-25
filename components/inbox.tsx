@@ -1135,9 +1135,10 @@ function Detail({
         {aboveId && above && !isFailure(above) && (
           <>
             {above.truncated && <li className="text-xs text-ink-soft">Earlier posts are deleted or hidden from this account.</li>}
-            {above.posts.map((p) => (
+            {above.posts.map((p, n) => (
               <li key={p.uri} data-row="context" className="grid gap-1 rounded-2xl border border-ink/10 bg-ink/[0.03] px-4 py-3 text-sm">
                 <p className="flex items-center gap-2">
+                  {n === 0 && <span className="sr-only">Earlier in this thread: </span>}
                   <AuthorAvatar author={p.author} size="size-6" />
                   <strong className="min-w-0 truncate">{authorName(p.author)}</strong>
                   {p.created_at && (
@@ -1152,6 +1153,7 @@ function Detail({
                   <a href={p.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs font-bold text-ink-soft hover:text-ink">
                     View on Bluesky
                     <Icon name="external" className="size-3.5" />
+                    <span className="sr-only">(opens in a new tab)</span>
                   </a>
                 )}
               </li>
