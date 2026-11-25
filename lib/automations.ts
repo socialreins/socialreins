@@ -1,7 +1,7 @@
 import { api } from "@/lib/auth";
 import { cleanTag } from "@/lib/contacts";
 import type { Connection } from "@/lib/connections";
-import { graphemes } from "@/lib/posts";
+import { graphemes, threadsLength } from "@/lib/posts";
 
 export type Trigger = "comment_received" | "dm_received" | "mention_received" | "new_follower" | "story_reply" | "story_mention" | "button_clicked" | "like_received" | "repost_received";
 export type ScopeBody = { social_set_id?: string | null; account_ids: string[] };
@@ -160,6 +160,21 @@ export const retryRun = (id: string, runId: string) => api<Run>(`/v1/automations
 const LONGEST_NAME = "n".repeat(64);
 const LONGEST_PAGE = "p".repeat(100);
 export const templateLength = (text: string) => graphemes(text.replaceAll("{name}", LONGEST_NAME).replaceAll("{page}", LONGEST_PAGE));
+// Whether every account the automation is limited to by name is on Threads.
+export const threadsOnly = (providers: string[]) => providers.length > 0 && providers.every((p) => p === "threads");
+// A public reply's limit and what counts against it: Threads takes 500 and counts an emoji as its UTF-8 bytes (brain's threads_length),
+// every other network 300 characters. {name} and {page} count at their longest.
+export const replyLimit = (providers: string[]) =>
+  threadsOnly(providers)
+    ? { max: 500, size: (text: string) => threadsLength(text.replaceAll("{name}", "\u{10348}".repeat(64)).replaceAll("{page}", "p".repeat(100))) }
+    : { max: 300, size: templateLength };
+// What a Threads account cannot do, for the one-reply form: it has replies and mentions, and answers publicly.
+export function threadsProblems(trigger: Trigger, hasDm: boolean): string[] {
+  return [
+    ...(trigger === "comment_received" || trigger === "mention_received" ? [] : ["Threads has replies and mentions only: use a comment or a mention, or leave the Threads account out."]),
+    ...(hasDm ? ["Threads has no DMs and no private reply. Remove the DM text and write a public reply."] : []),
+  ];
+}
 // What a commenter called Sam would get, for the preview.
 export const sample = (text: string, name = "Sam") => text.replaceAll("{name}", name).replaceAll("{page}", "(link to the public page)");
 
@@ -219,9 +234,9 @@ const activity = (what: string): Capability => ({
 export const triggers: Record<Trigger, Capability> = {
   like_received: activity("like"),
   repost_received: activity("repost"),
-  comment_received: { label: "When someone comments", keywords: true, posts: true, firstPerAuthor: true, firstMessage: false, publicReply: true, payloads: false, text: true, note: null, networks: ["bluesky", "facebook", "instagram", "x"] },
+  comment_received: { label: "When someone comments", keywords: true, posts: true, firstPerAuthor: true, firstMessage: false, publicReply: true, payloads: false, text: true, note: null, networks: ["bluesky", "facebook", "instagram", "threads", "x"] },
   dm_received: { label: "When someone sends a DM", keywords: true, posts: false, firstPerAuthor: false, firstMessage: true, publicReply: false, payloads: false, text: true, note: null, networks: ["bluesky", "facebook", "instagram", "x"] },
-  mention_received: { label: "When someone mentions you", keywords: true, posts: false, firstPerAuthor: false, firstMessage: false, publicReply: true, payloads: false, text: true, note: null, networks: ["bluesky", "x"] },
+  mention_received: { label: "When someone mentions you", keywords: true, posts: false, firstPerAuthor: false, firstMessage: false, publicReply: true, payloads: false, text: true, note: null, networks: ["bluesky", "threads", "x"] },
   new_follower: {
     label: "When someone follows you",
     keywords: false,
@@ -468,7 +483,8 @@ export function flowProblems(steps: StepDraft[], trigger: Trigger, providers: st
     const buttons = s.type === "send_dm" ? s.buttons : [];
     const max = s.type === "send_dm" ? 1000 : 300;
     if (!s.text.trim()) say("Write the text.");
-    else if (templateLength(numbered(s.text, buttons)) > max) say(`Too long: at most ${max} characters${buttons.length ? ", the button labels included" : ""}.`);
+    else if (templateLength(numbered(s.text, buttons)) > max && !(threadsOnly(providers) && s.type === "reply_publicly"))
+      say(`Too long: at most ${max} characters${buttons.length ? ", the button labels included" : ""}.`);
     if (!pub && s.text.includes("{page}")) say("{page} works only for comments and mentions.");
     if (buttons.length > MAX_BUTTONS) say(`A DM takes up to ${MAX_BUTTONS} buttons.`);
     for (const b of buttons) {
@@ -478,6 +494,15 @@ export function flowProblems(steps: StepDraft[], trigger: Trigger, providers: st
       else if (payloads.indexOf(b.payload) !== payloads.lastIndexOf(b.payload)) say(`Two buttons share the payload "${b.payload}". Give each its own under Advanced.`);
     }
   });
+  // Threads: replies and mentions only, a public reply of 500 UTF-8-counted characters, never a DM.
+  if (threadsOnly(providers)) {
+    if (trigger !== "comment_received" && trigger !== "mention_received") out.push({ step: null, text: blockText.threads_unsupported_trigger! + "." });
+    steps.forEach((s, step) => {
+      if (s.type === "send_dm" || s.type === "ai_send_dm") out.push({ step, text: "Threads has no DMs and no private reply. Use a public reply." });
+      else if (s.type === "reply_publicly" && replyLimit(providers).size(s.text) > 500)
+        out.push({ step, text: "Too long for Threads, which takes 500 characters and counts an emoji as its bytes (4 for most), with {name} up to 256." });
+    });
+  }
   if (providers.length && providers.every((p) => p === "facebook" || p === "instagram")) {
     // After a wait for their reply the person has written, so more DMs are fine: a new 24 hours starts.
     const firstAnswer = steps.findIndex((s) => s.type === "wait_for_reply");
@@ -914,7 +939,10 @@ export const whyNot = (code: string) => notRunText[code] ?? reason(code) ?? code
 export const blockText: Record<string, string> = {
   bluesky_only_trigger: "Likes and reposts come only from Bluesky: use a Bluesky account, or leave the others out",
   bluesky_only_action: "Reposting and following back go to Bluesky only: use a Bluesky account, or leave the others out",
-  unsupported_account: "Automations run only on Bluesky, Facebook, Instagram and X accounts",
+  unsupported_account: "Automations run only on Bluesky, Facebook, Instagram, Threads and X accounts",
+  threads_unsupported_trigger: "Threads has replies and mentions only: use a comment or a mention",
+  threads_no_dm: "Threads has no DMs and no private reply: use a public reply",
+  threads_no_like: "Threads has no like for apps: hiding a reply and a public reply work",
   x_unsupported_trigger: "X has no follows, story replies or buttons to trigger on: use a comment, a mention or a DM",
   bluesky_unsupported_trigger: "Bluesky has no story replies or buttons to tap: use a comment, a mention, a DM, a follow, a like or a repost",
   meta_one_private_reply: "Facebook and Instagram allow one private reply per comment",
