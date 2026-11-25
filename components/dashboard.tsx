@@ -7,7 +7,7 @@ import { compact, engagement, getAnalytics, postTotals, statWords } from "@/lib/
 import { listConnections, needingReconnect } from "@/lib/connections";
 import { manages } from "@/lib/teams";
 import { authorName, itemSummary, kindName, listInboxes, listItems, relativeTime, type Item } from "@/lib/inbox";
-import { approvalState, listPosts, rows, toZoneInput, type Post } from "@/lib/posts";
+import { approvalState, listPosts, postRef, rows, toZoneInput, type Post } from "@/lib/posts";
 import { getQueue, loadZones, zoneFor, zoneTag, type Queue } from "@/lib/queue";
 import { useCurrentSet, useSession } from "@/components/app-shell";
 import { ReconnectNotice } from "@/components/connections";
@@ -227,7 +227,7 @@ export function Dashboard() {
                 <ul>
                   {group.slice(0, 8).map((r) => (
                     <li key={r[0]!.id}>
-                      <Link href={`/posts/${r[0]!.id}`} className="grid grid-cols-[4.25rem_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2 hover:bg-ink/[0.025]">
+                      <Link href={`/posts/${postRef(r[0]!)}`} className="grid grid-cols-[4.25rem_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2 hover:bg-ink/[0.025]">
                         <span className="text-sm font-medium tabular-nums">{clock(r[0]!.scheduled_at!, zoneOf(r[0]!))}</span>
                         <span className="min-w-0 truncate">
                           {r.map((v) => (
@@ -269,7 +269,7 @@ export function Dashboard() {
                   const n = postTotals(r);
                   return (
                     <li key={r[0]!.id}>
-                      <Link href={`/posts/${r[0]!.id}`} className="grid grid-cols-[3.25rem_minmax(0,1fr)] items-center gap-x-3 px-4 py-2.5 hover:bg-ink/[0.025] sm:grid-cols-[3.25rem_minmax(0,1fr)_auto]">
+                      <Link href={`/posts/${postRef(r[0]!)}`} className="grid grid-cols-[3.25rem_minmax(0,1fr)] items-center gap-x-3 px-4 py-2.5 hover:bg-ink/[0.025] sm:grid-cols-[3.25rem_minmax(0,1fr)_auto]">
                         <span className="text-sm text-ink-soft tabular-nums">{shortDay(postTime(r[0]!), zoneOf(r[0]!))}</span>
                         <span className="min-w-0 truncate">
                           {r.map((v) => (
@@ -317,7 +317,7 @@ export function Dashboard() {
 
           <Panel id="top-post" title="Top post this week" link={{ href: "/analytics?range=7", label: "Open analytics" }} load={stats} retry={retryStats} skeleton={1} tall>
             {top ? (
-              <Link href={`/posts/${top.id}`} className="grid gap-0.5 px-4 py-2.5 hover:bg-ink/[0.025]">
+              <Link href={`/posts/${postRef(top)}`} className="grid gap-0.5 px-4 py-2.5 hover:bg-ink/[0.025]">
                 <span className="truncate">
                   <PlatformMark platform={top.platform} /> {snippet(top)}
                 </span>
@@ -402,7 +402,7 @@ function FailureGroup({ posts }: { posts: Post[] }) {
         <ul className="mt-1 grid gap-0.5">
           {posts.map((p) => (
             <li key={p.id}>
-              <Link href={`/posts/${p.id}`} className="flex gap-3 rounded py-0.5 hover:underline">
+              <Link href={`/posts/${postRef(p)}`} className="flex gap-3 rounded py-0.5 hover:underline">
                 <span className="shrink-0 text-sm text-ink-soft tabular-nums">
                   {dayName(postTime(p), zoneFor(p.social_set_id))}, {clock(postTime(p), zoneFor(p.social_set_id))}
                 </span>
