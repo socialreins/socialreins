@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WaitlistForm } from "@/components/waitlist-form";
 
@@ -40,6 +40,44 @@ describe("WaitlistForm", () => {
     expect(await screen.findByText("42 people on the waitlist")).toBeTruthy();
     const join = fetch.mock.calls.find(([url]) => url.endsWith("/v1/waitlist")) as unknown as [string, RequestInit];
     expect(JSON.parse(String(join[1].body))).toEqual({ email: "a@b.co", source: "landing" });
+  });
+
+  it("waits for a Turnstile token when brain has it on, sends it, then resets the widget", async () => {
+    const reset = vi.fn();
+    let pass!: (token: string) => void;
+    window.turnstile = {
+      render: (_el, o) => ((pass = o.callback), "w1"),
+      reset,
+      remove: vi.fn(),
+    };
+    const fetch = vi.fn((url: string) =>
+      Promise.resolve(
+        url.endsWith("/auth/providers")
+          ? Response.json({ google: false, turnstile_site_key: "site" })
+          : url.endsWith("/count")
+            ? Response.json({ count: 1 })
+            : new Response(null, { status: 200 }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetch);
+    render(<WaitlistForm />);
+    const button = screen.getByRole("button", { name: "Join the waitlist" });
+    await waitFor(() => expect(button).toHaveProperty("disabled", true));
+    await waitFor(() => expect(pass).toBeTypeOf("function"));
+    act(() => pass("tok"));
+    expect(button).toHaveProperty("disabled", false);
+    await submit();
+    const join = fetch.mock.calls.find(([url]) => url.endsWith("/v1/waitlist")) as unknown as [string, RequestInit];
+    expect(JSON.parse(String(join[1].body))).toEqual({ email: "a@b.co", source: "landing", turnstile_token: "tok" });
+    expect(reset).toHaveBeenCalled();
+    delete window.turnstile;
+  });
+
+  it("shows the captcha message when brain refuses the token", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ error: "captcha_failed" }, { status: 422 })));
+    render(<WaitlistForm />);
+    await submit();
+    expect(screen.getByRole("status").textContent).toMatch(/check didn't pass/);
   });
 
   it("keeps the same live region for errors and the form usable", async () => {
