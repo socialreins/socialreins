@@ -166,11 +166,14 @@ export const hasThread = (i: Pick<Item, "kind" | "platform">) => i.platform === 
 // leaves block, hide, delete and report to owners and admins.
 export type ActionName =
   | "like" | "unlike" | "repost" | "unrepost" | "follow" | "unfollow" | "mute_author" | "unmute_author" | "mute_thread" | "unmute_thread"
-  | "block_author" | "unblock_author" | "hide_reply" | "unhide_reply" | "delete_reply" | "report";
+  | "block_author" | "unblock_author" | "hide_reply" | "unhide_reply" | "delete_reply" | "report"
+  | "accept_convo" | "leave_convo" | "mute_convo" | "unmute_convo" | "mark_read" | "delete_message" | "react" | "unreact";
 export type Viewer = { liked: boolean; reposted: boolean; following: boolean; blocking: boolean; muted: boolean; thread_muted: boolean };
 export type ActionLog = { id: string; action: ActionName; status: "done" | "failed"; target: string; error: string | null; reply_id: string | null; done_by: string | null; created_at: string };
 // `viewer` is null when Bluesky could not be read (`viewer_error` says why); `hidden` is the state the last hide or unhide here left.
-export type ItemActions = { viewer: Viewer | null; viewer_error: string | null; hidden: boolean; log: ActionLog[] };
+// A DM's conversation as Bluesky has it now: `request` until the account accepts it, `group` when a reply reaches everyone in it.
+export type Convo = { status: "accepted" | "request"; muted: boolean; group: boolean; members: number; unread: number };
+export type ItemActions = { viewer: Viewer | null; viewer_error: string | null; convo: Convo | null; hidden: boolean; log: ActionLog[] };
 export const getActions = (id: string) => api<ItemActions>(`/v1/inbox-items/${enc(id)}/actions`);
 export const REPORT_REASONS: [string, string][] = [
   ["spam", "Spam"],
@@ -180,7 +183,9 @@ export const REPORT_REASONS: [string, string][] = [
   ["rude", "Rude or harassing"],
   ["other", "Something else"],
 ];
-export type ActionInput = { action: ActionName; reply_id?: string; reason_type?: string; reason?: string; account?: boolean };
+export type ActionInput = { action: ActionName; reply_id?: string; reason_type?: string; reason?: string; account?: boolean; emoji?: string };
+// The reactions offered on a message: Bluesky takes one emoji.
+export const REACTIONS = ["👍", "❤️", "😂", "😮", "😢"];
 export type ActionResult = { remote_id: string | null } | Failure | SendError;
 // Sends one action, confirmed. A 4xx with a code and message from brain is a SendError saying what to do.
 export async function runAction(id: string, input: ActionInput): Promise<ActionResult> {
@@ -220,6 +225,8 @@ export const actionDone: Record<ActionName, string> = {
   like: "Liked.", unlike: "Like removed.", repost: "Reposted.", unrepost: "Repost removed.", follow: "Followed.", unfollow: "Unfollowed.",
   mute_author: "Muted.", unmute_author: "Unmuted.", mute_thread: "Thread muted.", unmute_thread: "Thread unmuted.", block_author: "Blocked.", unblock_author: "Unblocked.",
   hide_reply: "Reply hidden.", unhide_reply: "Reply shown again.", delete_reply: "Reply deleted from Bluesky.", report: "Reported to Bluesky.",
+  accept_convo: "Request accepted.", leave_convo: "Request declined.", mute_convo: "Conversation muted.", unmute_convo: "Conversation unmuted.", mark_read: "Marked read.",
+  delete_message: "Message deleted for this account.", react: "Reaction sent.", unreact: "Reaction removed.",
 };
 
 // What a list row or an open item belongs to: a DM to its person and account, anything else to itself.

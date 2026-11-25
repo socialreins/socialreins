@@ -85,6 +85,8 @@ async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items
     viewer: { liked: false, reposted: false, following: false, blocking: false, muted: false, thread_muted: false } as Record<string, boolean>,
     acted: [] as Record<string, unknown>[],
     refuse: null as string | null,
+    // A DM's conversation as Bluesky has it (null: not read).
+    convo: null as null | { status: string; muted: boolean; group: boolean; members: number; unread: number },
   };
   const dms = (i: Row) => state.items.filter((x) => x.kind === "dm" && thread(x) === thread(i)).sort(oldestFirst);
   await page.route("**/auth/me", (route) => route.fulfill({ json: me(role) }));
@@ -168,12 +170,14 @@ async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items
       const body = route.request().postDataJSON();
       state.acted.push(body);
       if (state.refuse) return route.fulfill({ status: 422, json: { error: "bluesky_refused", message: state.refuse } });
+      if (body.action === "accept_convo" && state.convo) state.convo.status = "accepted";
+      if (body.action === "mute_convo" && state.convo) state.convo.muted = true;
       const flips: Record<string, [string, boolean]> = { like: ["liked", true], unlike: ["liked", false], follow: ["following", true], block_author: ["blocking", true] };
       const flip = flips[body.action as string];
       if (flip) state.viewer[flip[0]] = flip[1];
       return route.fulfill({ json: { action: body.action, remote_id: null } });
     }
-    return route.fulfill({ json: { viewer: state.viewer, viewer_error: null, hidden: false, log: [] } });
+    return route.fulfill({ json: { viewer: state.viewer, viewer_error: null, convo: state.convo, hidden: false, log: [] } });
   });
   await page.route(/\/v1\/inbox-items\/[^/]+\/reply$/, (route) => {
     const found = state.items.find((i) => i.id === itemId(route.request().url()))!;
@@ -308,6 +312,34 @@ test("a member can like and mute but is not offered block, hide or report", asyn
   await expect(detail.getByRole("button", { name: "Like", exact: true })).toBeVisible();
   await expect(detail.getByRole("button", { name: "Mute person" })).toBeVisible();
   for (const name of ["Block", "Hide reply", "Report"]) await expect(detail.getByRole("button", { name, exact: true })).toHaveCount(0);
+});
+
+test("a message request waits for Accept, a group says who a reply reaches, a conversation can be muted, and a message takes a reaction", async ({ page }) => {
+  const state = await brain(page, "owner");
+  state.convo = { status: "request", muted: false, group: true, members: 3, unread: 1 };
+  await page.goto("/inbox?item=p3");
+  const detail = page.getByRole("region", { name: "Item" });
+  const request = detail.getByRole("group", { name: "Message request" });
+  await expect(request).toContainText("message request");
+  await expect(detail.getByText("A group conversation of 3 or more people: a reply goes to everyone in it.")).toBeVisible();
+  await request.getByRole("button", { name: "Accept" }).click();
+  await expect(detail.getByRole("status").filter({ hasText: "Request accepted." })).toBeVisible();
+  expect(state.acted.at(-1)).toEqual({ action: "accept_convo", confirm: true });
+  await expect(request).toHaveCount(0);
+  await detail.getByRole("button", { name: "Mute conversation" }).click();
+  await expect(detail.getByRole("button", { name: "Unmute conversation" })).toBeVisible();
+  // Declining asks first.
+  state.convo = { status: "request", muted: false, group: false, members: 2, unread: 1 };
+  await page.reload();
+  await page.getByRole("region", { name: "Item" }).getByRole("button", { name: "Decline" }).click();
+  await expect(page.getByText("Decline and leave this conversation?")).toBeVisible();
+  const sent = state.acted.length;
+  expect(state.acted.length).toBe(sent);
+  await page.getByRole("button", { name: "Cancel" }).click();
+  // A reaction is one emoji on one message.
+  await page.getByRole("button", { name: "React 👍" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Reaction sent." })).toBeVisible();
+  expect(state.acted.at(-1)).toEqual({ action: "react", emoji: "👍", confirm: true });
 });
 
 test("reply publicly, then mark done and reopen", async ({ page }) => {
