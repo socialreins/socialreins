@@ -507,12 +507,39 @@ test("builds a flow of three steps with a wait and buttons, and saves steps with
   await expect(summary.getByRole("list", { name: "Steps" })).toContainText("Wait 2 hours");
 });
 
+test("a comment flow waits for the answer, mails the team and hides spam, and the form saves the link rule and mood", async ({ page }) => {
+  const state = await brain(page, "owner");
+  await page.goto("/automations/new?template=dm-keyword");
+  await page.getByLabel("Name").fill("Spam and guide");
+  await page.getByLabel("Links in their text").selectOption("no");
+  await page.getByRole("group", { name: "Their mood" }).getByLabel(/^Negative/).check();
+  const doThis = page.getByRole("group", { name: "Do this" });
+  await doThis.getByLabel("DM text").fill("Want the guide? Say yes.");
+  await doThis.getByRole("radio", { name: "A flow of steps" }).check();
+  await doThis.getByRole("button", { name: "Wait for their reply", exact: true }).click();
+  await step(page, 2).getByLabel("Wait for").fill("3");
+  await step(page, 2).getByLabel("Unit").selectOption("hours");
+  await doThis.getByRole("button", { name: "Send a DM", exact: true }).click();
+  await step(page, 3).getByLabel("DM text").fill("Here it is, {name}.");
+  await doThis.getByRole("button", { name: "Mail your team", exact: true }).click();
+  // Hiding is for comments: this DM trigger does not offer it.
+  await expect(doThis.getByRole("button", { name: "Hide the comment", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Preview" })).toContainText("Sam replies, or after at most 3 hours");
+  await page.getByRole("button", { name: "Create automation" }).click();
+  await expect(page).toHaveURL("/t/acme22/automations/a2");
+  expect(state.bodies[0]).toMatchObject({
+    trigger: "dm_received",
+    conditions: { has_link: false, sentiment: ["negative"] },
+    steps: [{ type: "send_dm", text: "Want the guide? Say yes." }, { type: "wait_for_reply", minutes: 180 }, { type: "send_dm", text: "Here it is, {name}." }, { type: "notify_team" }],
+  });
+});
+
 test("a flow says what is wrong before it saves, and maps brain's refusals", async ({ page }) => {
   const state = await brain(page, "owner");
   await page.goto("/automations/new?template=comment-to-dm");
   const doThis = page.getByRole("group", { name: "Do this" });
   await doThis.getByRole("radio", { name: "A flow of steps" }).check();
-  await expect(doThis.getByRole("list", { name: "Good to know" })).toContainText("a flow started by a comment can send only one DM");
+  await expect(doThis.getByRole("list", { name: "Good to know" })).toContainText("a flow started by a comment sends only one DM");
   await doThis.getByRole("button", { name: "Wait", exact: true }).click();
   await step(page, 2).getByLabel("Wait for").fill("8");
   await step(page, 1).getByRole("button", { name: "Add a button" }).click();
@@ -538,7 +565,7 @@ test("a flow says what is wrong before it saves, and maps brain's refusals", asy
   // Removing every step leaves nothing to send.
   await step(page, 2).getByRole("button", { name: "Remove step 2" }).click();
   await step(page, 1).getByRole("button", { name: "Remove step 1" }).click();
-  await expect(doThis.getByRole("alert")).toHaveText("A flow needs at least one step that sends something. Add a DM.");
+  await expect(doThis.getByRole("alert")).toHaveText("A flow needs at least one step that does something: a DM, a reply, a mail to your team or a moderation step.");
   await expect(doThis.getByRole("button", { name: "Send a DM", exact: true })).toBeFocused();
 
   // Ten steps at most.
@@ -729,6 +756,28 @@ test("run history shows a waiting run with its time and step, and a stopped one 
   await expect(rows.nth(2)).toContainText("Skipped");
   await expect(rows.nth(2)).toContainText("Stopped: the automation was changed or switched off before the flow finished");
   await expect(rows.nth(3)).toContainText("Step 4 of 4");
+});
+
+test("a run a rate limit refused can be retried from the run history, once", async ({ page }) => {
+  const state = await brain(page, "owner");
+  state.list.push(guideFlow());
+  const limited = { type: "send_dm", status: "skipped", reason: "rate_limited", remote_id: null };
+  const retried = { ...run("r1", "waiting", null, []), retries: 1, can_retry: false, resume_at: "2026-11-25T10:00:00Z" };
+  let posted = 0;
+  await page.route(/\/v1\/automations\/flow\/runs$/, (route) =>
+    route.fulfill({ json: { runs: [{ ...run("r1", "skipped", "rate_limited", [limited]), retries: 0, can_retry: true }, run("r2", "sent", null, [])], next_cursor: null } }),
+  );
+  await page.route(/\/v1\/automations\/flow\/runs\/r1\/retry$/, (route) => {
+    posted += 1;
+    return route.fulfill({ json: retried });
+  });
+  await page.goto("/automations/flow");
+  const history = page.getByRole("region", { name: "Run history" });
+  await expect(history.getByRole("button", { name: /^Retry/ })).toHaveCount(1);
+  await expect(history).toContainText("The network is rate limiting this account");
+  await history.getByRole("button", { name: /^Retry/ }).click();
+  await expect(history.getByRole("button", { name: /^Retry/ })).toHaveCount(0);
+  expect(posted).toBe(1);
 });
 
 test("run history says in plain words what happened to a tag", async ({ page }) => {

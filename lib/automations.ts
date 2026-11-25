@@ -843,6 +843,7 @@ export const blockText: Record<string, string> = {
   meta_one_private_reply: "Facebook and Instagram allow one private reply per comment",
   meta_reply_window: "Facebook and Instagram take a DM only within 24 hours of the person's message (7 days for a comment)",
   facebook_unsupported_trigger: "Facebook has no story mentions: use a comment or a DM",
+  meta_unsupported_trigger: "Facebook and Instagram bring no follows or mentions of your account: use a comment or a DM",
   no_public_page: "A text holds {page}, and this post has no open public page, so it would not run",
   paused: "The team paused all its automations, so nothing would be sent",
 };
