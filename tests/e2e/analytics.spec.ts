@@ -76,7 +76,7 @@ test("analytics shows totals, the chart with its table, networks and top posts",
   await expect(totals).toContainText("Views8.9K");
   await expect.poll(() => asked(queries, "2026-10-12")).toBe(true);
   await expect(page.locator("[data-stats-note]")).toHaveText(
-    "Stats come from Bluesky, Facebook, Instagram and YouTube. Threads, LinkedIn, X and TikTok are not available yet. Numbers refresh about every hour for two days after a post goes out, then twice a day, for 30 days.",
+    "Stats come from Bluesky, Facebook, Instagram and YouTube. Threads, LinkedIn, X, TikTok and Pinterest are not available yet. Numbers refresh about every hour for two days after a post goes out, then twice a day, for 30 days.",
   );
 
   const days = page.getByRole("region", { name: "Engagement by day" });

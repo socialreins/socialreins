@@ -49,7 +49,7 @@ const plans = [
     note: "Open source, on your own server, free for good.",
     points: [
       "Every feature. There is no paid tier in the code.",
-      "All eight networks, and you turn on only the ones you want.",
+      "All nine networks, and you turn on only the ones you want.",
       "Your data stays on your own server, in your own Postgres database.",
       "One Docker Compose command to start, one line to update.",
       "You register your own developer app with each network you use, except Bluesky, which needs none.",

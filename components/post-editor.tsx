@@ -83,6 +83,7 @@ import { hasStats } from "@/lib/analytics";
 import { useCurrentSet, useSession } from "@/components/app-shell";
 import { ReconnectNotice } from "@/components/connections";
 import { TikTokConsent, TikTokPanel } from "@/components/tiktok-settings";
+import { noPin, PinterestPanel, pinForm, pinLinkOk, pinNeedsBoard, pinOut, pinTitleOk, type PinForm } from "@/components/pinterest-settings";
 import { manages } from "@/lib/teams";
 import { Icon } from "@/components/ui";
 import { RepeatControl } from "@/components/repeat";
@@ -154,6 +155,8 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const [queueRead, setQueueRead] = useState<{ key: string; value: Queue | Failure } | null>(null);
   // The YouTube video's visibility: private unless chosen.
   const [ytPrivacy, setYtPrivacy] = useState<YouTubePrivacy>("private");
+  // The Pinterest pin's board, title and link.
+  const [pin, setPin] = useState<PinForm>(noPin);
   // The open tab, and whether the action bar lists the issues.
   const [tab, setTab] = useState<Tab>("all");
   const [issuesOpen, setIssuesOpen] = useState(false);
@@ -219,6 +222,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     setCover(p.cover ?? "");
     setTikTok(p.tiktok ?? noTikTok);
     setYtPrivacy(p.youtube?.privacy ?? "private");
+    setPin(pinForm(p.pinterest));
     setCustom({});
     setMediaCustom({});
     setAt(p.status === "scheduled" ? (p.scheduled_at ?? "") : "");
@@ -253,6 +257,8 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     if (tk) setTikTok(tk.tiktok ?? noTikTok);
     const yt = all.find((g) => g.platform === "youtube");
     if (yt) setYtPrivacy(yt.youtube?.privacy ?? "private");
+    const pn = all.find((g) => g.platform === "pinterest");
+    if (pn) setPin(pinForm(pn.pinterest));
     setPicked(Object.fromEntries(all.filter((g) => g.account_ids).map((g) => [g.platform, g.account_ids!])));
   }
 
@@ -471,7 +477,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
       // Only the platforms with some unticked: brain gives the others every account, later ones too.
       const picked = selected.flatMap((p) => accountIdsFor(p) ?? []);
       const picks = picked.length ? picked : undefined;
-      const g = await createPostGroup({ ...shared, platforms: selected, account_ids: picks, body, media: images, media_alt: altOut(images, alts, false), thread: parts, first_comment: comment.trim() ? comment : undefined, tiktok: selected.includes("tiktok") ? tiktokOut : undefined, youtube: selected.includes("youtube") ? { privacy: ytPrivacy } : undefined, overrides });
+      const g = await createPostGroup({ ...shared, platforms: selected, account_ids: picks, body, media: images, media_alt: altOut(images, alts, false), thread: parts, first_comment: comment.trim() ? comment : undefined, tiktok: selected.includes("tiktok") ? tiktokOut : undefined, youtube: selected.includes("youtube") ? { privacy: ytPrivacy } : undefined, pinterest: selected.includes("pinterest") ? pinOut(pinFor) : undefined, overrides });
       if (isFailure(g)) return g;
       const posts = g.posts;
       made = posts.length;
@@ -665,7 +671,16 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     cover: coverFor(p),
     tiktok: p === "tiktok" ? tiktokOut : undefined,
     youtube: p === "youtube" ? { privacy: ytPrivacy } : undefined,
+    pinterest: p === "pinterest" ? pinOut(pinFor) : undefined,
   });
+  // Pinterest: the accounts the pin goes to, and the settings as sent. A board is picked only for one account:
+  // a board belongs to an account, so with several each pin goes to its account's default board.
+  const pinAccounts = (() => {
+    const all = inSet("pinterest");
+    const on = accountIdsFor("pinterest");
+    return on ? all.filter((a) => on.includes(a.id)) : all;
+  })();
+  const pinFor: PinForm = pinAccounts.length === 1 ? pin : { ...pin, board: "" };
   // TikTok: the account's creator info (null while it loads), and the settings as sent. A photo post has no duet or
   // stitch, and an interaction the creator turned off in TikTok stays off.
   const creator = creatorRead?.key === ttKey && ttKey ? creatorRead.value : null;
@@ -714,7 +729,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const mediaProblems: Issue[] = selected.flatMap((p) => {
     const files = mediaFor(p);
     const where = { platform: p, inline: true, ...place(p, mediaCustomFor(p) !== undefined, `media-${p}`, "media-shared") };
-    if ((p === "instagram" || p === "youtube") && files.length === 0) return [{ ...where, text: platformProblem(p, "media_required") }];
+    if ((p === "instagram" || p === "youtube" || p === "pinterest") && files.length === 0) return [{ ...where, text: platformProblem(p, "media_required") }];
     if (files.length > limits[p].media) return [{ ...where, text: platformProblem(p, "too_many_images") }];
     // Hints only: brain reads the files when the post is saved and has the last word.
     const bad = checkMediaTypes(files, p) ?? (coverFor(p) ? coverTypeHint(coverFor(p)!, p) : null);
@@ -739,7 +754,16 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   // TikTok's own blockers, once its account is read (tiktokProblem says the same on save).
   const ttBad = !selected.includes("tiktok") || creator === null ? null : !tt ? "The TikTok account couldn't be read." : !tt.can_post ? `${tt.reason ?? "TikTok does not let this account post right now."} Try again later.` : checkTikTok(tiktokOut) && platformProblem("tiktok", checkTikTok(tiktokOut)!);
   const ttIssues: Issue[] = ttBad ? [{ platform: "tiktok", inline: false, text: ttBad, tab: tabbed ? "tiktok" : "all", field: "tiktok-privacy" }] : [];
-  const issues = [...textProblems, ...mediaProblems, ...tooLong, ...commentLong, ...ttIssues];
+  // Pinterest's own blockers: the title, the link, and a board when neither the pin nor its account names one.
+  const pinWhere = { platform: "pinterest" as const, inline: false, tab: tabbed ? ("pinterest" as const) : ("all" as const) };
+  const pinIssues: Issue[] = !selected.includes("pinterest")
+    ? []
+    : [
+        ...(pinTitleOk(pin.title) ? [] : [{ ...pinWhere, field: "pinterest-title", text: platformProblem("pinterest", "pinterest_title_too_long") }]),
+        ...(pinLinkOk(pin.link) ? [] : [{ ...pinWhere, field: "pinterest-link", text: platformProblem("pinterest", "invalid_pinterest_link") }]),
+        ...(pinAccounts.length > 0 && pinNeedsBoard(pinFor, pinAccounts) ? [{ ...pinWhere, field: pinAccounts.length === 1 ? "pinterest-board" : "pinterest-title", text: platformProblem("pinterest", "pinterest_board_required") }] : []),
+      ];
+  const issues = [...textProblems, ...mediaProblems, ...tooLong, ...commentLong, ...ttIssues, ...pinIssues];
   const shown = active !== "all" ? active : selected[0];
   const others = group.filter((g) => g.id !== postId);
   // The group with this page's own post as it now stands, and the posts still up.
@@ -1004,6 +1028,18 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
                 YouTube visibility
               </h2>
               <p className="text-sm">{youtubePrivacyName[post.youtube?.privacy ?? "private"]}</p>
+            </section>
+          )}
+          {post.platform === "pinterest" && (
+            <section aria-labelledby="pinterest-summary-heading" className="card grid gap-2 p-5">
+              <h2 id="pinterest-summary-heading" className="font-display text-lg font-extrabold tracking-tight">
+                Pinterest settings
+              </h2>
+              <p className="text-sm">
+                {post.pinterest?.board_id ? `Board ${post.pinterest.board_id}` : "The account's default board"}.
+                {post.pinterest?.title ? ` Title: ${post.pinterest.title}.` : ""}
+                {post.pinterest?.link ? ` Link: ${post.pinterest.link}` : ""}
+              </p>
             </section>
           )}
           {post.cover && (
@@ -1342,6 +1378,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
           </p>
         </div>
       )}
+      {p === "pinterest" && <PinterestPanel accounts={pinAccounts} settings={pin} onChange={setPin} />}
       {p === "tiktok" && <TikTokPanel creator={creator} settings={tiktokOut} onChange={setTikTok} photosOnly={photosOnly} onRetry={() => setCreatorTry((n) => n + 1)} />}
     </>
   );
@@ -2002,7 +2039,7 @@ function ImageLinks({
           <p className="hint">
             Up to {max}. Upload files from your device (or drop them here), or add public https links, Google Drive or Dropbox share links. An upload is kept while a post that names it has yet to go out, a failed one included, so a retry finds it.
           </p>
-          <p className="hint">Add alt text to each image below: {altPlatforms.map(platformName).join(", ")} get it with the post.</p>
+          <p className="hint">Add alt text to each image below: {altPlatforms.map(platformName).join(", ")} get it with the post. A pin on Pinterest has one alt text, the first image&apos;s, cut to 500 characters.</p>
           {platforms && platforms.length > 0 && (
             <details className="hint">
               <summary className="cursor-pointer select-none font-bold">What each network takes</summary>

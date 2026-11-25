@@ -101,7 +101,22 @@ export function mergeCreators(list: TikTokCreator[]): TikTokCreator {
 // A YouTube video's visibility (brain's `youtube.privacy`); brain uploads as private without one.
 export type YouTubePrivacy = "private" | "unlisted" | "public";
 export const youtubePrivacyName: Record<YouTubePrivacy, string> = { private: "Private", unlisted: "Unlisted", public: "Public" };
-export type Platform = "bluesky" | "threads" | "linkedin" | "facebook" | "instagram" | "youtube" | "x" | "tiktok";
+// What the user chooses for a Pinterest pin, as brain's POST /v1/posts takes it: the board (else the account's
+// default board), a title of at most 100 characters and the link the pin leads to. The text is the description.
+export type PinterestSettings = { board_id?: string | null; title?: string | null; link?: string | null };
+// One board of a Pinterest account, from GET /v1/connections/{id}/pinterest/boards.
+export type PinterestBoard = { id: string; name: string; privacy: string | null };
+export const getPinterestBoards = (accountId: string) =>
+  api<{ boards: PinterestBoard[]; default_board_id?: string }>(`/v1/connections/${encodeURIComponent(accountId)}/pinterest/boards`);
+// Sets (or, with null, removes) the board a pin goes to when its post names none.
+export const setDefaultBoard = (accountId: string, boardId: string | null) =>
+  api<{ default_board_id: string | null; default_board_name: string | null }>(`/v1/connections/${encodeURIComponent(accountId)}/pinterest`, "PUT", {
+    default_board_id: boardId,
+  });
+export const PIN_TITLE_MAX = 100;
+export const PIN_LINK_MAX = 2048;
+export const PIN_ALT_MAX = 500;
+export type Platform = "bluesky" | "threads" | "linkedin" | "facebook" | "instagram" | "youtube" | "x" | "tiktok" | "pinterest";
 export type Post = {
   id: string;
   social_set_id: string;
@@ -121,6 +136,8 @@ export type Post = {
   tiktok?: TikTokSettings | null;
   // A YouTube post's settings; null or no privacy means private.
   youtube?: { privacy?: YouTubePrivacy | null } | null;
+  // A Pinterest pin's settings; null for none (the account's default board, no title or link).
+  pinterest?: PinterestSettings | null;
   status: PostStatus;
   scheduled_at: string | null;
   published_at: string | null;
@@ -223,6 +240,8 @@ export type PostInput = {
   tiktok?: TikTokSettings;
   // YouTube settings: only a YouTube post takes them, and a group gives them to its YouTube post.
   youtube?: { privacy: YouTubePrivacy };
+  // Pinterest settings: only a Pinterest post takes them, and a group gives them to its Pinterest post.
+  pinterest?: PinterestSettings;
   // ISO time to publish; null keeps the post a draft. A past time means now. Left out with `queue`.
   scheduled_at?: string | null;
   // New posts only: brain schedules the post at the set's earliest free queue slot.
@@ -255,6 +274,8 @@ export const limits: Record<Platform, { chars: number; media: number; thread: bo
   youtube: { chars: 100, media: 1, thread: false, comment: 10_000, cover: true },
   x: { chars: 280, media: 4, thread: true, comment: null, cover: false },
   tiktok: { chars: 2200, media: 35, thread: false, comment: null, cover: false },
+  // The description; a pin takes 1 to 5 images (2 or more are a carousel) or one video.
+  pinterest: { chars: 800, media: 5, thread: false, comment: null, cover: false },
 };
 // The image types each cover platform takes: Instagram's cover_url wants a JPEG; Facebook and YouTube take JPEG or PNG.
 export const coverTypes: Partial<Record<Platform, string>> = { instagram: "a JPEG, PNG or WebP", facebook: "a JPEG or PNG", youtube: "a JPEG or PNG" };
@@ -270,6 +291,8 @@ export const mediaTypes: Record<Platform, { types: string[]; text: string }> = {
   youtube: { types: [MP4, MOV], text: "an MP4 or MOV video" },
   x: { types: [JPEG, PNG, WEBP, GIF, MP4, MOV], text: "JPEG, PNG, WebP or GIF images or an MP4 or MOV video" },
   tiktok: { types: [JPEG, PNG, WEBP, MP4, MOV], text: "one MP4 or MOV video, or JPEG, PNG or WebP photos" },
+  // brain turns WebP images into JPEGs for Pinterest at publish.
+  pinterest: { types: [JPEG, PNG, WEBP, MP4, MOV], text: "1 to 5 JPEG, PNG or WebP images or one MP4 or MOV video" },
 };
 // The file sizes brain refuses on save, for the platforms given (crates/core/src/post.rs: VIDEO_LIMITS, size_limit).
 // A still image over a platform's own limit is shrunk at publish, so only brain's 100 MB applies to it.
@@ -287,7 +310,7 @@ export function sizeHint(platforms: Platform[]): string {
 // Most characters of one image's alt text: brain's limit, the strictest of the networks that take one.
 export const ALT_MAX = 1000;
 // Networks that take an image's alt text; the others (Facebook, TikTok, YouTube) have no place for it.
-export const altPlatforms: Platform[] = ["bluesky", "threads", "instagram", "linkedin", "x"];
+export const altPlatforms: Platform[] = ["bluesky", "threads", "instagram", "linkedin", "x", "pinterest"];
 // The alt texts the posts carry, by image link: the same link is described once wherever it appears.
 export function altMap(posts: { media: string[]; media_alt?: string[]; thread?: ThreadPart[] }[]): Record<string, string> {
   const out: Record<string, string> = {};
@@ -334,7 +357,7 @@ export function linkType(url: string): string | null {
 }
 // Whether a file of this type must be the post's only media item (a video, a PDF on LinkedIn, a GIF on X).
 const alone = (platform: Platform, t: string) =>
-  ((t === MP4 || t === MOV) && ["bluesky", "facebook", "linkedin", "x", "tiktok"].includes(platform)) ||
+  ((t === MP4 || t === MOV) && ["bluesky", "facebook", "linkedin", "x", "tiktok", "pinterest"].includes(platform)) ||
   (t === PDF && platform === "linkedin") ||
   (t === GIF && platform === "x");
 // A hint from the links' extensions of what brain's media checks will likely say. Never blocks a save: brain
@@ -473,7 +496,7 @@ export function checkPost(body: string, media: string[], platform: Platform = "b
   const max = limits[platform];
   // A YouTube video needs a title, so it needs a body even with its video.
   if (!body.trim() && (media.length === 0 || platform === "youtube")) return "empty_post";
-  if ((platform === "instagram" || platform === "youtube" || platform === "tiktok") && media.length === 0) return "media_required";
+  if ((platform === "instagram" || platform === "youtube" || platform === "tiktok" || platform === "pinterest") && media.length === 0) return "media_required";
   if (platform === "youtube" && /[<>]/.test(body)) return "invalid_text";
   if (overLimit(platform, body, xLong) || (platform === "bluesky" && utf8Bytes(body) > MAX_BYTES)) return "too_long";
   if (media.length > max.media) return "too_many_images";
@@ -694,6 +717,7 @@ export function editInput(p: Post, scheduled_at: string | null): PostInput {
     cover: p.cover?.trim() || undefined,
     tiktok: p.platform === "tiktok" ? (p.tiktok ?? undefined) : undefined,
     youtube: p.platform === "youtube" ? { privacy: p.youtube?.privacy ?? "private" } : undefined,
+    pinterest: p.platform === "pinterest" ? (p.pinterest ?? undefined) : undefined,
     scheduled_at,
   };
 }

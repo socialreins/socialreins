@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { failuresCsv, parseTime, readCsv, rowInput, templateCsv, type BulkRow } from "@/lib/bulk";
 import { csvCell, parseCsv } from "@/lib/csv";
+import type { Platform } from "@/lib/posts";
 
 describe("parseCsv", () => {
   it("splits fields and rows, with LF or CRLF, and keeps a last row without a line break", () => {
@@ -37,7 +38,7 @@ describe("csvCell", () => {
 });
 
 const now = new Date(2026, 10, 20, 12, 0);
-const read = (csv: string, available = ["bluesky", "x", "facebook", "youtube", "instagram", "tiktok"] as const) => {
+const read = (csv: string, available: readonly Platform[] = ["bluesky", "x", "facebook", "youtube", "instagram", "tiktok"]) => {
   const r = readCsv(csv, [...available], now);
   if (typeof r === "string") throw new Error(r);
   return r;
@@ -66,6 +67,14 @@ describe("readCsv", () => {
     const [text, withMedia] = read("text,media\nhi,\nhi,https://a.co/v.mp4");
     expect(text!.networks).toEqual(["bluesky", "x", "facebook"]);
     expect(withMedia!.networks).toEqual(["bluesky", "x", "facebook", "youtube", "instagram"]);
+  });
+
+  it("leaves Pinterest out of a row with no media, and refuses it when asked for without one", () => {
+    const withPin: Platform[] = ["bluesky", "pinterest"];
+    const [none, some, named] = read("text,media,networks\nhi,,\nhi,https://a.co/p.jpg,\nhi,,pinterest", withPin);
+    expect(none!.networks).toEqual(["bluesky"]);
+    expect(some!.networks).toEqual(["bluesky", "pinterest"]);
+    expect(named!.errors).toEqual(["Pinterest needs an image or a video: add its link under media."]);
   });
 
   it("names unknown, unconnected and TikTok networks, and accepts commas and case", () => {

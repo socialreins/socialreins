@@ -191,7 +191,7 @@ test("the features page groups every feature and marks what is in testing", asyn
   const measure = page.getByRole("region", { name: "Measure", exact: true });
   await expect(measure).toContainText("Bluesky, Facebook, Instagram and YouTube");
   await expect(measure).toContainText("no reach, audience or follower reports yet");
-  await expect(page.getByRole("region", { name: "Plan and schedule" })).toContainText("Not for TikTok or YouTube");
+  await expect(page.getByRole("region", { name: "Plan and schedule" })).toContainText("Not for TikTok, YouTube or Pinterest");
   await expect(page.getByRole("region", { name: "Build on it" })).toContainText("SocialReins does not write posts for you.");
   // No price and no em dash anywhere on the page.
   await expect(page.getByRole("main")).not.toContainText(/[$€£]\s?\d|\u2014/);

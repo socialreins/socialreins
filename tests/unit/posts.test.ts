@@ -204,7 +204,18 @@ describe("post checks", () => {
       youtube: { chars: 100, media: 1, thread: false, comment: 10_000, cover: true },
       x: { chars: 280, media: 4, thread: true, comment: null, cover: false },
       tiktok: { chars: 2200, media: 35, thread: false, comment: null, cover: false },
+      pinterest: { chars: 800, media: 5, thread: false, comment: null, cover: false },
     });
+    // A pin: a description of at most 800 characters, 1 to 5 images, and no text-only pin.
+    expect(checkPost("a".repeat(800), img(5), "pinterest")).toBeNull();
+    expect(checkPost("", img(1), "pinterest")).toBeNull();
+    expect(checkPost("a".repeat(801), img(1), "pinterest")).toBe("too_long");
+    expect(checkPost("x", img(6), "pinterest")).toBe("too_many_images");
+    expect(checkPost("a description", [], "pinterest")).toBe("media_required");
+    expect(checkPost(" ", [], "pinterest")).toBe("empty_post");
+    expect(checkMediaTypes(["https://a.example/a.mp4", "https://a.example/b.jpg"], "pinterest")).toBe("mixed_media");
+    expect(checkMediaTypes(["https://a.example/a.gif"], "pinterest")).toBe("media_type_not_supported");
+    expect(checkMediaTypes(["https://a.example/a.webp", "https://a.example/b.png"], "pinterest")).toBeNull();
     expect(checkPost("a".repeat(500), [], "threads")).toBeNull();
     expect(checkPost("a".repeat(501), [], "threads")).toBe("too_long");
     expect(checkPost("x", img(20), "threads")).toBeNull();

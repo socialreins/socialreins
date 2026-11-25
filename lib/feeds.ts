@@ -59,8 +59,8 @@ export const MAX_FEEDS = 20;
 export const MAX_TEMPLATE = 2000;
 export const DEFAULT_TEMPLATE = "{title}\n{link}";
 export const PLACEHOLDERS = ["{title}", "{link}", "{summary}"] as const;
-// An item has no video, so brain refuses these two.
-export const UNSUPPORTED = ["tiktok", "youtube"];
+// An item has no video, so brain refuses TikTok and YouTube, and no image or board, so Pinterest too.
+export const UNSUPPORTED = ["tiktok", "youtube", "pinterest"];
 
 export const modes: { id: FeedMode; summary: string; label: string; hint: string }[] = [
   { id: "draft", summary: "Saves a draft", label: "Save a draft", hint: "Each new item waits in Posts as a draft until someone schedules it." },
@@ -69,7 +69,7 @@ export const modes: { id: FeedMode; summary: string; label: string; hint: string
 ];
 export const modeSummary = (m: FeedMode) => modes.find((x) => x.id === m)?.summary ?? m;
 
-// The networks a feed of this set can post to: the set's connected ones, in `order`, without TikTok and YouTube.
+// The networks a feed of this set can post to: the set's connected ones, in `order`, without TikTok, YouTube and Pinterest.
 export function feedPlatforms(setId: string, accounts: Pick<Connection, "provider" | "set_ids">[], order: string[]) {
   const has = new Set(accounts.filter((a) => a.set_ids.includes(setId)).map((a) => a.provider));
   return order.filter((p) => has.has(p) && !UNSUPPORTED.includes(p));
