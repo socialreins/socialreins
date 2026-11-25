@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { apiUrl, joinWaitlist, verifyWaitlist, waitlistCount, waitlistCountText } from "@/lib/waitlist";
+import { addWaitlistName, apiUrl, joinWaitlist, verifyWaitlist, waitlistCount, waitlistCountText } from "@/lib/waitlist";
 
 const respond = (status: number) => vi.fn().mockResolvedValue(new Response(null, { status }));
 
@@ -21,12 +21,38 @@ describe("joinWaitlist", () => {
     [500, "error"],
   ])("maps %i to %s", async (status, result) => {
     vi.stubGlobal("fetch", respond(status));
-    expect(await joinWaitlist("a@b.co")).toBe(result);
+    expect((await joinWaitlist("a@b.co")).result).toBe(result);
+  });
+
+  it("hands back the name token of the answer, null when there is none", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ status: "ok", name_token: "t".repeat(64) })));
+    expect(await joinWaitlist("a@b.co")).toEqual({ result: "joined", nameToken: "t".repeat(64) });
+    vi.stubGlobal("fetch", respond(200));
+    expect(await joinWaitlist("a@b.co")).toEqual({ result: "joined", nameToken: null });
   });
 
   it("reports a network failure as error", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
-    expect(await joinWaitlist("a@b.co")).toBe("error");
+    expect((await joinWaitlist("a@b.co")).result).toBe("error");
+  });
+});
+
+describe("addWaitlistName", () => {
+  it("posts the token and name to /v1/waitlist/name", async () => {
+    const fetch = respond(200);
+    vi.stubGlobal("fetch", fetch);
+    expect(await addWaitlistName("tok", "Ann")).toBe("saved");
+    expect(fetch.mock.calls[0]![0]).toBe(`${apiUrl}/v1/waitlist/name`);
+    expect(JSON.parse(fetch.mock.calls[0]![1].body)).toEqual({ token: "tok", name: "Ann" });
+  });
+
+  it.each([
+    [422, "invalid"],
+    [429, "rate_limited"],
+    [500, "error"],
+  ])("maps %i to %s", async (status, result) => {
+    vi.stubGlobal("fetch", respond(status));
+    expect(await addWaitlistName("tok", "Ann")).toBe(result);
   });
 });
 
@@ -43,7 +69,7 @@ describe("joinWaitlist timeout", () => {
     );
     const pending = joinWaitlist("a@b.co");
     controller.abort(new DOMException("timed out", "TimeoutError"));
-    expect(await pending).toBe("timeout");
+    expect((await pending).result).toBe("timeout");
     expect(timeout).toHaveBeenCalledWith(10_000);
     timeout.mockRestore();
   });

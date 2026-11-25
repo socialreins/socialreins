@@ -6,6 +6,8 @@ export type Signup = {
   id: string;
   email: string;
   source: string | null;
+  // What the person asked to be called, if they said.
+  name?: string | null;
   created_at: string;
   verified_at: string | null;
   // Set when an admin approved the email: it may sign up whatever the sign-up rules say.
@@ -18,16 +20,19 @@ export type Verified = boolean | null;
 // The `?verified=` value of the admin page, as brain takes it; anything else means all.
 export const parseVerified = (v: string | null): Verified => (v === "true" ? true : v === "false" ? false : null);
 
-// The waitlist's own query, for brain and for the page's links alike: `?verified=&q=`, empty parts left out.
-export function waitlistQuery(verified: Verified, q = "") {
+// The waitlist's own query, for brain and for the page's links alike: `?verified=&hide_stale=&q=`, empty parts left out.
+// `hideStale` leaves out unverified signups older than 30 days.
+export function waitlistQuery(verified: Verified, q = "", hideStale = false) {
   const p = new URLSearchParams();
   if (verified !== null) p.set("verified", String(verified));
+  if (hideStale) p.set("hide_stale", "true");
   if (q.trim()) p.set("q", q.trim());
   return p.size ? `?${p}` : "";
 }
 
 // Newest first, at most 1000; the totals ignore the filter and the search.
-export const listWaitlist = (verified: Verified, q = "") => api<Waitlist>(`/v1/admin/waitlist${waitlistQuery(verified, q)}`);
+export const listWaitlist = (verified: Verified, q = "", hideStale = false) =>
+  api<Waitlist>(`/v1/admin/waitlist${waitlistQuery(verified, q, hideStale)}`);
 
 // `mail` says what happened to the "you can sign up now" email; the approval holds either way.
 export type Approval = { signup: Signup; mail: "sent" | "failed" | "already_approved" };
@@ -36,9 +41,10 @@ export const approveSignup = (id: string) => api<Approval>(`/v1/admin/waitlist/$
 export const removeSignup = (id: string) => api(`/v1/admin/waitlist/${encodeURIComponent(id)}`, "DELETE");
 
 export function approvalText({ signup, mail }: Approval) {
-  if (mail === "sent") return `Approved ${signup.email}. An email telling them they can sign up was sent.`;
-  if (mail === "already_approved") return `${signup.email} was already approved. No new email was sent.`;
-  return `Approved ${signup.email}, so they can sign up, but the email could not be sent. They were not told: let them know another way.`;
+  const unverified = signup.verified_at ? "" : " This email was not verified.";
+  if (mail === "sent") return `Approved ${signup.email}. An email telling them they can sign up was sent.${unverified}`;
+  if (mail === "already_approved") return `${signup.email} was already approved. No new email was sent.${unverified}`;
+  return `Approved ${signup.email}, so they can sign up, but the email could not be sent. They were not told: let them know another way.${unverified}`;
 }
 
 export type Overview = {
