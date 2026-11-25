@@ -1350,7 +1350,7 @@ function Detail({
 
       <div className="flex flex-wrap items-center gap-3 border-t border-ink/10 pt-4">
         {isOpen ? (
-          <button id="mark-done" type="button" className="btn btn-secondary btn-sm" onClick={() => onDone(item)}>
+          <button id="mark-done" type="button" className="btn btn-secondary btn-sm" onClick={() => onDone(dm ? latest : item)}>
             Mark done
           </button>
         ) : (
