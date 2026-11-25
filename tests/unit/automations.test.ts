@@ -33,6 +33,9 @@ import {
   templates,
   TRIGGERS,
   triggers,
+  effectFits,
+  isActivity,
+  whyNot,
   type Automation,
   type Run,
   type Draft,
@@ -193,7 +196,12 @@ describe("triggers", () => {
       const c = triggers[t];
       return [c.keywords, c.posts, c.firstPerAuthor, c.firstMessage, c.publicReply];
     };
-    expect(TRIGGERS).toEqual(["comment_received", "dm_received", "mention_received", "new_follower", "story_reply", "story_mention", "button_clicked"]);
+    expect(TRIGGERS).toEqual(["comment_received", "dm_received", "mention_received", "new_follower", "like_received", "repost_received", "story_reply", "story_mention", "button_clicked"]);
+    // A like or repost names posts but has no text, no "first" and nothing to reply under.
+    expect([triggers.like_received, triggers.repost_received].map((c) => [c.keywords, c.posts, c.firstPerAuthor, c.firstMessage, c.publicReply, c.text])).toEqual([[false, true, false, false, false, false], [false, true, false, false, false, false]]);
+    expect(triggers.like_received.note).toContain("Bluesky only");
+    expect(triggers.repost_received.networks).toEqual(["bluesky"]);
+    expect(TRIGGERS.filter(isActivity)).toEqual(["like_received", "repost_received"]);
     expect(row("button_clicked")).toEqual([false, false, false, false, false]);
     expect(triggers.button_clicked.payloads).toBe(true);
     expect(triggers.button_clicked.note).toContain("Facebook and Instagram only");
@@ -678,7 +686,7 @@ describe("waiting for a reply and the steps that send nothing", () => {
 
   it("counts a mail, a hide or a like as doing something, once each, and hide and like for comments only", () => {
     expect(flowProblems([newStep("hide_comment")], "comment_received")).toEqual([]);
-    expect(flowProblems([newStep("hide_comment")], "dm_received").map((p) => p.text)).toContain("Hiding and liking work on comments only.");
+    expect(flowProblems([newStep("hide_comment")], "dm_received").map((p) => p.text)).toContain("Hiding works on comments, and liking and reposting on comments and mentions. Remove those steps.");
     expect(flowProblems([newStep("notify_team"), newStep("notify_team"), dm()], "dm_received").map((p) => p.text)).toContain("Mail your team can be in a flow once.");
     expect(flowProblems([newStep("stop_automations")], "dm_received")).toHaveLength(1);
   });
@@ -725,6 +733,43 @@ describe("the link rule, the mood and the extra actions of one reply", () => {
     expect(conditionNotes(saved!.conditions)).toEqual(["Only text without a link", "Mood: positive"]);
     const moved = changeTrigger(d, "new_follower");
     expect(moved.draft).toMatchObject({ hasLink: "any", sentiment: [], also: [] });
-    expect(moved.dropped).toEqual(expect.arrayContaining(["the link rule", "the mood rule", "hide and like"]));
+    expect(moved.dropped).toEqual(expect.arrayContaining(["the link rule", "the mood rule", "hide, like and repost"]));
+  });
+});
+
+describe("like, repost and follow back", () => {
+  it("fits each action to the triggers that can do it", () => {
+    expect(effectFits("hide_comment", "comment_received")).toBe(true);
+    expect(effectFits("hide_comment", "mention_received")).toBe(false);
+    expect(effectFits("like_comment", "mention_received")).toBe(true);
+    expect(effectFits("repost_comment", "like_received")).toBe(false);
+    expect(effectFits("follow_back", "like_received")).toBe(true);
+    expect(effectFits("notify_team", "dm_received")).toBe(true);
+  });
+
+  it("sends them in the form's order, and drops the ones a trigger cannot take", () => {
+    const d: Draft = { ...full, dm: "Hi", tags: ["vip"], also: ["notify_team", "like_comment", "repost_comment", "follow_back", "stop_automations"] };
+    expect(automationInput(d, scope, uris).actions?.map((a) => a.type)).toEqual(["send_dm", "reply_publicly", "tag_contact", "notify_team", "like_comment", "repost_comment", "follow_back", "stop_automations"]);
+    // Nobody to message or tag behind a like: the DM, the tag and the post actions go, and they are named.
+    const moved = changeTrigger(d, "like_received");
+    expect(moved.dropped).toEqual(expect.arrayContaining(["DM", "tags", "hide, like and repost"]));
+    expect(automationInput(moved.draft, scope, uris).actions?.map((a) => a.type)).toEqual(["notify_team", "follow_back", "stop_automations"]);
+    // Even a draft that still holds them sends none.
+    expect(automationInput({ ...moved.draft, dm: "Hi", tags: ["vip"] }, scope, uris).actions?.map((a) => a.type)).toEqual(["notify_team", "follow_back", "stop_automations"]);
+  });
+
+  it("says what a flow cannot hold behind a like", () => {
+    const msg = (steps: StepDraft[], t: "like_received" | "comment_received") => flowProblems(steps, t).map((p) => p.text);
+    expect(msg([newStep("follow_back"), newStep("notify_team")], "like_received")).toEqual([]);
+    expect(msg([newStep("send_dm", "Hi"), newStep("follow_back")], "like_received")).toEqual(["A like or repost has nobody to message or tag. Remove the message, tag and reply steps."]);
+    expect(msg([newStep("follow_back"), newStep("wait_for_reply"), newStep("notify_team")], "like_received")).toHaveLength(1);
+    expect(msg([newStep("like_comment")], "like_received")[0]).toContain("liking and reposting on comments and mentions");
+    expect(msg([newStep("repost_comment"), newStep("follow_back")], "comment_received")).toEqual([]);
+  });
+
+  it("words why an automation did not run", () => {
+    expect(whyNot("wrong_post")).toContain("posts this automation is limited to");
+    expect(whyNot("stopped_by_other")).toContain("stops the newer ones");
+    expect(whyNot("a_new_one")).toBe("a new one");
   });
 });

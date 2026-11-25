@@ -31,11 +31,11 @@ export const features: Feature[] = [
       {
         heading: "Triggers and flows",
         bullets: [
-          "Triggers: a comment keyword, a DM keyword, a first message (welcome), a new follower (Bluesky), a mention, a story reply, a story mention (Instagram, in testing) and a button tap.",
+          "Triggers: a comment keyword, a DM keyword, a first message (welcome), a new follower, a like of your post, a repost of your post (those three on Bluesky), a mention, a story reply, a story mention (Instagram, in testing) and a button tap. A like or repost trigger can be limited to the posts you name.",
           "Conditions: the accounts, a set or only the posts you name, keywords, a person's first comment or message, weekdays and hours in your time zone, a text with or without a link, and a question or a positive or negative mood (read by AI).",
           "A flow runs several steps in turn, with waits and buttons. It can wait for the person to answer before it goes on, and stops if they never do.",
           "A step can write its reply with AI from your prompt, using your own AI key or the AI replies that come with the Scheduler and Automation plan. It never adds a link or @handle your prompt does not hold.",
-          "An automation can also tag the contact, so you can find those people later or send them a broadcast. Besides replying it can mail your team, assign the conversation, hide or like a comment (Facebook and Instagram) and keep newer automations off the same item. Hide comments that carry a link, and spam never shows.",
+          "An automation can also tag the contact, so you can find those people later or send them a broadcast. Besides replying it can mail your team, assign the conversation, hide or like a comment (Facebook and Instagram), like, repost or follow back on Bluesky and keep newer automations off the same item. Hide comments that carry a link, and spam never shows.",
         ],
       },
       {
@@ -57,7 +57,8 @@ export const features: Feature[] = [
           "Facebook and Instagram: a private reply goes within 7 days of the comment and only one per comment; any other message within 24 hours of the person's last, and their answer starts a new 24 hours. An Instagram DM is at most 1000 bytes. A person answering by hand can use Meta's Human Agent tag for up to 7 days once the app holds that feature; an automation never does.",
           "A send a network refused for rate limiting went nowhere, so a flow tries it again by itself and you can retry it from the run. Any other failure is final, so nobody gets a message twice.",
           "On Bluesky there is no private reply to a comment: a DM reaches only people who follow you or take DMs from anyone, so keep a fallback public reply. A new follower follows you, so a welcome DM reaches them unless they closed their DMs. Replies are 300 characters, and Bluesky has no story replies or buttons to tap. A quote of your post counts as a mention.",
-          "Every run is listed with what was sent and, when something was refused, the reason.",
+          "Likes and reposts reach SocialReins as quiet activity within a minute or two. There is nobody to message or tag on a like or repost, so those triggers take only follow back, a mail to your team, an assignment and a stop. Reposting and following back go to Bluesky only, liking to Bluesky and Facebook, and they are never done to your own accounts or to someone you already follow.",
+          "Every run is listed with what was sent and, when something was refused, the reason. When an automation did not run on an item, the reason (a condition that failed, a pause, a cool-down, a limit, another automation that stopped the rest) is kept for 14 days, on the automation's page and under the item in the inbox.",
         ],
       },
       {
@@ -181,7 +182,7 @@ export const groups: Group[] = [
     note: TESTING,
     href: "/features/automations",
     items: [
-      { name: "Triggers", text: "Start from a comment keyword, a DM keyword, a first message, a new follower (Bluesky), a mention, a story reply or a button tap." },
+      { name: "Triggers", text: "Start from a comment keyword, a DM keyword, a first message, a new follower, a like or a repost of your post (those three on Bluesky), a mention, a story reply or a button tap." },
       { name: "Flows", text: "Run several steps in turn, with waits between them and buttons the person can tap." },
       { name: "Tag contacts", text: "Have an automation tag the contact, so you can find those people later or send them a broadcast." },
     ],

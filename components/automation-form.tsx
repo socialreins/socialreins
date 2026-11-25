@@ -10,6 +10,8 @@ import {
   draftOf,
   duplicateDraft,
   EFFECTS,
+  effectFits,
+  isActivity,
   flowProblems,
   MAX_TAG_ACTIONS,
   limitOf,
@@ -48,7 +50,9 @@ const AUTOMATED = ["bluesky", "facebook", "instagram", "x"];
 export const automationMessages: Partial<Record<Failure, ReactNode>> = {
   unsupported_account: "Automations run only on Bluesky, Facebook, Instagram and X accounts. Remove the others.",
   x_unsupported_trigger: "X has no follows, story replies or buttons to trigger on. Pick a comment, a mention or a DM, or leave the X account out.",
-  bluesky_unsupported_trigger: "Bluesky has no story replies or buttons to tap. Pick a comment, a mention, a DM or a follow, or leave the Bluesky account out.",
+  bluesky_unsupported_trigger: "Bluesky has no story replies or buttons to tap. Pick a comment, a mention, a DM, a follow, a like or a repost, or leave the Bluesky account out.",
+  bluesky_only_trigger: "Likes and reposts come only from Bluesky. Limit this to a Bluesky account, or pick another trigger.",
+  bluesky_only_action: "Reposting and following back go to Bluesky only. Limit this to a Bluesky account, or remove them.",
   meta_one_private_reply: "Facebook and Instagram allow one private reply per comment. Keep one DM in this flow.",
   meta_reply_window: "Facebook and Instagram take a DM only within 24 hours of the person's message. Shorten the waits.",
   invalid_conditions: "One of the accounts, the set or a post link is no longer valid, a keyword is too long, or a condition does not fit this trigger. Check them and try again.",
@@ -73,6 +77,8 @@ export const triggerIcon: Record<Trigger, IconName> = {
   story_reply: "story",
   story_mention: "story",
   button_clicked: "check",
+  like_received: "heart",
+  repost_received: "repeat",
 };
 
 // What Sam does in the preview, and what Sam writes when no keyword is set.
@@ -84,6 +90,8 @@ const incoming: Record<Trigger, { did: string; text: string | null }> = {
   story_reply: { did: "replied to your story", text: "Wow, where is this?" },
   story_mention: { did: "mentioned you in their story", text: null },
   button_clicked: { did: "tapped a button", text: null },
+  like_received: { did: "liked your post", text: null },
+  repost_received: { did: "reposted your post", text: null },
 };
 
 const leaveQuestion = "Leave without saving? Your changes to this automation will be lost.";
@@ -137,6 +145,8 @@ export function AutomationForm({
   const t = triggers[d.trigger];
   const tokens = t.publicReply ? ["{name}", "{page}"] : ["{name}"];
   const lines = d.posts.split("\n").map((l) => l.trim()).filter(Boolean);
+  // A like or repost has nobody to message and no contact to tag.
+  const nobody = isActivity(d.trigger);
   const hasDm = Boolean(d.dm.trim());
   // brain refuses tags with nothing sent beside them (422 invalid_actions).
   const acts = d.also.some((e) => e !== "stop_automations");
@@ -158,7 +168,7 @@ export function AutomationForm({
     ...(d.flow
       ? problems.map((p) => ({ text: p.step === null ? p.text : `Step ${p.step + 1}: ${p.text}`, field: p.step === null ? "automation-flow-add" : `step-${d.steps[p.step]!.id}-field` }))
       : [
-          ...(hasDm || (t.publicReply && d.publicReply.trim()) ? [] : [{ text: t.publicReply ? "Write a DM text or a public reply." : "Write the DM text.", field: "automation-dm" }]),
+          ...(hasDm || (t.publicReply && d.publicReply.trim()) || acts ? [] : [{ text: nobody ? "Tick something to do under Also." : t.publicReply ? "Write a DM text or a public reply." : "Write the DM text.", field: nobody ? "automation-also" : "automation-dm" }]),
           ...(templateLength(d.dm) > MAX_DM ? [{ text: "The DM text is too long.", field: "automation-dm" }] : []),
           ...(t.publicReply && templateLength(d.publicReply) > MAX_PUBLIC ? [{ text: "The public reply is too long.", field: "automation-public-reply" }] : []),
         ]),
@@ -507,6 +517,7 @@ export function AutomationForm({
             />
           ) : (
             <>
+              {!nobody && (
               <TextField
                 id="automation-dm"
                 label={t.publicReply ? <>DM text <span className="font-normal text-ink-soft">(optional when it replies publicly)</span></> : "DM text"}
@@ -524,6 +535,7 @@ export function AutomationForm({
                     : "{name} is their display name, or \"there\" when it has links or symbols. It counts as 64 characters."
                 }
               />
+              )}
               {t.publicReply && (
                 <>
                   <TextField
@@ -558,6 +570,7 @@ export function AutomationForm({
                   </div>
                 </>
               )}
+              {!nobody && (
               <KeywordsField
                 id="automation-tags"
                 label="Tag the contact"
@@ -567,9 +580,10 @@ export function AutomationForm({
                 clean={cleanTag}
                 max={MAX_TAG_ACTIONS}
               />
+              )}
               <fieldset className="grid gap-2">
-                <legend className="label">Also (optional)</legend>
-                {EFFECTS.filter((e) => d.trigger === "comment_received" || (e !== "hide_comment" && e !== "like_comment")).map((e) => (
+                <legend id="automation-also" tabIndex={-1} className="label">Also (optional)</legend>
+                {EFFECTS.filter((e) => effectFits(e, d.trigger)).map((e) => (
                   <label key={e} className="flex items-start gap-2">
                     <input
                       type="checkbox"

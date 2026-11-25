@@ -16,6 +16,7 @@ import {
   filterRuns,
   getAutomation,
   listAutomations,
+  listMisses,
   listRuns,
   retryRun,
   proportions,
@@ -27,9 +28,11 @@ import {
   switchAutomation,
   TEMPLATE_GROUPS,
   templates,
+  whyNot,
   TRIGGERS,
   triggers,
   type Automation,
+  type Miss,
   type Run,
   type RunFilter,
   type Step,
@@ -291,7 +294,7 @@ export function TemplateGallery() {
   );
 }
 
-const triggerShort: Record<Trigger, string> = { comment_received: "Comments", dm_received: "DMs", mention_received: "Mentions", new_follower: "Followers", story_reply: "Story replies", story_mention: "Story mentions", button_clicked: "Button taps" };
+const triggerShort: Record<Trigger, string> = { comment_received: "Comments", dm_received: "DMs", mention_received: "Mentions", new_follower: "Followers", story_reply: "Story replies", story_mention: "Story mentions", like_received: "Likes", repost_received: "Reposts", button_clicked: "Button taps" };
 type ListFilter = "all" | "on" | "off" | Trigger;
 
 // One automation on the list: what starts it, what it does, its switch, its numbers and a menu.
@@ -561,6 +564,8 @@ export function AutomationDetail({ id }: { id: string }) {
   const params = useSearchParams();
   const [a, setA] = useState<Automation | Failure | null>(null);
   const [runs, setRuns] = useState<{ runs: Run[]; next: string | null } | Failure | null>(null);
+  // Recent items it listens for but did not run on, with why (brain keeps them 14 days).
+  const [misses, setMisses] = useState<Miss[] | Failure | null>(null);
   // The list's Edit opens the builder at once (?edit=1), and its warning mark the failed runs (?runs=failed).
   const [editing, setEditing] = useState(params.get("edit") === "1");
   const [filter, setFilter] = useState<RunFilter>(RUN_FILTERS.find((f) => f === params.get("runs")) ?? "all");
@@ -580,6 +585,7 @@ export function AutomationDetail({ id }: { id: string }) {
   useEffect(() => {
     getAutomation(id).then(setA);
     listRuns(id).then((r) => setRuns(isFailure(r) ? r : { runs: r.runs, next: r.next_cursor }));
+    listMisses(id).then((m) => setMisses(isFailure(m) ? m : m.misses));
   }, [id]);
 
   // shortcut: one request per run's item (50 a page), 4 at a time, since brain's runs carry no author; ask brain for it in the run if this gets slow.
@@ -861,9 +867,52 @@ export function AutomationDetail({ id }: { id: string }) {
           </>
         )}
       </section>
+
+      <section aria-labelledby="misses-heading" className="grid grid-cols-[minmax(0,1fr)] gap-4">
+        <h2 id="misses-heading" className={heading}>
+          Items it did not run on
+        </h2>
+        <p className="hint">
+          Recent items this automation listens for but did not match, with why, kept for 14 days. Items it was held back on (paused, cool-down, daily limit) are in the run history as skipped.
+        </p>
+        {misses === null ? (
+          <div role="status" className="h-20 rounded-2xl bg-ink/5 motion-safe:animate-pulse">
+            <span className="sr-only">Loading...</span>
+          </div>
+        ) : isFailure(misses) ? (
+          <p role="alert" className="waitlist-error">
+            This couldn&apos;t be loaded. {problemText(misses)}
+          </p>
+        ) : misses.length === 0 ? (
+          <p className="card p-5 text-ink-soft">Nothing in the last 14 days: every item it listens for ran it, or none came.</p>
+        ) : (
+          <ul aria-label="Items it did not run on" className="card divide-y divide-ink/10">
+            {misses.map((m) => (
+              <li key={m.inbox_item_id} className="grid gap-1 p-4">
+                <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                  <strong>{m.author ?? "Someone"}</strong>
+                  <span className="text-ink-soft">{missKind[m.kind] ?? m.kind}</span>
+                  <time className="text-ink-soft" dateTime={m.created_at}>
+                    {when(m.created_at)}
+                  </time>
+                </p>
+                {m.text && <p className="line-clamp-2 break-words text-ink-soft">{m.text}</p>}
+                <p>
+                  <strong>Not run:</strong> {m.reasons.map(whyNot).join("; ")}
+                </p>
+                <Link href={`/inbox?item=${encodeURIComponent(m.inbox_item_id)}`} className="justify-self-start text-sm font-bold underline decoration-signal decoration-2 underline-offset-4">
+                  Open in inbox
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }
+
+const missKind: Record<string, string> = { comment: "commented", mention: "mentioned you", dm: "sent a DM", follow: "followed you", like: "liked a post", repost: "reposted a post" };
 
 // A new automation starts at the template gallery; a picked template (?template=) opens the builder prefilled,
 // and Duplicate (?from=<id>) opens it as a copy of that automation.
