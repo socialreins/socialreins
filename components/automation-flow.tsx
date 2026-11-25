@@ -9,7 +9,9 @@ import {
   MAX_PROMPT,
   WAIT_UNITS,
   isAi,
+  isEffect,
   isSend,
+  isWait,
   newStep,
   numbered,
   payloadOk,
@@ -23,6 +25,7 @@ import {
   waitMinutes,
   waitText,
   type ButtonDraft,
+  type EffectType,
   type FlowProblem,
   type Step,
   type StepDraft,
@@ -117,7 +120,28 @@ const rail = "relative grid grid-cols-[2rem_minmax(0,1fr)] gap-x-3 before:absolu
 const node = "relative grid size-8 place-items-center rounded-full bg-paper text-ink-soft shadow-[0_0_0_1px_var(--edge)]";
 // A wait sits on the line itself.
 const pill = "relative col-span-2 flex items-center gap-2 justify-self-start rounded-2xl bg-paper px-3 text-sm shadow-[0_0_0_1px_var(--edge)]";
-export const stepIcon: Record<Step["type"], IconName> = { send_dm: "send", reply_publicly: "comment", ai_send_dm: "send", ai_reply_publicly: "comment", wait: "clock", tag_contact: "tag" };
+export const stepIcon: Record<Step["type"], IconName> = {
+  send_dm: "send",
+  reply_publicly: "comment",
+  ai_send_dm: "send",
+  ai_reply_publicly: "comment",
+  wait: "clock",
+  wait_for_reply: "clock",
+  tag_contact: "tag",
+  notify_team: "mention",
+  assign: "user",
+  hide_comment: "comment",
+  like_comment: "check",
+  stop_automations: "close",
+};
+// What a step that sends nothing does, in a line.
+export const effectHint: Record<EffectType | "assign", string> = {
+  notify_team: "Emails the owners and admins of the team about it, with a link to the inbox. At most 20 emails a day.",
+  assign: "Assigns it to a teammate. Set through the API; the builder keeps it as it is.",
+  hide_comment: "Hides the comment on Facebook or Instagram: only its author and your account see it. Good for spam: pair it with the link rule.",
+  like_comment: "Likes the comment as your Page (Facebook only; Instagram has no like for a comment).",
+  stop_automations: "Newer automations do not run on this item once this one has.",
+};
 // One line on who pays for an AI send, under its prompt.
 export const AI_HINT = "The AI writes it from this prompt, their message and their name, with no links or @handles but yours. Your own AI key (Billing) has no limit; without one, your plan's 200 AI replies a month come first, then AI credits.";
 
@@ -143,10 +167,10 @@ export function FlowTimeline({ icon, trigger, steps, fallback }: { icon: IconNam
       <ol aria-label="Steps">
         {steps.map((s, i) => (
           <li key={i} className={`${rail} ${i === steps.length - 1 ? "before:hidden" : "pb-4"}`}>
-            {s.type === "wait" ? (
+            {s.type === "wait" || s.type === "wait_for_reply" ? (
               <span className={`${pill} py-1 font-bold`}>
                 <Icon name="clock" className="size-4 text-ink-soft" />
-                Wait {waitText(s.minutes)}
+                {s.type === "wait" ? "Wait" : "Wait for their reply, up to"} {waitText(s.minutes)}
               </span>
             ) : (
               <>
@@ -155,7 +179,9 @@ export function FlowTimeline({ icon, trigger, steps, fallback }: { icon: IconNam
                 </span>
                 <div className="grid min-w-0 gap-1 pt-1">
                   <strong className="text-sm">{stepName[s.type]}</strong>
-                  <span className="whitespace-pre-wrap break-words">{s.type === "tag_contact" ? s.tag : "prompt" in s ? `Prompt: ${s.prompt}` : s.text}</span>
+                  <span className="whitespace-pre-wrap break-words">
+                    {s.type === "tag_contact" ? s.tag : "prompt" in s ? `Prompt: ${s.prompt}` : "text" in s ? s.text : effectHint[s.type]}
+                  </span>
                   {s.type === "send_dm" && s.buttons && s.buttons.length > 0 && (
                     <ul aria-label="Buttons" className="flex flex-wrap gap-1.5">
                       {s.buttons.map((b) => (
@@ -219,7 +245,7 @@ export function FlowEditor({
     document.getElementById(`step-${s!.id}-${by < 0 !== edge ? "up" : "down"}`)?.focus();
   }
   // At the end, or before the step now at `at`.
-  function add(type: Step["type"], at = steps.length) {
+  function add(type: StepDraft["type"], at = steps.length) {
     const s = newStep(type);
     flushSync(() => onChange([...steps.slice(0, at), s, ...steps.slice(at)]));
     settle(s.id);
@@ -232,7 +258,7 @@ export function FlowEditor({
     document.getElementById("automation-flow-add")?.focus();
   }
 
-  const types = ["send_dm", ...(t.publicReply ? (["reply_publicly"] as const) : []), "ai_send_dm", ...(t.publicReply ? (["ai_reply_publicly"] as const) : []), "wait", "tag_contact"] as const;
+  const types = ["send_dm", ...(t.publicReply ? (["reply_publicly"] as const) : []), "ai_send_dm", ...(t.publicReply ? (["ai_reply_publicly"] as const) : []), "wait", "wait_for_reply", "tag_contact", "notify_team", ...(trigger === "comment_received" ? (["hide_comment", "like_comment"] as const) : []), "stop_automations"] as const;
   const whole = problems.filter((p) => p.step === null);
   const inSteps = problems.filter((p) => p.step !== null && steps[p.step]);
   return (
@@ -257,15 +283,15 @@ export function FlowEditor({
             );
             return (
               <li key={s.id} id={`step-${s.id}`} aria-label={`Step ${i + 1}: ${stepName[s.type]}`} className={rail}>
-                {s.type === "wait" ? (
+                {isWait(s) ? (
                   <div className={`${pill} flex-wrap gap-1.5 py-1 pr-1 [&_.btn]:px-1.5`}>
                     <Icon name="clock" className="size-4 text-ink-soft" />
-                    <span className="font-bold">Wait</span>
+                    <span className="font-bold">{s.type === "wait" ? "Wait" : "Wait for their reply, up to"}</span>
                     <input
                       id={field}
                       inputMode="numeric"
                       className="field w-12 px-1 py-0.5 text-center"
-                      aria-label="Wait for"
+                      aria-label={s.type === "wait" ? "Wait for" : "Wait for their reply up to"}
                       value={s.amount}
                       onChange={(e) => patch(i, { amount: e.target.value })}
                       aria-describedby={`${field}-hint`}
@@ -277,7 +303,9 @@ export function FlowEditor({
                       ))}
                     </select>
                     <span id={`${field}-hint`} className="sr-only">
-                      1 minute to 7 days. The next step goes out when the time is up.
+                      {s.type === "wait"
+                        ? "1 minute to 7 days. The next step goes out when the time is up."
+                        : "1 minute to 7 days. The next step goes out as soon as they write back; if they do not, the flow ends."}
                     </span>
                     {controls}
                   </div>
@@ -294,7 +322,9 @@ export function FlowEditor({
                         {controls}
                       </div>
 
-                      {s.type === "tag_contact" ? (
+                      {isEffect(s) ? (
+                        <p className="hint">{effectHint[s.type]}</p>
+                      ) : s.type === "tag_contact" ? (
                         <div className="grid gap-1.5">
                           <label htmlFor={field} className="label">
                             Tag
@@ -403,7 +433,7 @@ export function FlowEditor({
                 )}
 
                 {mine.length > 0 && (
-                  <ul role="alert" className={`waitlist-error relative mt-1.5 grid gap-0.5 bg-paper ${s.type === "wait" ? "col-span-2 justify-self-start py-0.5" : "col-start-2"}`}>
+                  <ul role="alert" className={`waitlist-error relative mt-1.5 grid gap-0.5 bg-paper ${isWait(s) ? "col-span-2 justify-self-start py-0.5" : "col-start-2"}`}>
                     {mine.map((p) => (
                       <li key={p.text}>{p.text}</li>
                     ))}
@@ -477,7 +507,9 @@ export function FlowEditor({
 
       <ul aria-label="Good to know" className="hint grid list-disc gap-1 pl-5">
         <li>A step that can&apos;t be sent ends the flow there. Changing the steps or switching the automation off stops the runs that are waiting.</li>
-        {trigger === "comment_received" && <li>On Facebook and Instagram a flow started by a comment can send only one DM: Meta allows one private reply per comment.</li>}
+        {trigger === "comment_received" && (
+          <li>On Facebook and Instagram a flow started by a comment sends only one DM, the private reply Meta allows per comment, until the person writes back: put a &quot;Wait for their reply&quot; after it to send more.</li>
+        )}
         {trigger !== "new_follower" && <li>On Facebook and Instagram a DM more than 24 hours after the person&apos;s last message is refused, so keep waits short there.</li>}
         {trigger !== "button_clicked" && trigger !== "story_reply" && (
           <li>On Bluesky buttons are shown as numbered lines under the text, and the answer is matched with a &quot;DM keyword&quot; automation.</li>
@@ -492,20 +524,21 @@ export const TagLine = ({ tags }: { tags: string[] }) => <p className="text-cent
 
 // The flow as a chat for someone called Sam: bubbles, buttons as chips and a divider at each wait.
 export function FlowPreview({ steps }: { steps: StepDraft[] }) {
-  const shown = steps.filter((s) => s.type === "wait" || (s.type === "tag_contact" ? cleanTag(s.tag) : s.text.trim()));
+  const shown = steps.filter((s) => isWait(s) || isEffect(s) || (s.type === "tag_contact" ? cleanTag(s.tag) : s.text.trim()));
   if (!shown.some(isSend)) return <p className="text-sm text-ink-soft">Your flow shows here as you write, for someone called Sam.</p>;
   return (
     <>
       {shown.map((s) => {
-        if (s.type === "wait") {
+        if (isWait(s)) {
           const minutes = waitMinutes(s.amount, s.unit);
           return (
             <p key={s.id} className="flex items-center gap-2 text-xs font-bold text-ink-soft before:h-px before:flex-1 before:bg-ink/15 after:h-px after:flex-1 after:bg-ink/15">
               <Icon name="clock" className="size-3.5" />
-              Wait {minutes === null ? "..." : waitText(minutes)}
+              {s.type === "wait" ? "Wait" : "Sam replies, or after at most"} {minutes === null ? "..." : waitText(minutes)}
             </p>
           );
         }
+        if (isEffect(s)) return <p key={s.id} className="text-center text-xs font-bold text-ink-soft">{stepName[s.type]}</p>;
         if (s.type === "tag_contact") return <TagLine key={s.id} tags={[cleanTag(s.tag)]} />;
         const buttons = s.type === "send_dm" ? s.buttons.filter((b) => b.label.trim()) : [];
         if (isAi(s.type))

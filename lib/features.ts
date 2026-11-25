@@ -31,11 +31,12 @@ export const features: Feature[] = [
       {
         heading: "Triggers and flows",
         bullets: [
-          "Triggers: a comment keyword, a DM keyword, a first message (welcome), a new follower (Bluesky), a mention, a story reply and a button tap.",
-          "A flow runs several steps in turn, with waits and buttons.",
-          "On Threads, only a reply or a mention can start one, and the answer is a public reply: Threads has no DMs and no private reply.",
+          "Triggers: a comment keyword, a DM keyword, a first message (welcome), a new follower (Bluesky), a mention, a story reply, a story mention (Instagram, in testing) and a button tap.",
+          "Conditions: the accounts, a set or only the posts you name, keywords, a person's first comment or message, weekdays and hours in your time zone, a text with or without a link, and a question or a positive or negative mood (read by AI).",
+          "A flow runs several steps in turn, with waits and buttons. It can wait for the person to answer before it goes on, and stops if they never do.",
+          "On Threads, only a reply or a mention can start one, and the answer is a public reply (or hiding the reply): Threads has no DMs and no private reply.",
           "A step can write its reply with AI from your prompt, using your own AI key or the AI replies that come with the Scheduler and Automation plan. It never adds a link or @handle your prompt does not hold.",
-          "An automation can also tag the contact, so you can find those people later or send them a broadcast.",
+          "An automation can also tag the contact, so you can find those people later or send them a broadcast. Besides replying it can mail your team, assign the conversation, hide or like a comment (Facebook and Instagram) and keep newer automations off the same item. Hide comments that carry a link, and spam never shows.",
         ],
       },
       {
@@ -46,14 +47,16 @@ export const features: Feature[] = [
           "Write the DM, and add a public reply if you want one. {name} in the text becomes the commenter's name, and {page} the link to the post's public page.",
           "Add a public reply to fall back on when the network refuses the DM, for example when the person only takes DMs from accounts they follow. X has no private reply to a comment, so there the fallback is the way to answer.",
           "Answer each person once, or every time they comment.",
-          "Test it before it goes live: type a sample comment and see what it would match and send, AI text included. Nothing is sent. An AI step is written for real and counts toward your AI replies.",
+          "Test it before it goes live: type a sample comment and see what it would match and send, AI text included. Nothing is sent. An AI step is written for real and counts toward your AI replies. On Facebook and Instagram the test applies Meta's own rules to a comment or message of any age, so you see the refusal a real run would get.",
         ],
       },
       {
         heading: "Limits",
         bullets: [
           "A comment is acted on once and never tried again, so nobody gets the same message twice.",
-          "A team's automations can answer 500 comments a day.",
+          "A team's automations can answer 500 comments a day. Each automation can have its own daily limit and a cool-down so one person cannot trigger it again and again, and one switch on the Team page pauses every automation.",
+          "Facebook and Instagram: a private reply goes within 7 days of the comment and only one per comment; any other message within 24 hours of the person's last, and their answer starts a new 24 hours. An Instagram DM is at most 1000 bytes. A person answering by hand can use Meta's Human Agent tag for up to 7 days once the app holds that feature; an automation never does.",
+          "A send a network refused for rate limiting went nowhere, so a flow tries it again by itself and you can retry it from the run. Any other failure is final, so nobody gets a message twice.",
           "On Bluesky there is no private reply to a comment: a DM reaches only people who follow you or take DMs from anyone, so keep a fallback public reply. A new follower follows you, so a welcome DM reaches them unless they closed their DMs. Replies are 300 characters, and Bluesky has no story replies or buttons to tap. A quote of your post counts as a mention.",
           "Every run is listed with what was sent and, when something was refused, the reason.",
         ],
