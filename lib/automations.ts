@@ -80,7 +80,7 @@ export type RunPage = { runs: Run[]; next_cursor: string | null };
 const enc = encodeURIComponent;
 
 // "Test this automation": what brain says one would do with a sample from a stranger, sending and storing nothing.
-export type TestSample = { account_id: string; text: string; author_name?: string; post_remote_id?: string; button_payload?: string };
+export type TestSample = { account_id: string; text: string; author_name?: string; post_remote_id?: string; button_payload?: string; author_can_dm?: boolean };
 export type PlannedStatus = "would_send" | "would_skip" | "would_fail" | "would_tag" | "would_wait" | "not_reached";
 export type PlannedStep = {
   type: ActionResult["type"] | "wait";
@@ -166,7 +166,7 @@ export const triggers: Record<Trigger, Capability> = {
     firstMessage: false,
     publicReply: false,
     payloads: false,
-    note: "Bluesky only. Each follower gets the DM once, and only if they take DMs from accounts they don't follow.",
+    note: "Bluesky only. Each follower gets the DM once. They follow you, so it reaches them unless they have DMs closed.",
     networks: ["bluesky"],
   },
   story_reply: {
@@ -696,7 +696,7 @@ export const reasonText: Record<string, string> = {
 };
 // Why it happened and what helps, for the reasons that have more to say than their name.
 export const reasonWhy: Record<string, string> = {
-  dm_not_allowed: "This person does not accept DMs from accounts they don't follow. On X there is no private reply to a comment: they must follow you or have DMs open, so keep a fallback public reply.",
+  dm_not_allowed: "This person does not accept DMs from accounts they don't follow. On X and Bluesky there is no private reply to a comment: they must follow you or have DMs open, so keep a fallback public reply.",
   outside_window: "Meta closes a conversation 24 hours after the person's last message. A shorter wait in the flow keeps it open.",
   already_replied: "Meta allows one private reply per comment, and this comment already had it.",
   no_dm_access: "The account's Bluesky app password was made without access to DMs. Make one that allows DMs and reconnect.",
@@ -725,6 +725,7 @@ export const mismatchText: Record<string, string> = {
 export const blockText: Record<string, string> = {
   unsupported_account: "Automations run only on Bluesky, Facebook, Instagram and X accounts",
   x_unsupported_trigger: "X has no follows, story replies or buttons to trigger on: use a comment, a mention or a DM",
+  bluesky_unsupported_trigger: "Bluesky has no story replies or buttons to tap: use a comment, a mention, a DM or a follow",
   meta_one_private_reply: "Facebook and Instagram allow one private reply per comment",
   meta_reply_window: "Facebook and Instagram take a DM only within 24 hours of the person's message (7 days for a comment)",
   no_public_page: "A text holds {page}, and this post has no open public page, so it would not run",
