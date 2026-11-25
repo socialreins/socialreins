@@ -13,32 +13,39 @@ import {
   type ItemActions,
   type Item,
 } from "@/lib/inbox";
-import type { Failure } from "@/lib/auth";
 import { isFailure, problemText } from "@/components/team-ui";
 
-type Read = { id: string; actions: ItemActions | Failure };
+type Read = { id: string; actions: ItemActions | null; failed: boolean };
 
-// The account's live state toward an item and what was done from here, read again after each action.
+// The account's live state toward an item and what was done from here, read again after each action. A read that fails keeps the last good state.
 export function useItemActions(item: Pick<Item, "id" | "kind" | "platform">) {
-  const wanted = item.platform === "bluesky" && item.kind !== "dm" ? item.id : null;
+  const wanted = item.platform === "bluesky" ? item.id : null;
   const [read, setRead] = useState<Read | null>(null);
   const [n, setN] = useState(0);
   useEffect(() => {
     if (!wanted) return;
     let live = true;
-    getActions(wanted).then((actions) => live && setRead({ id: wanted, actions }));
+    getActions(wanted).then((r) => {
+      if (!live) return;
+      setRead((prev) => {
+        const kept = prev?.id === wanted ? prev.actions : null;
+        return isFailure(r) ? { id: wanted, actions: kept, failed: true } : { id: wanted, actions: r, failed: false };
+      });
+    });
     return () => {
       live = false;
     };
   }, [wanted, n]);
-  const actions = read?.id === wanted && read ? read.actions : null;
-  return { actions: actions && !isFailure(actions) ? actions : null, wanted: wanted !== null, reload: () => setN((x) => x + 1) };
+  const here = read?.id === wanted ? read : null;
+  return { actions: here?.actions ?? null, loading: wanted !== null && here === null, failed: here?.failed ?? false, wanted: wanted !== null, reload: () => setN((x) => x + 1) };
 }
 
 type Outcome = { ok: string } | { error: ReactNode };
 // Sends one action and says how it went; a SendError carries brain's own words.
-async function perform(id: string, input: ActionInput): Promise<Outcome> {
+async function perform(id: string, input: ActionInput): Promise<Outcome & { unsure?: boolean }> {
   const r = await runAction(id, input);
+  // No clear answer from brain: it may have gone through, so the state is read again and the person is told.
+  if (r === "timeout" || r === "error") return { error: "No clear answer from Bluesky, so this may have gone through. The state is read again: check it before trying again.", unsure: true };
   if (typeof r === "string") return { error: problemText(r) };
   if ("message" in r) return { error: r.message };
   return { ok: actionDone[input.action] };
@@ -46,12 +53,13 @@ async function perform(id: string, input: ActionInput): Promise<Outcome> {
 
 const note = "text-sm";
 
-export function ItemActionsMenu({ item, canManage, state, reload }: { item: Item; canManage: boolean; state: ItemActions | null; reload: () => void }) {
+export function ItemActionsMenu({ item, canManage, state, loading, failed, reload }: { item: Item; canManage: boolean; state: ItemActions | null; loading: boolean; failed: boolean; reload: () => void }) {
   const [asking, setAsking] = useState<ActionButton | "report" | null>(null);
   const [busy, setBusy] = useState(false);
   const [said, setSaid] = useState<Outcome | null>(null);
   const [reason, setReason] = useState({ type: "spam", text: "", account: false });
   const askRef = useRef<HTMLDivElement>(null);
+  const summaryRef = useRef<HTMLElement>(null);
   useEffect(() => {
     if (asking) askRef.current?.querySelector<HTMLElement>("button, select")?.focus();
   }, [asking]);
@@ -68,10 +76,13 @@ export function ItemActionsMenu({ item, canManage, state, reload }: { item: Item
     const r = await perform(item.id, input);
     setBusy(false);
     setSaid(r);
+    // The button that was pressed goes with the confirmation: focus returns to the section's heading.
     if ("ok" in r) {
       setAsking(null);
-      reload();
+      summaryRef.current?.focus();
     }
+    // A refusal changed nothing; a success or an unsure answer may have, so the state is read again.
+    if ("ok" in r || "unsure" in r) reload();
   }
   function report(e: FormEvent) {
     e.preventDefault();
@@ -81,17 +92,33 @@ export function ItemActionsMenu({ item, canManage, state, reload }: { item: Item
 
   return (
     <details className="group text-sm">
-      <summary className="cursor-pointer select-none font-bold text-ink-soft hover:text-ink">Actions on Bluesky</summary>
+      <summary ref={summaryRef} className="cursor-pointer select-none font-bold text-ink-soft hover:text-ink">
+        Actions on Bluesky
+      </summary>
       <div className="mt-2 grid gap-2">
+        {loading && (
+          <p role="status" className="text-xs text-ink-soft">
+            Reading the current state from Bluesky...
+          </p>
+        )}
+        {failed && !state && (
+          <p role="alert" className="waitlist-error">
+            The current state could not be read from Bluesky.{" "}
+            <button type="button" className="font-bold underline" onClick={reload}>
+              Retry
+            </button>
+          </p>
+        )}
+        {failed && state && <p className="text-xs text-ink-soft">The state could not be read again, so it may be out of date.</p>}
         {state?.viewer === null && <p className="text-xs text-ink-soft">The current state could not be read from Bluesky, so buttons show their first choice.</p>}
         <div className="flex flex-wrap gap-2">
-          {buttons.map((b) => (
-            <button key={b.action} type="button" className={`btn btn-secondary btn-sm ${b.danger ? "btn-danger" : ""}`} disabled={busy} onClick={() => { setSaid(null); setAsking(b); }}>
+          {(state || !failed) && buttons.map((b) => (
+            <button key={b.action} type="button" className={`btn btn-secondary btn-sm ${b.danger ? "btn-danger" : ""}`} disabled={busy || loading} onClick={() => { setSaid(null); setAsking(b); }}>
               {b.label}
             </button>
           ))}
-          {canManage && (
-            <button type="button" className="btn btn-secondary btn-sm btn-danger" disabled={busy} onClick={() => { setSaid(null); setAsking("report"); }}>
+          {canManage && (state || !failed) && (
+            <button type="button" className="btn btn-secondary btn-sm btn-danger" disabled={busy || loading} onClick={() => { setSaid(null); setAsking("report"); }}>
               Report
             </button>
           )}
@@ -172,24 +199,40 @@ export function DeleteReply({ itemId, replyId, state, reload }: { itemId: string
   const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<ReactNode>(null);
-  if (state?.log.some((l) => l.action === "delete_reply" && l.status === "done" && l.reply_id === replyId)) return <span className="text-xs text-ink-soft">Deleted from Bluesky</span>;
+  const [deleted, setDeleted] = useState(false);
+  if (deleted || state?.log.some((l) => l.action === "delete_reply" && l.status === "done" && l.reply_id === replyId))
+    return (
+      <span role="status" className="text-xs text-ink-soft">
+        Deleted from Bluesky
+      </span>
+    );
   async function go() {
     setBusy(true);
+    setProblem(null);
     const r = await perform(itemId, { action: "delete_reply", reply_id: replyId });
     setBusy(false);
     if ("error" in r) setProblem(r.error);
     else {
+      setDeleted(true);
       setAsking(false);
-      reload();
     }
+    if ("ok" in r || "unsure" in r) reload();
   }
   return asking ? (
     <span className="flex flex-wrap items-center justify-end gap-x-2 text-xs">
       <span>Delete this reply from Bluesky?</span>
-      <button type="button" className="font-bold underline decoration-signal-deep decoration-2 underline-offset-4" disabled={busy} onClick={go}>
+      <button type="button" autoFocus className="font-bold underline decoration-signal-deep decoration-2 underline-offset-4" disabled={busy} onClick={go}>
         {busy ? "Deleting..." : "Yes, delete"}
       </button>
-      <button type="button" className="font-bold text-ink-soft hover:text-ink" disabled={busy} onClick={() => setAsking(false)}>
+      <button
+        type="button"
+        className="font-bold text-ink-soft hover:text-ink"
+        disabled={busy}
+        onClick={() => {
+          setProblem(null);
+          setAsking(false);
+        }}
+      >
         Cancel
       </button>
       {problem && (
@@ -199,7 +242,7 @@ export function DeleteReply({ itemId, replyId, state, reload }: { itemId: string
       )}
     </span>
   ) : (
-    <button type="button" className="text-xs font-bold text-ink-soft hover:text-signal-deep" onClick={() => setAsking(true)}>
+    <button type="button" className="text-xs font-bold text-ink-soft hover:text-signal-deep" aria-label="Delete this reply from Bluesky" onClick={() => setAsking(true)}>
       Delete
     </button>
   );

@@ -1100,7 +1100,7 @@ function Detail({
           )}
         </div>
         <Status problem={meta.problem} done={meta.done} overrides={metaMessages} />
-        {acts.wanted && <ItemActionsMenu item={item} canManage={canManage} state={acts.actions} reload={acts.reload} />}
+        {acts.wanted && <ItemActionsMenu item={item} canManage={canManage} state={acts.actions} loading={acts.loading} failed={acts.failed} reload={acts.reload} />}
       </header>
 
       {/* A conversation scrolls in its own box on every screen, so it can open at the newest message. */}
