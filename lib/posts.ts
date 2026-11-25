@@ -871,7 +871,7 @@ export function overallStatus(members: Post[]): Overall {
   if (members.every((m) => m.status === "deleted")) return "deleted";
   const live = members.filter((m) => m.status !== "deleted");
   const failed = (m: Post) => m.status === "failed" || m.targets.some((t) => t.status === "failed");
-  const worked = (m: Post) => m.status === "published" && m.targets.some((t) => t.status === "published" || t.status === "deleted");
+  const worked = (m: Post) => m.targets.some((t) => t.status === "published" || t.status === "deleted");
   const bad = live.some(failed);
   const good = live.some(worked);
   return bad && good ? "partial" : bad ? "failed" : "published";
@@ -883,21 +883,23 @@ const MAY_HAVE_POSTED = ["may have posted", "may still post", "may be live"];
 export const mayHavePosted = (error: string | null | undefined) => !!error && MAY_HAVE_POSTED.some((p) => error.includes(p));
 // Whether Retry can send a failed target again (brain's `retryable`): it failed before anything went out, or midway
 // through a thread, and the platform did not say it may have posted.
-export const canRetry = (t: Target, p: Pick<Post, "thread">) =>
-  t.status === "failed" && (!t.remote_id || (t.parts ?? []).length < (p.thread ?? []).length) && !mayHavePosted(t.error);
+export const canRetry = (t: Target, p: Pick<Post, "thread" | "status">) =>
+  (p.status === "published" || p.status === "failed") && t.status === "failed" && (!t.remote_id || (t.parts ?? []).length < (p.thread ?? []).length) && !mayHavePosted(t.error);
 
 // What to do about a failed target, in plain words, from what brain's error says. `link` names where in the app to go.
 export type Advice = { text: string; link?: "accounts" };
 export function failureAdvice(t: Pick<Target, "error" | "retry_at" | "retried">, retryable: boolean, zone: string): Advice {
   const e = (t.error ?? "").toLowerCase();
   if (t.retry_at) {
-    const at = new Date(t.retry_at).toLocaleTimeString(undefined, { timeStyle: "short", timeZone: zone });
-    return { text: `SocialReins sends it again by itself at ${at}. You do not need to do anything.` };
+    const at = new Date(t.retry_at).toLocaleString("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: zone });
+    return { text: `SocialReins sends it again by itself on ${at}. You do not need to do anything.` };
   }
   if (mayHavePosted(t.error)) return { text: "Check the account on the network first: the post may be live. If it is not, use Duplicate and publish the copy. Retry is not offered, since it could post twice." };
-  if (/reconnect|expired|token|authori[sz]|permission|revoked|unauthori[sz]ed|\b40[13]\b/.test(e)) return { text: "Reconnect the account on the Accounts page, then Retry.", link: "accounts" };
-  if (/rate limit|too many|\b429\b|try again|daily/.test(e)) return { text: retryable ? "Wait a few minutes, then Retry." : "Try again later with Duplicate." };
-  if (/aspect|too large|too long|size|format|not supported|unsupported|dimension|image|video|media/.test(e)) return { text: "The network refused the content. Use Duplicate, change the text or media as the message says, and publish the copy." };
+  // The network refused the content: sending it again changes nothing.
+  if (/aspect|too large|too long|too many (images|files|characters|hashtags)|size|format|not supported|unsupported|dimension|resolution|duration|\b(image|video|media)\b/.test(e)) return { text: "The network refused the content. Use Duplicate, change the text or media as the message says, and publish the copy." };
+  if (/reconnect|(token|access|password).{0,30}(expired|invalid|revoked|denied)|revoked|unauthori[sz]ed|\b401\b|\b403\b|permission/.test(e)) return { text: "Reconnect the account on the Accounts page, then Retry.", link: "accounts" };
+  if (/tomorrow|daily (limit|quota)|per day/.test(e)) return { text: retryable ? "The network's daily limit was reached. Retry tomorrow." : "The network's daily limit was reached. Try again tomorrow with Duplicate." };
+  if (/rate.?limit|\b429\b|too many requests|slow down/.test(e)) return { text: retryable ? "Wait a few minutes, then Retry." : "Try again later with Duplicate." };
   return { text: retryable ? `Retry once${t.retried ? " more" : ""}. If it fails again, use Duplicate and check the account on the Accounts page.` : "Use Duplicate, then check the account on the Accounts page." };
 }
 
@@ -905,7 +907,7 @@ export function failureAdvice(t: Pick<Target, "error" | "retry_at" | "retried">,
 // planned, decided on, published or taken down per account, and when it last changed (a failure).
 export type TimelineEvent = { at: string; text: string; tone: "ok" | "bad" | "info" };
 export function timeline(members: Post[], names: { account: (id: string | null) => string; network: (p: Platform) => string }, author?: string): TimelineEvent[] {
-  const first = [...members].sort((a, b) => a.created_at.localeCompare(b.created_at))[0];
+  const first = [...members].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))[0];
   if (!first) return [];
   const out: TimelineEvent[] = [{ at: first.created_at, text: `Created${author ? ` by ${author}` : ""}${members.length > 1 ? ` for ${members.length} networks` : ""}`, tone: "info" }];
   const plan = members.find((m) => m.scheduled_at)?.scheduled_at;
@@ -922,5 +924,5 @@ export function timeline(members: Post[], names: { account: (id: string | null) 
       if (t.retry_at) out.push({ at: t.retry_at, text: `Automatic retry on ${name}`, tone: "info" });
     }
   }
-  return out.sort((a, b) => a.at.localeCompare(b.at));
+  return out.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
 }

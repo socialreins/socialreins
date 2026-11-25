@@ -127,6 +127,8 @@ body { margin: 0; font-family: var(--font-body); font-size: 1.0625rem; line-heig
 .tone[data-status="failed"] { background: #fde2e1; color: #a8160f; }
 .tone[data-status="deleted"] { text-decoration: line-through; }
 .tone[data-status="partial"] { background: #fff1c9; color: #7a4d00; }
+/* A block saying something went wrong, on the post page. */
+.alert-bad { background: #fde2e1; color: #a8160f; }
 .tone[data-status="draft"] { background: transparent; outline: 1.5px dashed color-mix(in srgb, var(--color-ink) 30%, transparent); outline-offset: -1.5px; }
 .tone[data-status="sent"], .tone[data-status="verified"] { background: #e2f2e7; color: #17603a; }
 .tone[data-status="running"], .tone[data-status="approved"] { background: #e3efff; color: #0a4fa8; }
@@ -254,6 +256,7 @@ body { margin: 0; font-family: var(--font-body); font-size: 1.0625rem; line-heig
   .tone:is([data-status="published"], [data-status="sent"], [data-status="verified"], [data-kind="mention"]) { background: rgb(47 158 91 / 0.2); color: #95dcae; }
   .tone:is([data-status="failed"], [data-approval="rejected"]) { background: rgb(214 58 47 / 0.22); color: #ffa39b; }
   .tone:is([data-approval="pending"], [data-status="partial"]) { background: rgb(201 138 0 / 0.22); color: #f2cf7a; }
+  .alert-bad { background: rgb(214 58 47 / 0.22); color: #ffa39b; }
 }
 .dot { width: 0.375rem; height: 0.375rem; border-radius: 999px; background: #a29d98; }
 .dot[data-status="scheduled"] { background: #ff7a45; }

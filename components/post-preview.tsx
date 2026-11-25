@@ -32,13 +32,13 @@ export function Preview({ posts, platform, account, inline }: { posts: ThreadPar
         </h2>
       )}
       {posts.map((p, i) => (
-        <PreviewPost key={i} body={p.body} media={p.media} alt={p.media_alt} platform={platform} account={account} />
+        <PreviewPost key={i} body={p.body} media={p.media} alt={p.media_alt} platform={platform} account={account} inline={inline} />
       ))}
     </section>
   );
 }
 
-function PreviewPost({ body, media, alt = [], platform, account }: { body: string; media: string[]; alt?: string[]; platform: Platform; account?: Connection }) {
+function PreviewPost({ body, media, alt = [], platform, account, inline }: { body: string; media: string[]; alt?: string[]; platform: Platform; account?: Connection; inline?: boolean }) {
   const video = platform === "youtube" ? youtubeText(body) : null;
   const parts = (video ? video.description : body).split(rich);
   return (
@@ -51,7 +51,7 @@ function PreviewPost({ body, media, alt = [], platform, account }: { body: strin
         <div className="grid min-w-0 flex-1 gap-1.5">
           <p className="truncate text-[0.95rem] leading-tight">
             <strong>{account ? accountName(account) : `Your ${platformName(platform)} account`}</strong>{" "}
-            <span className="text-ink-soft">{account?.handle ? `@${account.handle}` : ""} now</span>
+            <span className="text-ink-soft">{account?.handle ? `@${account.handle}` : ""}{inline ? "" : " now"}</span>
           </p>
           {video?.title && <p className="break-words text-[0.95rem] font-bold leading-snug">{video.title}</p>}
           {(video ? video.description : body.trim()) ? (

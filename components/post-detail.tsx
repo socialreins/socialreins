@@ -16,7 +16,7 @@ import { canRetry, charCount, charLimit, failureAdvice, isImageLink, limits, ove
 
 const names = (list: string[]) => new Intl.ListFormat("en", { type: "conjunction" }).format(list.map(platformName));
 // A moment in the set's zone, with the zone's short name ("Nov 25, 2026, 7:11 PM GMT+6").
-export const at = (iso: string, zone: string) => new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", timeZone: zone, timeZoneName: "short" });
+export const at = (iso: string, zone: string) => new Date(iso).toLocaleString("en", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", timeZone: zone, timeZoneName: "short" });
 // Returns focus to the button that opened a confirmation, once it is back.
 const focusAsk = (key: string) => document.querySelector<HTMLButtonElement>(`[data-ask="${key}"]`)?.focus();
 const heading = "font-display text-lg font-extrabold tracking-tight";
@@ -39,7 +39,7 @@ export type DetailProps = {
   onPost: (p: Post) => void;
   onRetry: (p: Pick<Post, "id" | "group_id">) => Promise<unknown>;
   onTakeDown: (p: Post) => Promise<boolean>;
-  onTakeDownAll: () => Promise<unknown>;
+  onTakeDownAll: () => Promise<boolean>;
 };
 
 // The page of a post that can no longer be edited (published, failed, publishing or taken down): what it is, where it
@@ -54,7 +54,7 @@ export function PostDetail({ statusRef, ...d }: DetailProps) {
   const groupId = post.group_id;
   const live = members.filter((m) => m.status === "published" && m.platform !== "tiktok");
   const tiktokUp = members.some((m) => m.status === "published" && m.platform === "tiktok");
-  const failed = members.filter((m) => m.status === "failed" || m.targets.some((t) => t.status === "failed"));
+  const failed = members.filter((m) => m.status !== "deleted" && (m.status === "failed" || m.targets.some((t) => t.status === "failed")));
   const retryable = members.filter((m) => m.targets.some((t) => canRetry(t, m)));
   const waiting = members.some((m) => m.targets.some((t) => t.retry_at));
   const [confirm, setConfirm] = useState<null | "all" | string>(null);
@@ -103,6 +103,7 @@ export function PostDetail({ statusRef, ...d }: DetailProps) {
     if (from) focusAsk(from);
   }
   function openTab(id: string) {
+    setConfirm(null);
     setOpenId(id);
     tabRefs.current[id]?.focus();
   }
@@ -114,7 +115,9 @@ export function PostDetail({ statusRef, ...d }: DetailProps) {
     openTab(members[(next + members.length) % members.length]!.id);
   }
   const showTab = (m: Post) => {
+    setConfirm(null);
     setOpenId(m.id);
+    tabRefs.current[m.id]?.scrollIntoView({ inline: "nearest", block: "nearest" });
     // After the panel has taken the version, so a screen reader lands on what it announces.
     requestAnimationFrame(() => document.getElementById(`${panelId}-panel`)?.focus());
   };
@@ -136,7 +139,10 @@ export function PostDetail({ statusRef, ...d }: DetailProps) {
             className="btn btn-primary btn-sm"
             aria-describedby={q}
             disabled={d.busy !== null}
-            onClick={() => (what === "all" && groupId ? d.onTakeDownAll().then(() => flushSync(() => setConfirm(null))) : takeDown(what === "all" ? live[0]! : what))}
+            onClick={() => (what === "all" && groupId ? d.onTakeDownAll().then((ok) => {
+                  flushSync(() => setConfirm(null));
+                  if (!ok) focusAsk("all");
+                }) : takeDown(what === "all" ? live[0]! : what))}
           >
             {d.busy === "takedown" || d.busy === "takedown-all" ? "Taking down..." : what === "all" && posts.length > 1 ? "Yes, take them all down" : "Yes, take it down"}
           </button>
@@ -223,7 +229,7 @@ export function PostDetail({ statusRef, ...d }: DetailProps) {
             </div>
           </div>
           {failed.length > 0 && overall !== "queued" && (
-            <div role="group" aria-label="Needs attention" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-[#fde2e1] px-3 py-2 text-sm text-[#a8160f] dark:bg-[rgb(214_58_47_/_0.22)] dark:text-[#ffa39b]">
+            <div role="group" aria-label="Needs attention" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg alert-bad px-3 py-2 text-sm">
               <Icon name="warning" className="size-4 shrink-0" />
               <span className="font-bold">{failed.length === members.length && members.length === 1 ? "This post did not go out." : `Did not go out on ${names(failed.map((m) => m.platform))}.`}</span>
               {tabbed &&
@@ -282,12 +288,12 @@ export function PostDetail({ statusRef, ...d }: DetailProps) {
                     aria-selected={on}
                     aria-controls={`${panelId}-panel`}
                     tabIndex={on ? 0 : -1}
-                    onClick={() => setOpenId(m.id)}
+                    onClick={() => openTab(m.id)}
                     className={`flex min-h-11 shrink-0 items-center gap-2 rounded-t-lg border-b-2 px-3 text-sm font-bold ${on ? "border-ink text-ink" : "border-transparent text-ink-soft hover:text-ink"}`}
                   >
                     <PlatformMark platform={m.platform} className="size-4" named />
                     <span className="dot" data-status={s} aria-hidden="true" />
-                    <span className="sr-only">{overallName[s]}</span>
+                    <span className={s === "published" ? "sr-only" : "text-xs font-normal"}>{overallName[s]}</span>
                   </button>
                 );
               })}
@@ -358,8 +364,7 @@ function Version({ v, d, byId, onAskDown, confirming, confirmCard }: { v: Post; 
       <section aria-labelledby={`v-${v.id}-where`} className="grid gap-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 id={`v-${v.id}-where`} className={`${heading} flex items-center gap-2`}>
-            <PlatformMark platform={v.platform} className="size-5" />
-            {platformName(v.platform)}
+            <PlatformMark platform={v.platform} className="size-5" named />
             <OverallBadge overall={versionStatus(v)} />
           </h3>
           <div className="flex flex-wrap items-center gap-2">
@@ -424,7 +429,7 @@ function TargetRow({ t, v, d, account, retryHere }: { t: Target; v: Post; d: Omi
   const fail = t.status === "failed" || (t.status === "pending" && !!t.error);
   const can = canRetry(t, v);
   const advice = fail ? failureAdvice(t, can, d.zone) : null;
-  const tone = t.status === "pending" && t.retry_at ? "queued" : t.status === "pending" || t.status === "publishing" ? "queued" : t.status;
+  const tone = t.status === "pending" || t.status === "publishing" ? "queued" : t.status;
   return (
     <li className="grid gap-2 p-3 text-sm sm:p-4">
       <div className="flex items-center gap-3">
@@ -452,9 +457,9 @@ function TargetRow({ t, v, d, account, retryHere }: { t: Target; v: Post; d: Omi
           )}
         </div>
       )}
-      {fail && t.error && (
-        <div className="grid gap-2 rounded-lg bg-[#fde2e1] p-3 text-[#a8160f] dark:bg-[rgb(214_58_47_/_0.22)] dark:text-[#ffa39b]" role="group" aria-label={`What went wrong for ${who}`}>
-          <p className="break-words font-bold">{t.error}</p>
+      {fail && (
+        <div className="grid gap-2 rounded-lg alert-bad p-3" role="group" aria-label={`What went wrong for ${who}`}>
+          <p className="break-words font-bold">{t.error || v.error || "No reason was given."}</p>
           {advice && (
             <p className="break-words">
               <span className="font-bold">What to do: </span>
@@ -473,7 +478,7 @@ function TargetRow({ t, v, d, account, retryHere }: { t: Target; v: Post; d: Omi
             {can && !t.retry_at && retryHere && (
               <button type="button" className="btn btn-primary btn-sm" disabled={d.busy !== null} onClick={() => d.onRetry({ id: v.id, group_id: null })} aria-label={`Retry ${platformName(v.platform)}`}>
                 <Icon name="repeat" className="size-4" />
-                Retry
+                {v.targets.filter((x) => canRetry(x, v)).length > 1 ? "Retry failed accounts" : "Retry"}
               </button>
             )}
             <Link href={`/posts/new?from=${postRef(v)}`} className="btn btn-secondary btn-sm">

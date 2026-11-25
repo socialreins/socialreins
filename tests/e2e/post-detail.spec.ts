@@ -98,3 +98,35 @@ test("the network tabs are a keyboard tablist on a phone-sized screen too", asyn
   // Nothing sideways: the tabs scroll inside their own row.
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
+
+test("a failed account with no error text still says so and offers Duplicate", async ({ page }) => {
+  await group(page, "");
+  await page.goto("/posts/11");
+  await page.getByRole("tab", { name: /Instagram/ }).click();
+  const why = page.getByRole("group", { name: "What went wrong for Alice on Instagram" });
+  await expect(why).toContainText("No reason was given.");
+  await expect(why.getByRole("link", { name: "Duplicate" })).toBeVisible();
+});
+
+test("a version's take down is asked on its tab, goes away with the tab and says what it did", async ({ page }) => {
+  const posts = await group(page);
+  posts[1] = { ...posts[1], status: "published", error: null, targets: [target({ id: "tg2", social_account_id: "c2" })] } as never;
+  let deleted = 0;
+  await page.route(/\/v1\/posts\/p-b$/, (route) => {
+    if (route.request().method() === "GET") return route.fulfill({ json: posts[0] });
+    deleted++;
+    return route.fulfill({ json: { ...posts[0], status: "deleted", targets: [target({ status: "deleted" })] } });
+  });
+  await page.goto("/posts/11");
+  await page.getByRole("button", { name: "Take down Bluesky" }).click();
+  await expect(page.getByRole("button", { name: "Yes, take it down" })).toBeFocused();
+  // Moving to another tab drops the question, and the header offers Take down all again.
+  await page.getByRole("tab", { name: /Instagram/ }).click();
+  await expect(page.getByRole("button", { name: "Yes, take it down" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Take down all" })).toBeVisible();
+  await page.getByRole("tab", { name: /Bluesky/ }).click();
+  await page.getByRole("button", { name: "Take down Bluesky" }).click();
+  await page.getByRole("button", { name: "Yes, take it down" }).click();
+  await expect(page.getByText("Taken down from Bluesky.")).toBeFocused();
+  expect(deleted).toBe(1);
+});

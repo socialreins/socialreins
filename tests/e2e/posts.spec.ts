@@ -503,7 +503,7 @@ test("publish now polls until the post is published", async ({ page }) => {
   // No "publishing" message is left behind once the post is out.
   await expect(page.getByText(/Publishing|Sent to Bluesky/)).toHaveCount(0);
   await expect(page.getByRole("link", { name: "View on Bluesky" })).toHaveAttribute("href", "https://bsky.app/profile/alice.bsky.social/post/1");
-  await expect(page.getByRole("region", { name: /^Bluesky:/ }).getByText("Alice", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Bluesky Published" }).getByText("Alice", { exact: true })).toBeVisible();
   expect(polls).toBe(2);
 });
 

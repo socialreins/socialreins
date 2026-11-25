@@ -801,6 +801,7 @@ describe("the page of a saved post", () => {
     expect(overallStatus([mk(), mk({ status: "failed", targets: [tg({ status: "failed" })] })])).toBe("partial");
     expect(overallStatus([mk({ targets: [tg(), tg({ status: "failed" })] })])).toBe("partial");
     expect(overallStatus([mk({ status: "failed", targets: [tg({ status: "failed" })] })])).toBe("failed");
+    expect(overallStatus([mk({ status: "failed", targets: [tg(), tg({ status: "failed" })] })])).toBe("partial");
     expect(overallStatus([mk({ status: "deleted", targets: [tg({ status: "deleted" })] })])).toBe("deleted");
     expect(overallStatus([mk({ status: "queued" }), mk()])).toBe("queued");
     expect(overallStatus([mk({ status: "draft" })])).toBe("draft");
@@ -808,12 +809,14 @@ describe("the page of a saved post", () => {
   });
 
   it("offers Retry only where brain would send the target again", () => {
-    const p = { thread: [{ body: "two", media: [] }] };
+    const p = { status: "failed" as const, thread: [{ body: "two", media: [] }] };
     expect(canRetry(tg({ status: "failed", remote_id: null }), p)).toBe(true);
     expect(canRetry(tg({ status: "failed", remote_id: "r", parts: [] }), p)).toBe(true);
     expect(canRetry(tg({ status: "failed", remote_id: "r", parts: [{ remote_id: "a", remote_url: null, published_at: null }] }), p)).toBe(false);
     expect(canRetry(tg({ status: "published" }), p)).toBe(false);
     expect(canRetry(tg({ status: "failed", remote_id: null, error: "Timed out, it may have posted." }), p)).toBe(false);
+    // brain only retries the targets of a published or failed post: a taken-down post has nothing to retry.
+    expect(canRetry(tg({ status: "failed", remote_id: null }), { ...p, status: "deleted" })).toBe(false);
   });
 
   it("says what to do about a failure", () => {
@@ -822,8 +825,11 @@ describe("the page of a saved post", () => {
     expect(failureAdvice(e("X is rate limiting this account (429)."), true, "UTC").text).toContain("Wait a few minutes");
     expect(failureAdvice(e("It may have posted."), false, "UTC").text).toContain("Check the account");
     expect(failureAdvice(e("Image aspect ratio refused."), true, "UTC").text).toContain("Duplicate");
-    expect(failureAdvice(e("429", { retry_at: "2026-11-03T08:05:00Z" }), false, "UTC").text).toContain("sends it again by itself at");
+    expect(failureAdvice(e("429", { retry_at: "2026-11-03T08:05:00Z" }), false, "UTC").text).toContain("sends it again by itself on Nov 3, 8:05 AM");
     expect(failureAdvice(e("Something odd."), true, "UTC").text).toContain("Retry once");
+    // Content errors never get "wait and retry", and a daily limit says tomorrow.
+    expect(failureAdvice(e("Too many images for this network, try again with fewer."), true, "UTC").text).toContain("Duplicate");
+    expect(failureAdvice(e("YouTube says the daily upload limit was reached. Try again tomorrow."), true, "UTC").text).toContain("tomorrow");
   });
 
   it("lists the times it keeps, oldest first", () => {

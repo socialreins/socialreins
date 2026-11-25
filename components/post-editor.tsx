@@ -595,7 +595,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
       const mine = posts.find((p) => p.id === postId);
       if (mine) setPost(mine);
     };
-    await run("takedown-all", async () => {
+    return run("takedown-all", async () => {
       const r = await takeDownGroupCall(groupId!);
       // A call that failed as a whole (timeout, 5xx) may still have taken some posts down: read the group again.
       if (isFailure(r)) {
