@@ -21,7 +21,8 @@ export type InvitationPreview = {
 const enc = encodeURIComponent;
 
 export const listTeams = () => api<Team[]>("/v1/teams");
-export const createTeam = (name: string) => api<Team>("/v1/teams", "POST", { name });
+// `slug` is the address the team starts at; left out, brain gives it its code.
+export const createTeam = (name: string, slug?: string) => api<Team>("/v1/teams", "POST", slug ? { name, slug } : { name });
 export const switchTeam = (teamId: string) => api<Team>("/v1/current-team", "PUT", { team_id: teamId });
 export const setPublicPages = (on: boolean) => api<Team>("/v1/team", "PATCH", { public_pages: on });
 export const setNewsletter = (on: boolean) => api<Team>("/v1/team", "PATCH", { newsletter: on });
@@ -30,16 +31,20 @@ export const setRequireApproval = (on: boolean) => api<Team>("/v1/team", "PATCH"
 export const listSubscribers = () => api<{ subscribers: Subscriber[] }>("/v1/subscribers");
 export const removeSubscriber = (id: string) => api(`/v1/subscribers/${enc(id)}`, "DELETE");
 export const renameTeam = (name: string) => api<Team>("/v1/team", "PATCH", { name });
-// The team's own address (/t/<slug>/...); null goes back to the code.
-export const setSlug = (slug: string | null) => api<Team>("/v1/team", "PATCH", { slug });
-// brain refuses these as a team address (invalid_slug, reason reserved).
-const RESERVED = ["new", "admin", "api", "app", "t", "team", "teams", "login", "signup", "settings", "billing", "www", "socialreins", "support", "help", "_"];
-// What is wrong with a typed address, or null. Mirrors brain's rules.
+// The team's own address (/t/<slug>/...); null goes back to the code. Owners only, with a sign-in from the last 10 minutes
+// (else reauth_required), and a team gives up its address at most 3 times in 30 days (slug_changed_too_often).
+export const setSlug = (slug: string | null) => api<Team>("/v1/team/slug", "PATCH", { slug });
+
+export type SlugCheck = { slug: string; available: boolean; reason: string | null };
+// Whether `slug` can be taken now. `forTeam` (a code) is the team that would take it, so its own old addresses read as free.
+export const checkSlug = (slug: string, forTeam?: string) =>
+  api<SlugCheck>(`/v1/slugs/check?slug=${enc(slug)}${forTeam ? `&for_team=${enc(forTeam)}` : ""}`);
+
+// What is wrong with a typed address that needs no call to brain, or null. Mirrors brain's format rules; reserved and
+// blocked words, and addresses in use, are brain's to say (checkSlug).
 export const slugProblem = (slug: string) =>
-  RESERVED.includes(slug)
-    ? "That address is reserved. Pick another."
-    : slug.length < 3 || slug.length > 30
-    ? "Use 3 to 30 characters."
+  slug.length < 3 || slug.length > 32
+    ? "Use 3 to 32 characters."
     : /[^a-z0-9-]/.test(slug)
       ? "Use only lowercase letters, digits and dashes."
       : /^-|-$/.test(slug)
@@ -47,6 +52,32 @@ export const slugProblem = (slug: string) =>
         : slug.includes("--")
           ? "Use one dash at a time, not two in a row."
           : null;
+
+// brain's reason for refusing an address, in words.
+export const slugReason = (reason: string | null) =>
+  reason === "taken"
+    ? "That address is taken, or another team gave it up lately. Pick a different one."
+    : reason === "reserved"
+      ? "That address is reserved. Pick a different one."
+      : reason === "blocked"
+        ? "That address is not allowed. Pick a different one."
+        : reason === "current"
+          ? "That is already the team's address."
+          : "That address doesn't work. Pick a different one.";
+
+// An address from a team name ("Acme Co." gives "acme-co"), or "" when the name has too few letters or digits.
+export const suggestSlug = (name: string) => {
+  const slug = name
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+/, "")
+    .slice(0, 32)
+    .replace(/-+$/, "");
+  return slug.length >= 3 ? slug : "";
+};
+
 // Needs a sign-in from the last 10 minutes, else brain answers reauth_required.
 export const deleteTeam = () => api("/v1/team", "DELETE", {});
 export const listMembers = () => api<Member[]>("/v1/team/members");

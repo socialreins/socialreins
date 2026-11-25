@@ -38,9 +38,9 @@ describe("team addresses", () => {
   });
 
   it("checks a typed slug like brain does", () => {
-    for (const ok of ["abc", "acme", "acme-co", "a1-b2-c3", "123", "a".repeat(30)]) expect(slugProblem(ok), ok).toBeNull();
-    expect(slugProblem("ab")).toMatch(/3 to 30/);
-    expect(slugProblem("a".repeat(31))).toMatch(/3 to 30/);
+    for (const ok of ["abc", "acme", "acme-co", "a1-b2-c3", "123", "a".repeat(32)]) expect(slugProblem(ok), ok).toBeNull();
+    expect(slugProblem("ab")).toMatch(/3 to 32/);
+    expect(slugProblem("a".repeat(33))).toMatch(/3 to 32/);
     for (const bad of ["Acme", "ac me", "ac_me", "acmé", "a.b.c"]) expect(slugProblem(bad), bad).toMatch(/lowercase letters, digits and dashes/);
     expect(slugProblem("-acme")).toMatch(/Start and end/);
     expect(slugProblem("acme-")).toMatch(/Start and end/);

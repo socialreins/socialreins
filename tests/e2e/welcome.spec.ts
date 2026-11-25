@@ -116,3 +116,31 @@ test("welcome without WebAuthn goes straight to next", async ({ page }) => {
   await page.goto("/welcome?next=%2Finvitations%2Fabc");
   await expect(page).toHaveURL("/invitations/abc");
 });
+
+test("welcome offers the team address: suggested from the name, checked while typed, saved on its own", async ({ page }) => {
+  await page.route("**/auth/me", (route) => route.fulfill({ json: { ...user, current_team: { ...user.current_team, name: "Moon Labs" } } }));
+  await page.route("**/v1/slugs/check*", (route) => {
+    const slug = new URL(route.request().url()).searchParams.get("slug");
+    return route.fulfill({ json: { slug, available: slug !== "taken", reason: slug === "taken" ? "taken" : null } });
+  });
+  const saved: unknown[] = [];
+  await page.route("**/v1/team/slug", (route) => {
+    saved.push(route.request().postDataJSON());
+    return route.fulfill({ json: { ...user.current_team, slug: "moon-labs" } });
+  });
+  await page.goto("/welcome");
+  await expect(page.getByRole("heading", { name: "Choose your team address" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save address" })).toBeDisabled();
+  await page.getByRole("button", { name: "Use moon-labs" }).click();
+  await expect(page.getByText("That address is free.")).toBeVisible();
+  await page.getByLabel("Address").fill("taken");
+  await expect(page.getByText("That address is taken, or another team gave it up lately.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save address" })).toBeDisabled();
+  await page.getByLabel("Address").fill("moon-labs");
+  await expect(page.getByText("That address is free.")).toBeVisible();
+  await page.getByRole("button", { name: "Save address" }).click();
+  await expect(page.getByText(/Your team address is now .*\/t\/moon-labs\./)).toBeVisible();
+  expect(saved).toEqual([{ slug: "moon-labs" }]);
+  // The passkey step is still there, and nothing above it was needed.
+  await expect(page.getByRole("button", { name: "Add a passkey" })).toBeVisible();
+});
