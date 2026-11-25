@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { assignItem, chatRows, itemSummary, dayLabel, getConversation, listItems, maxFor, mergeConversation, mergeFresh, messageCount, relativeTime, replyToItem, sentAlready, setItemState, threadKey, type Item } from "@/lib/inbox";
+import { assignItem, chatRows, itemSummary, dayLabel, getConversation, getThread, hasThread, isActivity, listItems, maxFor, mergeConversation, mergeFresh, messageCount, relativeTime, replyToItem, sentAlready, setItemState, threadKey, type Item } from "@/lib/inbox";
 import { apiUrl } from "@/lib/waitlist";
 
 const call = (fetch: ReturnType<typeof vi.fn>) => fetch.mock.calls[0] as unknown as [string, RequestInit];
@@ -207,5 +207,32 @@ describe("reply limits", () => {
     expect(maxFor("dm", "facebook")).toBe(2000);
     expect(maxFor("comment", "instagram")).toBe(2200);
     expect(maxFor("dm", "instagram")).toBe(1000);
+  });
+});
+
+describe("activity and threads", () => {
+  it("words quiet activity, which has no text", () => {
+    expect(itemSummary({ kind: "like", text: "", attachments: [] })).toBe("Liked your post");
+    expect(itemSummary({ kind: "repost", text: "" })).toBe("Reposted your post");
+    expect(itemSummary({ kind: "follow", text: "" })).toBe("Followed you");
+    expect(itemSummary({ kind: "comment", text: "" })).toBe("(no text)");
+    expect(["follow", "like", "repost", "comment", "dm"].map((k) => isActivity(k as Item["kind"]))).toEqual([true, true, true, false, false]);
+  });
+
+  it("reads a thread only for Bluesky comments, mentions, likes and reposts", () => {
+    const has = (kind: Item["kind"], platform = "bluesky") => hasThread({ kind, platform });
+    expect([has("comment"), has("mention"), has("like"), has("repost")]).toEqual([true, true, true, true]);
+    expect([has("dm"), has("follow"), has("comment", "facebook")]).toEqual([false, false, false]);
+  });
+
+  it("asks brain for the thread of an item and for activity by kind", async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ posts: [], truncated: false })));
+    vi.stubGlobal("fetch", fetch);
+    await getThread("i 1");
+    expect(call(fetch)[0]).toContain("/v1/inbox-items/i%201/thread");
+    fetch.mockClear();
+    await listItems("in1", "open", null, "activity");
+    expect(call(fetch)[0]).toContain("kind=activity");
+    expect(call(fetch)[0]).not.toContain("state=");
   });
 });

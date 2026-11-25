@@ -3,6 +3,10 @@ import { CONNECT_TIMEOUT_MS } from "@/lib/connections";
 
 export type Kind = "comment" | "mention" | "dm";
 export const KINDS: Kind[] = ["comment", "mention", "dm"];
+export type ActivityKind = "follow" | "like" | "repost";
+export const isActivity = (kind: Item["kind"]): kind is ActivityKind => kind === "follow" || kind === "like" || kind === "repost";
+// What the item list can be narrowed to: a kind, or all the quiet activity.
+export type ListKind = Kind | "activity";
 export type ItemState = "open" | "done";
 
 // What narrows an inbox beyond its accounts. Empty lists mean any.
@@ -41,8 +45,8 @@ export type Item = {
   id: string;
   social_account_id: string;
   platform: string;
-  // A follow (a new Bluesky follower) is listed only when asked for, but an automation run links to one.
-  kind: Kind | "follow";
+  // Activity (a new Bluesky follower, a like or repost of one of our posts) is quiet: stored done, listed only when asked for (`ListKind` "activity"), though an automation run links to a follow.
+  kind: Kind | ActivityKind;
   remote_id: string;
   remote_url: string | null;
   convo_id: string | null;
@@ -67,8 +71,11 @@ export type Item = {
 export type Attachment = { kind: "image" | "video" | "sticker" | "gif" | "audio" | "file" | "link"; url: string; preview_url?: string };
 export const attachmentName: Record<Attachment["kind"], string> = { image: "Photo", video: "Video", sticker: "Sticker", gif: "GIF", audio: "Audio", file: "File", link: "Link" };
 // What a list row says: the text, else what the item carries ("Photo", "Sticker and 1 more"), never "(no text)" when it carries something.
-export function itemSummary(i: Pick<Item, "text" | "attachments">): string {
+export function itemSummary(i: Pick<Item, "text" | "attachments"> & { kind?: Item["kind"] }): string {
   if (i.text) return i.text;
+  if (i.kind === "like") return "Liked your post";
+  if (i.kind === "repost") return "Reposted your post";
+  if (i.kind === "follow") return "Followed you";
   const [first, ...rest] = i.attachments ?? [];
   if (!first) return "(no text)";
   return rest.length ? `${attachmentName[first.kind]} and ${rest.length} more` : attachmentName[first.kind];
@@ -87,7 +94,7 @@ export const maxFor = (kind: Item["kind"], provider?: string) => {
   return kind === "dm" ? MAX_DM : MAX_PUBLIC;
 };
 
-export const kindName: Record<Item["kind"], string> = { comment: "Comment", mention: "Mention", dm: "DM", follow: "Follow" };
+export const kindName: Record<Item["kind"], string> = { comment: "Comment", mention: "Mention", dm: "DM", follow: "Follow", like: "Like", repost: "Repost" };
 
 const enc = encodeURIComponent;
 
@@ -100,8 +107,10 @@ export const deleteInbox = (id: string) => api(`/v1/inboxes/${enc(id)}`, "DELETE
 // `search` looks in the text and the author's name and handle; brain takes 1 to 100 characters.
 // `assigned` is "me", "none" or a user id; `tag` is a contact tag.
 // `conversations` asks for DMs as one row per person and account; comments and mentions come as they are.
-export function listItems(inboxId: string, state: ItemState, cursor?: string | null, kind?: Kind | null, search?: string, more: { assigned?: string; tag?: string; conversations?: boolean } = {}) {
+export function listItems(inboxId: string, state: ItemState, cursor?: string | null, kind?: ListKind | null, search?: string, more: { assigned?: string; tag?: string; conversations?: boolean } = {}) {
+  // Activity is stored done and never open work: it is listed whatever the Open / Done choice is.
   const q = new URLSearchParams(more.conversations ? { state, group: "conversations" } : { state });
+  if (kind === "activity") q.delete("state");
   if (kind) q.set("kind", kind);
   if (search) q.set("q", search);
   if (more.assigned) q.set("assigned", more.assigned);
@@ -142,6 +151,14 @@ export function getConversation(id: string, before?: string) {
   const q = before ? `?before=${enc(before)}` : "";
   return api<ConversationPage>(`/v1/inbox-items/${enc(id)}/conversation${q}`);
 }
+
+// The posts above a comment, mention, like or repost in its Bluesky thread, read live as the account sees them:
+// oldest first, a like or repost ending with the post that was liked. `truncated` when the chain ends at a deleted or hidden post.
+export type ThreadPost = { uri: string; url: string | null; author: Author; text: string; created_at: string | null; attachments: Attachment[] };
+export type ThreadContext = { posts: ThreadPost[]; truncated: boolean };
+export const getThread = (id: string) => api<ThreadContext>(`/v1/inbox-items/${enc(id)}/thread`);
+// Whether an item has a thread to read: replies and mentions, and the posts a like or repost points at.
+export const hasThread = (i: Pick<Item, "kind" | "platform">) => i.platform === "bluesky" && (i.kind === "comment" || i.kind === "mention" || i.kind === "like" || i.kind === "repost");
 
 // What a list row or an open item belongs to: a DM to its person and account, anything else to itself.
 export const threadKey = (i: Item) => (i.kind === "dm" ? `dm:${i.social_account_id}:${i.author.id}` : i.id);

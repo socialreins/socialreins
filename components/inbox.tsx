@@ -15,7 +15,10 @@ import {
   chatRows,
   getConversation,
   getItem,
+  getThread,
+  hasThread,
   inboxName,
+  isActivity,
   itemSummary,
   kindName,
   listInboxes,
@@ -38,8 +41,9 @@ import {
   type Inbox as InboxT,
   type Item,
   type ItemState,
-  type Kind,
+  type ListKind,
   type Page,
+  type ThreadContext,
 } from "@/lib/inbox";
 import { createSnippet, isProblem, libraryText, type Problem } from "@/lib/library";
 import { graphemes } from "@/lib/posts";
@@ -76,11 +80,12 @@ const sendMessages: Record<string, ReactNode> = {
   reconnect_required: <>Bluesky refused the app password. Reconnect the account. {accountsLink}</>,
 };
 
-const kindOptions: { value: Kind | "all"; label: string }[] = [
+const kindOptions: { value: ListKind | "all"; label: string }[] = [
   { value: "all", label: "All" },
   { value: "comment", label: "Comments" },
   { value: "mention", label: "Mentions" },
   { value: "dm", label: "DMs" },
+  { value: "activity", label: "Activity (likes, reposts, follows)" },
 ];
 
 // Who the list shows: everyone's items, mine, or the ones nobody has. In the address as ?assigned=.
@@ -216,7 +221,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   // Loaded data remembers what it was loaded for, so a new inbox, tab or item shows loading, not stale rows.
   const [loaded, setLoaded] = useState<{ key: string; page: Page | Failure } | null>(null);
   const [more, setMore] = useState<Failure | "loading" | null>(null);
-  const [kind, setKind] = useState<Kind | "all">("all");
+  const [kind, setKind] = useState<ListKind | "all">("all");
   const [shown, setShown] = useState<{ id: string; item: Item | Failure } | null>(null);
   const [editing, setEditing] = useState<InboxT | "new" | null>(null);
   const [opened, setOpened] = useState<string | null>(null);
@@ -893,6 +898,8 @@ function Detail({
   // The unsure reply whose Send again waits for a yes.
   const [confirming, setConfirming] = useState<number | null>(null);
   const [reloads, setReloads] = useState(0);
+  // The posts above an item, read from Bluesky as the account sees them.
+  const [read, setRead] = useState<{ id: string; context: ThreadContext | Failure } | null>(null);
   const [sent, setSent] = useState<{ text: string; n: number } | null>(null);
   // Saving the typed text as a saved reply: null, or the name being typed.
   const [naming, setNaming] = useState<string | null>(null);
@@ -921,6 +928,18 @@ function Detail({
     };
     // Read again too when a reply of this thread settles: it may have gone out while another item was open.
   }, [dm, item.id, newest, reloads, pending.length]);
+
+  const aboveId = hasThread(item) ? item.id : null;
+  // null while they load.
+  const above = read?.id === aboveId ? read.context : null;
+  useEffect(() => {
+    if (!aboveId) return;
+    let live = true;
+    getThread(aboveId).then((context) => live && setRead({ id: aboveId, context }));
+    return () => {
+      live = false;
+    };
+  }, [aboveId]);
 
   const thread = dm ? (convo?.items ?? []) : [item];
   // A reply goes to the latest message of a conversation.
@@ -1042,7 +1061,7 @@ function Detail({
           </h2>
           <p className="truncate text-sm text-ink-soft">
             {item.author.handle && item.author.name ? `@${item.author.handle}, ` : ""}
-            {dm ? "DMs with" : `${kindName[item.kind]} to`} {account ? accountName(account) : "your account"}
+            {dm ? "DMs with" : isActivity(item.kind) ? "Activity on" : `${kindName[item.kind]} to`} {account ? accountName(account) : "your account"}
             {messages ? `, ${messageCount(messages)}` : ""}
           </p>
         </div>
@@ -1105,6 +1124,42 @@ function Detail({
             </button>
           </li>
         )}
+        {aboveId && above === null && (
+          <li role="status" className="h-16 rounded-2xl bg-ink/5 motion-safe:animate-pulse">
+            <span className="sr-only">Loading the posts above...</span>
+          </li>
+        )}
+        {aboveId && above && isFailure(above) && (
+          <li className="text-xs text-ink-soft">The posts above this one couldn&apos;t be loaded. {problemText(above)}</li>
+        )}
+        {aboveId && above && !isFailure(above) && (
+          <>
+            {above.truncated && <li className="text-xs text-ink-soft">Earlier posts are deleted or hidden from this account.</li>}
+            {above.posts.map((p, n) => (
+              <li key={p.uri} data-row="context" className="grid gap-1 rounded-2xl border border-ink/10 bg-ink/[0.03] px-4 py-3 text-sm">
+                <p className="flex items-center gap-2">
+                  {n === 0 && <span className="sr-only">Earlier in this thread: </span>}
+                  <AuthorAvatar author={p.author} size="size-6" />
+                  <strong className="min-w-0 truncate">{authorName(p.author)}</strong>
+                  {p.created_at && (
+                    <time dateTime={p.created_at} className="ml-auto shrink-0 text-xs text-ink-soft">
+                      {relativeTime(p.created_at)}
+                    </time>
+                  )}
+                </p>
+                {p.text && <p className="whitespace-pre-wrap break-words">{p.text}</p>}
+                <Attachments items={p.attachments} />
+                {p.url && (
+                  <a href={p.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs font-bold text-ink-soft hover:text-ink">
+                    View on Bluesky
+                    <Icon name="external" className="size-3.5" />
+                    <span className="sr-only">(opens in a new tab)</span>
+                  </a>
+                )}
+              </li>
+            ))}
+          </>
+        )}
         {dm && convo?.has_more && (
           <li className="grid justify-items-center gap-1">
             <button type="button" className="btn btn-secondary btn-sm" disabled={earlier === "loading"} onClick={loadEarlier}>
@@ -1124,7 +1179,7 @@ function Detail({
             </li>
           ) : r.type === "them" ? (
             <li key={r.key} data-row="them" className="grid justify-items-start gap-1">
-              {(r.text || !r.item.attachments?.length) && <p className="max-w-[90%] whitespace-pre-wrap break-words rounded-2xl rounded-tl-md bg-canvas px-4 py-3">{r.text || "(no text)"}</p>}
+              {(r.text || !r.item.attachments?.length) && <p className="max-w-[90%] whitespace-pre-wrap break-words rounded-2xl rounded-tl-md bg-canvas px-4 py-3">{r.text || itemSummary(r.item)}</p>}
               <Attachments items={r.item.attachments} />
               <p className="flex flex-wrap items-center gap-x-3 text-xs text-ink-soft">
                 <time dateTime={r.at}>{when(r.at)}</time>
@@ -1194,8 +1249,8 @@ function Detail({
         ))}
       </ol>
 
-      {/* A follow has nothing to reply to. */}
-      <form onSubmit={onReply} hidden={item.kind === "follow"} className="grid gap-2 border-t border-ink/10 pt-4 [&[hidden]]:hidden">
+      {/* A follow, like or repost has nothing to reply to. */}
+      <form onSubmit={onReply} hidden={isActivity(item.kind)} className="grid gap-2 border-t border-ink/10 pt-4 [&[hidden]]:hidden">
         <div className="flex flex-wrap items-end justify-between gap-2">
           <label htmlFor="reply-text" className="label">
             {dm ? "Send DM" : "Reply publicly"}
