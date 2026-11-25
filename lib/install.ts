@@ -37,7 +37,7 @@ export function installMode(): InstallMode {
   // Firefox on iOS cannot add to the home screen. iPadOS 13 and later reports itself as a Mac, with a touch screen.
   if (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return /FxiOS/.test(ua) ? "none" : "ios";
   // Safari 17 and later on a Mac has "Add to Dock". Chrome, Edge and Firefox name themselves too, so leave them out.
-  return /Macintosh/.test(ua) && /Version\/\d+.*Safari\//.test(ua) && !/Chrome|Chromium|Edg|Firefox|OPR/.test(ua) ? "safari" : "none";
+  return /Macintosh/.test(ua) && /Version\/(1[7-9]|[2-9]\d).*Safari\//.test(ua) && !/Chrome|Chromium|Edg|Firefox|OPR/.test(ua) ? "safari" : "none";
 }
 
 export async function promptInstall() {
@@ -45,5 +45,6 @@ export async function promptInstall() {
   // The offer works once.
   offer = null;
   changed();
-  await o?.prompt();
+  // Dismissing the prompt rejects in some browsers; the item stays hidden until the next load either way.
+  await o?.prompt().catch(() => {});
 }

@@ -2,7 +2,7 @@
 // It never stores a page, an API answer or anything the signed-in app shows: the only cached files are the ones listed
 // below, which are public and the same for everybody. Every other request goes to the network untouched, because this
 // worker does not call respondWith for it.
-// Change the cache name whenever PRECACHE changes; old caches are deleted on activate.
+// Change the cache name whenever PRECACHE or any file in it changes; old caches are deleted on activate.
 const CACHE = "sr-shell-v1";
 const PRECACHE = ["/offline.html", "/icon-192.png", "/icon-512.png"];
 

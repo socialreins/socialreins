@@ -388,7 +388,7 @@ function Use({ mode }: { mode: Mode }) {
 
       <h2 id="install-app">Install the app</h2>
       <p>
-        SocialReins installs like an app. In Chrome or Edge, open the account menu at the foot of the sidebar and choose Install app. In Safari on a Mac, choose File, then Add to Dock. On an iPhone or iPad, tap Share, then Add to Home Screen. On Android, use Install app in the Chrome menu. The app opens in its own window. It does not work offline: without a connection you see a short notice.
+        SocialReins installs like an app. In Chrome or Edge, open the account menu at the foot of the sidebar and choose Install app, which shows when the browser offers it (the site must be on https). In Safari on a Mac, choose File, then Add to Dock. On an iPhone or iPad, tap Share, then Add to Home Screen. On Android, use Install app in the Chrome menu. The app opens in its own window. It does not work offline: without a connection you see a short notice.
       </p>
 
       <h2 id="team-address">Give your team its own address</h2>

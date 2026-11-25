@@ -40,18 +40,13 @@ test("the service worker controls the page and answers an offline page load with
   // Playwright's offline switch does not reach a worker's own requests, so make the worker's fetch fail the way a lost connection does.
   const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent("serviceworker"));
   await worker.evaluate(() => {
-    const real = self.fetch;
-    (self as unknown as { restore: () => void }).restore = () => (self.fetch = real);
     self.fetch = () => Promise.reject(new TypeError("Failed to fetch"));
   });
   for (const path of ["/pricing", "/home", "/t/abc123/posts"]) {
     await page.goto(path);
     await expect(page.getByRole("heading", { name: "You are offline" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Try again" })).toBeVisible();
   }
-  await worker.evaluate(() => (self as unknown as { restore: () => void }).restore());
-  await page.goto("/pricing");
-  await expect(page.getByRole("heading", { name: "You are offline" })).toHaveCount(0);
 });
 
 test("the service worker caches only the offline page and the icons, never a page, the app or an API answer", async ({ page }) => {

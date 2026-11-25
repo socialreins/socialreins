@@ -16,17 +16,18 @@
   svg { width: 3.5rem; height: 3.5rem; border-radius: 0.8rem; }
   h1 { margin: 0; font-size: 2rem; line-height: 1.15; font-weight: 800; letter-spacing: -0.02em; }
   p { margin: 0; color: var(--soft); }
-  button { font: inherit; font-weight: 700; padding: 0.7rem 1.4rem; cursor: pointer; color: var(--bg); background: var(--ink); border: 2px solid var(--ink); border-radius: 999px; }
-  button:hover { background: var(--accent); border-color: var(--accent); }
-  button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+  /* A plain link back to this page, so it needs no script and works under any CSP. */
+  a { font-weight: 700; padding: 0.7rem 1.4rem; color: var(--bg); background: var(--ink); border: 2px solid var(--ink); border-radius: 999px; text-decoration: none; }
+  a:hover { background: var(--accent); border-color: var(--accent); }
+  a:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 </style>
 </head>
 <body>
 <main>
   <svg viewBox="0 0 64 64" role="img" aria-label="SocialReins"><rect width="64" height="64" fill="#121212"/><path d="M14 14 H50 V40 H30 L20 50 V40 H14 Z" fill="none" stroke="#ffffff" stroke-width="5" stroke-linejoin="round"/><path d="M24 27 C32 22 40 32 48 27 C53 24 56 22 58 22" fill="none" stroke="#ff5b22" stroke-width="4.5" stroke-linecap="round"/></svg>
   <h1>You are offline</h1>
-  <p>SocialReins needs a connection to load your posts and accounts. Nothing you scheduled is lost: it goes out on time from the server.</p>
-  <button type="button" onclick="location.reload()">Try again</button>
+  <p>SocialReins could not be reached. Check your connection and try again.</p>
+  <a href="">Try again</a>
 </main>
 </body>
 </html>

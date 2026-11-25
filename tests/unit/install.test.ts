@@ -20,6 +20,8 @@ describe("installMode", () => {
     expect(installMode()).toBe("ios");
     env(MAC_SAFARI);
     expect(installMode()).toBe("safari");
+    env(MAC_SAFARI.replace("Version/17.4", "Version/16.6"));
+    expect(installMode()).toBe("none");
   });
 
   it("shows nothing in other desktop browsers, in Firefox on iOS or once installed", () => {
