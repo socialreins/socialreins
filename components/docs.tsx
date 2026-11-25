@@ -213,6 +213,7 @@ const howTos: [string, string][] = [
   ["newsletters", "Newsletters"],
   ["analytics", "Analytics"],
   ["team-address", "Team address"],
+  ["install-app", "Install the app"],
 ];
 
 // The same keys as `shortcuts` in components/inbox.tsx.
@@ -383,6 +384,11 @@ function Use({ mode }: { mode: Mode }) {
       <h2 id="analytics">Read your analytics</h2>
       <p>
         Open Analytics and pick the last 7, 30 or 90 days. It shows the totals, engagement by day, a table by network and your top posts, for the set picked in the top bar. It reads likes and comments on Bluesky, Facebook, Instagram and YouTube, shares on Bluesky and Facebook, and views on YouTube; the other networks say Not available yet. A published post&apos;s own page shows the numbers of each account, with Refresh stats. There are no reach, audience or follower reports yet.
+      </p>
+
+      <h2 id="install-app">Install the app</h2>
+      <p>
+        SocialReins installs like an app. In Chrome or Edge, open the account menu at the foot of the sidebar and choose Install app. In Safari on a Mac, choose File, then Add to Dock. On an iPhone or iPad, tap Share, then Add to Home Screen. On Android, use Install app in the Chrome menu. The app opens in its own window. It does not work offline: without a connection you see a short notice.
       </p>
 
       <h2 id="team-address">Give your team its own address</h2>

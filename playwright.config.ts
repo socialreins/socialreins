@@ -4,7 +4,8 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "tests/e2e",
   retries: 0,
-  use: { baseURL: "http://localhost:3000", trace: "retain-on-failure" },
+  // The service worker is off unless a test turns it on (tests/e2e/pwa.spec.ts): it would route page loads past page.route mocks.
+  use: { baseURL: "http://localhost:3000", trace: "retain-on-failure", serviceWorkers: "block" },
   webServer: {
     command: "npm run start",
     url: "http://localhost:3000",
