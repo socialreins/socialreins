@@ -13,6 +13,8 @@ import {
   TEMPLATE_GROUPS,
   flowOutline,
   flowProblems,
+  replyLimit,
+  threadsProblems,
   newStep,
   payloadOk,
   postIds,
@@ -537,6 +539,26 @@ describe("tag the contact", () => {
     // An action in a shape this page does not know leaves the automation read-only.
     expect(canEdit({ ...saved, actions: [...actions, { type: "add_to_list", list: "x" } as never] })).toBe(false);
     expect(canEdit({ ...saved, actions: [], steps: [{ type: "send_dm", text: "Hi" }, { type: "tag_contact", tag: "vip", extra: 1 } as never] })).toBe(false);
+  });
+
+  it("holds a Threads flow to replies and mentions, a public reply and 500 bytes", () => {
+    const reply = (text: string): StepDraft => ({ ...newStep("reply_publicly"), text }) as StepDraft;
+    expect(flowProblems([reply("Thanks!")], "comment_received", ["threads"])).toEqual([]);
+    expect(flowProblems([reply("Thanks!")], "mention_received", ["threads"])).toEqual([]);
+    // No DM, and no trigger Threads lacks; a mixed scope is left to brain.
+    expect(flowProblems([newStep("send_dm", "Hi")], "comment_received", ["threads"])).toEqual([{ step: 0, text: "Threads has no DMs and no private reply. Use a public reply." }]);
+    expect(flowProblems([reply("Hi")], "new_follower", ["threads"]).map((p) => p.step)).toEqual([0, null]);
+    expect(flowProblems([newStep("send_dm", "Hi")], "comment_received", ["threads", "bluesky"])).toEqual([]);
+    // A Threads reply may be 400 characters (the limit is 500), where any other network stops at 300.
+    expect(flowProblems([reply("a".repeat(400))], "comment_received", ["threads"])).toEqual([]);
+    expect(flowProblems([reply("a".repeat(400))], "comment_received", ["bluesky"]).length).toBe(1);
+    expect(replyLimit(["threads"]).max).toBe(500);
+    expect(replyLimit(["threads", "x"]).max).toBe(300);
+    expect(threadsProblems("comment_received", false)).toEqual([]);
+    expect(threadsProblems("dm_received", true).length).toBe(2);
+    // 126 emoji are 504 bytes.
+    expect(flowProblems([reply("😀".repeat(126))], "comment_received", ["threads"])[0]?.text).toContain("Too long for Threads");
+    expect(flowProblems([reply("😀".repeat(125))], "comment_received", ["threads"])).toEqual([]);
   });
 
   it("is a flow step that sends nothing: saved clean, outlined, and never the flow's only step", () => {
