@@ -71,7 +71,8 @@ const flowConditions = { social_set_id: null, account_ids: ["c1"], post_remote_i
 const guideFlow = (extra = {}) => automation("flow", "Guide flow", { conditions: flowConditions, actions: [], fallback_public_reply: null, steps: flowSteps, ...extra });
 
 async function brain(page: Page, role: Role) {
-  const state = { list: [automation("a1", "Price to DM", { runs: stats })], bodies: [] as unknown[], misses: [] as unknown[] };
+  const state = { list: [automation("a1", "Price to DM", { runs: stats })], bodies: [] as unknown[], misses: [] as unknown[], estimate: { x: false, cost: null } as unknown };
+  await page.route(/\/v1\/automations\/estimate$/, (route) => route.fulfill({ json: state.estimate }));
   await page.route("**/auth/me", (route) => route.fulfill({ json: me(role) }));
   await page.route("**/v1/connections", (route) => route.fulfill({ json: [alice] }));
   await page.route(/\/v1\/social-sets$/, (route) => route.fulfill({ json: [{ id: "d", name: "All sets", is_default: true, account_ids: ["c1"], account_count: 1, created_at: "", deleted_at: null }] }));
@@ -192,6 +193,16 @@ for (const t of templates) {
     expect(body.actions[0]!.text).toContain("{name}");
   });
 }
+
+test("an automation on X shows what a run costs while it is edited", async ({ page }) => {
+  const state = await brain(page, "owner");
+  await page.goto("/automations/new?template=comment-to-dm");
+  await expect(page.getByText("About $")).toHaveCount(0);
+  state.estimate = { x: true, cost: { writes: 2, read_usd: 0.015, write_usd: 0.03, total_usd: 0.045, credits: 2.3 } };
+  await page.getByLabel("DM text").fill("Hi {name}, here it is");
+  await expect(page.getByRole("status").filter({ hasText: "About $0.045 a run on X" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "$0.03 for 2 writes" })).toContainText("With X credits that is 2.3");
+});
 
 test("the builder shows what the trigger takes, its networks note and a preview", async ({ page }) => {
   await brain(page, "owner");
