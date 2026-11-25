@@ -752,6 +752,7 @@ export const blockText: Record<string, string> = {
   unsupported_account: "Automations run only on Bluesky, Facebook, Instagram, Threads and X accounts",
   threads_unsupported_trigger: "Threads has replies and mentions only: use a comment or a mention",
   threads_no_dm: "Threads has no DMs and no private reply: use a public reply",
+  threads_no_like: "Threads has no like for apps: hiding a reply and a public reply work",
   x_unsupported_trigger: "X has no follows, story replies or buttons to trigger on: use a comment, a mention or a DM",
   bluesky_unsupported_trigger: "Bluesky has no story replies or buttons to tap: use a comment, a mention, a DM or a follow",
   meta_one_private_reply: "Facebook and Instagram allow one private reply per comment",

@@ -49,6 +49,7 @@ export const automationMessages: Partial<Record<Failure, ReactNode>> = {
   unsupported_account: "Automations run only on Bluesky, Facebook, Instagram, Threads and X accounts. Remove the others.",
   threads_unsupported_trigger: "Threads has replies and mentions only. Pick a comment or a mention, or leave the Threads account out.",
   threads_no_dm: "Threads has no DMs and no private reply, so it takes a public reply only. Remove the DM, or leave the Threads account out.",
+  threads_no_like: "Threads has no like for apps. Hiding a reply directly under your post and a public reply work; remove the like, or leave the Threads account out.",
   x_unsupported_trigger: "X has no follows, story replies or buttons to trigger on. Pick a comment, a mention or a DM, or leave the X account out.",
   bluesky_unsupported_trigger: "Bluesky has no story replies or buttons to tap. Pick a comment, a mention, a DM or a follow, or leave the Bluesky account out.",
   meta_one_private_reply: "Facebook and Instagram allow one private reply per comment. Keep one DM in this flow.",
