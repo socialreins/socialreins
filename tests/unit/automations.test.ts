@@ -866,8 +866,8 @@ describe("like, repost and follow back", () => {
 
 describe("x cost", () => {
   it("says what a run costs in dollars and credits", () => {
-    expect(costText({ writes: 2, read_usd: 0.015, write_usd: 0.03, total_usd: 0.045, credits: 2.333 })).toBe("About $0.045 a run on X: $0.015 to read it and $0.03 for 2 writes. With X credits that is 2.3.");
-    expect(costText({ writes: 0, read_usd: 0.02, write_usd: 0, total_usd: 0.02, credits: 0.333 })).toBe("About $0.02 a run on X: $0.02 to read it. With X credits that is 0.3.");
+    expect(costText({ writes: 2, read_usd: 0.015, write_usd: 0.03, total_usd: 0.045, credits: 2.333 })).toBe("About $0.045 a run on X: $0.015 to read it and $0.03 for 2 writes. With billing on that is about 2.3 X credits.");
+    expect(costText({ writes: 0, read_usd: 0.02, write_usd: 0, total_usd: 0.02, credits: 0.333 })).toBe("About $0.02 a run on X: $0.02 to read it. With billing on that is about 0.3 X credits.");
     expect(costText({ writes: 1, read_usd: 0.015, write_usd: 0.015, total_usd: 0.03, credits: 1.333 })).toContain("$0.015 for 1 write.");
   });
 

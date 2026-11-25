@@ -214,7 +214,8 @@ export function AutomationTest({
                 {noteText[n] ?? n}
               </p>
             ))}
-            {out.cost && <p className="text-sm">{costText(out.cost)}</p>}
+            {out.cost && <p className="hint">{costText(out.cost)}</p>}
+            {!out.cost && account?.provider === "x" && <p className="hint">Nothing would run, so nothing would be billed.</p>}
             {out.steps.length > 0 && (
               <ol className="grid gap-2" aria-label="What it would do">
                 {out.steps.map((s, i) => (

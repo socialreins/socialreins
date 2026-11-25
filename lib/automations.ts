@@ -156,7 +156,7 @@ export const estimateAutomation = (automation: AutomationInput) => api<Estimate>
 const dollars = (n: number) => "$" + n.toFixed(3).replace(/0$/, "");
 // "About $0.045 a run on X: $0.015 to read it and $0.03 for 2 writes."
 export const costText = (c: XCost) =>
-  `About ${dollars(c.total_usd)} a run on X: ${dollars(c.read_usd)} to read it${c.writes > 0 ? ` and ${dollars(c.write_usd)} for ${c.writes} ${c.writes === 1 ? "write" : "writes"}` : ""}. With X credits that is ${Number(c.credits.toFixed(1))}.`;
+  `About ${dollars(c.total_usd)} a run on X: ${dollars(c.read_usd)} to read it${c.writes > 0 ? ` and ${dollars(c.write_usd)} for ${c.writes} ${c.writes === 1 ? "write" : "writes"}` : ""}. With billing on that is about ${Number(c.credits.toFixed(1))} X credits.`;
 // AI steps are written for real, one call each, so brain answers after them: up to 10 steps of 20 seconds.
 export const testAutomation = (automation: AutomationInput, sample: TestSample) => api<TestOutcome>("/v1/automations/test", "POST", { automation, sample }, 120_000);
 

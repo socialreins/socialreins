@@ -201,7 +201,7 @@ test("an automation on X shows what a run costs while it is edited", async ({ pa
   state.estimate = { x: true, cost: { writes: 2, read_usd: 0.015, write_usd: 0.03, total_usd: 0.045, credits: 2.3 } };
   await page.getByLabel("DM text").fill("Hi {name}, here it is");
   await expect(page.getByRole("status").filter({ hasText: "About $0.045 a run on X" })).toBeVisible();
-  await expect(page.getByRole("status").filter({ hasText: "$0.03 for 2 writes" })).toContainText("With X credits that is 2.3");
+  await expect(page.getByRole("status").filter({ hasText: "$0.03 for 2 writes" })).toContainText("With billing on that is about 2.3 X credits");
 });
 
 test("the builder shows what the trigger takes, its networks note and a preview", async ({ page }) => {

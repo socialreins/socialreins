@@ -285,15 +285,19 @@ export function AutomationForm({
   const specific = t.posts && d.specific;
   const uris = specific ? postIds(lines, (a ?? copyOf)?.conditions.post_remote_ids ?? [], accounts) : [];
   const testable = !specific || (lines.length > 0 && uris.every(Boolean));
-  // What a run costs on X, asked of brain while the form changes (and only when an X account is in scope).
-  const priced = testable ? JSON.stringify(automationInput(d, scopeBody(scope), uris as string[])) : null;
-  const [cost, setCost] = useState<XCost | null>(null);
+  // What a run costs on X, asked of brain while the form changes, and only when an X account can be in
+  // scope (the team has one, and a scope by name names one).
+  const mayBeX = accounts.some((x) => x.provider === "x") && (scope.mode !== "accounts" || picked.some((x) => x.provider === "x"));
+  const priced = testable && mayBeX ? JSON.stringify(automationInput(d, scopeBody(scope), uris as string[])) : null;
+  // The answer is kept with what it was asked for, so a figure for an older draft is never shown.
+  const [answer, setAnswer] = useState<{ asked: string; cost: XCost | null } | null>(null);
+  const cost = priced !== null && answer?.asked === priced ? answer.cost : null;
   useEffect(() => {
     if (priced === null) return;
     let live = true;
     const wait = setTimeout(() => {
       estimateAutomation(JSON.parse(priced) as AutomationInput).then((r) => {
-        if (live) setCost(!isFailure(r) && r.x ? r.cost : null);
+        if (live) setAnswer({ asked: priced, cost: !isFailure(r) && r.x ? r.cost : null });
       });
     }, 600);
     return () => {
@@ -737,9 +741,11 @@ export function AutomationForm({
 
         <fieldset className="card grid gap-3 p-5">
           <legend className={cardTitle}>Limits</legend>
+          <div role="status">{cost && <p className="rounded-xl bg-canvas p-3 text-sm">{costText(cost)}</p>}</div>
           {cost && (
-            <p className="rounded-xl bg-canvas p-3 text-sm" role="status">
-              {costText(cost)} X bills every post, user and message it returns or takes. Each X account has a monthly budget, and the automation stops when it is used up. X replies hold 280 characters (25,000 with a paid X plan); a DM 10,000.
+            <p className="hint">
+              X bills every post, user and message it returns or takes. Each X account has a monthly budget, and the automation stops when it is used up. X counts a link as 23 characters and some characters as 2: a reply holds 280 (up to 300 on a paid X
+              plan, the most any automation text takes), a DM 1000.
             </p>
           )}
           <p className="hint">Both are optional. A run held back by a limit is kept in the run history with its reason.</p>
