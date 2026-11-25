@@ -74,6 +74,24 @@ export type RunPage = { runs: Run[]; next_cursor: string | null };
 
 const enc = encodeURIComponent;
 
+// "Test this automation": what brain says one would do with a sample from a stranger, sending and storing nothing.
+export type TestSample = { account_id: string; text: string; author_name?: string; post_remote_id?: string; button_payload?: string };
+export type PlannedStatus = "would_send" | "would_skip" | "would_fail" | "would_tag" | "would_wait" | "not_reached";
+export type PlannedStep = {
+  type: ActionResult["type"] | "wait";
+  status: PlannedStatus;
+  reason: string | null;
+  text: string | null;
+  buttons?: Button[];
+  wait_minutes: number | null;
+  tag: string | null;
+  provider?: string;
+  model?: string;
+};
+export type TestOutcome = { trigger: Trigger; matched: boolean; mismatches: string[]; blocks: string[]; steps: PlannedStep[] };
+// AI steps are written for real, one call each, so brain answers after them: up to 10 steps of 20 seconds.
+export const testAutomation = (automation: AutomationInput, sample: TestSample) => api<TestOutcome>("/v1/automations/test", "POST", { automation, sample }, 120_000);
+
 export const listAutomations = () => api<Automation[]>("/v1/automations");
 export const getAutomation = (id: string) => api<Automation>(`/v1/automations/${enc(id)}`);
 export const createAutomation = (input: AutomationInput) => api<Automation>("/v1/automations", "POST", input);
@@ -659,6 +677,32 @@ export const reasonWhy: Record<string, string> = {
   ai_link: "The AI may only use links and @handles that are in your prompt, so this reply was held back.",
   ai_leak: "The reply quoted a long part of your prompt word for word, so it was held back.",
   daily_cap: "A team's automations run at most 500 times a day.",
+};
+// Why a sample would not run an automation, in words: the conditions that fail, then the rules that stop it.
+export const mismatchText: Record<string, string> = {
+  wrong_set: "The account is not in the set this automation is limited to",
+  wrong_account: "The account is not one this automation is limited to",
+  wrong_post: "The sample is not under one of the posts listed",
+  no_keyword: "The text has none of the keywords",
+  not_first_from_author: "It is only for a person's first comment",
+  not_first_message: "It is only for a person's first message",
+  button_not_named: "That button payload is not one this automation listens for",
+};
+export const blockText: Record<string, string> = {
+  unsupported_account: "Automations run only on Bluesky, Facebook and Instagram accounts",
+  meta_one_private_reply: "Facebook and Instagram allow one private reply per comment",
+  meta_reply_window: "Facebook and Instagram take a DM only within 24 hours of the person's message (7 days for a comment)",
+  invalid_text: "A DM is too long for Instagram, which takes 1000 bytes",
+  no_public_page: "A text holds {page}, and this post has no open public page, so it would not run",
+  daily_cap: "The team reached 500 automation runs today, so it would not run",
+};
+export const plannedStatus: Record<PlannedStatus, string> = {
+  would_send: "Would send",
+  would_skip: "Would not send",
+  would_fail: "Would fail",
+  would_tag: "Would tag",
+  would_wait: "Would wait",
+  not_reached: "Never reached",
 };
 export const reason = (code: string | null) => (code ? (reasonText[code] ?? code.replaceAll("_", " ")) : null);
 

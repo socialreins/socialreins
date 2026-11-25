@@ -31,6 +31,7 @@ import { cleanTag } from "@/lib/contacts";
 import { MAX_DM, MAX_PUBLIC } from "@/lib/inbox";
 import type { SocialSet } from "@/lib/sets";
 import { FlowEditor, FlowPreview, TagLine, TextField } from "@/components/automation-flow";
+import { AutomationTest } from "@/components/automation-test";
 import { KeywordsField, ScopeField, scopeBody, scopeOf } from "@/components/scope-fields";
 import { Status, useAction } from "@/components/team-ui";
 import { Icon, type IconName } from "@/components/ui";
@@ -233,10 +234,13 @@ export function AutomationForm({
     save(false);
   }
 
+  // The post links as ids, `null` where a link is none.
+  const specific = t.posts && d.specific;
+  const uris = specific ? postIds(lines, (a ?? copyOf)?.conditions.post_remote_ids ?? [], accounts) : [];
+  const testable = !specific || (lines.length > 0 && uris.every(Boolean));
+
   // `sure`: the yes to stopping the runs that wait in the flow.
   async function save(sure: boolean) {
-    const specific = t.posts && d.specific;
-    const uris = specific ? postIds(lines, (a ?? copyOf)?.conditions.post_remote_ids ?? [], accounts) : [];
     const bad = specific ? lines.filter((_, i) => !uris[i]) : [];
     setBadLinks(bad);
     if (bad.length || (specific && !lines.length)) {
@@ -512,6 +516,14 @@ export function AutomationForm({
             </>
           )}
         </fieldset>
+
+        <AutomationTest
+          input={testable ? automationInput(d, scopeBody(scope), uris as string[]) : null}
+          blocked={issues.filter((i) => i.field !== "automation-name").length}
+          accounts={accounts.filter((x) => AUTOMATED.includes(x.provider))}
+          scopeIds={scope.mode === "accounts" ? scope.accountIds : []}
+          placeholder={d.keywords[0] ? `Can I get the ${d.keywords[0]}?` : (sam.text ?? "Hello")}
+        />
 
         <div id="automation-bar" className="sticky bottom-3 z-10 grid gap-2 rounded-lg bg-paper/95 p-3 shadow-[0_0_0_1px_var(--line),0_-6px_20px_rgb(0_0_0/0.07)] backdrop-blur sm:px-4">
           <Status problem={problem} done={done} overrides={automationMessages} />
