@@ -67,7 +67,14 @@ export type Item = {
   attachments?: Attachment[];
   // On a list row that stands for a whole DM conversation (the row is its latest DM); null or missing otherwise.
   conversation?: Conversation | null;
+  // Facebook and Instagram comments: what was done to it from here and what still can be. Missing for anything else or from an older brain.
+  moderation?: Moderation | null;
+  // Facebook and Instagram DMs: how long Meta takes a reply. Missing for anything else or from an older brain.
+  reply_window?: ReplyWindow | null;
 };
+export type ModerationAction = "hide" | "unhide" | "delete" | "like" | "unlike";
+export type Moderation = { hidden: boolean; liked: boolean; deleted: boolean; can: ModerationAction[] };
+export type ReplyWindow = { last_message_at: string; closes_at: string; human_agent_until: string | null; open: boolean };
 export type Attachment = { kind: "image" | "video" | "sticker" | "gif" | "audio" | "file" | "link"; url: string; preview_url?: string };
 export const attachmentName: Record<Attachment["kind"], string> = { image: "Photo", video: "Video", sticker: "Sticker", gif: "GIF", audio: "Audio", file: "File", link: "Link" };
 // What a list row says: the text, else what the item carries ("Photo", "Sticker and 1 more"), never "(no text)" when it carries something.
@@ -280,6 +287,41 @@ export async function replyToItem(id: string, text: string, conversation = false
   if (res.status === 422 && typeof body?.message === "string") return { code: String(body.error), message: body.message };
   const refused = await failure(res);
   return refused === "error" ? unsure : refused;
+}
+
+// A moderation that Meta did not take, or took: the item brain now holds. Delete and the rest are one call each.
+export async function moderateItem(id: string, action: ModerationAction): Promise<Item | Failure | SendError> {
+  const res = await request(`/v1/inbox-items/${enc(id)}/moderate`, "POST", { action }, CONNECT_TIMEOUT_MS);
+  if (typeof res === "string") return res;
+  if (res.ok) return (await res.json().catch(() => null)) ?? "error";
+  const body = await res.clone().json().catch(() => null);
+  if (res.status === 422 && typeof body?.message === "string") return { code: String(body.error), message: body.message };
+  return failure(res);
+}
+
+const hoursLeft = (ms: number) => {
+  const minutes = Math.max(1, Math.round(ms / 60_000));
+  if (minutes < 60) return `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+  if (minutes < 2880) {
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return `${h} ${h === 1 ? "hour" : "hours"}${m ? ` ${m} min` : ""}`;
+  }
+  return `${Math.floor(minutes / 1440)} days`;
+};
+// What a Meta DM's window says to the person replying: how long Meta still takes a message, or why none goes out.
+// `blocked` is true when a send would be refused (the 24 hours are over and no Human Agent tag applies).
+export function windowNote(w: ReplyWindow, now = Date.now()): { text: string; blocked: boolean } {
+  const closes = Date.parse(w.closes_at);
+  if (closes > now) return { text: `Meta takes a reply for ${hoursLeft(closes - now)} more, 24 hours after their last message.`, blocked: false };
+  const agent = w.human_agent_until ? Date.parse(w.human_agent_until) : 0;
+  if (agent > now) return { text: `The 24 hours are over. A reply still goes out as a person's reply for ${hoursLeft(agent - now)} more.`, blocked: false };
+  return {
+    text: w.human_agent_until
+      ? "Meta takes no reply now: it is more than 7 days since their last message."
+      : "Meta takes no message more than 24 hours after the person's last one. Answering later, up to 7 days, needs Meta's Human Agent permission, which SocialReins has not been granted yet.",
+    blocked: true,
+  };
 }
 
 // The item that already carries our reply with this text, sent in the last two minutes: an unsure send that did go out.
