@@ -3,7 +3,7 @@ import { cleanTag } from "@/lib/contacts";
 import type { Connection } from "@/lib/connections";
 import { graphemes } from "@/lib/posts";
 
-export type Trigger = "comment_received" | "dm_received" | "mention_received" | "new_follower" | "story_reply" | "story_mention" | "button_clicked";
+export type Trigger = "comment_received" | "dm_received" | "mention_received" | "new_follower" | "story_reply" | "story_mention" | "button_clicked" | "like_received" | "repost_received";
 export type ScopeBody = { social_set_id?: string | null; account_ids: string[] };
 // brain stores only what the trigger takes, so everything but the scope may be missing.
 export type Conditions = ScopeBody & {
@@ -42,9 +42,12 @@ export type AiSend = { type: "ai_send_dm"; prompt: string } | { type: "ai_reply_
 export const MAX_PROMPT = 2000;
 // What an automation does besides sending: mail the owners, hide or like the comment (Facebook and
 // Instagram), keep newer automations off the item. `assign` is API only: the builder leaves it alone.
-export type EffectType = "notify_team" | "hide_comment" | "like_comment" | "stop_automations";
+export type EffectType = "notify_team" | "hide_comment" | "like_comment" | "repost_comment" | "follow_back" | "stop_automations";
 export type Effect = { type: EffectType };
-export const EFFECTS: EffectType[] = ["notify_team", "hide_comment", "like_comment", "stop_automations"];
+export const EFFECTS: EffectType[] = ["notify_team", "hide_comment", "like_comment", "repost_comment", "follow_back", "stop_automations"];
+// A like or repost of one of our posts (Bluesky): nobody to message and no contact to tag, so only actions that do
+// something on the account or in the team.
+export const isActivity = (t: Trigger) => t === "like_received" || t === "repost_received";
 export type AssignAction = { type: "assign"; user_id: string };
 export type Action = { type: "send_dm" | "reply_publicly"; text: string } | AiSend | TagAction | Effect | AssignAction;
 export const MAX_TAG_ACTIONS = 3;
@@ -153,6 +156,13 @@ export const updateAutomation = (id: string, input: AutomationInput) => api<Auto
 export const deleteAutomation = (id: string) => api(`/v1/automations/${enc(id)}`, "DELETE");
 export const switchAutomation = (id: string, on: boolean) =>
   api<Automation>(`/v1/automations/${enc(id)}/${on ? "enable" : "disable"}`, "POST");
+// Why an automation did not run on an item: the conditions that failed, or another reason (see `notRunText`).
+// brain keeps these 14 days. Items held back for a safety reason (paused, cool-down, caps) are runs instead.
+export type Miss = { inbox_item_id: string; reasons: string[]; created_at: string; kind: string; platform: string; author: string | null; text: string };
+export const listMisses = (id: string) => api<{ misses: Miss[] }>(`/v1/automations/${enc(id)}/misses`);
+// What each automation did with one inbox item.
+export type Verdict = { automation_id: string; name: string; outcome: "ran" | "failed" | "skipped" | "not_matched"; reasons: string[] };
+export const itemAutomations = (itemId: string) => api<{ automations: Verdict[] }>(`/v1/inbox-items/${enc(itemId)}/automations`);
 export const listRuns = (id: string, cursor?: string | null) =>
   api<RunPage>(`/v1/automations/${enc(id)}/runs${cursor ? `?cursor=${enc(cursor)}` : ""}`);
 // Tries a run again after a rate limit refused its send: brain does it only when nothing went out, so it never sends twice.
@@ -207,7 +217,21 @@ export type Capability = {
   // The networks it runs on, as ids of `platforms`, for the marks in the template gallery.
   networks: string[];
 };
+const activity = (what: string): Capability => ({
+  label: `When someone ${what}s a post`,
+  keywords: false,
+  posts: true,
+  firstPerAuthor: false,
+  firstMessage: false,
+  publicReply: false,
+  payloads: false,
+  text: false,
+  note: `Bluesky only. Runs when someone ${what}s one of your posts, any post or the ones you list, within a minute or two. It has nobody to message or tag, so it follows them back, mails your team or stops the newer automations.`,
+  networks: ["bluesky"],
+});
 export const triggers: Record<Trigger, Capability> = {
+  like_received: activity("like"),
+  repost_received: activity("repost"),
   comment_received: { label: "When someone comments", keywords: true, posts: true, firstPerAuthor: true, firstMessage: false, publicReply: true, payloads: false, text: true, note: null, networks: ["bluesky", "facebook", "instagram", "x"] },
   dm_received: { label: "When someone sends a DM", keywords: true, posts: false, firstPerAuthor: false, firstMessage: true, publicReply: false, payloads: false, text: true, note: null, networks: ["bluesky", "facebook", "instagram", "x"] },
   mention_received: { label: "When someone mentions you", keywords: true, posts: false, firstPerAuthor: true, firstMessage: false, publicReply: true, payloads: false, text: true, note: null, networks: ["bluesky", "x"] },
@@ -260,7 +284,19 @@ export const triggers: Record<Trigger, Capability> = {
     networks: ["facebook", "instagram"],
   },
 };
-export const TRIGGERS = Object.keys(triggers) as Trigger[];
+export const TRIGGERS: Trigger[] = ["comment_received", "dm_received", "mention_received", "new_follower", "like_received", "repost_received", "story_reply", "story_mention", "button_clicked"];
+// Where each action works: hiding is for comments, like and repost for comments and mentions (a post to act on),
+// the rest anywhere. Which networks do them is brain's call per item (`not_supported`).
+export const effectFits = (type: EffectType, trigger: Trigger) =>
+  type === "hide_comment"
+    ? trigger === "comment_received"
+    : type === "like_comment"
+      ? triggers[trigger].publicReply
+      : type === "repost_comment"
+        ? triggers[trigger].publicReply && triggers[trigger].networks.includes("bluesky")
+        : type === "follow_back"
+          ? triggers[trigger].networks.includes("bluesky")
+          : true;
 
 const isText = (x: unknown) => typeof x === "string";
 export const isEffectType = (type: unknown): type is EffectType => EFFECTS.includes(type as EffectType);
@@ -408,16 +444,19 @@ export type FlowProblem = { step: number | null; text: string };
 export function flowProblems(steps: StepDraft[], trigger: Trigger, providers: string[] = []): FlowProblem[] {
   const out: FlowProblem[] = [];
   const pub = triggers[trigger].publicReply;
-  const acts = (s: StepDraft) => isSend(s) || s.type === "notify_team" || s.type === "hide_comment" || s.type === "like_comment";
-  if (!steps.some(acts)) out.push({ step: null, text: "A flow needs at least one step that sends something. Add a DM, or a mail to your team or a moderation step." });
+  const acts = (s: StepDraft) => isSend(s) || (isEffect(s) && s.type !== "stop_automations");
+  if (!steps.some(acts))
+    out.push({ step: null, text: isActivity(trigger) ? "A flow needs at least one step that does something. Add a follow back or a mail to your team." : "A flow needs at least one step that sends something. Add a DM, or a mail to your team or a moderation step." });
   else {
-    if (isWait(steps[0]!)) out.push({ step: null, text: "A flow can't start with a wait. Move a DM above it." });
+    if (isWait(steps[0]!)) out.push({ step: null, text: `A flow can't start with a wait. Move ${isActivity(trigger) ? "an action" : "a DM"} above it.` });
     if (isWait(steps.at(-1)!)) out.push({ step: null, text: "A flow can't end with a wait. Add a step after it, or remove it." });
   }
   for (const type of EFFECTS)
     if (steps.filter((s) => s.type === type).length > 1) out.push({ step: null, text: `${stepName[type]} can be in a flow once.` });
-  if ((steps.some((s) => s.type === "hide_comment" || s.type === "like_comment")) && trigger !== "comment_received")
-    out.push({ step: null, text: "Hiding and liking work on comments only." });
+  if (steps.some((s) => isEffect(s) && !effectFits(s.type, trigger)))
+    out.push({ step: null, text: "Hiding works on comments, and liking and reposting on comments and mentions. Remove those steps." });
+  if (isActivity(trigger) && steps.some((s) => isSend(s) || s.type === "tag_contact" || s.type === "wait_for_reply"))
+    out.push({ step: null, text: "A like or repost has nobody to message or tag. Remove the message, tag and reply steps." });
   if (steps.length > MAX_STEPS) out.push({ step: null, text: `A flow takes up to ${MAX_STEPS} steps.` });
   const payloads = steps.flatMap((s) => (s.type === "send_dm" ? s.buttons.map((b) => b.payload) : []));
   steps.forEach((s, step) => {
@@ -489,7 +528,8 @@ export function toFlow(d: Draft): { steps: StepDraft[]; dropped: string[] } {
   return {
     // A DM to fill in only when nothing else in the reply does something.
     steps: [
-      ...(steps.length || d.tags.length || d.also.some((e) => e !== "stop_automations") ? steps : [newStep("send_dm")]),
+      // A DM to fill in only when nothing else in the reply does something (and a like has nobody to message).
+      ...(steps.length || d.tags.length || d.also.some((e) => e !== "stop_automations") || isActivity(d.trigger) ? steps : [newStep("send_dm")]),
       ...d.tags.map((t) => newStep("tag_contact", t)),
       ...EFFECTS.filter((e) => d.also.includes(e)).map((e) => newStep(e)),
     ],
@@ -755,9 +795,14 @@ export function changeTrigger(d: Draft, to: Trigger): { draft: Draft; dropped: s
   drop(!t.payloads && d.payloads.length > 0, "button payloads", { payloads: [] });
   drop(!t.text && d.hasLink !== "any", "the link rule", { hasLink: "any" });
   drop(!t.text && d.sentiment.length > 0, "the mood rule", { sentiment: [] });
-  const onlyComments = (t: string) => t === "hide_comment" || t === "like_comment";
-  drop(to !== "comment_received" && d.also.some(onlyComments), "hide and like", { also: d.also.filter((e) => !onlyComments(e)) });
-  drop(to !== "comment_received" && d.steps.some((s) => onlyComments(s.type)), "hide and like steps", { steps: d.steps.filter((s) => !onlyComments(s.type)) });
+  const misfit = (t: string) => isEffectType(t) && !effectFits(t, to);
+  drop(d.also.some(misfit), "hide, like and repost", { also: d.also.filter((e) => !misfit(e)) });
+  drop(d.steps.some((s) => misfit(s.type)), "hide, like and repost steps", { steps: d.steps.filter((s) => !misfit(s.type)) });
+  // Nobody to message or tag behind a like or repost.
+  drop(isActivity(to) && Boolean(d.dm.trim()), "DM", { dm: "", fallbackOn: false, fallback: "" });
+  drop(isActivity(to) && d.tags.length > 0, "tags", { tags: [] });
+  const messageStep = (s: StepDraft) => isSend(s) || s.type === "tag_contact" || s.type === "wait_for_reply";
+  drop(isActivity(to) && d.steps.some(messageStep), "message and tag steps", { steps: d.steps.filter((s) => !messageStep(s)) });
   const replyStep = (s: StepDraft) => s.type === "reply_publicly" || s.type === "ai_reply_publicly";
   drop(!t.publicReply && d.steps.some(replyStep), "public reply steps", { steps: d.steps.filter((s) => !replyStep(s)) });
   drop(!t.publicReply && draft.steps.some((s) => s.type === "send_dm" && s.text.includes("{page}")), "{page} in the steps", {
@@ -794,7 +839,7 @@ export function timeProblems(d: Draft): string[] {
 // What brain gets: only the conditions and actions the trigger takes, whatever the draft still holds.
 export function automationInput(d: Draft, scope: ScopeBody, uris: string[]): AutomationInput {
   const t = triggers[d.trigger];
-  const dm = d.dm.trim() ? d.dm : "";
+  const dm = d.dm.trim() && !isActivity(d.trigger) ? d.dm : "";
   const reply = t.publicReply ? d.publicReply.trim() : "";
   // brain takes a fallback only next to a DM.
   const fallback = t.publicReply && dm && d.fallbackOn ? d.fallback.trim() : "";
@@ -825,9 +870,8 @@ export function automationInput(d: Draft, scope: ScopeBody, uris: string[]): Aut
     actions: [
       ...(dm ? [{ type: "send_dm" as const, text: dm }] : []),
       ...(reply ? [{ type: "reply_publicly" as const, text: reply }] : []),
-      ...d.tags.slice(0, MAX_TAG_ACTIONS).map((tag) => ({ type: "tag_contact" as const, tag })),
-      // Hiding and liking are for comments only.
-      ...EFFECTS.filter((e) => d.also.includes(e) && (d.trigger === "comment_received" || (e !== "hide_comment" && e !== "like_comment"))).map((type) => ({ type })),
+      ...(isActivity(d.trigger) ? [] : d.tags.slice(0, MAX_TAG_ACTIONS).map((tag) => ({ type: "tag_contact" as const, tag }))),
+      ...EFFECTS.filter((e) => d.also.includes(e) && effectFits(e, d.trigger)).map((type) => ({ type })),
     ],
     active: d.active,
     fallback_public_reply: fallback || null,
@@ -873,8 +917,12 @@ export const reasonText: Record<string, string> = {
   ai_leak: "Not sent: the AI repeated your prompt",
   no_reply: "They did not answer in time, so the rest of the flow never went out",
   reply_gone: "Their answer was deleted, so the flow stopped rather than send a second private reply",
-  not_supported: "Facebook and Instagram do not allow this on this item (Instagram has no like for a comment)",
-  notify_cap: "The team already got 20 automation emails today",
+  not_supported: "This network does not allow this on this item (Reposting and following back are Bluesky only; Instagram has no like for a comment)",
+  already_done: "The account followed this person a moment ago, so it was not done twice",
+  action_in_progress: "The same action on this item was being done at that moment",
+  not_applicable: "This item has nothing to do that to",
+  post_unavailable: "The post is gone, or Bluesky does not show it to this account",
+  notify_cap: "The team already got 20 automation notifications today",
   mail_failed: "The email to your team could not be sent",
   already_assigned: "It already had someone assigned",
   not_a_member: "The person to assign is no longer on the team",
@@ -916,10 +964,31 @@ export const mismatchText: Record<string, string> = {
   wrong_link: "The text does not match the link rule (with or without a link)",
   sentiment_mismatch: "The AI did not read the text as one of the moods chosen",
 };
+// Why an automation did not run on a real item, from brain's misses and skipped runs. A code that is none of these
+// is a run reason (`reason`), or its words.
+export const notRunText: Record<string, string> = {
+  wrong_set: "The account is not in the set this automation is limited to",
+  wrong_account: "It came to an account this automation is not limited to",
+  wrong_post: "It is not on one of the posts this automation is limited to",
+  no_keyword: "The text has none of the keywords",
+  not_first_from_author: "It is only for a person's first comment",
+  not_first_message: "It is only for a person's first message",
+  button_not_named: "That button is not one this automation listens for",
+  wrong_link: "The text does not match the link rule (with or without a link)",
+  sentiment_mismatch: "The AI did not read the text as one of the moods chosen",
+  wrong_trigger: "It is for a different kind of item",
+  not_yet_on: "The automation was switched on after this came",
+  followed_before: "This person had followed before, and a follower is welcomed once",
+  no_public_page: "The text holds {page} and the post has no open public page",
+  stopped_by_other: "An earlier automation on this item stops the newer ones",
+};
+export const whyNot = (code: string) => notRunText[code] ?? reason(code) ?? code;
 export const blockText: Record<string, string> = {
+  bluesky_only_trigger: "Likes and reposts come only from Bluesky: use a Bluesky account, or leave the others out",
+  bluesky_only_action: "Reposting and following back go to Bluesky only: use a Bluesky account, or leave the others out",
   unsupported_account: "Automations run only on Bluesky, Facebook, Instagram and X accounts",
   x_unsupported_trigger: "X has no follows, story replies or buttons to trigger on: use a comment, a mention or a DM",
-  bluesky_unsupported_trigger: "Bluesky has no story replies or buttons to tap: use a comment, a mention, a DM or a follow",
+  bluesky_unsupported_trigger: "Bluesky has no story replies or buttons to tap: use a comment, a mention, a DM, a follow, a like or a repost",
   meta_one_private_reply: "Facebook and Instagram allow one private reply per comment",
   meta_reply_window: "Facebook and Instagram take a DM only within 24 hours of the person's message (7 days for a comment)",
   facebook_unsupported_trigger: "Facebook has no story mentions: use a comment or a DM",
@@ -968,6 +1037,8 @@ export const actionName: Record<ActionResult["type"], string> = {
   assign: "Assign",
   hide_comment: "Hide the comment",
   like_comment: "Like the comment",
+  repost_comment: "Repost the comment",
+  follow_back: "Follow them back",
   stop_automations: "Stop newer automations",
 };
 
@@ -1003,6 +1074,8 @@ export const stepName: Record<Step["type"], string> = {
   assign: "Assign it",
   hide_comment: "Hide the comment",
   like_comment: "Like the comment",
+  repost_comment: "Repost the comment",
+  follow_back: "Follow them back",
   stop_automations: "Stop newer automations",
 };
 // "DM, wait 1 day, DM, tag: vip".
