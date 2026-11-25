@@ -884,7 +884,7 @@ export function AutomationDetail({ id }: { id: string }) {
             This couldn&apos;t be loaded. {problemText(misses)}
           </p>
         ) : misses.length === 0 ? (
-          <p className="card p-5 text-ink-soft">Nothing in the last 14 days: every item it listens for ran it, or none came.</p>
+          <p className="card p-5 text-ink-soft">No item it listens for failed to match in the last 14 days.</p>
         ) : (
           <ul aria-label="Items it did not run on" className="card divide-y divide-ink/10">
             {misses.map((m) => (

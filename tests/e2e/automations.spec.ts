@@ -1335,7 +1335,6 @@ test("a flow adds follow back and repost where there is a post, and none of the 
   const state = await brain(page, "owner");
   await page.goto("/automations/new?template=comment-to-dm");
   await page.getByRole("radio", { name: "A flow of steps" }).check();
-  await page.getByLabel("Insert a step after step 1").count();
   await page.getByRole("button", { name: "Repost the comment", exact: true }).click();
   await expect(page.getByRole("listitem", { name: /Repost the comment/ })).toContainText("Only Bluesky accounts can");
   await page.getByRole("button", { name: "Follow them back", exact: true }).click();
@@ -1361,5 +1360,5 @@ test("the automation page lists items it did not run on, with why", async ({ pag
   await expect(list.getByRole("link", { name: "Open in inbox" }).first()).toHaveAttribute("href", "/t/acme22/inbox?item=p1");
   state.misses = [];
   await page.reload();
-  await expect(page.getByText("Nothing in the last 14 days")).toBeVisible();
+  await expect(page.getByText("No item it listens for failed to match")).toBeVisible();
 });

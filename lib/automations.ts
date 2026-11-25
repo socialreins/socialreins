@@ -213,7 +213,7 @@ const activity = (what: string): Capability => ({
   publicReply: false,
   payloads: false,
   text: false,
-  note: `Bluesky only. Runs when someone ${what}s one of your posts, any post or the ones you list, within a minute or two. It has nobody to message or tag, so it follows them back, mails your team, assigns the item or stops the newer automations.`,
+  note: `Bluesky only. Runs when someone ${what}s one of your posts, any post or the ones you list, within a minute or two. It has nobody to message or tag, so it follows them back, mails your team or stops the newer automations.`,
   networks: ["bluesky"],
 });
 export const triggers: Record<Trigger, Capability> = {
@@ -275,7 +275,15 @@ export const TRIGGERS: Trigger[] = ["comment_received", "dm_received", "mention_
 // Where each action works: hiding is for comments, like and repost for comments and mentions (a post to act on),
 // the rest anywhere. Which networks do them is brain's call per item (`not_supported`).
 export const effectFits = (type: EffectType, trigger: Trigger) =>
-  type === "hide_comment" ? trigger === "comment_received" : type === "like_comment" || type === "repost_comment" ? triggers[trigger].publicReply : true;
+  type === "hide_comment"
+    ? trigger === "comment_received"
+    : type === "like_comment"
+      ? triggers[trigger].publicReply
+      : type === "repost_comment"
+        ? triggers[trigger].publicReply && triggers[trigger].networks.includes("bluesky")
+        : type === "follow_back"
+          ? triggers[trigger].networks.includes("bluesky")
+          : true;
 
 const isText = (x: unknown) => typeof x === "string";
 export const isEffectType = (type: unknown): type is EffectType => EFFECTS.includes(type as EffectType);
@@ -424,9 +432,10 @@ export function flowProblems(steps: StepDraft[], trigger: Trigger, providers: st
   const out: FlowProblem[] = [];
   const pub = triggers[trigger].publicReply;
   const acts = (s: StepDraft) => isSend(s) || (isEffect(s) && s.type !== "stop_automations");
-  if (!steps.some(acts)) out.push({ step: null, text: "A flow needs at least one step that sends something. Add a DM, or a mail to your team or a moderation step." });
+  if (!steps.some(acts))
+    out.push({ step: null, text: isActivity(trigger) ? "A flow needs at least one step that does something. Add a follow back or a mail to your team." : "A flow needs at least one step that sends something. Add a DM, or a mail to your team or a moderation step." });
   else {
-    if (isWait(steps[0]!)) out.push({ step: null, text: "A flow can't start with a wait. Move a DM above it." });
+    if (isWait(steps[0]!)) out.push({ step: null, text: `A flow can't start with a wait. Move ${isActivity(trigger) ? "an action" : "a DM"} above it.` });
     if (isWait(steps.at(-1)!)) out.push({ step: null, text: "A flow can't end with a wait. Add a step after it, or remove it." });
   }
   for (const type of EFFECTS)
@@ -506,7 +515,8 @@ export function toFlow(d: Draft): { steps: StepDraft[]; dropped: string[] } {
   return {
     // A DM to fill in only when nothing else in the reply does something.
     steps: [
-      ...(steps.length || d.tags.length || d.also.some((e) => e !== "stop_automations") ? steps : [newStep("send_dm")]),
+      // A DM to fill in only when nothing else in the reply does something (and a like has nobody to message).
+      ...(steps.length || d.tags.length || d.also.some((e) => e !== "stop_automations") || isActivity(d.trigger) ? steps : [newStep("send_dm")]),
       ...d.tags.map((t) => newStep("tag_contact", t)),
       ...EFFECTS.filter((e) => d.also.includes(e)).map((e) => newStep(e)),
     ],
@@ -906,7 +916,7 @@ export const blockText: Record<string, string> = {
   bluesky_only_action: "Reposting and following back go to Bluesky only: use a Bluesky account, or leave the others out",
   unsupported_account: "Automations run only on Bluesky, Facebook, Instagram and X accounts",
   x_unsupported_trigger: "X has no follows, story replies or buttons to trigger on: use a comment, a mention or a DM",
-  bluesky_unsupported_trigger: "Bluesky has no story replies or buttons to tap: use a comment, a mention, a DM or a follow",
+  bluesky_unsupported_trigger: "Bluesky has no story replies or buttons to tap: use a comment, a mention, a DM, a follow, a like or a repost",
   meta_one_private_reply: "Facebook and Instagram allow one private reply per comment",
   meta_reply_window: "Facebook and Instagram take a DM only within 24 hours of the person's message (7 days for a comment)",
   facebook_unsupported_trigger: "Facebook has no story mentions: use a comment or a DM",

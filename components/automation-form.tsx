@@ -279,7 +279,7 @@ export function AutomationForm({
     }
     if (tagsAlone) {
       setTried(true);
-      document.getElementById("automation-dm")?.focus();
+      document.getElementById(nobody ? "automation-also" : "automation-dm")?.focus();
       return;
     }
     // A limit that is not a whole number in range would be sent as none, and clear a working one.
@@ -582,7 +582,9 @@ export function AutomationForm({
               />
               )}
               <fieldset className="grid gap-2">
-                <legend id="automation-also" tabIndex={-1} className="label">Also (optional)</legend>
+                <legend id="automation-also" tabIndex={-1} className="label">
+                  {nobody ? "Do this (pick at least one)" : "Also (optional)"}
+                </legend>
                 {EFFECTS.filter((e) => effectFits(e, d.trigger)).map((e) => (
                   <label key={e} className="flex items-start gap-2">
                     <input
@@ -600,7 +602,9 @@ export function AutomationForm({
               </fieldset>
               {tried && tagsAlone && (
                 <p role="alert" className="waitlist-error">
-                  {d.also.length === 0
+                  {nobody
+                    ? "A stop does nothing alone. Tick follow back or a mail to your team."
+                    : d.also.length === 0
                     ? `A tag needs something sent with it. Write ${t.publicReply ? "a DM text or a public reply" : "a DM text"}, or remove the tags.`
                     : `A tag or a stop needs something done with it. Write ${t.publicReply ? "a DM text or a public reply" : "a DM text"}, tick a mail or a moderation action, or remove them.`}
                 </p>

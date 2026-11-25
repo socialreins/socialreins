@@ -17,8 +17,9 @@ export function ItemAutomations({ itemId }: { itemId: string }) {
     };
   }, [itemId]);
   if (!list || list.length === 0) return null;
-  const ran = list.filter((v) => v.outcome === "ran" || v.outcome === "failed");
-  const not = list.filter((v) => v.outcome === "skipped" || v.outcome === "not_matched");
+  const ran = list.filter((v) => v.outcome === "ran");
+  // A run that failed, was held back, or never started: each with its reasons.
+  const not = list.filter((v) => v.outcome !== "ran");
   const link = (v: Verdict) => (
     <Link href={`/automations/${encodeURIComponent(v.automation_id)}`} className="font-bold underline decoration-signal decoration-2 underline-offset-4">
       {v.name}
@@ -34,7 +35,6 @@ export function ItemAutomations({ itemId }: { itemId: string }) {
               <span key={v.automation_id}>
                 {i > 0 && ", "}
                 {link(v)}
-                {v.outcome === "failed" && " (failed)"}
               </span>
             ))}{" "}
             ran.
@@ -47,7 +47,8 @@ export function ItemAutomations({ itemId }: { itemId: string }) {
         <ul className="grid gap-0.5 text-ink-soft">
           {not.map((v) => (
             <li key={v.automation_id}>
-              {link(v)}: {v.reasons.length > 0 ? v.reasons.map(whyNot).join("; ") : "it did not run"}
+              {link(v)}: {v.outcome === "failed" && "it failed. "}
+              {v.reasons.length > 0 ? v.reasons.map(whyNot).join("; ") : v.outcome === "failed" ? "" : "it did not run"}
             </li>
           ))}
         </ul>

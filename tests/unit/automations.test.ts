@@ -767,6 +767,17 @@ describe("like, repost and follow back", () => {
     expect(msg([newStep("repost_comment"), newStep("follow_back")], "comment_received")).toEqual([]);
   });
 
+  it("keeps follow back and repost to triggers that Bluesky has, and starts no empty DM behind a like", () => {
+    expect(effectFits("follow_back", "story_reply")).toBe(false);
+    expect(effectFits("follow_back", "button_clicked")).toBe(false);
+    expect(effectFits("repost_comment", "comment_received")).toBe(true);
+    expect(effectFits("like_comment", "story_reply")).toBe(false);
+    // One reply to a flow under a like with nothing ticked: no DM step to fill in, which a like could not send.
+    expect(toFlow({ ...full, trigger: "like_received", dm: "", publicReply: "", fallbackOn: false, also: [] }).steps).toEqual([]);
+    expect(toFlow({ ...full, trigger: "comment_received", dm: "", publicReply: "", fallbackOn: false, also: [] }).steps.map((s) => s.type)).toEqual(["send_dm"]);
+    expect(flowProblems([newStep("wait")], "like_received").map((p) => p.text)[0]).toContain("follow back");
+  });
+
   it("words why an automation did not run", () => {
     expect(whyNot("wrong_post")).toContain("posts this automation is limited to");
     expect(whyNot("stopped_by_other")).toContain("stops the newer ones");

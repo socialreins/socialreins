@@ -140,7 +140,7 @@ export const stepIcon: Record<Step["type"], IconName> = {
 };
 // What a step that sends nothing does, in a line.
 export const effectHint: Record<EffectType | "assign", string> = {
-  notify_team: "Emails the owners and admins of the team about it, with a link to the inbox. At most 20 emails a day.",
+  notify_team: "Emails the owners and admins of the team the text and a link to the inbox, nothing else about the person. At most 20 notifications a day.",
   assign: "Assigns it to a teammate. Set through the API; the builder keeps it as it is.",
   hide_comment: "Hides the comment on Facebook or Instagram: only its author and your account see it. Good for spam: pair it with the link rule.",
   like_comment: "Likes the comment or mention: as your Page on Facebook, from the account on Bluesky. Nothing happens on other networks (Instagram has no like for a comment).",
