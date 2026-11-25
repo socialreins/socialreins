@@ -207,8 +207,10 @@ const plain = /^[A-Za-z0-9.\-_~:]+$/;
 // A Bluesky post link or at:// URI as the at://{did}/app.bsky.feed.post/{rkey} URI brain matches
 // comments against. A handle in a link must be one of the team's accounts (comments land on
 // their posts), so no lookup leaves the browser. null when it isn't one.
-export function postUri(input: string, accounts: Pick<Connection, "provider" | "handle" | "external_id">[]): string | null {
+export function postUri(input: string, accounts: Pick<Connection, "provider" | "handle" | "external_id">[], numbers = false): string | null {
   const s = input.trim();
+  // A post's own number as brain keeps it (a Threads post's `remote_id`): a Threads link holds a code, not this number, so the form lists the posts to pick.
+  if (numbers && /^\d{8,25}$/.test(s)) return s;
   const at = /^at:\/\/([^/\s]+)\/app\.bsky\.feed\.post\/([^/\s]+)$/.exec(s);
   if (at) return at[1]!.startsWith("did:") && plain.test(at[1]!) && plain.test(at[2]!) ? s : null;
   const link = /^https:\/\/bsky\.app\/profile\/([^/\s?#]+)\/post\/([^/\s?#]+)\/?(?:[?#]\S*)?$/.exec(s);
@@ -600,9 +602,10 @@ export function toSimple(steps: StepDraft[]): { dm: string; publicReply: string;
 // The ids to save for the post lines in the form. A line that still shows a post the automation was
 // loaded with keeps that id exactly (a Facebook or Instagram post id, any at:// URI); only a line the
 // user added or changed is read as a Bluesky link. null where a line is neither.
-export function postIds(lines: string[], loaded: string[], accounts: Parameters<typeof postUri>[1]) {
+// `numbers`: the accounts in scope include a Threads, Facebook or Instagram one, whose posts have such a number.
+export function postIds(lines: string[], loaded: string[], accounts: Parameters<typeof postUri>[1], numbers = false) {
   const kept = new Map(loaded.flatMap((id) => [[postLink(id), id], [id, id]]));
-  return lines.map((l) => kept.get(l) ?? postUri(l, accounts));
+  return lines.map((l) => kept.get(l) ?? postUri(l, accounts, numbers));
 }
 
 // The builder's fields. The scope and the post URIs are resolved by the form.
@@ -958,6 +961,14 @@ export const reasonText: Record<string, string> = {
   ai_leak: "Not sent: the AI repeated your prompt",
   no_reply: "They did not answer in time, so the rest of the flow never went out",
   reply_gone: "Their answer was deleted, so the flow stopped rather than send a second private reply",
+  threads_no_dm: "Threads has no DMs and no private reply: nothing was sent unless the automation also has a public reply",
+  threads_no_like: "Threads has no like for apps",
+  threads_nested: "Threads can only hide a reply directly under a post of this account, not one deeper in the thread",
+  not_our_thread: "Only a reply under a post of this account can be hidden, so nothing was done",
+  threads_replies_closed: "The author of the post limited who can reply, so no reply was sent",
+  threads_reconnect_required: "Threads refused the account's token. Reconnect the account",
+  threads_permission_missing: "This Threads account was connected without the permission to reply. Reconnect it",
+  threads_failed: "Threads refused it. Look at the account under Accounts, then try again",
   not_supported: "This network does not allow this on this item (Reposting and following back are Bluesky only; Instagram has no like for a comment)",
   already_done: "The account followed this person a moment ago, so it was not done twice",
   action_in_progress: "The same action on this item was being done at that moment",
@@ -986,6 +997,9 @@ export const reasonWhy: Record<string, string> = {
   x_budget: "Each X account has a monthly budget (Accounts, the X account's settings) that pays for reading and for what automations write. Automations start again on the 1st (UTC), or when you raise it.",
   x_reconnect_required: "Open the account's X inbox settings and use Reconnect: X asks again for the direct message, like and hide permissions.",
   paused: "Someone switched on Pause all automations on the Team page. Nothing is sent, and flows waiting at a wait end, until it is switched off.",
+  threads_no_dm: "Threads has no direct messages and no private reply to a comment, so an automation on a Threads account answers with a public reply only. Keep a public reply in the automation.",
+  threads_replies_closed: "Threads lets the author of a post choose who may reply to it. This one takes replies from its own author only.",
+  threads_permission_missing: "The account was connected before SocialReins asked Threads to let it read and send replies. Reconnect it under Accounts and accept the new permissions.",
   own_account: "Automations never answer your own connected accounts, so two accounts cannot reply to each other in a loop.",
   connected_account: "Automations never answer an account that is connected to SocialReins, so two automated accounts cannot reply to each other in a loop.",
   cooldown: "This automation has a cool-down for each person. Change it under Limits in the automation.",

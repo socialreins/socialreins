@@ -542,6 +542,25 @@ describe("tag the contact", () => {
     expect(canEdit({ ...saved, actions: [], steps: [{ type: "send_dm", text: "Hi" }, { type: "tag_contact", tag: "vip", extra: 1 } as never] })).toBe(false);
   });
 
+  it("takes a post's own number as a post to watch, and says why a Threads action did not go", () => {
+    const accounts = [{ provider: "threads", handle: "the_nomadic_dev", external_id: "1" }];
+    // A number is a post only where the accounts in scope have such posts (Threads, Facebook, Instagram).
+    expect(postUri("17900000000000001", accounts)).toBeNull();
+    expect(postUri("17900000000000001", accounts, true)).toBe("17900000000000001");
+    expect(postUri(" 17900000000000001 ", accounts, true)).toBe("17900000000000001");
+    for (const bad of ["123", "12345678abc", "9".repeat(26)]) expect(postUri(bad, accounts, true), bad).toBeNull();
+    expect(postUri("https://bsky.app/profile/x.bsky.social/post/3abc", [{ provider: "bluesky", handle: "x.bsky.social", external_id: "did:plc:x" }], true)).toBe("at://did:plc:x/app.bsky.feed.post/3abc");
+    expect(postUri("https://www.threads.com/@the_nomadic_dev/post/DAbc", accounts)).toBeNull();
+    for (const code of ["threads_no_dm", "threads_no_like", "threads_nested", "threads_replies_closed", "threads_permission_missing"]) {
+      expect(reason(code), code).not.toBe(code.replaceAll("_", " "));
+    }
+    expect(reason("threads_no_dm")).toContain("public reply");
+    expect(reason("threads_no_like")).toContain("no like");
+    expect(reason("threads_nested")).toContain("directly under");
+    expect(reason("threads_replies_closed")).toContain("limited who can reply");
+    expect(reason("not_our_thread")).toContain("nothing was done");
+  });
+
   it("holds a Threads flow to replies and mentions, a public reply and 500 bytes", () => {
     const reply = (text: string): StepDraft => ({ ...newStep("reply_publicly"), text }) as StepDraft;
     expect(flowProblems([reply("Thanks!")], "comment_received", ["threads"])).toEqual([]);

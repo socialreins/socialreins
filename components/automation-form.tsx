@@ -53,6 +53,7 @@ import { effectHint, FlowEditor, FlowPreview, TagLine, TextField } from "@/compo
 import { AutomationTest } from "@/components/automation-test";
 import { KeywordsField, ScopeField, scopeBody, scopeOf } from "@/components/scope-fields";
 import { isFailure, Status, useAction } from "@/components/team-ui";
+import { ThreadsPostPicker } from "@/components/threads-post-picker";
 import { Icon, type IconName } from "@/components/ui";
 
 // Networks whose inbox can fire an automation; brain refuses an account on any other (unsupported_account).
@@ -283,7 +284,10 @@ export function AutomationForm({
 
   // The post links as ids, `null` where a link is none.
   const specific = t.posts && d.specific;
-  const uris = specific ? postIds(lines, (a ?? copyOf)?.conditions.post_remote_ids ?? [], accounts) : [];
+  // The accounts the scope reaches, for what the post lines may be: a set or all accounts reach every account in them.
+  const reached = scope.mode === "accounts" ? picked : scope.mode === "set" ? accounts.filter((x) => x.set_ids.includes(scope.setId)) : accounts;
+  const numbered = reached.some((x) => ["threads", "facebook", "instagram"].includes(x.provider));
+  const uris = specific ? postIds(lines, (a ?? copyOf)?.conditions.post_remote_ids ?? [], accounts, numbered) : [];
   const testable = !specific || (lines.length > 0 && uris.every(Boolean));
   // What a run costs on X, asked of brain while the form changes, and only when an X account can be in
   // scope (the team has one, and a scope by name names one).
@@ -461,11 +465,17 @@ export function AutomationForm({
                     aria-invalid={badLinks.length > 0 || undefined}
                   />
                   <p id="automation-posts-hint" className="hint">
-                    One Bluesky post link per line, from a connected account. Posts already listed here stay as they are.
+                    One Bluesky post link per line, from a connected account, or a post&apos;s number (for Threads, pick the post below). Posts already listed here stay as they are.
                   </p>
+                  {reached.some((x) => x.provider === "threads") && (
+                    <ThreadsPostPicker
+                      accountIds={reached.filter((x) => x.provider === "threads").map((x) => x.id)}
+                      onPick={(id) => set({ posts: d.posts.split("\n").some((l) => l.trim() === id) ? d.posts : `${d.posts.trimEnd()}${d.posts.trim() ? "\n" : ""}${id}` })}
+                    />
+                  )}
                   {badLinks.length > 0 && (
                     <p id="automation-posts-error" role="alert" className="waitlist-error">
-                      {badLinks.length === 1 ? "This link isn't" : "These links aren't"} a post of a connected Bluesky account: {badLinks.join(", ")}
+                      {badLinks.length === 1 ? "This link isn't" : "These links aren't"} a post of a connected Bluesky account or a post number: {badLinks.join(", ")}
                     </p>
                   )}
                 </div>
