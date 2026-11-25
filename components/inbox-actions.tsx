@@ -75,7 +75,8 @@ export function ItemActionsMenu({ item, canManage, state, reload }: { item: Item
   }
   function report(e: FormEvent) {
     e.preventDefault();
-    return go({ action: "report", reason_type: reason.type, reason: reason.text.trim() || undefined, account: reason.account });
+    // An item that is no post of its own (a DM, a like, a follow) can only report its author's account.
+    return go({ action: "report", reason_type: reason.type, reason: reason.text.trim() || undefined, account: reason.account || !post });
   }
 
   return (
