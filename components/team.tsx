@@ -17,6 +17,7 @@ import {
   removeMember,
   renameTeam,
   setNewsletter,
+  setAutomationsPaused,
   setRequireApproval,
   setPublicPages,
   listSubscribers,
@@ -85,6 +86,7 @@ function TeamPage({ user }: { user: User }) {
         </Card>
       )}
       {manages(mine) && <Approvals team={team} onChanged={setTeam} />}
+      {manages(mine) && <PauseAutomations team={team} onChanged={setTeam} />}
       {mine === "owner" && <DeleteTeam team={team} />}
     </>
   );
@@ -247,6 +249,30 @@ function Approvals({ team, onChanged }: { team: Team; onChanged: (t: Team) => vo
         Members&apos; posts need an owner or admin to approve them before they go out
       </label>
       <p className="hint pl-6">A member&apos;s scheduled post shows as Needs approval on the Posts page. Approve it or ask for changes there or on the post. Posts by owners and admins go out as before.</p>
+      <Status problem={problem} done={done} />
+    </Card>
+  );
+}
+
+function PauseAutomations({ team, onChanged }: { team: Team; onChanged: (t: Team) => void }) {
+  const { busy, problem, done, run } = useAction();
+  return (
+    <Card id="pause-heading" title="Automations" help="Stop every automation of this team at once.">
+      <label className="flex cursor-pointer items-center gap-2 font-medium">
+        <input
+          type="checkbox"
+          checked={!!team.automations_paused}
+          disabled={busy !== null}
+          onChange={() =>
+            run("pause", () => setAutomationsPaused(!team.automations_paused), (t) => {
+              onChanged(t);
+              return t.automations_paused ? "All automations are paused. Nothing is sent until you switch this off." : "Automations run again, on messages that come from now on.";
+            })
+          }
+        />
+        Pause all automations
+      </label>
+      <p className="hint pl-6">While this is on, no automation sends a reply or a DM, and flows waiting at a wait end. Every run it holds back is kept in the run history as paused. Items that arrive while paused are not answered later.</p>
       <Status problem={problem} done={done} />
     </Card>
   );
