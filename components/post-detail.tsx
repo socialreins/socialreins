@@ -373,7 +373,17 @@ function Version({ v, d, byId, onAskDown, confirming, confirmCard }: { v: Post; 
           </div>
         </div>
         {confirmCard}
-        {v.targets.length > 0 ? (
+        {v.status === "draft" || v.status === "scheduled" ? (
+          <p className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-ink/[0.04] p-3 text-sm">
+            <span className="min-w-0 flex-1">
+              {v.status === "draft" ? "This version is still a draft." : `This version is scheduled${v.scheduled_at ? ` for ${at(v.scheduled_at, d.zone)}` : ""}.`}
+            </span>
+            <Link href={`/posts/${postRef(v)}`} className="btn btn-secondary btn-sm">
+              <Icon name="edit" className="size-4" />
+              Edit {platformName(v.platform)}
+            </Link>
+          </p>
+        ) : v.targets.length > 0 ? (
           <ul className="grid divide-y divide-[var(--line)] rounded-lg border border-[var(--line)]">
             {v.targets.map((t) => (
               <TargetRow key={t.id} t={t} v={v} d={d} account={t.social_account_id ? byId.get(t.social_account_id) : undefined} retryHere={retryHere} />
