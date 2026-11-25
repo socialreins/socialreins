@@ -125,10 +125,10 @@ export const groups: Group[] = [
   {
     id: "publish",
     name: "Publish",
-    summary: "One post to eight networks, with a separate caption and media for each, a first comment, threads and carousels. Take it down everywhere in one step.",
+    summary: "One post to nine networks, with a separate caption and media for each, a first comment, threads and carousels. Take it down everywhere in one step.",
     href: "/socials",
     items: [
-      { name: "Eight networks", text: "Post to Facebook Pages, Instagram, Threads, LinkedIn, Bluesky, X, TikTok and YouTube from one place." },
+      { name: "Nine networks", text: "Post to Facebook Pages, Instagram, Threads, LinkedIn, Bluesky, X, TikTok, YouTube and Pinterest from one place." },
       { name: "A caption and media for each network", text: "Give each network its own text and its own images or video inside one post." },
       { name: "First comment", text: "Add a comment that goes out right after the post on Facebook, Instagram, LinkedIn and YouTube." },
       { name: "Threads", text: "Write a chain of follow-up posts for Bluesky, Threads and X." },
@@ -144,9 +144,9 @@ export const groups: Group[] = [
     items: [
       { name: "Calendar", text: "See the month and drag a scheduled post to another day, or move it with a date picker." },
       { name: "Queue", text: "Set weekly time slots for a set of accounts, and a new post takes the next free one." },
-      { name: "Bulk upload", text: "Schedule many posts at once from a CSV file. TikTok is posted from the composer, not from a file." },
+      { name: "Bulk upload", text: "Schedule many posts at once from a CSV file. TikTok is posted from the composer, not from a file. A Pinterest pin needs a board: set a default board for the account first." },
       { name: "Recurring posts", text: "Repeat a post every day, week or month, forever or until an end you set. Not for TikTok." },
-      { name: "Feeds", text: "An RSS or Atom feed turns each new item into a draft, a queued post or a post. Not for TikTok or YouTube, and an item needs an image to go to Instagram." },
+      { name: "Feeds", text: "An RSS or Atom feed turns each new item into a draft, a queued post or a post. Not for TikTok, YouTube or Pinterest, and an item needs an image to go to Instagram." },
       { name: "Duplicate a post", text: "Copy a post with its text, media and network settings, and schedule it again." },
       { name: "Library", text: "Keep media links, saved captions and hashtag groups, and drop them into a post." },
     ],

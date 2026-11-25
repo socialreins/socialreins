@@ -196,11 +196,11 @@ function Bulk({ setId, setName, available }: { setId: string; setName: string; a
               <dt className="font-mono font-bold">networks</dt>
               <dd className="text-ink-soft">
                 Optional. Network names separated by spaces or commas, such as <code>bluesky linkedin</code>. Empty means every network the set has
-                {available.length ? ` (${available.filter((p) => p !== "tiktok").map(platformName).join(", ")})` : ""}, leaving out Instagram and YouTube on a row without
+                {available.length ? ` (${available.filter((p) => p !== "tiktok" && p !== "pinterest").map(platformName).join(", ")})` : ""}, leaving out Pinterest unless a row names it, and Instagram and YouTube on a row without
                 media.
               </dd>
               <dt className="font-mono font-bold">media</dt>
-              <dd className="text-ink-soft">Optional. Public https links to images or a video, separated by spaces. YouTube needs a video.</dd>
+              <dd className="text-ink-soft">Optional. Public https links to images or a video, separated by spaces. YouTube needs a video, and Pinterest an image or a video and a default board on the account.</dd>
               <dt className="font-mono font-bold">time</dt>
               <dd className="text-ink-soft">
                 Optional. A time in your zone like <code>2026-11-25 09:30</code>, or <code>queue</code> for the set&apos;s next free queue time. Empty saves a draft.

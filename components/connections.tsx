@@ -38,6 +38,7 @@ import { joinSet, listSets, setAccountSets, setNames, type SocialSet } from "@/l
 import { manages } from "@/lib/teams";
 import { PlatformIcon, platformOf, platforms } from "@/components/platform-icons";
 import { PlatformMark } from "@/components/posts";
+import { getPinterestBoards, setDefaultBoard, type PinterestBoard } from "@/lib/posts";
 import { isFailure, planLimit, problemText, Status, useAction } from "@/components/team-ui";
 import { EmptyState, Icon, LoadFailed, SkeletonRows } from "@/components/ui";
 
@@ -207,6 +208,11 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
         const ask = l.filter((c) => c.provider === "x" && xPlanAsk(c));
         // Only an account that just arrived: a reconnect keeps the plan its owner chose.
         const target = ask.find((c) => added.some((a) => a.id === c.id));
+        if (target) setSettingsId(target.id);
+      }
+      // Back from Pinterest: a pin goes to the account's default board when its post names none, so a new account is asked for one.
+      if (back?.error === null && back.provider === "pinterest" && Array.isArray(l)) {
+        const target = l.find((c) => c.provider === "pinterest" && !c.default_board_id && added.some((a) => a.id === c.id));
         if (target) setSettingsId(target.id);
       }
       setList(l);
@@ -394,6 +400,7 @@ function ConnectionsPage({ canManage, team }: { canManage: boolean; team: string
           onSaved={(updated, what) => {
             setList((l) => (Array.isArray(l) ? l.map((x) => (x.id === updated.id ? updated : x)) : l));
             if (what === "plan") return announce(`X plan saved for ${accountName(updated)}.`);
+            if (what === "board") return announce(`Default board saved for ${accountName(updated)}.`);
             // Its sets were chosen by hand now, so it follows the picked set like any other account.
             setFresh((f) => f.filter((id) => id !== updated.id));
             announce(`Sets saved for ${accountName(updated)}.`);
@@ -477,13 +484,15 @@ function AccountSettings({
   canManage: boolean;
   onClose: () => void;
   onStale: () => void;
-  onSaved: (c: Connection, what?: "plan") => void;
+  onSaved: (c: Connection, what?: "plan" | "board") => void;
   onGone: (c: Connection, already: boolean) => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [checked, setChecked] = useState<string[]>(c.set_ids);
   const [confirming, setConfirming] = useState(false);
   const [plan, setPlan] = useState<XPlan | "detect">(c.plan ?? "detect");
+  const [board, setBoard] = useState(c.default_board_id ?? "");
+  const [boards, setBoards] = useState<PinterestBoard[] | Failure | null>(null);
   const disconnectRef = useRef<HTMLButtonElement>(null);
   const { busy, problem, done, run } = useAction();
   const name = accountName(c);
@@ -514,6 +523,23 @@ function AccountSettings({
   async function onSavePlan(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     await run("plan", () => setXPlan(c.id, plan === "detect" ? null : plan), (updated) => onSaved(updated, "plan"));
+  }
+
+  useEffect(() => {
+    if (c.provider !== "pinterest") return;
+    let live = true;
+    getPinterestBoards(c.id).then((r) => live && setBoards(isFailure(r) ? r : r.boards));
+    return () => {
+      live = false;
+    };
+  }, [c.id, c.provider]);
+
+  async function onSaveBoard(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const chosen = Array.isArray(boards) ? boards.find((b) => b.id === board) : undefined;
+    await run("board", () => setDefaultBoard(c.id, board || null), (r) =>
+      onSaved({ ...c, default_board_id: r.default_board_id ?? undefined, default_board_name: r.default_board_name ?? chosen?.name }, "board"),
+    );
   }
 
   async function onDisconnect() {
@@ -578,6 +604,34 @@ function AccountSettings({
           {canManage && (
             <button type="submit" className="btn btn-primary btn-sm justify-self-start" disabled={busy !== null}>
               {busy === "plan" ? "Saving..." : "Save plan"}
+            </button>
+          )}
+        </form>
+      )}
+      {c.provider === "pinterest" && (
+        <form onSubmit={onSaveBoard} className="grid gap-3">
+          <fieldset className="grid gap-1.5" disabled={!canManage}>
+            <legend className="mb-1 font-bold">Default board</legend>
+            <p className="text-sm text-ink-soft">A pin goes to this board when its post doesn&apos;t name another one. Secret boards aren&apos;t listed.</p>
+            {boards !== null && isFailure(boards) ? (
+              <p role="alert" className="waitlist-error">
+                The boards couldn&apos;t be read. {boards === "reconnect_required" ? "Reconnect this account first." : problemText(boards)}
+              </p>
+            ) : (
+              <select id="pinterest-default-board" aria-label="Default board" className="field justify-self-start" value={board} onChange={(e) => setBoard(e.target.value)}>
+                <option value="">{boards === null ? "Loading the boards..." : "No default board"}</option>
+                {(boards ?? []).map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+                {board && !(boards ?? []).some((b) => b.id === board) && boards !== null && <option value={board}>{c.default_board_name ?? board}</option>}
+              </select>
+            )}
+          </fieldset>
+          {canManage && (
+            <button type="submit" className="btn btn-primary btn-sm justify-self-start" disabled={busy !== null}>
+              {busy === "board" ? "Saving..." : "Save default board"}
             </button>
           )}
         </form>

@@ -5,7 +5,7 @@
 SocialReins is an open-source social media manager. It is in development, and these work today,
 along with sign-in, teams and self-hosting:
 
-- Publish and schedule posts to Facebook, Instagram, Threads, LinkedIn, Bluesky, X, TikTok and YouTube.
+- Publish and schedule posts to Facebook, Instagram, Threads, LinkedIn, Bluesky, X, TikTok, YouTube and Pinterest.
 - Take down published posts.
 - Group accounts into sets, and posts into ordered lists.
 - Drive it all from a REST API or an MCP server.
@@ -115,6 +115,7 @@ Create your own app with each platform (the [Network apps guide](https://socialr
 | X | `X_CLIENT_ID`, `X_CLIENT_SECRET` | `https://api.example.com/connect/x/callback` |
 | TikTok | `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` | `https://api.example.com/connect/tiktok/callback` |
 | YouTube (Google) | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | `https://api.example.com/connect/youtube/callback` |
+| Pinterest | `PINTEREST_APP_ID`, `PINTEREST_APP_SECRET` | `https://api.example.com/connect/pinterest/callback` |
 
 Bluesky needs no app: you connect it with an app password.
 

@@ -26,6 +26,9 @@ export type Connection = {
   detected_long_posts?: boolean;
   // X: the user's setting, which beats what X reported. Absent when unset.
   plan?: XPlan;
+  // Pinterest: the board a pin goes to when its post names none, and that board's name. Absent when unset.
+  default_board_id?: string;
+  default_board_name?: string;
 };
 export type Provider = { provider: string; configured: boolean };
 
@@ -49,7 +52,7 @@ export const metaName = "Facebook and Instagram";
 
 // Platforms that connect by OAuth: a full-page navigation to brain, which sends the browser to the
 // platform and back to /connections.
-export const oauthProviders = new Set(["threads", "linkedin", "x", "tiktok", "youtube", "facebook", "instagram"]);
+export const oauthProviders = new Set(["threads", "linkedin", "x", "tiktok", "youtube", "pinterest", "facebook", "instagram"]);
 // Platforms with a connect flow in this web app. The rest wait for theirs.
 export const connectable = new Set(["bluesky", ...oauthProviders]);
 // The provider names brain's callback puts in the URL.
@@ -125,6 +128,8 @@ export function connectResultText({ provider, error }: ConnectResult, name: stri
         ? "Tick every permission when X asks, they are all needed to post, upload media and delete posts."
         : provider === "tiktok"
           ? "Tick every permission when TikTok asks, they are all needed to post videos and photos."
+          : provider === "pinterest"
+            ? "Allow everything when Pinterest asks, it is all needed to see your boards and create pins."
           : "Tick every permission when YouTube asks, they are all needed to upload and delete videos.";
     case "not_configured":
       return `${platform} isn't set up on this server.`;
@@ -152,10 +157,10 @@ export function providerState(platform: string, providers: Provider[]): Provider
   return connectable.has(platform) ? "available" : "coming_soon";
 }
 
-// Only Bluesky's image CDN path, Meta's image CDNs, YouTube's channel pictures, X's profile pictures and TikTok's avatars are allowed by the
+// Only Bluesky's image CDN path, Meta's image CDNs, YouTube's channel pictures, X's and Pinterest's profile pictures and TikTok's avatars are allowed by the
 // CSP's img-src (proxy.ts), so anything else falls back to an initial.
 const metaImageHosts = [".fbcdn.net", ".cdninstagram.com", ".tiktokcdn.com", ".tiktokcdn-us.com"];
-const exactImageHosts = ["yt3.ggpht.com", "yt3.googleusercontent.com", "pbs.twimg.com"];
+const exactImageHosts = ["yt3.ggpht.com", "yt3.googleusercontent.com", "pbs.twimg.com", "i.pinimg.com"];
 export function safeAvatar(url: string | null) {
   if (!url) return null;
   if (url.startsWith("https://cdn.bsky.app/img/")) return url;

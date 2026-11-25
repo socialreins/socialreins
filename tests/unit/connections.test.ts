@@ -114,6 +114,17 @@ describe("provider state", () => {
     expect(connectUrl("youtube")).toBe(`${apiUrl}/connections/youtube/redirect`);
     expect(connectUrl("x")).toBe(`${apiUrl}/connections/x/redirect`);
     expect(connectUrl("tiktok")).toBe(`${apiUrl}/connections/tiktok/redirect`);
+    expect(connectUrl("pinterest")).toBe(`${apiUrl}/connections/pinterest/redirect`);
+  });
+
+  it("explains a Pinterest connect and allows its avatars", () => {
+    expect(providerState("pinterest", [{ provider: "pinterest", configured: true }])).toBe("available");
+    expect(providerState("pinterest", [])).toBe("not_configured");
+    const text = (search: string) => connectResultText(connectResult(search)!, "Pinterest");
+    expect(text("?connected=pinterest")).toBe("Connected your Pinterest account.");
+    expect(text("?connect_error=missing_scopes&provider=pinterest")).toBe("Allow everything when Pinterest asks, it is all needed to see your boards and create pins.");
+    expect(safeAvatar("https://i.pinimg.com/75x75_RS/a.jpg")).toBe("https://i.pinimg.com/75x75_RS/a.jpg");
+    expect(safeAvatar("https://i.pinimg.com.evil.net/a.jpg")).toBeNull();
   });
 
   it("explains a TikTok connect and allows its avatars", () => {

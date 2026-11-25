@@ -43,18 +43,18 @@ import { postTotals, statWords } from "@/lib/analytics";
 
 export const postMessages: Partial<Record<Failure, ReactNode>> = {
   too_long:
-    "The post is too long: at most 300 characters (and 3000 bytes) on Bluesky, 500 on Threads, 3000 on LinkedIn, 2200 on Instagram, 280 on X (a link counts as 23, an emoji as 2), 2200 on TikTok. On YouTube the first line is the title, at most 100 characters, and the rest the description, at most 5000 bytes.",
-  too_many_images: "Too many images: at most 4 on Bluesky and X, 20 on Threads, Instagram and LinkedIn (or one PDF), 10 on Facebook, one video on YouTube, one video or 35 photos on TikTok.",
-  media_required: "Instagram needs at least one image or video, and YouTube and TikTok need a video (TikTok also takes photos).",
+    "The post is too long: at most 300 characters (and 3000 bytes) on Bluesky, 500 on Threads, 3000 on LinkedIn, 2200 on Instagram, 280 on X (a link counts as 23, an emoji as 2), 2200 on TikTok, 800 on Pinterest. On YouTube the first line is the title, at most 100 characters, and the rest the description, at most 5000 bytes.",
+  too_many_images: "Too many images: at most 4 on Bluesky and X, 20 on Threads, Instagram and LinkedIn (or one PDF), 10 on Facebook, one video on YouTube, one video or 35 photos on TikTok, 5 images or one video on Pinterest.",
+  media_required: "Instagram and Pinterest need at least one image or video, and YouTube and TikTok need a video (TikTok also takes photos).",
   invalid_text: "YouTube doesn't allow < or > in a title or description.",
-  thread_not_supported: "LinkedIn, Facebook, Instagram, YouTube and TikTok can't post threads.",
+  thread_not_supported: "LinkedIn, Facebook, Instagram, YouTube, TikTok and Pinterest can't post threads.",
   first_comment_not_supported: "Only Facebook, Instagram, LinkedIn and YouTube can post a first comment.",
   first_comment_too_long: "The first comment is too long: at most 8000 characters on Facebook, 2200 on Instagram, 1250 on LinkedIn, 10000 on YouTube.",
   cover_not_supported: "Only Instagram, Facebook and YouTube take a cover image. TikTok can only pick a frame of the video.",
   invalid_cover: "The cover image needs a public https link.",
   cover_needs_one_video: "A cover image goes with exactly one video: add one link to the video.",
-  media_type_not_supported: "A media file is a type this platform doesn't take. Bluesky and X take JPEG, PNG, WebP or GIF images or an MP4 or MOV video, Instagram JPEG, PNG or WebP images or videos, TikTok a video or JPEG, PNG or WebP photos, YouTube one MP4 or MOV video, and only LinkedIn takes a PDF.",
-  mixed_media: "A video goes on its own on Bluesky, Facebook, LinkedIn, X and TikTok (a PDF on LinkedIn and a GIF on X too): post it without the other images.",
+  media_type_not_supported: "A media file is a type this platform doesn't take. Bluesky and X take JPEG, PNG, WebP or GIF images or an MP4 or MOV video, Instagram JPEG, PNG or WebP images or videos, TikTok a video or JPEG, PNG or WebP photos, Pinterest JPEG, PNG or WebP images or one video, YouTube one MP4 or MOV video, and only LinkedIn takes a PDF.",
+  mixed_media: "A video goes on its own on Bluesky, Facebook, LinkedIn, X, TikTok and Pinterest (a PDF on LinkedIn and a GIF on X too): post it without the other images.",
   media_too_large: "A media file is too large: images of at most 1 MB on Bluesky, 5 MB on X (a GIF 15 MB), and no file over 100 MB.",
   invalid_cover_type: "The cover image must be a JPEG or PNG (Instagram also takes WebP).",
   alt_text_too_long: "An image's alt text is too long: at most 1000 characters.",
@@ -67,7 +67,14 @@ export const postMessages: Partial<Record<Failure, ReactNode>> = {
   tiktok_disclosure_incomplete: "You need to indicate if your content promotes yourself, a third party, or both.",
   tiktok_branded_content_private: "Branded content visibility cannot be set to private.",
   tiktok_not_supported: "Only a TikTok post takes TikTok settings.",
-  reconnect_required: "TikTok refused the account's access. Reconnect it under Connections.",
+  pinterest_not_supported: "Only a Pinterest post takes Pinterest settings.",
+  invalid_pinterest_board: "That isn't a Pinterest board id. Pick one of the account's boards.",
+  pinterest_title_too_long: "A pin's title can have at most 100 characters.",
+  invalid_pinterest_link: "The link must be a web address starting with http:// or https://, at most 2048 characters.",
+  pinterest_board_required: "Choose a board for the pin, or set a default board for the Pinterest account under Accounts.",
+  invalid_board: "That board isn't one of this Pinterest account's boards.",
+  pinterest_failed: "Pinterest could not be reached. Try again in a moment.",
+  reconnect_required: "The network refused the account's access. Reconnect it under Connections.",
   tiktok_failed: "TikTok could not be reached. Try again in a moment.",
   invalid_override: "A customized platform isn't one the post goes to.",
   no_accounts: "This set has no connected account to post to.",
@@ -217,7 +224,7 @@ export function AccountNote() {
       </span>
       <p className="min-w-0 flex-1 basis-60">
         <strong className="block">Connect an account first</strong>
-        <span className="text-ink-soft">No Bluesky, Threads, LinkedIn, X, TikTok, YouTube, Facebook or Instagram account is connected to this team yet, so posts have nowhere to go.</span>
+        <span className="text-ink-soft">No Bluesky, Threads, LinkedIn, X, TikTok, YouTube, Pinterest, Facebook or Instagram account is connected to this team yet, so posts have nowhere to go.</span>
       </p>
       <Link href="/connections" className="btn btn-primary">
         Connect an account

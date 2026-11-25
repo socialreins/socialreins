@@ -75,11 +75,18 @@ test("the Network apps guide lists every network with its redirect address and k
     ["X", "/connect/x/callback", "X_CLIENT_SECRET"],
     ["TikTok", "/connect/tiktok/callback", "TIKTOK_CLIENT_KEY"],
     ["YouTube", "/connect/youtube/callback", "GOOGLE_CLIENT_ID"],
+    ["Pinterest", "/connect/pinterest/callback", "PINTEREST_APP_SECRET"],
   ]) {
     const section = article.locator("section").filter({ has: page.getByRole("heading", { name, level: 2, exact: true }) });
     await expect(section).toContainText(redirect);
     await expect(section).toContainText(key);
   }
+  // The three levels of Pinterest access are explained where the app is created.
+  await page.goto("/docs/self-hosted/apps");
+  const pinterest = page.getByRole("article").locator("section").filter({ has: page.getByRole("heading", { name: "Pinterest", level: 2, exact: true }) });
+  await expect(pinterest).toContainText("Sandbox is a separate test address");
+  await expect(pinterest).toContainText("Trial access");
+  await expect(pinterest).toContainText("Standard access makes the pins public");
   await page.goto("/docs/cloud/apps");
   await expect(page.getByRole("article")).toContainText("You do not create any app or key");
 });

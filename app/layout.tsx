@@ -14,7 +14,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://socialreins.com"),
   title: "SocialReins: open-source social media manager",
   description:
-    "Open-source social media manager for Facebook, Instagram, Threads, LinkedIn, Bluesky, X, TikTok and YouTube. Self-host it free today; the cloud is not open yet.",
+    "Open-source social media manager for Facebook, Instagram, Threads, LinkedIn, Bluesky, X, TikTok, YouTube and Pinterest. Self-host it free; Cloud is not open.",
   // iOS home-screen app; the icon is app/apple-icon.png. "default" keeps the page below the status bar.
   appleWebApp: { capable: true, title: "SocialReins", statusBarStyle: "default" },
 };
