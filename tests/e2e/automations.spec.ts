@@ -168,7 +168,7 @@ const templates = [
   { title: "DM keyword reply", trigger: "dm_received", conditions: { ...noScope, keywords: ["price"], first_message: false }, actions: ["send_dm"] },
   { title: "Welcome message", trigger: "dm_received", conditions: { ...noScope, keywords: [], first_message: true }, actions: ["send_dm"] },
   { title: "New follower DM", trigger: "new_follower", conditions: noScope, actions: ["send_dm"] },
-  { title: "Mention reply", trigger: "mention_received", conditions: { ...noScope, keywords: [] }, actions: ["reply_publicly"] },
+  { title: "Mention reply", trigger: "mention_received", conditions: { ...noScope, keywords: [], first_per_author: false }, actions: ["reply_publicly"] },
   { title: "Story reply", trigger: "story_reply", conditions: { ...noScope, keywords: [] }, actions: ["send_dm"] },
 ];
 for (const t of templates) {
