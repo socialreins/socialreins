@@ -47,8 +47,8 @@ export default function Features() {
                 {g.name}
               </h2>
               {g.href && (
-                <Link href={g.href} aria-label={`${g.name}: learn more`} className={link}>
-                  Learn more
+                <Link href={g.href} className={link}>
+                  Learn more<span className="sr-only"> about {g.name}</span>
                 </Link>
               )}
             </div>
