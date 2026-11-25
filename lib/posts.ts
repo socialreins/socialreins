@@ -416,6 +416,15 @@ const segmenter =typeof Intl !== "undefined" && "Segmenter" in Intl ? new Intl.S
 export const graphemes = (text: string) => (segmenter ? [...segmenter.segment(text)].length : [...text].length);
 export const utf8Bytes = (text: string) => new TextEncoder().encode(text).length;
 
+// What Threads counts against its 500 limit, as brain's threads_length does: each character 1, except an emoji, which
+// counts its UTF-8 bytes whole (4 for most). The ranges are the pictograph blocks, the variation selector, joiner, keycap
+// and tag characters; text-style symbols like (c) stay 1 unless a variation selector makes them an emoji.
+const EMOJI_PART = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{2300}-\u{23FF}\u{FE0F}\u{200D}\u{20E3}\u{E0020}-\u{E007F}]/u;
+export const threadsLength = (text: string) => {
+  const parts = segmenter ? [...segmenter.segment(text)].map((s) => s.segment) : [...text];
+  return parts.reduce((n, g) => n + (EMOJI_PART.test(g) ? utf8Bytes(g) : [...g].length), 0);
+};
+
 // A YouTube post's title (the body's first line) and description (the rest), as brain's youtube_text splits them.
 export function youtubeText(body: string) {
   const text = body.trim();
@@ -461,7 +470,9 @@ export const charCount = (platform: Platform, text: string) =>
       ? xWeight(text)
       : platform === "tiktok"
         ? text.length
-        : [...(platform === "youtube" ? youtubeText(text).title : text)].length;
+        : platform === "threads"
+          ? threadsLength(text)
+          : [...(platform === "youtube" ? youtubeText(text).title : text)].length;
 
 // Whether the text is over the platform's limit; YouTube also limits its description's bytes.
 export const overLimit = (platform: Platform, text: string, xLong = false) =>

@@ -107,6 +107,7 @@ function platformProblem(platform: Platform, failure: Failure, xLong = false): R
   if (failure === "too_long" && platform === "youtube")
     return `YouTube takes a title (the first line) of at most ${limits.youtube.chars} characters and a description (the rest) of at most ${YOUTUBE_DESCRIPTION_BYTES.toLocaleString("en")} bytes.`;
   if (failure === "too_long" && platform === "x") return `X takes at most ${charLimit("x", xLong).toLocaleString("en")} characters, where a link counts as 23 and an emoji or a Chinese, Japanese or Korean character as 2.`;
+  if (failure === "too_long" && platform === "threads") return `Threads takes at most ${limits.threads.chars} characters, where an emoji counts as its bytes, 4 for most.`;
   if (failure === "too_many_images" && platform === "tiktok") return "TikTok takes one video, or up to 35 photos.";
   if (failure === "too_long") return `${name} takes at most ${limits[platform].chars.toLocaleString("en")} characters.`;
   if (failure === "too_many_images" && platform === "x") return "X takes at most 4 images, or one GIF or video.";

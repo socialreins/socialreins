@@ -27,6 +27,7 @@ import {
   getPost,
   getTikTokCreator,
   graphemes,
+  threadsLength,
   listPosts,
   mergeCreators,
   monthRange,
@@ -173,6 +174,16 @@ describe("post checks", () => {
     expect(graphemes("👨‍👩‍👧")).toBe(1);
     expect(graphemes("é")).toBe(1);
     expect(utf8Bytes("é")).toBe(2);
+  });
+
+  it("counts a Threads emoji as its UTF-8 bytes, as brain does", () => {
+    expect(threadsLength("abc é©™")).toBe(7);
+    expect(threadsLength("😀")).toBe(4);
+    expect(threadsLength("👩‍👩‍👧")).toBe(18);
+    expect(threadsLength("❤️")).toBe(6);
+    expect(threadsLength("🇧🇩")).toBe(8);
+    expect(threadsLength("1️⃣")).toBe(7);
+    expect(charCount("threads", "😀".repeat(126))).toBeGreaterThan(limits.threads.chars);
   });
 
   it("mirrors brain's save rules", () => {
