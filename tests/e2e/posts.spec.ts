@@ -1512,6 +1512,8 @@ test("TikTok settings: privacy is chosen, the disclosure and consent follow TikT
   const privacy = page.getByLabel("Who can view this video");
   await expect(privacy).toHaveValue("");
   await expect(page.locator("#tiktok-privacy-note")).toHaveText("Only the options TikTok offers this account are listed.");
+  await expect(page.locator("#tiktok-audit-note")).toContainText("has not passed its audit private");
+  await expect(privacy).toHaveAccessibleDescription(/Only the options TikTok offers.*has not passed its audit/);
   await expect(privacy.getByRole("option")).toHaveText(["Select who can view this video", "Followers", "Everyone", "Only me"]);
   for (const name of ["Comment", "Stitch"]) await expect(page.getByLabel(name)).not.toBeChecked();
   // Duets are off in the creator's TikTok settings, so the box is greyed out.
@@ -1650,7 +1652,7 @@ test("the versions of a saved post that can still change open on one form and ar
 
   await page.getByLabel("Post", { exact: true }).fill("Too long");
   await page.getByRole("button", { name: "Save draft" }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "Saved Bluesky. Threads takes at most 500 characters. Fix it and save again" })).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "Saved Bluesky. Threads takes at most 500 characters, where an emoji counts as its UTF-8 bytes (4 for most). Fix it and save again" })).toBeVisible();
 
   await page.getByLabel("Post", { exact: true }).fill("Hello again");
   await page.getByRole("button", { name: "Save draft" }).click();

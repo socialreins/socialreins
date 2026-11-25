@@ -108,6 +108,7 @@ function platformProblem(platform: Platform, failure: Failure, xLong = false): R
   if (failure === "too_long" && platform === "youtube")
     return `YouTube takes a title (the first line) of at most ${limits.youtube.chars} characters and a description (the rest) of at most ${YOUTUBE_DESCRIPTION_BYTES.toLocaleString("en")} bytes.`;
   if (failure === "too_long" && platform === "x") return `X takes at most ${charLimit("x", xLong).toLocaleString("en")} characters, where a link counts as 23 and an emoji or a Chinese, Japanese or Korean character as 2.`;
+  if (failure === "too_long" && platform === "threads") return `Threads takes at most ${limits.threads.chars.toLocaleString("en")} characters, where an emoji counts as its UTF-8 bytes (4 for most).`;
   if (failure === "too_many_images" && platform === "tiktok") return "TikTok takes one video, or up to 35 photos.";
   if (failure === "too_long") return `${name} takes at most ${limits[platform].chars.toLocaleString("en")} characters.`;
   if (failure === "too_many_images" && platform === "x") return "X takes at most 4 images, or one GIF or video.";
@@ -729,7 +730,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const mediaProblems: Issue[] = selected.flatMap((p) => {
     const files = mediaFor(p);
     const where = { platform: p, inline: true, ...place(p, mediaCustomFor(p) !== undefined, `media-${p}`, "media-shared") };
-    if ((p === "instagram" || p === "youtube" || p === "pinterest") && files.length === 0) return [{ ...where, text: platformProblem(p, "media_required") }];
+    if ((p === "instagram" || p === "youtube" || p === "tiktok" || p === "pinterest") && files.length === 0) return [{ ...where, text: platformProblem(p, "media_required") }];
     if (files.length > limits[p].media) return [{ ...where, text: platformProblem(p, "too_many_images") }];
     // Hints only: brain reads the files when the post is saved and has the last word.
     const bad = checkMediaTypes(files, p) ?? (coverFor(p) ? coverTypeHint(coverFor(p)!, p) : null);
