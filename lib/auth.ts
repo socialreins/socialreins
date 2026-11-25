@@ -244,6 +244,8 @@ export const codes = [
   "unsupported_account",
   "x_unsupported_trigger",
   "bluesky_unsupported_trigger",
+  "youtube_unsupported_trigger",
+  "youtube_no_dm",
   "threads_unsupported_trigger",
   "threads_no_dm",
   "threads_no_like",

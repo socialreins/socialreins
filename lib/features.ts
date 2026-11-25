@@ -15,9 +15,9 @@ export type Feature = {
   sections: { heading: string; text?: string; bullets?: string[] }[];
 };
 
-// Bluesky is live; Facebook Pages, Instagram, Threads and X are in testing (the same words as lib/compare.ts). LinkedIn is Not yet:
+// Bluesky is live; Facebook Pages, Instagram, Threads, X and YouTube are in testing (the same words as lib/compare.ts). LinkedIn is Not yet:
 // it lets an app read comments only after its own approval.
-const support: Record<string, Support> = { bluesky: "Yes", facebook: "In testing", instagram: "In testing", threads: "In testing", x: "In testing" };
+const support: Record<string, Support> = { bluesky: "Yes", facebook: "In testing", instagram: "In testing", threads: "In testing", x: "In testing", youtube: "In testing" };
 
 export const features: Feature[] = [
   {
@@ -54,6 +54,7 @@ export const features: Feature[] = [
         heading: "Limits",
         bullets: [
           "A comment is acted on once and never tried again, so nobody gets the same message twice.",
+          "On YouTube only the comment trigger exists, and the answer is a public reply: YouTube has no DMs and no private reply to a comment.",
           "A team's automations can answer 500 comments a day. Each automation can have its own daily limit and a cool-down so one person cannot trigger it again and again, and one switch on the Team page pauses every automation.",
           "Facebook and Instagram: a private reply goes within 7 days of the comment and only one per comment; any other message within 24 hours of the person's last, and their answer starts a new 24 hours. An Instagram DM is at most 1000 bytes. A person answering by hand can use Meta's Human Agent tag for up to 7 days once the app holds that feature; an automation never does.",
           "A send a network refused for rate limiting went nowhere, so a flow tries it again by itself and you can retry it from the run. Any other failure is final, so nobody gets a message twice.",
@@ -98,6 +99,7 @@ export const features: Feature[] = [
           "On Bluesky, DMs are read only when the app password allows them.",
           "Threads: replies to your posts and posts that mention you arrive, about every 5 minutes. Threads has no DMs, so there are none to read or send. Reply under a reply or a mention, and hide or show a reply directly under your post. An app cannot like, repost or follow there. An account connected before replies were added needs to be connected again once, and until Meta approves the reply and mention permissions only the app's testers can use them.",
           "X charges for every post, user and DM it returns, so an X inbox is off until you turn it on for an account. You choose how often it is read and the most it may spend a month, and it stops when that is used up or X is out of credits. Reply, like, repost and hide a reply from the inbox. X takes a DM only from an account the person follows or when their DMs are open.",
+          "YouTube comments on your videos and Shorts arrive too, with the video's title and thumbnail above each one and a reply shown under the comment it answers. YouTube gives every app a daily quota shared by all its users, so a YouTube inbox is off until you turn it on for a channel, and you choose how often it is read and how many quota units it may use a day. You can reply in public, hold a comment for review, publish it again, reject it for good, ban its author and delete your own reply. YouTube has no DMs and no like for comments in its API. A comment is kept here for 30 days, as YouTube requires.",
         ],
       },
       {

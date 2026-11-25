@@ -14,7 +14,11 @@ import {
   isActivity,
   flowProblems,
   MAX_TAG_ACTIONS,
+  LANGUAGES,
   limitOf,
+  timeProblems,
+  whenOf,
+  WEEKDAYS,
   MAX_COOLDOWN,
   MAX_DAILY_CAP,
   postIds,
@@ -49,10 +53,12 @@ import { ThreadsPostPicker } from "@/components/threads-post-picker";
 import { Icon, type IconName } from "@/components/ui";
 
 // Networks whose inbox can fire an automation; brain refuses an account on any other (unsupported_account).
-const AUTOMATED = ["bluesky", "facebook", "instagram", "threads", "x"];
+const AUTOMATED = ["bluesky", "facebook", "instagram", "threads", "x", "youtube"];
 
 export const automationMessages: Partial<Record<Failure, ReactNode>> = {
-  unsupported_account: "Automations run only on Bluesky, Facebook, Instagram, Threads and X accounts. Remove the others.",
+  unsupported_account: "Automations run only on Bluesky, Facebook, Instagram, Threads, X and YouTube accounts. Remove the others.",
+  youtube_unsupported_trigger: "YouTube only has comments to trigger on. Pick a comment, or leave the YouTube channel out.",
+  youtube_no_dm: "YouTube has no DMs and no private replies. Answer with a public reply, or leave the YouTube channel out.",
   threads_unsupported_trigger: "Threads has replies and mentions only. Pick a comment or a mention, or leave the Threads account out.",
   threads_no_dm: "Threads has no DMs and no private reply, so it takes a public reply only. Remove the DM, or leave the Threads account out.",
   threads_no_like: "Threads has no like for apps. Hiding a reply directly under your post and a public reply work; remove the like, or leave the Threads account out.",
@@ -148,6 +154,9 @@ export function AutomationForm({
   const [badLinks, setBadLinks] = useState<string[]>([]);
   const { busy, problem, done, run } = useAction();
   const set = (patch: Partial<Draft>) => setD((cur) => ({ ...cur, ...patch }));
+  // The languages list stays open once used, and a zone the person chose is never replaced by the browser's.
+  const [langsOpen, setLangsOpen] = useState(false);
+  const [touchedZone, setTouchedZone] = useState(d.zone !== "UTC");
 
   const t = triggers[d.trigger];
   const tokens = t.publicReply ? ["{name}", "{page}"] : ["{name}"];
@@ -169,8 +178,9 @@ export function AutomationForm({
   // Everything that stops a save, with the field to fix it in, for the bar's count.
   const issues: { text: string; field: string }[] = [
     ...(d.name.trim() ? [] : [{ text: "Give it a name.", field: "automation-name" }]),
-    ...(stuck.length ? [{ text: `Untick ${stuck.join(", ")}: automations run only on Bluesky, Facebook, Instagram, Threads and X.`, field: "automation-scope" }] : []),
+    ...(stuck.length ? [{ text: `Untick ${stuck.join(", ")}: automations run only on Bluesky, Facebook, Instagram, Threads, X and YouTube.`, field: "automation-scope" }] : []),
     ...(t.payloads && !d.payloads.length ? [{ text: "Add at least one button payload.", field: "automation-payloads" }] : []),
+    ...timeProblems(d).map((text) => ({ text, field: "automation-from-hour" })),
     ...(Number.isNaN(limitOf(d.cooldown, MAX_COOLDOWN)) ? [{ text: "The wait must be 1 to 10080 minutes, or empty.", field: "automation-cooldown" }] : []),
     ...(Number.isNaN(limitOf(d.dailyCap, MAX_DAILY_CAP)) ? [{ text: "Most runs a day must be 1 to 500, or empty.", field: "automation-daily-cap" }] : []),
     ...(d.flow
@@ -303,6 +313,11 @@ export function AutomationForm({
     if (wrong) {
       setTried(true);
       document.getElementById(wrong[0])?.focus();
+      return;
+    }
+    if (timeProblems(d).length) {
+      setTried(true);
+      document.getElementById("automation-from-hour")?.focus();
       return;
     }
     if (problems.length) {
@@ -446,7 +461,7 @@ export function AutomationForm({
           {t.firstPerAuthor && (
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={d.firstPerAuthor} onChange={(e) => set({ firstPerAuthor: e.target.checked })} />
-              First comment per person only
+              {d.trigger === "mention_received" ? "First mention per person only" : "First comment per person only"}
             </label>
           )}
           {t.firstMessage && (
@@ -454,6 +469,82 @@ export function AutomationForm({
               <input type="checkbox" checked={d.firstMessage} onChange={(e) => set({ firstMessage: e.target.checked })} />
               Only their first message ever
             </label>
+          )}
+          {t.text && (
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={d.question} onChange={(e) => set({ question: e.target.checked })} />
+              Only messages that ask a question
+            </label>
+          )}
+          {t.keywords && d.question && (
+            <p className="hint pl-6">A message with a question mark counts at once. Any other is read by AI, which counts against your AI replies (or your AI key).</p>
+          )}
+          {t.text && (
+            <details className="grid gap-2" open={langsOpen || d.languages.length > 0}>
+              <summary className="cursor-pointer font-medium">Only certain languages{d.languages.length > 0 && ` (${d.languages.length})`}</summary>
+              <div role="group" aria-label="Languages" className="flex flex-wrap gap-x-4 gap-y-1">
+                {LANGUAGES.map(([code, name]) => (
+                  <label key={code} className="flex items-center gap-1.5">
+                    <input
+                      type="checkbox"
+                      checked={d.languages.includes(code)}
+                      disabled={d.languages.length >= 10 && !d.languages.includes(code)}
+                      onChange={(e) => {
+                        setLangsOpen(true);
+                        set({ languages: e.target.checked ? [...d.languages, code] : d.languages.filter((x) => x !== code) });
+                      }}
+                    />
+                    {name}
+                  </label>
+                ))}
+              </div>
+              <p className="hint">Up to 10, then the rest are greyed out. The language is guessed from the text: a very short message may not be recognized, and then the automation does not run.</p>
+            </details>
+          )}
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={d.timed} onChange={(e) => set({ timed: e.target.checked, ...(e.target.checked && !touchedZone && { zone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" }) })} />
+            Only at certain times
+          </label>
+          {d.timed && (
+            <div className="grid gap-3 pl-6">
+              <div role="group" aria-label="Days" className="flex flex-wrap gap-x-4 gap-y-1">
+                {WEEKDAYS.map((name, i) => (
+                  <label key={name} className="flex items-center gap-1.5">
+                    <input type="checkbox" checked={d.weekdays.includes(i)} onChange={(e) => set({ weekdays: e.target.checked ? [...d.weekdays, i] : d.weekdays.filter((x) => x !== i) })} />
+                    {name}
+                  </label>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <label htmlFor="automation-from-hour">From</label>
+                <select id="automation-from-hour" className="field w-auto" value={d.fromHour} onChange={(e) => set({ fromHour: e.target.value })}>
+                  <option value="">Any time</option>
+                  {Array.from({ length: 24 }, (_, h) => (
+                    <option key={h} value={String(h)}>{`${h}:00`}</option>
+                  ))}
+                </select>
+                <label htmlFor="automation-to-hour">to</label>
+                <select id="automation-to-hour" className="field w-auto" value={d.toHour} onChange={(e) => set({ toHour: e.target.value })}>
+                  <option value="">Any time</option>
+                  {Array.from({ length: 24 }, (_, h) => (
+                    <option key={h + 1} value={String(h + 1)}>{`${h + 1}:00`}</option>
+                  ))}
+                </select>
+                <label htmlFor="automation-zone">in</label>
+                <input
+                  id="automation-zone"
+                  className="field w-auto"
+                  value={d.zone}
+                  onChange={(e) => {
+                    setTouchedZone(true);
+                    set({ zone: e.target.value });
+                  }}
+                  placeholder="Asia/Dhaka"
+                  aria-describedby="automation-zone-hint"
+                />
+              </div>
+              <p id="automation-zone-hint" className="hint">Pick days, hours, or both. The time zone is an IANA name such as Asia/Dhaka or America/New_York. A later start than end runs overnight.</p>
+            </div>
           )}
           {t.text && (
             <div className="grid gap-3 sm:grid-cols-2">
