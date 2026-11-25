@@ -211,6 +211,7 @@ export const groups: Group[] = [
       { name: "Self-hostable", text: "Run it on your own server, free, with every feature." },
       { name: "REST API", text: "Read and create posts from your own scripts and tools with an API token." },
       { name: "MCP server", text: "Connect an AI assistant, which can then read your accounts and create and schedule posts." },
+      { name: "Installable app", text: "Install SocialReins from your browser or add it to your phone's home screen. It opens in its own window." },
       { name: "Signed webhooks", text: "Get a signed call at your own address when a post is published or fails." },
       { name: "No built-in AI writer", text: "SocialReins does not write posts for you. Your own AI agents can post through the API or the MCP server." },
     ],

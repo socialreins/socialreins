@@ -7,6 +7,7 @@ import { signOut } from "@/lib/auth";
 import { useSession } from "@/components/app-shell";
 import { roleName } from "@/components/team-ui";
 import { Icon, type IconName } from "@/components/ui";
+import { InstallItem } from "@/components/install-item";
 
 const item = "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-ink/[0.045]";
 
@@ -122,6 +123,7 @@ export function Account({ collapsed }: { collapsed: boolean }) {
               </Link>
             </li>
           ))}
+          <InstallItem className={item} />
         </ul>
         <div className="my-1.5 border-t border-[var(--line)]" />
         <button
