@@ -14,6 +14,7 @@ const signup = (id: string, email: string, created_at: string, verified_at: stri
   id,
   email,
   source: "landing",
+  name: id === "w2" ? "Ann Lee" : null,
   created_at,
   verified_at,
   approved_at,
@@ -77,7 +78,9 @@ async function brain(page: Page, isAdmin = true) {
     const params = get(route);
     const verified = params.get("verified");
     const q = params.get("q") ?? "";
-    const rows = state.signups.filter((s) => (verified === null || (verified === "true") === (s.verified_at !== null)) && s.email.includes(q));
+    // Stands in for brain's 30 day rule: w2 is the stale unverified entry.
+    const hideStale = params.get("hide_stale") === "true";
+    const rows = state.signups.filter((s) => !(hideStale && s.id === "w2")).filter((s) => (verified === null || (verified === "true") === (s.verified_at !== null)) && s.email.includes(q));
     return route.fulfill({ json: { total: 1200, verified: 700, signups: rows } });
   });
   await page.route(/\/v1\/admin\/waitlist\/[^/]+(\/approve)?$/, (route) => {
@@ -318,6 +321,7 @@ test("the waitlist shows totals and signups, filtered in ?verified= and searched
   await expect(rows(page).nth(1)).toContainText("landing");
   await expect(rows(page).nth(1)).toContainText("Nov 1, 2026");
   await expect(rows(page).nth(1)).toContainText("Not verified");
+  await expect(rows(page).nth(1)).toContainText("Ann Lee");
   await expect(rows(page).nth(2)).toContainText("Verified Oct 21, 2026");
   await expect(rows(page).nth(2)).toContainText("Approved Oct 22, 2026");
   // An approved entry has nothing left to approve.
@@ -353,13 +357,25 @@ test("the waitlist shows totals and signups, filtered in ?verified= and searched
   ]);
 });
 
+test("an unverified entry's Approve says so, and stale entries can be hidden", async ({ page }) => {
+  await brain(page);
+  await page.goto("/admin/waitlist");
+  await expect(rows(page).nth(0).getByRole("button", { name: /Approve newest@example.com \(not verified\)/ })).toHaveText("Approve (not verified)");
+  await page.getByRole("link", { name: "Hide stale entries" }).click();
+  await expect(page).toHaveURL("/admin/waitlist?hide_stale=true");
+  await expect(rows(page)).toHaveCount(2);
+  await expect(main(page)).toContainText("Leaving out unverified signups older than 30 days.");
+  await page.getByRole("link", { name: "Show stale entries" }).click();
+  await expect(rows(page)).toHaveCount(3);
+});
+
 test("approve says what happened to the email, for each of brain's three answers", async ({ page }) => {
   const state = await brain(page);
   await page.goto("/admin/waitlist");
   const status = main(page).getByRole("status");
 
   await page.getByRole("button", { name: "Approve newest@example.com" }).click();
-  await expect(status).toHaveText("Approved newest@example.com. An email telling them they can sign up was sent.");
+  await expect(status).toHaveText("Approved newest@example.com. An email telling them they can sign up was sent. This email was not verified.");
   await expect(status).toBeFocused();
   // The row changes in place: the badge shows, Approve is gone, the total goes up.
   await expect(rows(page).nth(0)).toContainText("Approved Nov 12, 2026");
@@ -369,7 +385,7 @@ test("approve says what happened to the email, for each of brain's three answers
   state.mail = "failed";
   await page.getByRole("button", { name: "Approve new@example.com" }).click();
   await expect(status).toHaveText(
-    "Approved new@example.com, so they can sign up, but the email could not be sent. They were not told: let them know another way.",
+    "Approved new@example.com, so they can sign up, but the email could not be sent. They were not told: let them know another way. This email was not verified.",
   );
   await expect(rows(page).nth(1)).toContainText("Approved Nov 12, 2026");
   await expect(page.locator("dl > div").nth(3)).toHaveText("Approved32");
@@ -383,7 +399,7 @@ test("approve tells an entry someone else approved meanwhile, and a missing one"
   // Another admin approved it after this page loaded.
   state.mail = "already_approved";
   await page.getByRole("button", { name: "Approve newest@example.com" }).click();
-  await expect(main(page).getByRole("status")).toHaveText("newest@example.com was already approved. No new email was sent.");
+  await expect(main(page).getByRole("status")).toHaveText("newest@example.com was already approved. No new email was sent. This email was not verified.");
   await expect(rows(page).nth(0)).toContainText("Approved Nov 12, 2026");
   await expect(page.locator("dl > div").nth(3)).toHaveText("Approved30");
 

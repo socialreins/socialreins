@@ -51,11 +51,14 @@ describe("admin waitlist search and approval", () => {
     expect(waitlistQuery(true, "  ")).toBe("?verified=true");
     expect(waitlistQuery(false, " a+b@x.com ")).toBe("?verified=false&q=a%2Bb%40x.com");
     expect(waitlistQuery(null, "acme")).toBe("?q=acme");
+    expect(waitlistQuery(false, "", true)).toBe("?verified=false&hide_stale=true");
   });
 
   it("says what happened to the approval email", () => {
     const signup = { id: "w1", email: "a@example.com", source: null, created_at: "", verified_at: null, approved_at: "" };
-    expect(approvalText({ signup, mail: "sent" })).toMatch(/email .* was sent/);
+    expect(approvalText({ signup, mail: "sent" })).toMatch(/email .* was sent\. This email was not verified\.$/);
+    const verified = { ...signup, verified_at: "2026-11-01T00:00:00Z" };
+    expect(approvalText({ signup: verified, mail: "sent" })).not.toMatch(/not verified/);
     expect(approvalText({ signup, mail: "already_approved" })).toMatch(/already approved/);
     expect(approvalText({ signup, mail: "failed" })).toMatch(/can sign up, but the email could not be sent.*another way/);
   });

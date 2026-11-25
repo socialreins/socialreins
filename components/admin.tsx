@@ -72,7 +72,8 @@ export function Admin() {
   const params = useSearchParams();
   const verified = parseVerified(params.get("verified"));
   const q = (params.get("q") ?? "").trim();
-  const key = waitlistQuery(verified, q);
+  const hideStale = params.get("hide_stale") === "true";
+  const key = waitlistQuery(verified, q, hideStale);
   // The answer remembers its filter, so a new filter shows loading, not the old rows.
   const [loaded, setLoaded] = useState<{ key: string; data: Waitlist | Failure } | null>(null);
   // The waitlist answer has no approved total; the overview does. Kept in step with approve and remove below.
@@ -82,11 +83,11 @@ export function Admin() {
 
   useEffect(() => {
     let live = true;
-    listWaitlist(verified, q).then((data) => live && setLoaded({ key, data }));
+    listWaitlist(verified, q, hideStale).then((data) => live && setLoaded({ key, data }));
     return () => {
       live = false;
     };
-  }, [verified, q, key]);
+  }, [verified, q, hideStale, key]);
   useEffect(() => {
     getOverview().then((o) => setApproved(isFailure(o) ? "failed" : o.waitlist.approved));
   }, []);
@@ -160,15 +161,21 @@ export function Admin() {
                 <Link
                   key={f.label}
                   aria-current={verified === f.value ? "true" : undefined}
-                  href={`/admin/waitlist${waitlistQuery(f.value, q)}`}
+                  href={`/admin/waitlist${waitlistQuery(f.value, q, hideStale)}`}
                   className={`rounded-full px-3 py-1.5 text-center text-sm font-bold ${verified === f.value ? "bg-paper text-ink shadow-sm" : "text-ink-soft hover:text-ink"}`}
                 >
                   {f.label}
                 </Link>
               ))}
             </nav>
-            <SearchBox label="Search by email" q={q} hrefFor={(text) => `/admin/waitlist${waitlistQuery(verified, text)}`} />
+            <SearchBox label="Search by email" q={q} hrefFor={(text) => `/admin/waitlist${waitlistQuery(verified, text, hideStale)}`} />
           </div>
+          <p className="text-sm text-ink-soft">
+            <Link href={`/admin/waitlist${waitlistQuery(verified, q, !hideStale)}`} className={linkButton}>
+              {hideStale ? "Show stale entries" : "Hide stale entries"}
+            </Link>{" "}
+            {hideStale ? "Leaving out unverified signups older than 30 days." : "Stale means not verified after 30 days."}
+          </p>
           <Status problem={action.problem} done={action.done} overrides={overrides} />
           {!data ? (
             <p role="status" className="text-ink-soft">
@@ -179,11 +186,11 @@ export function Admin() {
           ) : (
             // Scrolls sideways on phones rather than squeezing the emails.
             <div className="card overflow-x-auto">
-              <table className="w-full min-w-[48rem] border-collapse text-sm">
+              <table className="w-full min-w-[54rem] border-collapse text-sm">
                 <caption className="sr-only">Waitlist signups, newest first</caption>
                 <thead>
                   <tr className="text-left text-xs text-ink-soft">
-                    {["Email", "Source", "Joined", "Status", "Actions"].map((h) => (
+                    {["Email", "Name", "Source", "Joined", "Status", "Actions"].map((h) => (
                       <th key={h} scope="col" className={th}>
                         {h}
                       </th>
@@ -196,6 +203,7 @@ export function Admin() {
                       <th scope="row" className={`${td} text-left font-bold`}>
                         {s.email}
                       </th>
+                      <td className={td}>{s.name}</td>
                       <td className={`${td} text-ink-soft`}>{s.source}</td>
                       <td className={`${td} whitespace-nowrap`}>{day(s.created_at)}</td>
                       <td className={`${td} whitespace-nowrap`}>
@@ -238,10 +246,10 @@ export function Admin() {
                                 type="button"
                                 className={linkButton}
                                 disabled={action.busy !== null}
-                                aria-label={`Approve ${s.email}`}
+                                aria-label={`Approve ${s.email}${s.verified_at ? "" : " (not verified)"}`}
                                 onClick={() => onApprove(s)}
                               >
-                                {action.busy === `approve:${s.id}` ? "Approving..." : "Approve"}
+                                {action.busy === `approve:${s.id}` ? "Approving..." : s.verified_at ? "Approve" : "Approve (not verified)"}
                               </button>
                             )}
                             <button

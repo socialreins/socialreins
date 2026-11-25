@@ -4,13 +4,17 @@ test("landing page renders and the waitlist form joins", async ({ page }) => {
   await page.route("**/auth/me", (route) => route.fulfill({ status: 401, json: { error: "unauthorized" } }));
   // Turnstile is on for other forms, but the waitlist form never asks for it.
   await page.route("**/auth/providers", (route) => route.fulfill({ json: { google: false, turnstile_site_key: "0xSITE" } }));
-  let count = 1;
+  const count = 1;
   await page.route("**/v1/waitlist/count", (route) => route.fulfill({ json: { count: count } }));
   let sent: unknown;
   await page.route("**/v1/waitlist", (route) => {
     sent = route.request().postDataJSON();
-    count = 1234;
-    return route.fulfill({ status: 200, body: "{}" });
+    return route.fulfill({ status: 200, json: { status: "ok", name_token: "t".repeat(64) } });
+  });
+  let named: unknown;
+  await page.route("**/v1/waitlist/name", (route) => {
+    named = route.request().postDataJSON();
+    return route.fulfill({ status: 200, json: { status: "ok" } });
   });
   await page.goto("/");
   await expect(page.getByText("1 person on the waitlist")).toBeVisible();
@@ -27,9 +31,29 @@ test("landing page renders and the waitlist form joins", async ({ page }) => {
   );
   await page.getByLabel("Email for the hosted version waitlist").fill("someone@example.com");
   await page.getByRole("button", { name: "Join the waitlist" }).click();
-  await expect(page.getByRole("status")).toHaveText(/Check your email for a link to confirm your spot/);
+  // Step two asks for a name, optional, and the email is already saved.
+  await expect(page.getByLabel("What should we call you? (optional)")).toBeFocused();
   expect(sent).toEqual({ email: "someone@example.com", source: "landing" });
-  await expect(page.getByText("1,234 people on the waitlist")).toBeVisible();
+  await page.getByLabel("What should we call you? (optional)").fill("  Ann Lee ");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByRole("status")).toHaveText(/Check your email to confirm your spot/);
+  expect(named).toEqual({ token: "t".repeat(64), name: "Ann Lee" });
+  // Only confirmed people are counted, so joining does not change the count by itself.
+  await expect(page.getByText("1 person on the waitlist")).toBeVisible();
+});
+
+test("the waitlist name step can be skipped", async ({ page }) => {
+  await page.route("**/auth/me", (route) => route.fulfill({ status: 401, json: { error: "unauthorized" } }));
+  await page.route("**/v1/waitlist/count", (route) => route.fulfill({ json: { count: 3 } }));
+  await page.route("**/v1/waitlist", (route) => route.fulfill({ json: { status: "ok", name_token: "t".repeat(64) } }));
+  let asked = false;
+  await page.route("**/v1/waitlist/name", (route) => ((asked = true), route.fulfill({ json: { status: "ok" } })));
+  await page.goto("/");
+  await page.getByLabel("Email for the hosted version waitlist").fill("someone@example.com");
+  await page.getByRole("button", { name: "Join the waitlist" }).click();
+  await page.getByRole("button", { name: "Skip" }).click();
+  await expect(page.getByRole("status")).toHaveText(/Check your email to confirm your spot/);
+  expect(asked).toBe(false);
 });
 
 test("the waitlist count shows nothing when brain can't say", async ({ page }) => {
