@@ -720,6 +720,8 @@ export const reasonText: Record<string, string> = {
   daily_cap: "The team reached 500 automation runs today",
   paused: "The team paused all its automations",
   paused_waiting: "Stopped: the team paused its automations while this flow waited",
+  no_question: "The text was judged not to ask a question",
+  question_cap: "The team judged 300 messages with AI today, the most a day",
   own_account: "It came from one of your own connected accounts",
   connected_account: "It came from an account connected to SocialReins by another team",
   cooldown: "It already answered this person within the cool-down",
@@ -800,6 +802,8 @@ export const plannedStatus: Record<PlannedStatus, string> = {
 export const reasonShort: Record<string, string> = {
   paused: "paused",
   paused_waiting: "stopped by the pause",
+  no_question: "not a question",
+  question_cap: "question limit",
   own_account: "own account",
   connected_account: "connected account",
   cooldown: "cool-down",
