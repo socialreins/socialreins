@@ -44,7 +44,7 @@ export const features: Feature[] = [
           "Write the DM, and add a public reply if you want one. {name} in the text becomes the commenter's name, and {page} the link to the post's public page.",
           "Add a public reply to fall back on when the network refuses the DM, for example when the person only takes DMs from accounts they follow.",
           "Answer each person once, or every time they comment.",
-          "Test it before it goes live: type a sample comment and see what it would match and send, AI text included. Nothing is sent and nothing is saved.",
+          "Test it before it goes live: type a sample comment and see what it would match and send, AI text included. Nothing is sent. An AI step is written for real and counts toward your AI replies.",
         ],
       },
       {
