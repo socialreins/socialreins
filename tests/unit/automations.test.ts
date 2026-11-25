@@ -37,6 +37,8 @@ import {
   type Run,
   type Draft,
   type StepDraft,
+  limitOf,
+  reasonLabel,
 } from "@/lib/automations";
 import { apiUrl } from "@/lib/waitlist";
 
@@ -149,9 +151,32 @@ const full: Draft = {
   flow: false,
   steps: [],
   payloads: [],
+  cooldown: "",
+  dailyCap: "",
 };
 const scope = { social_set_id: null, account_ids: ["c1"] };
 const uris = ["at://did:plc:bob/app.bsky.feed.post/3abc"];
+
+describe("limits", () => {
+  it("reads a limit as a whole number in range, or none", () => {
+    expect(limitOf("", 500)).toBeNull();
+    expect(limitOf(" 60 ", 10080)).toBe(60);
+    for (const bad of ["0", "-1", "1.5", "abc", "501"]) expect(limitOf(bad, 500)).toBeNaN();
+  });
+
+  it("sends the cool-down and the daily limit, and reads them back", () => {
+    const input = automationInput({ ...full, cooldown: "60", dailyCap: "25" }, scope, uris);
+    expect(input).toMatchObject({ cooldown_minutes: 60, daily_cap: 25 });
+    const saved = { ...input, id: "a1", activated_at: "", created_by: null, created_at: "", updated_at: "" } as Automation;
+    expect(draftOf(saved)).toMatchObject({ cooldown: "60", dailyCap: "25" });
+  });
+
+  it("names why runs were held back", () => {
+    for (const code of ["paused", "own_account", "connected_account", "cooldown", "automation_cap"]) expect(reason(code)).not.toBe(code.replaceAll("_", " "));
+    expect(reasonLabel("automation_cap")).toBe("daily limit");
+    expect(reasonLabel("something_new")).toBe("something new");
+  });
+});
 
 describe("triggers", () => {
   it("mirrors what brain's validate takes for each trigger", () => {
@@ -184,6 +209,8 @@ describe("triggers", () => {
       actions: both,
       active: true,
       fallback_public_reply: "Check your DMs",
+      cooldown_minutes: null,
+      daily_cap: null,
     });
     expect(automationInput({ ...full, trigger: "mention_received" }, scope, uris)).toMatchObject({
       conditions: { ...scope, keywords: ["price"] },
@@ -246,7 +273,7 @@ describe("triggers", () => {
       fallback_public_reply: "fallback",
     } as unknown as Automation;
     const again = automationInput(draftOf(saved), { social_set_id: null, account_ids: [] }, uris);
-    expect(again).toEqual({ name: "Both", trigger: "comment_received", active: false, conditions: saved.conditions, actions: saved.actions, fallback_public_reply: "fallback" });
+    expect(again).toEqual({ name: "Both", trigger: "comment_received", active: false, conditions: saved.conditions, actions: saved.actions, fallback_public_reply: "fallback", cooldown_minutes: null, daily_cap: null });
   });
 });
 
@@ -374,7 +401,7 @@ describe("flows", () => {
     const d = draftOf(saved);
     expect(d).toMatchObject({ flow: true, dm: "", publicReply: "", fallbackOn: false });
     const input = automationInput(d, { social_set_id: null, account_ids: ["c1"] }, []);
-    expect(input).toEqual({ name: "Guide flow", trigger: "comment_received", conditions: saved.conditions, steps: saved.steps, active: true });
+    expect(input).toEqual({ name: "Guide flow", trigger: "comment_received", conditions: saved.conditions, steps: saved.steps, active: true, cooldown_minutes: null, daily_cap: null });
     expect(Object.keys(input)).not.toContain("actions");
     expect(Object.keys(input)).not.toContain("fallback_public_reply");
     // A simple one still goes with actions and no steps.

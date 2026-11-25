@@ -8,7 +8,7 @@ export type Role = "owner" | "admin" | "member";
 // picked for itself, shown instead of the code when set; brain takes either in X-Team and ?team=.
 // `public_pages`: posts of the team may have a public page (`/p/<code>`); `newsletter`: those pages offer a sign-up;
 // `require_approval`: a member's post waits for an owner or admin to approve it.
-export type Team = { id: string; name: string; code: string; slug?: string | null; role: Role; public_pages?: boolean; newsletter?: boolean; newsletter_sender?: { name: string; address: string; logo?: string | null } | null; require_approval?: boolean };
+export type Team = { id: string; name: string; code: string; slug?: string | null; role: Role; public_pages?: boolean; newsletter?: boolean; newsletter_sender?: { name: string; address: string; logo?: string | null } | null; require_approval?: boolean; automations_paused?: boolean };
 export type User = {
   id: string;
   email: string;
@@ -245,6 +245,8 @@ export const codes = [
   "has_paid_plan",
   "invalid_pack",
   "invalid_sample",
+  "invalid_cooldown",
+  "invalid_daily_cap",
 ] as const;
 export type Failure = (typeof codes)[number] | "rate_limited" | "signed_out" | "timeout" | "error";
 export type Passkey = { id: string; name: string; created_at: string; last_used_at: string | null };

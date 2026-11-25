@@ -11,6 +11,9 @@ import {
   duplicateDraft,
   flowProblems,
   MAX_TAG_ACTIONS,
+  limitOf,
+  MAX_COOLDOWN,
+  MAX_DAILY_CAP,
   postIds,
   sample,
   sameSteps,
@@ -50,6 +53,8 @@ export const automationMessages: Partial<Record<Failure, ReactNode>> = {
   invalid_fallback: "The fallback reply does not work: it needs a DM text, at most 300 characters, with {name} counted as 64 and {page} as 100, and {page} needs a space before it and a space or the end after it.",
   invalid_steps: "A step does not work. A flow takes 1 to 10 steps, can't start or end with a wait (1 minute to 7 days), sends only what its trigger can send, and each DM takes up to 3 buttons with a label of 1 to 20 characters.",
   actions_and_steps: "An automation is one reply or a flow of steps, not both. Reload the page and try again.",
+  invalid_cooldown: "The cool-down must be a whole number of minutes from 1 to 10080 (7 days), or empty.",
+  invalid_daily_cap: "The daily limit must be a whole number from 1 to 500, or empty.",
   invalid_trigger: "That trigger isn't supported.",
   too_many_automations: "This team already has 50 automations, the most allowed. Delete one first.",
   forbidden: "Only team owners and admins can change automations.",
@@ -141,6 +146,8 @@ export function AutomationForm({
     ...(d.name.trim() ? [] : [{ text: "Give it a name.", field: "automation-name" }]),
     ...(stuck.length ? [{ text: `Untick ${stuck.join(", ")}: automations run only on Bluesky, Facebook, Instagram and X.`, field: "automation-scope" }] : []),
     ...(t.payloads && !d.payloads.length ? [{ text: "Add at least one button payload.", field: "automation-payloads" }] : []),
+    ...(Number.isNaN(limitOf(d.cooldown, MAX_COOLDOWN)) ? [{ text: "The wait must be 1 to 10080 minutes, or empty.", field: "automation-cooldown" }] : []),
+    ...(Number.isNaN(limitOf(d.dailyCap, MAX_DAILY_CAP)) ? [{ text: "Most runs a day must be 1 to 500, or empty.", field: "automation-daily-cap" }] : []),
     ...(d.flow
       ? problems.map((p) => ({ text: p.step === null ? p.text : `Step ${p.step + 1}: ${p.text}`, field: p.step === null ? "automation-flow-add" : `step-${d.steps[p.step]!.id}-field` }))
       : [
@@ -516,6 +523,27 @@ export function AutomationForm({
               )}
             </>
           )}
+        </fieldset>
+
+        <fieldset className="card grid gap-3 p-5">
+          <legend className={cardTitle}>Limits</legend>
+          <p className="hint">Both are optional. A run held back by a limit is kept in the run history with its reason.</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-1">
+              <label htmlFor="automation-cooldown" className="font-medium">
+                Wait before answering the same person again (minutes)
+              </label>
+              <input id="automation-cooldown" className="field" inputMode="numeric" placeholder="No wait" value={d.cooldown} onChange={(e) => set({ cooldown: e.target.value })} aria-invalid={Number.isNaN(limitOf(d.cooldown, MAX_COOLDOWN))} />
+              <p className="hint">1 to 10080 (7 days). 60 means one answer an hour for each person.</p>
+            </div>
+            <div className="grid gap-1">
+              <label htmlFor="automation-daily-cap" className="font-medium">
+                Most runs a day
+              </label>
+              <input id="automation-daily-cap" className="field" inputMode="numeric" placeholder="Team limit only" value={d.dailyCap} onChange={(e) => set({ dailyCap: e.target.value })} aria-invalid={Number.isNaN(limitOf(d.dailyCap, MAX_DAILY_CAP))} />
+              <p className="hint">1 to 500. The whole team already stops at 500 a day.</p>
+            </div>
+          </div>
         </fieldset>
 
         <AutomationTest
