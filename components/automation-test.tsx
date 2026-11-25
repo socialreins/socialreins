@@ -67,12 +67,14 @@ export function AutomationTest({
   const [pick, setPick] = useState("");
   const [text, setText] = useState("");
   const [name, setName] = useState("Sam");
+  // Bluesky: Sam does not follow the account or has DMs closed, so a DM is refused.
+  const [closed, setClosed] = useState(false);
   const [result, setResult] = useState<{ outcome: TestOutcome; of: string } | null>(null);
   const { busy, problem, run } = useAction();
   const account = accounts.find((a) => a.id === pick) ?? first;
   const sample = text.trim() || placeholder;
   // What changes the answer: not the name or the on switch.
-  const now = JSON.stringify([input && { ...input, name: "", active: true }, account?.id, sample, name]);
+  const now = JSON.stringify([input && { ...input, name: "", active: true }, account?.id, sample, name, closed]);
   const can = Boolean(input && account && !stuck);
 
   async function test() {
@@ -84,6 +86,7 @@ export function AutomationTest({
       author_name: name.trim() || undefined,
       post_remote_id: input.conditions.post_remote_ids?.[0],
       button_payload: input.conditions.payloads?.[0],
+      author_can_dm: account.provider === "bluesky" && closed ? false : undefined,
     };
     // A name is only needed to save, not to try.
     await run("test", () => testAutomation({ ...input, name: input.name.trim() || "Test" }, body), (outcome) => {
@@ -129,6 +132,12 @@ export function AutomationTest({
             </label>
             <input id="automation-test-name" className="field" maxLength={64} placeholder="Sam" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
+          {account.provider === "bluesky" && (
+            <label className="flex items-center gap-2 sm:col-span-2">
+              <input type="checkbox" checked={closed} onChange={(e) => setClosed(e.target.checked)} />
+              They can&apos;t take our DM (they don&apos;t follow this account, or have DMs closed)
+            </label>
+          )}
           {needsText && (
             <div className="grid gap-1.5 sm:col-span-2">
               <label htmlFor="automation-test-text" className="label">
