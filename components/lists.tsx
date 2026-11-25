@@ -18,7 +18,7 @@ import {
   type ListDetail,
   type PostList,
 } from "@/lib/lists";
-import { listPosts, type Post } from "@/lib/posts";
+import { listPosts, postRef, type Post } from "@/lib/posts";
 import { listSets, type SocialSet } from "@/lib/sets";
 import { snippet, StatusBadge } from "@/components/posts";
 import { isFailure, linkButton, problemText, Status, useAction } from "@/components/team-ui";
@@ -375,7 +375,7 @@ export function ListView({ id }: { id: string }) {
                 <li key={item.post_id} className="flex flex-wrap items-center gap-3 p-4">
                   <strong className="w-16 shrink-0">{name}</strong>
                   <div className="grid min-w-0 flex-1 basis-48 gap-1">
-                    <Link href={`/posts/${p.id}`} className="truncate hover:underline">
+                    <Link href={`/posts/${postRef(p)}`} className="truncate hover:underline">
                       {snippet(p)}
                     </Link>
                     <p className="flex flex-wrap items-center gap-2 text-sm text-ink-soft">

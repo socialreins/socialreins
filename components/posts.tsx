@@ -22,6 +22,7 @@ import {
   NOTE_MAX,
   parseFilters,
   postDay,
+  postRef,
   repeatSummary,
   rows,
   sameDay,
@@ -255,7 +256,7 @@ function PostChip({ posts }: { posts: Post[] }) {
   return (
     <li className="flex min-w-0 items-center rounded text-xs hover:bg-ink/[0.045]">
       <span aria-hidden="true" className="dot ml-1.5 shrink-0" data-status={p.status} data-approval={approvalState(p) ?? undefined} />
-      <Link href={`/posts/${p.id}`} className="min-w-0 flex-1 truncate px-1.5 py-1 hover:underline">
+      <Link href={`/posts/${postRef(p)}`} className="min-w-0 flex-1 truncate px-1.5 py-1 hover:underline">
         {p.lists.length > 0 && <span className="block truncate font-bold">{p.lists.map(partLabel).join(", ")}</span>}
         {posts.map((v) => (
           <PlatformMark key={v.id} platform={v.platform} />
@@ -311,7 +312,7 @@ function GridChip({ posts, onDrag, onMove }: { posts: Post[]; onDrag: (posts: Po
           <Icon name="clock" className="size-3" />
         </button>
       )}
-      <Link href={`/posts/${p.id}`} className="grid min-w-0 px-1.5 py-0.5 leading-4 hover:underline">
+      <Link href={`/posts/${postRef(p)}`} className="grid min-w-0 px-1.5 py-0.5 leading-4 hover:underline">
         <span className="flex min-w-0 items-center gap-1 whitespace-nowrap text-ink-soft">
           <span aria-hidden="true" className="dot shrink-0" data-status={p.status} data-approval={approvalState(p) ?? undefined} />
           <span className="sr-only">{stateName(p)}: </span>
@@ -527,7 +528,7 @@ function PostRow({ posts, onMove, review }: { posts: Post[]; onMove?: (posts: Po
   const stats = totals && statWords(totals, ["likes", "comments"]);
   return (
     <li className="relative flex flex-wrap items-start gap-x-3 gap-y-0.5 px-3 py-2.5 hover:bg-ink/[0.03] sm:items-center sm:px-4">
-      <Link href={`/posts/${p.id}`} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-sm after:absolute after:inset-0 sm:flex-nowrap">
+      <Link href={`/posts/${postRef(p)}`} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-sm after:absolute after:inset-0 sm:flex-nowrap">
         <span className="w-[4.5rem] shrink-0 text-ink-soft">
           <Stamp post={p} block />
         </span>
@@ -576,7 +577,7 @@ function PostRow({ posts, onMove, review }: { posts: Post[]; onMove?: (posts: Po
         </button>
       )}
       <Link
-        href={`/posts/new?from=${encodeURIComponent(p.id)}`}
+        href={`/posts/new?from=${postRef(p)}`}
         aria-label={`Duplicate ${snippet(p)}`}
         title="Duplicate"
         className="relative z-10 shrink-0 rounded-md p-1 text-ink-soft hover:bg-ink/10 hover:text-ink"
@@ -1096,7 +1097,7 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
               const p = v[0]!;
               return (
               <li key={p.id} className="tone relative grid content-start gap-2 rounded-2xl bg-paper p-4 hover:bg-ink/[0.02]" data-status="draft">
-                <Link href={`/posts/${p.id}`} className="font-bold text-ink after:absolute after:inset-0 after:rounded-2xl">
+                <Link href={`/posts/${postRef(p)}`} className="font-bold text-ink after:absolute after:inset-0 after:rounded-2xl">
                   {v.map((v) => (
                     <PlatformMark key={v.id} platform={v.platform} className="size-4" />
                   ))}{" "}
