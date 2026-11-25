@@ -15,8 +15,8 @@ const box = (id: string, account_ids: string[] = []): Inbox => ({
 const acct = (id: string, provider: string) => ({ id, provider });
 
 it("keeps only accounts with an inbox, and names All inboxes", () => {
-  const accounts = [acct("b", "bluesky"), acct("f", "facebook"), acct("i", "instagram"), acct("x", "x"), acct("l", "linkedin")];
-  expect(inboxCapable(accounts).map((a) => a.id)).toEqual(["b", "f", "i", "x"]);
+  const accounts = [acct("b", "bluesky"), acct("f", "facebook"), acct("i", "instagram"), acct("t", "threads"), acct("x", "x"), acct("l", "linkedin")];
+  expect(inboxCapable(accounts).map((a) => a.id)).toEqual(["b", "f", "i", "t", "x"]);
   expect(inboxName(box("all"))).toBe("All inboxes");
   expect(inboxName(box("sales"))).toBe("sales");
 });

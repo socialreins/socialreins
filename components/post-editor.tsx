@@ -298,8 +298,8 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     if (id)
       getPost(id).then((r) => {
         if (isFailure(r)) return setPost(r);
-        // An old address with the UUID moves to the post's number.
-        if (id !== postRef(r)) window.history.replaceState(null, "", to(`/posts/${postRef(r)}`));
+        // An old address with the UUID moves to the post's number, unless the person has already left this page.
+        if (id !== postRef(r) && window.location.pathname.endsWith(`/posts/${id}`)) window.history.replaceState(null, "", to(`/posts/${postRef(r)}`) + window.location.search + window.location.hash);
         load(r);
         if (r.group_id) listPosts({ group_id: r.group_id }).then((g) => Array.isArray(g) && setGroup(g));
       });

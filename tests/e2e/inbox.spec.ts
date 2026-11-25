@@ -87,11 +87,14 @@ async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items
     refuse: null as string | null,
     // A DM's conversation as Bluesky has it (null: not read).
     convo: null as null | { status: string; muted: boolean; group: boolean; members: number; unread: number },
+    // What each automation did with the open item (`GET /v1/inbox-items/{id}/automations`).
+    verdicts: [] as unknown[],
   };
   const dms = (i: Row) => state.items.filter((x) => x.kind === "dm" && thread(x) === thread(i)).sort(oldestFirst);
   await page.route("**/auth/me", (route) => route.fulfill({ json: me(role) }));
   await page.route("**/v1/connections", (route) => route.fulfill({ json: opts.accounts ?? [alice] }));
   await page.route(/\/v1\/social-sets$/, (route) => route.fulfill({ json: [{ id: "d", name: "All sets", is_default: true, account_ids: ["c1"], account_count: 1, created_at: "", deleted_at: null }] }));
+  await page.route(/\/v1\/inbox-items\/[^/]+\/automations$/, (route) => route.fulfill({ json: { automations: state.verdicts } }));
   await page.route("**/v1/inboxes", (route) => {
     const req = route.request();
     if (req.method() === "POST") {
@@ -238,6 +241,34 @@ test("inbox lists items, filters by kind, and opens one by URL", async ({ page }
     "https://bsky.app/profile/did:plc:bob/post/p1",
   );
   await expect(page.getByRole("navigation", { name: "Inboxes" }).getByRole("link", { name: "Questions" })).toHaveAttribute("aria-current", "page");
+});
+
+test("an item says which automations ran on it and, when none did, why", async ({ page }) => {
+  const state = await brain(page, "owner");
+  await page.goto("/inbox?item=p1");
+  const detail = page.getByRole("region", { name: "Item" });
+  await expect(detail.getByLabel("Reply publicly")).toBeVisible();
+  // No automation had a say: nothing is shown.
+  await expect(detail.getByRole("region", { name: "Automations" })).toHaveCount(0);
+  state.verdicts = [
+    { automation_id: "a1", name: "Price to DM", outcome: "not_matched", reasons: ["no_keyword", "wrong_post"] },
+    { automation_id: "a2", name: "Thanks", outcome: "skipped", reasons: ["cooldown"] },
+    { automation_id: "a3", name: "Welcome", outcome: "not_matched", reasons: ["wrong_trigger"] },
+  ];
+  await page.goto("/inbox?item=p2");
+  const note = page.getByRole("region", { name: "Item" }).getByRole("region", { name: "Automations" });
+  await expect(note).toContainText("Automations: none ran because");
+  await expect(note).toContainText("Price to DM: The text has none of the keywords; It is not on one of the posts this automation is limited to");
+  await expect(note).toContainText("Welcome: It is for a different kind of item");
+  await expect(note.getByRole("link", { name: "Price to DM" })).toHaveAttribute("href", "/t/acme22/automations/a1");
+  state.verdicts = [
+    { automation_id: "a1", name: "Price to DM", outcome: "ran", reasons: [] },
+    { automation_id: "a3", name: "Welcome", outcome: "not_matched", reasons: ["wrong_trigger"] },
+  ];
+  await page.goto("/inbox?item=p3");
+  const some = page.getByRole("region", { name: "Item" }).getByRole("region", { name: "Automations" });
+  await expect(some).toContainText("Automations: Price to DM ran.");
+  await expect(some).toContainText("Welcome: It is for a different kind of item");
 });
 
 test("likes and reposts are quiet activity behind their own filter, and a reply shows the posts above it", async ({ page }) => {

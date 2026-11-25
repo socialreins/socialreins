@@ -10,6 +10,8 @@ import {
   draftOf,
   duplicateDraft,
   EFFECTS,
+  effectFits,
+  isActivity,
   flowProblems,
   MAX_TAG_ACTIONS,
   limitOf,
@@ -20,8 +22,11 @@ import {
   sameSteps,
   SENTIMENTS,
   slug,
+  replyLimit,
   stepName,
   templateLength,
+  threadsOnly,
+  threadsProblems,
   toFlow,
   toSimple,
   TRIGGERS,
@@ -34,7 +39,7 @@ import {
 } from "@/lib/automations";
 import type { Connection } from "@/lib/connections";
 import { cleanTag } from "@/lib/contacts";
-import { MAX_DM, MAX_PUBLIC } from "@/lib/inbox";
+import { MAX_DM } from "@/lib/inbox";
 import type { SocialSet } from "@/lib/sets";
 import { effectHint, FlowEditor, FlowPreview, TagLine, TextField } from "@/components/automation-flow";
 import { AutomationTest } from "@/components/automation-test";
@@ -43,17 +48,22 @@ import { Status, useAction } from "@/components/team-ui";
 import { Icon, type IconName } from "@/components/ui";
 
 // Networks whose inbox can fire an automation; brain refuses an account on any other (unsupported_account).
-const AUTOMATED = ["bluesky", "facebook", "instagram", "x"];
+const AUTOMATED = ["bluesky", "facebook", "instagram", "threads", "x"];
 
 export const automationMessages: Partial<Record<Failure, ReactNode>> = {
-  unsupported_account: "Automations run only on Bluesky, Facebook, Instagram and X accounts. Remove the others.",
+  unsupported_account: "Automations run only on Bluesky, Facebook, Instagram, Threads and X accounts. Remove the others.",
+  threads_unsupported_trigger: "Threads has replies and mentions only. Pick a comment or a mention, or leave the Threads account out.",
+  threads_no_dm: "Threads has no DMs and no private reply, so it takes a public reply only. Remove the DM, or leave the Threads account out.",
+  threads_no_like: "Threads has no like for apps. Hiding a reply directly under your post and a public reply work; remove the like, or leave the Threads account out.",
   x_unsupported_trigger: "X has no follows, story replies or buttons to trigger on. Pick a comment, a mention or a DM, or leave the X account out.",
-  bluesky_unsupported_trigger: "Bluesky has no story replies or buttons to tap. Pick a comment, a mention, a DM or a follow, or leave the Bluesky account out.",
+  bluesky_unsupported_trigger: "Bluesky has no story replies or buttons to tap. Pick a comment, a mention, a DM, a follow, a like or a repost, or leave the Bluesky account out.",
+  bluesky_only_trigger: "Likes and reposts come only from Bluesky. Limit this to a Bluesky account, or pick another trigger.",
+  bluesky_only_action: "Reposting and following back go to Bluesky only. Limit this to a Bluesky account, or remove them.",
   meta_one_private_reply: "Facebook and Instagram allow one private reply per comment. Keep one DM in this flow.",
   meta_reply_window: "Facebook and Instagram take a DM only within 24 hours of the person's message. Shorten the waits.",
   invalid_conditions: "One of the accounts, the set or a post link is no longer valid, a keyword is too long, or a condition does not fit this trigger. Check them and try again.",
   invalid_actions: "Add a DM text or a public reply that this trigger can send.",
-  invalid_text: "A text is too long or holds {page} where it can't go. DMs take 1000 characters and public replies 300, with {name} counted as 64 and {page} as 100. {page} works only for comments and mentions, and needs a space before it and a space or the end after it.",
+  invalid_text: "A text is too long or holds {page} where it can't go. DMs take 1000 characters and public replies 300 (500 on Threads, with an emoji counted as its bytes), with {name} counted as 64 and {page} as 100. {page} works only for comments and mentions, and needs a space before it and a space or the end after it.",
   invalid_fallback: "The fallback reply does not work: it needs a DM text, at most 300 characters, with {name} counted as 64 and {page} as 100, and {page} needs a space before it and a space or the end after it.",
   invalid_steps: "A step does not work. A flow takes 1 to 10 steps, can't start or end with a wait (1 minute to 7 days), sends only what its trigger can send, and each DM takes up to 3 buttons with a label of 1 to 20 characters.",
   actions_and_steps: "An automation is one reply or a flow of steps, not both. Reload the page and try again.",
@@ -73,6 +83,8 @@ export const triggerIcon: Record<Trigger, IconName> = {
   story_reply: "story",
   story_mention: "story",
   button_clicked: "check",
+  like_received: "heart",
+  repost_received: "repeat",
 };
 
 // What Sam does in the preview, and what Sam writes when no keyword is set.
@@ -84,6 +96,8 @@ const incoming: Record<Trigger, { did: string; text: string | null }> = {
   story_reply: { did: "replied to your story", text: "Wow, where is this?" },
   story_mention: { did: "mentioned you in their story", text: null },
   button_clicked: { did: "tapped a button", text: null },
+  like_received: { did: "liked your post", text: null },
+  repost_received: { did: "reposted your post", text: null },
 };
 
 const leaveQuestion = "Leave without saving? Your changes to this automation will be lost.";
@@ -137,6 +151,8 @@ export function AutomationForm({
   const t = triggers[d.trigger];
   const tokens = t.publicReply ? ["{name}", "{page}"] : ["{name}"];
   const lines = d.posts.split("\n").map((l) => l.trim()).filter(Boolean);
+  // A like or repost has nobody to message and no contact to tag.
+  const nobody = isActivity(d.trigger);
   const hasDm = Boolean(d.dm.trim());
   // brain refuses tags with nothing sent beside them (422 invalid_actions).
   const acts = d.also.some((e) => e !== "stop_automations");
@@ -147,20 +163,22 @@ export function AutomationForm({
   // Accounts saved before automations were limited to these networks stay listed so they can be unticked.
   const stuck = picked.filter((x) => !AUTOMATED.includes(x.provider)).map((x) => x.handle ?? x.display_name ?? x.provider);
   const problems = d.flow ? flowProblems(d.steps, d.trigger, providers) : [];
+  const limit = replyLimit(providers);
   const waiting = a?.runs?.waiting ?? 0;
   // Everything that stops a save, with the field to fix it in, for the bar's count.
   const issues: { text: string; field: string }[] = [
     ...(d.name.trim() ? [] : [{ text: "Give it a name.", field: "automation-name" }]),
-    ...(stuck.length ? [{ text: `Untick ${stuck.join(", ")}: automations run only on Bluesky, Facebook, Instagram and X.`, field: "automation-scope" }] : []),
+    ...(stuck.length ? [{ text: `Untick ${stuck.join(", ")}: automations run only on Bluesky, Facebook, Instagram, Threads and X.`, field: "automation-scope" }] : []),
     ...(t.payloads && !d.payloads.length ? [{ text: "Add at least one button payload.", field: "automation-payloads" }] : []),
     ...(Number.isNaN(limitOf(d.cooldown, MAX_COOLDOWN)) ? [{ text: "The wait must be 1 to 10080 minutes, or empty.", field: "automation-cooldown" }] : []),
     ...(Number.isNaN(limitOf(d.dailyCap, MAX_DAILY_CAP)) ? [{ text: "Most runs a day must be 1 to 500, or empty.", field: "automation-daily-cap" }] : []),
     ...(d.flow
       ? problems.map((p) => ({ text: p.step === null ? p.text : `Step ${p.step + 1}: ${p.text}`, field: p.step === null ? "automation-flow-add" : `step-${d.steps[p.step]!.id}-field` }))
       : [
-          ...(hasDm || (t.publicReply && d.publicReply.trim()) ? [] : [{ text: t.publicReply ? "Write a DM text or a public reply." : "Write the DM text.", field: "automation-dm" }]),
+          ...(hasDm || (t.publicReply && d.publicReply.trim()) || acts ? [] : [{ text: nobody ? "Tick something to do under Also." : t.publicReply ? "Write a DM text or a public reply." : "Write the DM text.", field: nobody ? "automation-also" : "automation-dm" }]),
           ...(templateLength(d.dm) > MAX_DM ? [{ text: "The DM text is too long.", field: "automation-dm" }] : []),
-          ...(t.publicReply && templateLength(d.publicReply) > MAX_PUBLIC ? [{ text: "The public reply is too long.", field: "automation-public-reply" }] : []),
+          ...(t.publicReply && limit.size(d.publicReply) > limit.max ? [{ text: "The public reply is too long.", field: "automation-public-reply" }] : []),
+          ...(threadsOnly(providers) ? threadsProblems(d.trigger, hasDm).map((text) => ({ text, field: hasDm ? "automation-dm" : "automation-scope" })) : []),
         ]),
   ];
 
@@ -269,7 +287,7 @@ export function AutomationForm({
     }
     if (tagsAlone) {
       setTried(true);
-      document.getElementById("automation-dm")?.focus();
+      document.getElementById(nobody ? "automation-also" : "automation-dm")?.focus();
       return;
     }
     // A limit that is not a whole number in range would be sent as none, and clear a working one.
@@ -502,11 +520,13 @@ export function AutomationForm({
                 setPending(null);
               }}
               trigger={d.trigger}
+              providers={providers}
               problems={tried ? problems : []}
               followUp={followUp}
             />
           ) : (
             <>
+              {!nobody && (
               <TextField
                 id="automation-dm"
                 label={t.publicReply ? <>DM text <span className="font-normal text-ink-soft">(optional when it replies publicly)</span></> : "DM text"}
@@ -524,6 +544,7 @@ export function AutomationForm({
                     : "{name} is their display name, or \"there\" when it has links or symbols. It counts as 64 characters."
                 }
               />
+              )}
               {t.publicReply && (
                 <>
                   <TextField
@@ -531,7 +552,8 @@ export function AutomationForm({
                     label={<>Public reply <span className="font-normal text-ink-soft">(optional, goes every time)</span></>}
                     value={d.publicReply}
                     onChange={(publicReply) => set({ publicReply })}
-                    max={MAX_PUBLIC}
+                    max={limit.max}
+                    length={limit.size(d.publicReply)}
                     tokens={tokens}
                     placeholder="Sent you a DM, {name}!"
                   />
@@ -549,7 +571,8 @@ export function AutomationForm({
                         label="Fallback reply"
                         value={d.fallback}
                         onChange={(fallback) => set({ fallback })}
-                        max={MAX_PUBLIC}
+                        max={limit.max}
+                        length={limit.size(d.fallback)}
                         tokens={tokens}
                         required
                         placeholder="I couldn't DM you, {name}. Follow us and comment again!"
@@ -558,6 +581,7 @@ export function AutomationForm({
                   </div>
                 </>
               )}
+              {!nobody && (
               <KeywordsField
                 id="automation-tags"
                 label="Tag the contact"
@@ -567,9 +591,12 @@ export function AutomationForm({
                 clean={cleanTag}
                 max={MAX_TAG_ACTIONS}
               />
+              )}
               <fieldset className="grid gap-2">
-                <legend className="label">Also (optional)</legend>
-                {EFFECTS.filter((e) => d.trigger === "comment_received" || (e !== "hide_comment" && e !== "like_comment")).map((e) => (
+                <legend id="automation-also" tabIndex={-1} className="label">
+                  {nobody ? "Do this (pick at least one)" : "Also (optional)"}
+                </legend>
+                {EFFECTS.filter((e) => effectFits(e, d.trigger)).map((e) => (
                   <label key={e} className="flex items-start gap-2">
                     <input
                       type="checkbox"
@@ -586,7 +613,9 @@ export function AutomationForm({
               </fieldset>
               {tried && tagsAlone && (
                 <p role="alert" className="waitlist-error">
-                  {d.also.length === 0
+                  {nobody
+                    ? "A stop does nothing alone. Tick follow back or a mail to your team."
+                    : d.also.length === 0
                     ? `A tag needs something sent with it. Write ${t.publicReply ? "a DM text or a public reply" : "a DM text"}, or remove the tags.`
                     : `A tag or a stop needs something done with it. Write ${t.publicReply ? "a DM text or a public reply" : "a DM text"}, tick a mail or a moderation action, or remove them.`}
                 </p>
