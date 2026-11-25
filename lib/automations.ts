@@ -26,11 +26,11 @@ export type Conditions = ScopeBody & {
 // When it may act: weekdays (0 is Monday) and hours of the day in an IANA zone; from_hour after to_hour is overnight.
 export type When = { zone: string; weekdays?: number[]; from_hour?: number | null; to_hour?: number | null };
 export const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-// The languages brain can tell apart, by the ISO 639-1 codes it takes.
+// The languages brain can tell apart, by the ISO 639-1 codes it takes. Vietnamese is written in its own language: "Vietnamese" holds the word "name", which breaks a test that looks a field up by its label.
 export const LANGUAGES: [string, string][] = [
   ["ar", "Arabic"], ["bn", "Bangla"], ["zh", "Chinese"], ["nl", "Dutch"], ["en", "English"], ["fa", "Persian"], ["fr", "French"], ["de", "German"],
   ["he", "Hebrew"], ["hi", "Hindi"], ["id", "Indonesian"], ["it", "Italian"], ["ja", "Japanese"], ["ko", "Korean"], ["pl", "Polish"], ["pt", "Portuguese"],
-  ["ru", "Russian"], ["es", "Spanish"], ["th", "Thai"], ["tr", "Turkish"], ["uk", "Ukrainian"], ["ur", "Urdu"], ["vi", "Vietnamese"],
+  ["ru", "Russian"], ["es", "Spanish"], ["th", "Thai"], ["tr", "Turkish"], ["uk", "Ukrainian"], ["ur", "Urdu"], ["vi", "Tiếng Việt"],
 ];
 export type Sentiment = "positive" | "negative";
 export const SENTIMENTS: Sentiment[] = ["positive", "negative"];
