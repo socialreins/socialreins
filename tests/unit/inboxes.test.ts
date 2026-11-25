@@ -16,15 +16,15 @@ const acct = (id: string, provider: string) => ({ id, provider });
 
 it("keeps only accounts with an inbox, and names All inboxes", () => {
   const accounts = [acct("b", "bluesky"), acct("f", "facebook"), acct("i", "instagram"), acct("x", "x"), acct("l", "linkedin")];
-  expect(inboxCapable(accounts).map((a) => a.id)).toEqual(["b", "f", "i"]);
+  expect(inboxCapable(accounts).map((a) => a.id)).toEqual(["b", "f", "i", "x"]);
   expect(inboxName(box("all"))).toBe("All inboxes");
   expect(inboxName(box("sales"))).toBe("sales");
 });
 
 it("finds the capable accounts no inbox holds", () => {
   const accounts = [acct("b", "bluesky"), acct("f", "facebook"), acct("x", "x")];
-  expect(unboxed(accounts, [box("all"), box("one", ["b"])]).map((a) => a.id)).toEqual(["f"]);
-  expect(unboxed(accounts, [box("all"), box("one", ["b"]), box("two", ["f", "b"])])).toEqual([]);
+  expect(unboxed(accounts, [box("all"), box("one", ["b"])]).map((a) => a.id)).toEqual(["f", "x"]);
+  expect(unboxed(accounts, [box("all"), box("one", ["b"]), box("two", ["f", "b"])]).map((a) => a.id)).toEqual(["x"]);
 });
 
 it("steps through inboxes and wraps around", () => {

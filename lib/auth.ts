@@ -239,6 +239,7 @@ export const codes = [
   "stripe_failed",
   "invalid_plan",
   "unsupported_account",
+  "x_unsupported_trigger",
   "meta_one_private_reply",
   "meta_reply_window",
   "has_paid_plan",

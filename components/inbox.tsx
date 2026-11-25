@@ -53,6 +53,7 @@ import { platformName } from "@/components/platform-icons";
 import { TagEditor } from "@/components/tag-editor";
 import { isFailure, linkButton, planLimit, problemText, Status, useAction, useSearchInUrl } from "@/components/team-ui";
 import { Icon } from "@/components/ui";
+import { XActions } from "@/components/x-inbox";
 
 // New comments arrive on brain's per-minute tick; the open list checks twice a minute.
 const REFRESH_MS = 30_000;
@@ -1194,6 +1195,7 @@ function Detail({
         ))}
       </ol>
 
+      <XActions item={item} />
       {/* A follow has nothing to reply to. */}
       <form onSubmit={onReply} hidden={item.kind === "follow"} className="grid gap-2 border-t border-ink/10 pt-4 [&[hidden]]:hidden">
         <div className="flex flex-wrap items-end justify-between gap-2">

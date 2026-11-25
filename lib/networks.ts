@@ -179,7 +179,7 @@ export const networks: Network[] = [
     sections: [
       {
         heading: "Good to know",
-        bullets: ["X takes images up to 5 MB. A larger photo is made smaller for you before it is posted."],
+        bullets: ["X takes images up to 5 MB. A larger photo is made smaller for you before it is posted.", "The X inbox is in testing. It is off until you turn it on for an account, because X charges for every post, user and DM it returns."],
       },
     ],
   },

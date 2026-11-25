@@ -150,9 +150,9 @@ export type Capability = {
   networks: string[];
 };
 export const triggers: Record<Trigger, Capability> = {
-  comment_received: { label: "When someone comments", keywords: true, posts: true, firstPerAuthor: true, firstMessage: false, publicReply: true, payloads: false, note: null, networks: ["bluesky", "facebook", "instagram"] },
-  dm_received: { label: "When someone sends a DM", keywords: true, posts: false, firstPerAuthor: false, firstMessage: true, publicReply: false, payloads: false, note: null, networks: ["bluesky", "facebook", "instagram"] },
-  mention_received: { label: "When someone mentions you", keywords: true, posts: false, firstPerAuthor: false, firstMessage: false, publicReply: true, payloads: false, note: null, networks: ["bluesky"] },
+  comment_received: { label: "When someone comments", keywords: true, posts: true, firstPerAuthor: true, firstMessage: false, publicReply: true, payloads: false, note: null, networks: ["bluesky", "facebook", "instagram", "x"] },
+  dm_received: { label: "When someone sends a DM", keywords: true, posts: false, firstPerAuthor: false, firstMessage: true, publicReply: false, payloads: false, note: null, networks: ["bluesky", "facebook", "instagram", "x"] },
+  mention_received: { label: "When someone mentions you", keywords: true, posts: false, firstPerAuthor: false, firstMessage: false, publicReply: true, payloads: false, note: null, networks: ["bluesky", "x"] },
   new_follower: {
     label: "When someone follows you",
     keywords: false,
@@ -667,7 +667,7 @@ export const reasonText: Record<string, string> = {
 };
 // Why it happened and what helps, for the reasons that have more to say than their name.
 export const reasonWhy: Record<string, string> = {
-  dm_not_allowed: "This person does not accept DMs from accounts they don't follow.",
+  dm_not_allowed: "This person does not accept DMs from accounts they don't follow. On X there is no private reply to a comment: they must follow you or have DMs open, so keep a fallback public reply.",
   outside_window: "Meta closes a conversation 24 hours after the person's last message. A shorter wait in the flow keeps it open.",
   already_replied: "Meta allows one private reply per comment, and this comment already had it.",
   no_dm_access: "The account's Bluesky app password was made without access to DMs. Make one that allows DMs and reconnect.",
@@ -689,7 +689,8 @@ export const mismatchText: Record<string, string> = {
   button_not_named: "That button payload is not one this automation listens for",
 };
 export const blockText: Record<string, string> = {
-  unsupported_account: "Automations run only on Bluesky, Facebook and Instagram accounts",
+  unsupported_account: "Automations run only on Bluesky, Facebook, Instagram and X accounts",
+  x_unsupported_trigger: "X has no follows, story replies or buttons to trigger on: use a comment, a mention or a DM",
   meta_one_private_reply: "Facebook and Instagram allow one private reply per comment",
   meta_reply_window: "Facebook and Instagram take a DM only within 24 hours of the person's message (7 days for a comment)",
   no_public_page: "A text holds {page}, and this post has no open public page, so it would not run",
