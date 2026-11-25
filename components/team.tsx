@@ -25,12 +25,12 @@ import {
   revokeInvitation,
   setRole,
   setSlug,
-  slugProblem,
   type Invitation,
   type Member,
 } from "@/lib/teams";
 import { reachable, subscribersCsv, type Subscriber } from "@/lib/newsletter";
 import { TeamLink as Link } from "@/components/team-link";
+import { SlugField, slugOk, useSlugCheck } from "@/components/slug-field";
 import { isFailure, linkButton, problemText, roleName, Status, useAction } from "@/components/team-ui";
 import { LoadFailed, SkeletonRows } from "@/components/ui";
 
@@ -95,7 +95,7 @@ function Rename({ team, onRenamed }: { team: Team; onRenamed: (t: Team) => void 
   const { busy, problem, done, run } = useAction();
   const changed = name.trim() !== team.name;
   const address = `${window.location.host}/t/`;
-  // Members read the address; owners and admins change the name and the address.
+  // Members read the address; owners and admins change the name; only owners change the address.
   if (!manages(team.role))
     return (
       <Card id="rename-heading" title="General" help="The team's address, the start of every link to it.">
@@ -105,7 +105,7 @@ function Rename({ team, onRenamed }: { team: Team; onRenamed: (t: Team) => void 
       </Card>
     );
   return (
-    <Card id="rename-heading" title="General" help="The name everyone in the team sees, and the team's address.">
+    <Card id="rename-heading" title="General" help={team.role === "owner" ? "The name everyone in the team sees, and the team's address." : "The name everyone in the team sees. Only an owner changes the address."}>
       <form
         className="grid gap-1.5"
         onSubmit={(e) => {
@@ -135,67 +135,95 @@ function Rename({ team, onRenamed }: { team: Team; onRenamed: (t: Team) => void 
         </div>
       </form>
       <Status problem={problem} done={done} />
-      <Address team={team} prefix={address} onChanged={onRenamed} />
+      {team.role === "owner" ? (
+        <Address team={team} prefix={address} onChanged={onRenamed} />
+      ) : (
+        <p>
+          <span className="label">Team address</span> <code>{address + teamSegment(team)}</code>
+        </p>
+      )}
     </Card>
   );
 }
 
+// Owners change the address, with a sign-in from the last 10 minutes (brain says reauth_required). Changing it is asked about
+// first, since every link to the team changes; the old address keeps leading to the team for a year.
 function Address({ team, prefix, onChanged }: { team: Team; prefix: string; onChanged: (t: Team) => void }) {
   const [slug, setSlugText] = useState(team.slug ?? "");
+  const [asking, setAsking] = useState<"set" | "default" | null>(null);
   const { busy, problem, done, run } = useAction();
+  const state = useSlugCheck(slug, team.code);
+  const confirmRef = useRef<HTMLDivElement>(null);
+  // The question takes focus, so a screen reader reads it.
+  useEffect(() => {
+    if (asking) confirmRef.current?.focus();
+  }, [asking]);
   const changed = slug !== (team.slug ?? "");
-  const wrong = slug ? slugProblem(slug) : null;
   const save = (to: string | null) =>
     run("slug", () => setSlug(to), (t) => {
       onChanged(t);
       setSlugText(t.slug ?? "");
+      setAsking(null);
       return t.slug
-        ? `The team address is now ${prefix}${t.slug}. Old links with ${t.code} still work.`
+        ? `The team address is now ${prefix}${t.slug}. Old links keep working and lead here.`
         : `The team is back on its default address, ${prefix}${t.code}.`;
     });
+  const target = asking === "set" ? slug : team.code;
   return (
     <>
       <form
         className="grid gap-1.5"
         onSubmit={(e) => {
           e.preventDefault();
-          if (slug && !wrong) save(slug);
+          if (changed && slug && slugOk(state)) setAsking("set");
         }}
       >
-        <label htmlFor="team-slug" className="label">
-          Team address
-        </label>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex min-w-0 flex-[1_1_14rem] items-center gap-1">
-            <span className="text-sm text-ink-soft">{prefix}</span>
-            <input
+        <div className="flex flex-wrap items-start gap-2">
+          <div className="min-w-0 flex-[1_1_14rem]">
+            <SlugField
               id="team-slug"
-              className="field min-w-0 flex-1"
-              maxLength={30}
-              autoCapitalize="none"
-              autoComplete="off"
-              spellCheck={false}
-              placeholder={team.code}
+              label="Team address"
               value={slug}
-              onChange={(e) => setSlugText(e.target.value.trim().toLowerCase())}
-              aria-invalid={!!wrong || problem === "invalid_slug" || problem === "slug_taken" || undefined}
-              aria-describedby="team-slug-help"
+              onChange={(v) => {
+                setSlugText(v);
+                setAsking(null);
+              }}
+              state={state}
+              prefix={prefix}
+              placeholder={team.code}
+              help={`3 to 32 lowercase letters, digits or dashes. Short is best: it is in every link. Links with the team's code (${team.code}) always keep working.`}
             />
           </div>
-          <button type="submit" className={`btn h-9 ${changed && slug ? "btn-primary" : "btn-secondary"}`} disabled={busy !== null}>
-            {busy ? "Saving..." : "Save address"}
+          <button
+            type="submit"
+            className={`btn mt-6 h-9 ${changed && slug ? "btn-primary" : "btn-secondary"}`}
+            disabled={busy !== null || !changed || !slug || !slugOk(state)}
+          >
+            Save address
           </button>
           {team.slug && (
-            <button type="button" className="btn btn-secondary h-9" disabled={busy !== null} onClick={() => save(null)}>
+            <button type="button" className="btn btn-secondary mt-6 h-9" disabled={busy !== null} onClick={() => setAsking("default")}>
               Use the default address
             </button>
           )}
         </div>
-        <p id="team-slug-help" className="hint">
-          {wrong ? <span className="text-signal-deep">{wrong} </span> : null}3 to 30 lowercase letters, digits or dashes. Short is best: it is in every link. Links with the
-          team&apos;s code ({team.code}) always keep working.
-        </p>
       </form>
+      {asking && (
+        <div ref={confirmRef} tabIndex={-1} role="group" aria-label="Confirm the address change" className="grid gap-2 rounded-md border border-[var(--line)] p-3">
+          <p>
+            Change the team address to <code>{prefix + target}</code>? Every link to the team changes. Links with the old address keep
+            working for a year and lead to the new one. You can change it 3 times in 30 days, and it needs a sign-in from the last 10 minutes.
+          </p>
+          <div className={confirmRow}>
+            <button type="button" className="btn btn-primary btn-sm" disabled={busy !== null} onClick={() => save(asking === "set" ? slug : null)}>
+              {busy ? "Saving..." : "Change the address"}
+            </button>
+            <button type="button" className="btn btn-quiet btn-sm" disabled={busy !== null} onClick={() => setAsking(null)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
       <Status problem={problem} done={done} />
     </>
   );
