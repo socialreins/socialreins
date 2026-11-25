@@ -147,6 +147,9 @@ const full: Draft = {
   fallbackOn: true,
   fallback: "Check your DMs",
   tags: [],
+  also: [],
+  hasLink: "any",
+  sentiment: [],
   active: true,
   flow: false,
   steps: [],
@@ -190,7 +193,7 @@ describe("triggers", () => {
       const c = triggers[t];
       return [c.keywords, c.posts, c.firstPerAuthor, c.firstMessage, c.publicReply];
     };
-    expect(TRIGGERS).toEqual(["comment_received", "dm_received", "mention_received", "new_follower", "story_reply", "button_clicked"]);
+    expect(TRIGGERS).toEqual(["comment_received", "dm_received", "mention_received", "new_follower", "story_reply", "story_mention", "button_clicked"]);
     expect(row("button_clicked")).toEqual([false, false, false, false, false]);
     expect(triggers.button_clicked.payloads).toBe(true);
     expect(triggers.button_clicked.note).toContain("Facebook and Instagram only");
@@ -330,8 +333,8 @@ describe("flows", () => {
 
   it("finds what brain would refuse in a flow", () => {
     expect(texts([dm("Hi", "Yes", "No"), wait("1", "days"), dm("Still there?")])).toEqual([]);
-    expect(texts([])).toEqual([[null, "A flow needs at least one step that sends something. Add a DM."]]);
-    expect(texts([wait("5")])).toEqual([[null, "A flow needs at least one step that sends something. Add a DM."]]);
+    expect(texts([])).toEqual([[null, "A flow needs at least one step that does something: a DM, a reply, a mail to your team or a moderation step."]]);
+    expect(texts([wait("5")])).toEqual([[null, "A flow needs at least one step that does something: a DM, a reply, a mail to your team or a moderation step."]]);
     expect(texts([wait("5"), dm("Hi"), wait("5")])).toEqual([
       [null, "A flow can't start with a wait. Move a DM above it."],
       [null, "A flow can't end with a wait. Add a step after it, or remove it."],
@@ -370,17 +373,18 @@ describe("flows", () => {
       { type: "send_dm", text: "Hi {name}, see {page}" },
       { type: "reply_publicly", text: "Sent you a DM" },
     ]);
-    expect(toSimple(flow.steps)).toEqual({ dm: "Hi {name}, see {page}", publicReply: "Sent you a DM", tags: [], dropped: [] });
+    expect(toSimple(flow.steps)).toEqual({ dm: "Hi {name}, see {page}", publicReply: "Sent you a DM", tags: [], also: [], dropped: [] });
     // The fallback has no place in a flow, a public reply none under a DM trigger, and an empty reply starts with one DM.
     expect(toFlow(full).dropped).toEqual(["the fallback reply"]);
     expect(stepsBody(toFlow({ ...one, trigger: "dm_received" }).steps)).toEqual([{ type: "send_dm", text: "Hi {name}, see {page}" }]);
     expect(stepsBody(toFlow({ ...one, dm: "", publicReply: "" }).steps)).toEqual([{ type: "send_dm", text: "" }]);
-    expect(toSimple([newStep("reply_publicly", "Thanks!")])).toEqual({ dm: "", publicReply: "Thanks!", tags: [], dropped: [] });
+    expect(toSimple([newStep("reply_publicly", "Thanks!")])).toEqual({ dm: "", publicReply: "Thanks!", tags: [], also: [], dropped: [] });
     // What one reply can't hold is named, and the first DM and public reply stay.
     expect(toSimple([dm("First", "Yes", "No"), wait("1", "days"), dm("Second"), wait("5"), dm("Third", "Ok"), newStep("reply_publicly", "A"), newStep("reply_publicly", "B")])).toEqual({
       dm: "First",
       publicReply: "A",
       tags: [],
+      also: [],
       dropped: ["2 waits", "3 buttons", "2 more DMs", "1 more public reply"],
     });
     expect(toSimple([dm("Hi", "Yes"), wait("5"), dm("Bye")]).dropped).toEqual(["1 wait", "1 button", "1 more DM"]);
@@ -478,7 +482,7 @@ describe("tag the contact", () => {
     expect(stepsBody(steps)).toEqual([{ type: "send_dm", text: "Hi" }, { type: "tag_contact", tag: "vip gold" }]);
     expect(flowOutline(stepsBody(steps))).toBe("DM, tag: vip gold");
     expect(canEdit({ id: "f", name: "F", active: true, activated_at: "", trigger: "dm_received", conditions: scope, actions: [], fallback_public_reply: null, created_by: null, created_at: "", updated_at: "", steps: stepsBody(steps) })).toBe(true);
-    expect(flowProblems([tag], "dm_received")).toEqual([{ step: null, text: "A flow needs at least one step that sends something. Add a DM." }]);
+    expect(flowProblems([tag], "dm_received")).toEqual([{ step: null, text: "A flow needs at least one step that does something: a DM, a reply, a mail to your team or a moderation step." }]);
     expect(flowProblems([newStep("send_dm", "Hi"), newStep("tag_contact")], "dm_received")).toEqual([{ step: 1, text: "Write the tag: 1 to 30 characters, no commas." }]);
   });
 
@@ -648,5 +652,68 @@ describe("flowProblems with a Facebook or Instagram scope", () => {
     expect(texts([newStep("reply_publicly", "Hi"), wait(7, "days"), dm("Late")], "comment_received", ["facebook"])).toEqual([2]);
     expect(texts([dm("ক".repeat(400))], "dm_received", ["instagram"])).toEqual([0]);
     expect(texts([dm("ক".repeat(400))], "dm_received", ["facebook"])).toEqual([]);
+  });
+});
+
+describe("waiting for a reply and the steps that send nothing", () => {
+  const dm = (text = "Hi") => newStep("send_dm", text);
+  const wait = (type: "wait" | "wait_for_reply", amount = "1", unit: "minutes" | "hours" | "days" = "hours") => ({ ...newStep(type), amount, unit });
+
+  it("treats a wait for a reply as a wait: never first or last, and a valid time", () => {
+    expect(flowProblems([wait("wait_for_reply"), dm()], "dm_received").map((p) => p.text)).toContain("A flow can't start with a wait. Move a DM above it.");
+    expect(flowProblems([dm(), wait("wait_for_reply")], "dm_received").map((p) => p.text)).toContain("A flow can't end with a wait. Add a step after it, or remove it.");
+    expect(flowProblems([dm(), wait("wait_for_reply", "9", "days"), dm()], "dm_received").map((p) => p.text)).toContain("Wait between 1 minute and 7 days, as a whole number.");
+    expect(flowProblems([dm(), wait("wait_for_reply"), dm()], "dm_received")).toEqual([]);
+  });
+
+  it("lets a comment's flow send more after the person has written, as Meta does", () => {
+    const meta = ["facebook"];
+    // Two DMs in a row answer one comment: one private reply only.
+    expect(flowProblems([dm(), dm("Two")], "comment_received", meta).map((p) => p.step)).toEqual([1]);
+    // With a wait for their reply between, the second goes in their conversation.
+    expect(flowProblems([dm(), wait("wait_for_reply", "1", "days"), dm("Two"), dm("Three")], "comment_received", meta)).toEqual([]);
+    // The new 24 hours still end: a wait of a day after the answer is too long.
+    expect(flowProblems([dm(), wait("wait_for_reply", "1", "days"), wait("wait", "2", "days"), dm("Two")], "comment_received", meta).map((p) => p.step)).toEqual([3]);
+  });
+
+  it("counts a mail, a hide or a like as doing something, once each, and hide and like for comments only", () => {
+    expect(flowProblems([newStep("hide_comment")], "comment_received")).toEqual([]);
+    expect(flowProblems([newStep("hide_comment")], "dm_received").map((p) => p.text)).toContain("Hiding and liking work on comments only.");
+    expect(flowProblems([newStep("notify_team"), newStep("notify_team"), dm()], "dm_received").map((p) => p.text)).toContain("Mail your team can be in a flow once.");
+    expect(flowProblems([newStep("stop_automations")], "dm_received")).toHaveLength(1);
+  });
+
+  it("saves the steps as brain takes them and keeps what the builder can't show out of it", () => {
+    const steps = [dm(), wait("wait_for_reply", "2", "hours"), newStep("notify_team"), newStep("like_comment")];
+    expect(stepsBody(steps)).toEqual([{ type: "send_dm", text: "Hi" }, { type: "wait_for_reply", minutes: 120 }, { type: "notify_team" }, { type: "like_comment" }]);
+    const a = (steps: unknown[]) => ({ trigger: "comment_received", conditions: { account_ids: [] }, actions: [], steps }) as unknown as Parameters<typeof canEdit>[0];
+    expect(canEdit(a([{ type: "send_dm", text: "x" }, { type: "wait_for_reply", minutes: 5 }, { type: "hide_comment" }]))).toBe(true);
+    expect(canEdit(a([{ type: "send_dm", text: "x" }, { type: "assign", user_id: "u1" }]))).toBe(false);
+    expect(sameSteps([{ type: "wait_for_reply", minutes: 5 }, { type: "notify_team" }], [{ type: "wait_for_reply", minutes: 5 }, { type: "notify_team" }])).toBe(true);
+    expect(sameSteps([{ type: "wait_for_reply", minutes: 5 }], [{ type: "wait", minutes: 5 }])).toBe(false);
+    expect(flowOutline([{ type: "send_dm", text: "x" }, { type: "wait_for_reply", minutes: 60 }, { type: "hide_comment" }])).toBe("DM, wait for a reply up to 1 hour, hide the comment");
+  });
+});
+
+describe("the link rule, the mood and the extra actions of one reply", () => {
+  it("sends only what the trigger reads, and the extras that apply", () => {
+    const d = { ...full, hasLink: "yes" as const, sentiment: ["negative" as const], also: ["hide_comment" as const, "notify_team" as const, "stop_automations" as const], dm: "", publicReply: "", tags: [] };
+    const input = automationInput(d, scope, uris);
+    expect(input.conditions).toMatchObject({ has_link: true, sentiment: ["negative"] });
+    expect(input.actions).toEqual([{ type: "notify_team" }, { type: "hide_comment" }, { type: "stop_automations" }]);
+    // A DM has no comment to hide; a button tap and a follow carry no text.
+    const dm = automationInput({ ...d, trigger: "dm_received", payloads: [] }, scope, uris);
+    expect(dm.actions).toEqual([{ type: "notify_team" }, { type: "stop_automations" }]);
+    expect(automationInput({ ...d, trigger: "story_mention" }, scope, uris).conditions).not.toHaveProperty("has_link");
+  });
+
+  it("reads them back, drops them with a trigger that cannot take them, and says them in the notes", () => {
+    const saved = { id: "a", name: "Spam", active: true, activated_at: "", trigger: "comment_received", conditions: { account_ids: [], has_link: false, sentiment: ["positive"] }, actions: [{ type: "like_comment" }, { type: "send_dm", text: "Hi" }], fallback_public_reply: null, created_by: null, created_at: "", updated_at: "" } as unknown as Parameters<typeof draftOf>[0];
+    const d = draftOf(saved);
+    expect([d.hasLink, d.sentiment, d.also]).toEqual(["no", ["positive"], ["like_comment"]]);
+    expect(conditionNotes(saved!.conditions)).toEqual(["Only text without a link", "Mood: positive"]);
+    const moved = changeTrigger(d, "new_follower");
+    expect(moved.draft).toMatchObject({ hasLink: "any", sentiment: [], also: [] });
+    expect(moved.dropped).toEqual(expect.arrayContaining(["the link rule", "the mood rule", "hide and like"]));
   });
 });
