@@ -421,7 +421,7 @@ function TargetRow({ t, v, d, account, retryHere }: { t: Target; v: Post; d: Omi
         {account ? <Avatar connection={account} size="size-8" /> : <span aria-hidden="true" className="size-8 shrink-0 rounded-full bg-ink/10" />}
         <span className="min-w-0 flex-1">
           <strong className="break-words">{who}</strong>
-          {account?.handle && account.display_name && <span className="ml-1.5 break-all text-ink-soft">@{account.handle}</span>}
+          {account?.handle && account.display_name && <span className="ml-1.5 break-words text-ink-soft">@{account.handle}</span>}
         </span>
         <span className="badge tone shrink-0" data-status={tone}>
           {t.status === "pending" ? (t.retry_at ? "Retry waiting" : "Waiting") : t.status === "publishing" ? "Publishing" : t.status === "deleted" ? "Taken down" : t.status === "failed" ? "Failed" : "Published"}
