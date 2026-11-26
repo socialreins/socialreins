@@ -567,7 +567,7 @@ test("each inbox shows its open count, kept fresh by the poll and by Mark done",
   await expect(questions.getByText("1 open in Questions")).toBeAttached();
 
   state.items.unshift(item("p7", "comment", "Is the price the same?"));
-  // The counts refresh every fifth check, 2.5 minutes.
+  // The counts refresh after 2.5 minutes.
   await page.clock.runFor(151_000);
   await expect(all.getByText("4 open in All")).toBeAttached();
   await expect(questions.getByText("2 open in Questions")).toBeAttached();
