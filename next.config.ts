@@ -12,7 +12,8 @@ const nextConfig: NextConfig = {
   // The app moved off /app, then under /t/<team code>/ (lib/team-path.ts); brain and old bookmarks still link to both.
   redirects: async () => [
     { source: "/app", destination: "/home", permanent: true },
-    { source: "/app/:path*", destination: "/:path*", permanent: true },
+    // The first segment must start with a letter or digit, so a decoded "//evil.example" or "\\evil.example" can never lead the destination off site.
+    { source: "/app/:first([a-z0-9][a-z0-9_-]*)/:rest*", destination: "/:first/:rest*", permanent: true },
     ...legacyRedirects(),
   ],
   headers: async () => [
