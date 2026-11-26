@@ -176,21 +176,35 @@ export default function Privacy() {
       <h2>Your data: deleting and getting a copy</h2>
       <ul>
         <li>
+          You can download a copy of your data yourself: sign in, open Profile, then Your data, then Download my data. It is
+          one JSON file with your profile and, for each team you belong to, what your role in it may read. For a team owner or
+          admin that is the team&apos;s posts, connected accounts (never their tokens), contacts and inbox messages. It never
+          holds passwords, tokens or other members&apos; details, and it says what it leaves out. You can download one copy an
+          hour.
+        </li>
+        <li>
+          You can delete your account yourself: sign in, open Profile, then Your data, then Delete my account. You must have
+          signed in within the last 10 minutes and type your email address. It happens at once and cannot be undone. It deletes
+          your account, passkeys and sessions, and every team only you belong to, with its invitations, sets, connected
+          accounts, posts, inbox, contacts and API tokens, and cancels that team&apos;s paid plan. A team with other members
+          stays: if you are its only owner, make someone else an owner or delete the team first. Posts already published on
+          social networks stay there. We email you to confirm. Copies in our encrypted backups are removed within 30 days, and
+          Stripe keeps its own payment records. We keep a hash of your email address so a free trial cannot be used twice, and a
+          count of deleted accounts that holds no personal data.
+        </li>
+        <li>
           A team owner can delete a team on the Team page. That removes the team with its members, invitations, sets, connected
           accounts, posts, inbox, contacts and API tokens. It asks you to sign in again first, you cannot delete the last team
           you have, and it does not cancel a paid plan, so cancel that on the Billing page first.
         </li>
         <li>
-          To delete your whole account and its data, <ContactLink /> using the email address on your account. We answer
-          within 30 days and confirm when it is done. Step by step instructions are on the{" "}
+          You can still ask by email: <ContactLink /> using the email address on your account to have your data deleted or to get
+          a copy, for example if you cannot sign in or want something the download leaves out. We answer within 30 days and
+          confirm when it is done. Step by step instructions are on the{" "}
           <Link href="/data-deletion" className={link}>
             Data Deletion
           </Link>{" "}
           page.
-        </li>
-        <li>
-          There is no self-service export yet. To get a copy of your data, <ContactLink /> using the email address on your
-          account. We answer within 30 days.
         </li>
       </ul>
 

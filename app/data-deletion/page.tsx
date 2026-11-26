@@ -27,10 +27,21 @@ export default function DataDeletion() {
       </p>
 
       <h2>Delete your whole account</h2>
+      <ul>
+        <li>Sign in, open Profile and find Your data.</li>
+        <li>Choose Delete my account. You must have signed in within the last 10 minutes, so sign in again if it asks.</li>
+        <li>Type your email address to confirm, then choose Delete my account. It happens at once and cannot be undone, and we email you to confirm.</li>
+      </ul>
       <p>
-        To delete everything, <ContactLink /> from the email address on your account and ask for it to be deleted. We answer within 30 days. We delete your account and the
-        data tied to it, including your connected accounts and posts, and confirm by email when it is done. Copies in our
-        encrypted backups expire within 30 days after that.
+        This deletes your account, passkeys and sessions, and every team only you belong to, with its connected accounts,
+        posts, inbox, contacts and settings, and cancels that team&apos;s paid plan. A team with other members stays: if you
+        are its only owner, make someone else an owner or delete the team first. Posts already published on social networks
+        stay there; remove them on the network. Copies in our encrypted backups expire within 30 days after that.
+      </p>
+      <p>
+        If you cannot sign in, <ContactLink /> from the email address on your account and ask for it to be deleted. We answer
+        within 30 days and confirm by email when it is done. To get a copy of your data first, use Download my data in the
+        same place, or ask us the same way.
       </p>
       <p>
         A team owner can also delete a team on the Team page, after signing in again. That removes the team and its
