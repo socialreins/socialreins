@@ -298,7 +298,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   // What is open, as the list knows it: a conversation matches its row whichever of its DMs the address names.
   const openKey = detail && !isFailure(detail) ? threadKey(detail) : itemId;
   // When the counts were last asked for by the refresh below; kept across filter changes, which restart that effect.
-  const countsAt = useRef(Date.now());
+  const countsAt = useRef(0);
   const refreshCounts = () => listInboxes().then((l) => Array.isArray(l) && setInboxes(l));
   const go = (item: { id: string; number?: number } | null, how: "push" | "replace" = "replace") => {
     if (item) setOpened(item.id);
@@ -322,6 +322,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   useEffect(() => {
     if (!currentId) return;
     let live = true;
+    if (countsAt.current === 0) countsAt.current = Date.now();
     const check = async (counts = false) => {
       if (document.visibilityState !== "visible") return;
       if (counts || Date.now() - countsAt.current >= COUNTS_AFTER_MS - 1000) {
