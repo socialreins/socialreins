@@ -7,7 +7,7 @@ export const metadata: Metadata = { title: "Terms of Service: SocialReins", ...p
 
 export default function Terms() {
   return (
-    <LegalPage title="Terms of Service" updated="23 November 2026">
+    <LegalPage title="Terms of Service" updated="26 November 2026">
       <p>
         These terms cover the hosted SocialReins service at socialreins.com, run by Binary Labs LLC, a company in Wyoming, United States, and built and supported by Bytech, a company in Bangladesh. In these terms, &quot;we&quot; means Binary Labs LLC. By creating an account or
         using the service, you agree to them. If you have a question, <ContactLink />.
@@ -25,6 +25,12 @@ export default function Terms() {
         Keep your sign-in methods to yourself and tell us if you think someone else got into your account. You are
         responsible for what your team publishes through SocialReins, and you must have the right to use every social
         account you connect.
+      </p>
+
+      <p>
+        An AI reply is written by a model from the instructions you give it, so it can be wrong. Check what your
+        instructions produce before you switch one on: you are responsible for what it sends in your team&apos;s name. If you
+        add your own AI key, the provider&apos;s terms and charges apply to you.
       </p>
 
       <h2>Acceptable use</h2>

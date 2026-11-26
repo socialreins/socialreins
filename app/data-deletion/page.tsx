@@ -9,7 +9,7 @@ const link = "font-bold underline decoration-signal decoration-2 underline-offse
 
 export default function DataDeletion() {
   return (
-    <LegalPage title="Data Deletion">
+    <LegalPage title="Data Deletion" updated="26 November 2026">
       <p>
         You can remove what SocialReins stores about you at any time. This covers the hosted service at socialreins.com.
       </p>
@@ -28,8 +28,13 @@ export default function DataDeletion() {
 
       <h2>Delete your whole account</h2>
       <p>
-        To delete everything, <ContactLink /> from the email address on your account and ask for it to be deleted. We delete your account and the
-        data tied to it, including your connected accounts and posts, and confirm by email when it is done.
+        To delete everything, <ContactLink /> from the email address on your account and ask for it to be deleted. We answer within 30 days. We delete your account and the
+        data tied to it, including your connected accounts and posts, and confirm by email when it is done. Copies in our
+        encrypted backups expire within 30 days after that.
+      </p>
+      <p>
+        A team owner can also delete a team on the Team page, after signing in again. That removes the team and its
+        members, invitations, sets, connected accounts and API tokens, but not your account.
       </p>
 
       <p>

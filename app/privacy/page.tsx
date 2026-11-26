@@ -2,12 +2,15 @@ import type { Metadata } from "next";
 import { publicPage } from "@/lib/seo";
 import Link from "next/link";
 import { ContactLink, LegalPage } from "@/components/legal-page";
+import { CookieSettings } from "@/components/cookie-settings";
+
+const link = "font-bold underline decoration-signal decoration-2 underline-offset-4 hover:text-signal-deep";
 
 export const metadata: Metadata = { title: "Privacy Policy: SocialReins", ...publicPage("/privacy") };
 
 export default function Privacy() {
   return (
-    <LegalPage title="Privacy Policy" updated="23 November 2026">
+    <LegalPage title="Privacy Policy" updated="26 November 2026">
       <p>
         SocialReins is an open-source social media manager. The hosted service at socialreins.com is operated by Binary Labs
         LLC, a company in Wyoming, United States, and built and supported by Bytech, a company in Bangladesh, which controls
@@ -30,14 +33,19 @@ export default function Privacy() {
         </li>
         <li>Your posts: their text, the links to their images, when they are scheduled, and where they were published.</li>
         <li>
+          Your inbox, if you use it: the comments, replies and direct messages your connected accounts receive, with the
+          sender&apos;s name and handle as the network gives them, and the contacts, automations, broadcasts and newsletter
+          subscribers your team sets up.
+        </li>
+        <li>
           Billing: your team&apos;s plan, its status and renewal dates, its Stripe customer and subscription ids, and its
           credit balance. Card details stay with Stripe; we never see or store your full card number.
         </li>
         <li>Basic security records, such as counts of recent attempts used for rate limits.</li>
         <li>
-          Site visits: our public pages (not the app, not public post pages) use Google Analytics, which sets cookies
-          and tells us which pages are visited and from where. It never sees your posts, accounts or anything you
-          do once signed in.
+          Site visits, only if you accept analytics cookies: our public pages (not the app, not public post pages) then
+          use Google Analytics, which tells us which pages are visited and from where. It never sees your posts,
+          accounts or anything you do once signed in. See Cookies below.
         </li>
       </ul>
 
@@ -46,6 +54,46 @@ export default function Privacy() {
         Only to run SocialReins for you: to sign you in, keep your account secure, let your team work together, and
         publish, schedule and take down your posts on the accounts you connect. We do not sell your data, share it with
         advertisers, or use it for ads.
+      </p>
+
+      <h2 id="cookies">Cookies</h2>
+      <ul>
+        <li>
+          To run the site: a cookie that keeps you signed in, and small settings your browser keeps, such as the theme and
+          which menu groups are open. These are needed for SocialReins to work, so we do not ask first.
+        </li>
+        <li>
+          Your choice: if our public pages offer analytics cookies, we remember whether you pressed Accept or Reject in a
+          cookie called sr_consent for 6 months, then ask again.
+        </li>
+        <li>
+          Google Analytics: loaded only on our public pages (not the app, not public post pages, not pages with a link
+          token in the address) and only after you press Accept. Before that, and after Reject, nothing is loaded from
+          Google. We turn off Google&apos;s advertising features and send page addresses without anything after the question mark.
+          If you reject after accepting, we clear its cookies.
+        </li>
+        <li>
+          The sign-in and contact forms may load a check from Cloudflare (Turnstile) that tells people from bots. Cloudflare
+          receives your IP address and browser details for that.
+        </li>
+      </ul>
+      <p>
+        You can change your choice at any time: <CookieSettings className={link} />
+      </p>
+
+      <h2>AI replies and AI steps</h2>
+      <p>
+        SocialReins sends nothing to an AI provider unless a team has set up an automation with an AI step: an AI
+        reply by direct message, an AI public reply, or an AI check of whether a message asks a question. For each one
+        we send the provider the instructions the team wrote for it, the text of the incoming comment or message (its
+        first 1,000 characters), the sender&apos;s name (the first 64 characters) and the name of the network. We do not send your posts,
+        your other messages, your contacts or your sign-in details.
+      </p>
+      <p>
+        By default the provider is Anthropic, using our account. A team can instead add its own API key for Anthropic or
+        OpenAI (bring your own key). The key is stored encrypted and is never shown back. With a team&apos;s own key, the text is
+        sent to the team&apos;s own account with that provider, under the agreement between the team and the provider. Each
+        provider handles what it receives under its own terms and privacy policy, which we do not control.
       </p>
 
       <h2>Google user data</h2>
@@ -68,11 +116,25 @@ export default function Privacy() {
       </p>
 
       <h2>Who helps us run it</h2>
-      <p>
-        The hosted service runs on providers that process data for us only to run SocialReins: Railway hosts the servers
-        and database, Cloudflare carries traffic to them, Resend sends sign-in and invitation emails, and Stripe takes payments for plans and credits. When you publish, your post goes to the platform you
-        chose, such as Bluesky, under that platform&apos;s own terms.
-      </p>
+      <p>The hosted service uses these providers (sub-processors), each only to run SocialReins:</p>
+      <ul>
+        <li>Railway hosts the servers and the database.</li>
+        <li>
+          Cloudflare provides our domain names and the Turnstile check on the sign-in and contact forms, and holds
+          temporary copies of post images and video and the encrypted database backups in its R2 storage. Only the www
+          address goes through Cloudflare (it redirects to socialreins.com); visits to socialreins.com and to our API go
+          straight to Railway.
+        </li>
+        <li>Resend sends our emails: sign-in links, invitations, notices, and the newsletters your team sends.</li>
+        <li>Stripe takes payments for plans and credits.</li>
+        <li>Google Analytics counts visits to our public pages, only if you accept (see Cookies).</li>
+        <li>Anthropic, and OpenAI if a team adds its own key, write and judge AI replies (see AI replies and AI steps).</li>
+        <li>
+          The networks you connect. When you publish, or when SocialReins reads your inbox, it talks to the network&apos;s own
+          service (such as Bluesky, Facebook, Instagram, Threads, LinkedIn, X, TikTok, YouTube or Pinterest) under that
+          network&apos;s own terms.
+        </li>
+      </ul>
 
       <h2>Keeping and deleting data</h2>
       <ul>
@@ -81,15 +143,43 @@ export default function Privacy() {
         <li>Disconnecting a social account deletes its stored token or app password at once.</li>
         <li>A deleted set can be restored for 30 days, then it is purged for good.</li>
         <li>
-          To delete your account and its data, <ContactLink /> using the email address on your account, and we will confirm
-          when it is done.
+          Temporary copies of post images and video are deleted once the post is published or fails, and any left over are
+          removed after 7 days.
         </li>
         <li>
-          Step by step instructions are on the{" "}
-          <Link href="/data-deletion" className="font-bold underline decoration-signal decoration-2 underline-offset-4 hover:text-signal-deep">
+          If your team uses the API with an API token and an Idempotency-Key, we keep that key and our answer for 30 days.
+        </li>
+        <li>
+          Records of webhook deliveries to your team&apos;s own address are deleted 30 days after they were sent or finally failed.
+        </li>
+        <li>
+          Notes on why an automation did not run on a message are kept for 14 days, and at most the newest 100 per
+          automation.
+        </li>
+        <li>
+          Backups: every 6 hours we save an encrypted copy of the database to Cloudflare R2. We keep every copy for 2
+          days, then one a day until 14 days, then one a week until 30 days, and delete the rest. Data you delete stays in
+          these copies until they expire, so up to 30 days. We use backups only to restore the service.
+        </li>
+      </ul>
+
+      <h2>Your data: deleting and getting a copy</h2>
+      <ul>
+        <li>
+          A team owner can delete a team, with its members, invitations, sets, connected accounts and API tokens, on the Team page
+          or through the API (DELETE /v1/team). It asks you to sign in again first, and you cannot delete the last team you have.
+        </li>
+        <li>
+          To delete your whole account and its data, <ContactLink /> using the email address on your account. We answer
+          within 30 days and confirm when it is done. Step by step instructions are on the{" "}
+          <Link href="/data-deletion" className={link}>
             Data Deletion
           </Link>{" "}
           page.
+        </li>
+        <li>
+          There is no self-service export yet. To get a copy of your data, <ContactLink /> using the email address on your
+          account. We answer within 30 days.
         </li>
       </ul>
 
