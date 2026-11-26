@@ -34,7 +34,8 @@ export default function DataDeletion() {
       </p>
       <p>
         A team owner can also delete a team on the Team page, after signing in again. That removes the team and its
-        members, invitations, sets, connected accounts and API tokens, but not your account.
+        members, invitations, sets, connected accounts, posts, inbox, contacts and API tokens, but not your account. It does
+        not cancel a paid plan, so cancel that on the Billing page first. Stripe keeps its own payment records under its own rules.
       </p>
 
       <p>

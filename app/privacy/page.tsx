@@ -31,7 +31,11 @@ export default function Privacy() {
           that let SocialReins post for you. Tokens and app passwords are encrypted before they are stored and are never
           shown back to anyone.
         </li>
-        <li>Your posts: their text, the links to their images, when they are scheduled, and where they were published.</li>
+        <li>
+          Your posts: their text, the links to their images, when they are scheduled, and where they were published. Files
+          you upload from your device for a post (images, video, PDFs) are kept for as long as described under Keeping and
+          deleting data.
+        </li>
         <li>
           Your inbox, if you use it: the comments, replies and direct messages your connected accounts receive, with the
           sender&apos;s name and handle as the network gives them, and the contacts, automations, broadcasts and newsletter
@@ -84,14 +88,15 @@ export default function Privacy() {
       <h2>AI replies and AI steps</h2>
       <p>
         SocialReins sends nothing to an AI provider unless a team has set up an automation with an AI step: an AI
-        reply by direct message, an AI public reply, or an AI check of whether a message asks a question. For each one
-        we send the provider the instructions the team wrote for it, the text of the incoming comment or message (its
-        first 1,000 characters), the sender&apos;s name (the first 64 characters) and the name of the network. We do not send your posts,
-        your other messages, your contacts or your sign-in details.
+        reply by direct message, an AI public reply, or an AI check of whether a message asks a question. For a
+        reply we send the provider the instructions the team wrote for it, the text of the incoming comment or message
+        (its first 1,000 characters), the sender&apos;s name (the first 64 characters) and the name of the network. For the
+        question check we send only the message text (its first 1,000 characters). We do not send your posts, your other
+        messages, your contacts or your sign-in details.
       </p>
       <p>
         By default the provider is Anthropic, using our account. A team can instead add its own API key for Anthropic or
-        OpenAI (bring your own key). The key is stored encrypted and is never shown back. With a team&apos;s own key, the text is
+        OpenAI (bring your own key). The key is stored encrypted, and only its last 4 characters are ever shown back. With a team&apos;s own key, the text is
         sent to the team&apos;s own account with that provider, under the agreement between the team and the provider. Each
         provider handles what it receives under its own terms and privacy policy, which we do not control.
       </p>
@@ -132,7 +137,11 @@ export default function Privacy() {
         <li>
           The networks you connect. When you publish, or when SocialReins reads your inbox, it talks to the network&apos;s own
           service (such as Bluesky, Facebook, Instagram, Threads, LinkedIn, X, TikTok, YouTube or Pinterest) under that
-          network&apos;s own terms.
+          network&apos;s own terms. Your browser also loads some images, such as avatars, straight from those services.
+        </li>
+        <li>
+          Addresses your team gives us: when SocialReins downloads an image or feed, or sends a webhook, from or to a link
+          your team provided, the site behind that link sees our server&apos;s address.
         </li>
       </ul>
 
@@ -143,17 +152,18 @@ export default function Privacy() {
         <li>Disconnecting a social account deletes its stored token or app password at once.</li>
         <li>A deleted set can be restored for 30 days, then it is purged for good.</li>
         <li>
-          Temporary copies of post images and video are deleted once the post is published or fails, and any left over are
-          removed after 7 days.
+          Images and video that SocialReins downloads from a link for a post are deleted once the post is done, and any left
+          over are removed after 7 days. A file you upload from your device is kept for a day, then for as long as a post
+          that uses it can still publish (not published yet, or with a failed target to retry), and is then deleted.
         </li>
         <li>
           If your team uses the API with an API token and an Idempotency-Key, we keep that key and our answer for 30 days.
         </li>
         <li>
-          Records of webhook deliveries to your team&apos;s own address are deleted 30 days after they were sent or finally failed.
+          Records of webhook deliveries to your team&apos;s own address are deleted once they are over 30 days old and were delivered or given up on.
         </li>
         <li>
-          Notes on why an automation did not run on a message are kept for 14 days, and at most the newest 100 per
+          Notes on why an automation did not run on a message are kept for 14 days, and at most 100 of each kind per
           automation.
         </li>
         <li>
@@ -166,8 +176,9 @@ export default function Privacy() {
       <h2>Your data: deleting and getting a copy</h2>
       <ul>
         <li>
-          A team owner can delete a team, with its members, invitations, sets, connected accounts and API tokens, on the Team page
-          or through the API (DELETE /v1/team). It asks you to sign in again first, and you cannot delete the last team you have.
+          A team owner can delete a team on the Team page. That removes the team with its members, invitations, sets, connected
+          accounts, posts, inbox, contacts and API tokens. It asks you to sign in again first, you cannot delete the last team
+          you have, and it does not cancel a paid plan, so cancel that on the Billing page first.
         </li>
         <li>
           To delete your whole account and its data, <ContactLink /> using the email address on your account. We answer
