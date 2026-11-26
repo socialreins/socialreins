@@ -19,6 +19,8 @@ const linkButton =
 
 const noSubscribe = () => () => {};
 
+export const RESEND_AFTER_MS = 60_000;
+
 type Status = LinkResult | "idle" | "sending" | "invalid_name";
 
 // The email step of logging in or signing up, on its own page. Sign-up also asks for a name.
@@ -38,8 +40,13 @@ export function EmailLinkForm({ mode }: { mode: "login" | "signup" }) {
     getProviders().then((p) => setSiteKey(p.turnstileSiteKey));
   }, []);
 
+  // A mail that has not come after a minute may never: offer to send it again (the route is rate limited).
+  const [late, setLate] = useState(false);
   useEffect(() => {
-    if (status === "sent") doneRef.current?.focus();
+    if (status !== "sent") return;
+    doneRef.current?.focus();
+    const t = setTimeout(() => setLate(true), RESEND_AFTER_MS);
+    return () => clearTimeout(t);
   }, [status]);
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
@@ -47,6 +54,7 @@ export function EmailLinkForm({ mode }: { mode: "login" | "signup" }) {
     const cleaned = signup ? cleanName(name) : null;
     // Commit the empty message first so a repeated identical error is announced again.
     flushSync(() => setStatus("sending"));
+    setLate(false);
     if (signup && !cleaned) return setStatus("invalid_name");
     const result = await requestLink(email.trim(), turnstile.token, cleaned);
     turnstile.reset();
@@ -63,6 +71,10 @@ export function EmailLinkForm({ mode }: { mode: "login" | "signup" }) {
           If {email.trim()} can sign in, a link is on its way. It works once and expires in 15 minutes.
           {signup && " If sign-ups are closed for your address, the email says you're on the waitlist instead."}
         </p>
+        {/* Always in the page, so a screen reader announces the text when it appears. */}
+        <p role="status" className="text-ink-soft">
+          {late ? "Didn't get it? Check your spam folder, or go back and send it again." : ""}
+        </p>
         <button
           type="button"
           className={linkButton}
@@ -71,7 +83,7 @@ export function EmailLinkForm({ mode }: { mode: "login" | "signup" }) {
             firstRef.current?.focus();
           }}
         >
-          Use a different email
+          {late ? "Go back and send it again" : "Use a different email"}
         </button>
       </div>
     );
