@@ -71,11 +71,10 @@ export function EmailLinkForm({ mode }: { mode: "login" | "signup" }) {
           If {email.trim()} can sign in, a link is on its way. It works once and expires in 15 minutes.
           {signup && " If sign-ups are closed for your address, the email says you're on the waitlist instead."}
         </p>
-        {late && (
-          <p role="status" className="text-ink-soft">
-            Didn&apos;t get it? Check your spam folder, or send it again.
-          </p>
-        )}
+        {/* Always in the page, so a screen reader announces the text when it appears. */}
+        <p role="status" className="text-ink-soft">
+          {late ? "Didn't get it? Check your spam folder, or go back and send it again." : ""}
+        </p>
         <button
           type="button"
           className={linkButton}
@@ -84,7 +83,7 @@ export function EmailLinkForm({ mode }: { mode: "login" | "signup" }) {
             firstRef.current?.focus();
           }}
         >
-          {late ? "Send it again" : "Use a different email"}
+          {late ? "Go back and send it again" : "Use a different email"}
         </button>
       </div>
     );

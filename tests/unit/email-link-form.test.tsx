@@ -29,12 +29,20 @@ describe("EmailLinkForm", () => {
     await act(async () => {
       vi.advanceTimersByTime(RESEND_AFTER_MS - 1000);
     });
-    expect(screen.queryByRole("button", { name: "Send it again" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Go back and send it again" })).toBeNull();
+    expect(screen.queryByText(/Didn't get it/)).toBeNull();
     await act(async () => {
       vi.advanceTimersByTime(1500);
     });
-    fireEvent.click(screen.getByRole("button", { name: "Send it again" }));
+    expect(screen.getByText(/Didn't get it/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Go back and send it again" }));
     // Back at the form with the address still there.
     expect((screen.getByLabelText("Email") as HTMLInputElement).value).toBe("a@b.co");
+    // Sent again: the hint starts over.
+    await act(async () => {
+      fireEvent.submit(screen.getByLabelText("Email").closest("form")!);
+    });
+    expect(screen.queryByText(/Didn't get it/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Use a different email" })).toBeTruthy();
   });
 });
