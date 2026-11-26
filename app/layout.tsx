@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import Script from "next/script";
 import { Suspense } from "react";
 import { Analytics } from "@/components/analytics";
+import { ConsentBanner } from "@/components/consent-banner";
 import { Pwa } from "@/components/pwa";
 import { Bricolage_Grotesque, Geist } from "next/font/google";
 import "./globals.css";
@@ -44,6 +45,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         {children}
         <Suspense fallback={null}>
           <Analytics />
+          <ConsentBanner />
         </Suspense>
         <Pwa />
       </body>

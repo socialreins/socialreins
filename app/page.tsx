@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { CookieSettings } from "@/components/cookie-settings";
 import { GitHubLink } from "@/components/github-link";
 import { LogoMark } from "@/components/logo";
 import { PlatformIcon, platforms } from "@/components/platform-icons";
@@ -166,6 +167,7 @@ export default function Home() {
           <Link href="/terms" className={headerLink}>
             Terms
           </Link>
+          <CookieSettings className={headerLink} />
           <Link href="/docs" className={headerLink}>
             Docs
           </Link>

@@ -531,8 +531,10 @@ test("the CSP allows only Bluesky's image path and Meta's, YouTube's, X's, Pinte
   expect((await request.get("/connections")).headers()["content-security-policy"]).toContain("img-src 'self' data: https:;");
   const csp = (await request.get("/profile")).headers()["content-security-policy"];
   expect(csp).toContain(
-    "img-src 'self' data: https://cdn.bsky.app/img/ https://*.fbcdn.net https://*.cdninstagram.com https://yt3.ggpht.com https://yt3.googleusercontent.com https://i.ytimg.com https://pbs.twimg.com https://i.pinimg.com https://*.tiktokcdn.com https://*.tiktokcdn-us.com;",
+    "img-src 'self' data: https://cdn.bsky.app/img/ https://*.fbcdn.net https://*.cdninstagram.com https://yt3.ggpht.com https://yt3.googleusercontent.com https://i.ytimg.com https://pbs.twimg.com https://i.pinimg.com https://*.tiktokcdn.com https://*.tiktokcdn-us.com",
   );
+  // Nothing after those hosts but Google Analytics' hits (GA_MEASUREMENT_ID is set for the e2e server).
+  expect(csp).toMatch(/tiktokcdn-us\.com( https:\/\/(\*\.google-analytics\.com|\*\.analytics\.google\.com|www\.googletagmanager\.com))*;/);
 });
 
 const metaChoices = {
