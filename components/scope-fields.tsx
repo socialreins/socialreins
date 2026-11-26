@@ -35,12 +35,15 @@ export function ScopeField({
   onChange,
   accounts,
   sets,
+  locked = {},
 }: {
   id: string;
   value: Scope;
   onChange: (s: Scope) => void;
   accounts: Connection[];
   sets: SocialSet[];
+  // Accounts that cannot be picked yet, by id, with why (shown beside the name).
+  locked?: Record<string, string>;
 }) {
   const option = (mode: Scope["mode"], label: string) => (
     <label className="flex items-center gap-2">
@@ -78,6 +81,7 @@ export function ScopeField({
                   type="checkbox"
                   aria-label={`${accountName(a)}, ${platformName(a.provider)}`}
                   checked={value.accountIds.includes(a.id)}
+                  disabled={Boolean(locked[a.id]) && !value.accountIds.includes(a.id)}
                   onChange={(e) =>
                     onChange({
                       ...value,
@@ -87,6 +91,7 @@ export function ScopeField({
                 />
                 <Avatar connection={a} size="size-6" />
                 <span className="truncate">{accountName(a)}</span>
+                {locked[a.id] && <span className="shrink-0 text-sm text-ink/60">{locked[a.id]}</span>}
                 <span className="ml-auto inline-flex shrink-0 items-center gap-1 text-sm">
                   <PlatformMark platform={a.provider} className="size-3.5" named />
                 </span>

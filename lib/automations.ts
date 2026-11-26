@@ -185,6 +185,9 @@ const LONGEST_NAME = "n".repeat(64);
 const LONGEST_PAGE = "p".repeat(100);
 export const templateLength = (text: string) => graphemes(text.replaceAll("{name}", LONGEST_NAME).replaceAll("{page}", LONGEST_PAGE));
 // Whether every account the automation is limited to by name is on Threads.
+// What brain says about each LinkedIn account (`GET /v1/automations/linkedin`): `ready` or a block code (see blockText).
+export type LinkedInAutomation = { approved: boolean; accounts: { id: string; status: string; message: string }[] };
+export const linkedinAutomation = () => api<LinkedInAutomation>("/v1/automations/linkedin");
 export const threadsOnly = (providers: string[]) => providers.length > 0 && providers.every((p) => p === "threads");
 // A public reply's limit and what counts against it: Threads takes 500 and counts an emoji as its UTF-8 bytes (brain's threads_length),
 // every other network 300 characters. {name} and {page} count at their longest.
@@ -927,6 +930,13 @@ export const reasonText: Record<string, string> = {
   no_public_page: "The post has no open public page for {page}",
   no_dm_access: "Reconnect with an app password that allows DMs",
   youtube_no_dm: "YouTube has no DMs and no private replies: only a public reply can answer a comment",
+  linkedin_no_dm: "LinkedIn gives apps no messages: only a public reply can answer a comment",
+  linkedin_needs_approval: "LinkedIn has not approved this app to read comments yet",
+  linkedin_personal_profile: "LinkedIn lets an app read comments on a Page's posts, not on a personal profile's",
+  linkedin_needs_scope: "This LinkedIn Page was connected without the comment permissions. Reconnect it",
+  linkedin_call_budget: "This LinkedIn Page used the calls LinkedIn allows it today",
+  linkedin_reconnect_required: "LinkedIn refused the Page's token or a permission. Reconnect it",
+  linkedin_failed: "LinkedIn refused it. Look at the account under Accounts, then try again",
   daily_cap: "The team reached 500 automation runs today",
   paused: "The team paused all its automations",
   x_no_credits: "X credits are used up: the team has none left, or X says the app is out of credits",
@@ -1045,7 +1055,13 @@ export const whyNot = (code: string) => notRunText[code] ?? reason(code) ?? code
 export const blockText: Record<string, string> = {
   bluesky_only_trigger: "Likes and reposts come only from Bluesky: use a Bluesky account, or leave the others out",
   bluesky_only_action: "Reposting and following back go to Bluesky only: use a Bluesky account, or leave the others out",
-  unsupported_account: "Automations run only on Bluesky, Facebook, Instagram, Threads, X and YouTube accounts",
+  unsupported_account: "Automations run only on Bluesky, Facebook, Instagram, LinkedIn Pages, Threads, X and YouTube accounts",
+  linkedin_unsupported_trigger: "LinkedIn has comments only to trigger on",
+  linkedin_no_dm: "LinkedIn gives apps no messages: only a public reply can answer a comment",
+  linkedin_no_hide: "LinkedIn lets an app delete a comment but not hide it, and an automation never deletes",
+  linkedin_needs_approval: "LinkedIn has not approved this app to read comments yet, so nothing on LinkedIn runs",
+  linkedin_personal_profile: "LinkedIn lets an app read comments on a Page's posts, not on a personal profile's",
+  linkedin_needs_scope: "This LinkedIn Page was connected without the comment permissions. Reconnect it",
   threads_unsupported_trigger: "Threads has replies and mentions only: use a comment or a mention",
   threads_no_dm: "Threads has no DMs and no private reply: use a public reply",
   threads_no_like: "Threads has no like for apps: hiding a reply and a public reply work",
