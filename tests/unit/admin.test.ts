@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   approvalText,
+  inviteSignups,
+  invitedText,
+  previewInvites,
   listUsers,
   listWaitlist,
   nextPage,
@@ -61,6 +64,32 @@ describe("admin waitlist search and approval", () => {
     expect(approvalText({ signup: verified, mail: "sent" })).not.toMatch(/not verified/);
     expect(approvalText({ signup, mail: "already_approved" })).toMatch(/already approved/);
     expect(approvalText({ signup, mail: "failed" })).toMatch(/can sign up, but the email could not be sent.*another way/);
+  });
+});
+
+describe("admin waitlist invites", () => {
+  it("previews with the count and invites by id, as brain takes them", async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(Response.json({ eligible: 3, left_today: 100, selected: [] })).mockResolvedValueOnce(Response.json({ sent: 2, failed: 0, capped: 0, skipped: 0, unsure: 0 }));
+    vi.stubGlobal("fetch", fetch);
+    expect(await previewInvites(2)).toEqual({ eligible: 3, left_today: 100, selected: [] });
+    expect(fetch).toHaveBeenLastCalledWith(`${apiUrl}/v1/admin/waitlist-invites?count=2`, expect.objectContaining({ credentials: "include" }));
+    expect(await inviteSignups(["a", "b"])).toEqual({ sent: 2, failed: 0, capped: 0, skipped: 0, unsure: 0 });
+    const [url, init] = fetch.mock.lastCall!;
+    expect(url).toBe(`${apiUrl}/v1/admin/waitlist-invites`);
+    expect(init).toEqual(expect.objectContaining({ method: "POST", body: JSON.stringify({ ids: ["a", "b"] }) }));
+  });
+
+  it("maps a stale sign-in to the failure the page explains", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ error: "reauth_required" }, { status: 403 })));
+    expect(await inviteSignups(["a"])).toBe("reauth_required");
+  });
+
+  it("says what happened to each kind of signup, and only what happened", () => {
+    expect(invitedText({ sent: 1, failed: 0, capped: 0, skipped: 0, unsure: 0 })).toBe("Invited 1 person.");
+    expect(invitedText({ sent: 5, failed: 0, capped: 0, skipped: 0, unsure: 0 })).toBe("Invited 5 people.");
+    expect(invitedText({ sent: 0, failed: 0, capped: 0, skipped: 2, unsure: 0 })).toBe("Invited 0 people. 2 had been invited already, so no second email went out.");
+    expect(invitedText({ sent: 0, failed: 1, capped: 2, skipped: 0, unsure: 0 })).toMatch(/2 must wait.*1 could not be emailed/);
+    expect(invitedText({ sent: 0, failed: 0, capped: 0, skipped: 0, unsure: 2 })).toMatch(/2 may not have got the email.*another way/);
   });
 });
 

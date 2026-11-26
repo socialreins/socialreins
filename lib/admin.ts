@@ -40,6 +40,24 @@ export const approveSignup = (id: string) => api<Approval>(`/v1/admin/waitlist/$
 // Removing an approved entry takes its approval away.
 export const removeSignup = (id: string) => api(`/v1/admin/waitlist/${encodeURIComponent(id)}`, "DELETE");
 
+// The most one batch invites; brain refuses more.
+export const MAX_INVITES = 50;
+// Who a batch of `count` would reach: the oldest verified signups not yet invited, oldest first.
+export type InvitePreview = { eligible: number; left_today: number; selected: Signup[] };
+export const previewInvites = (count: number) => api<InvitePreview>(`/v1/admin/waitlist-invites?count=${count}`);
+// Needs a sign-in from the last 10 minutes. Nobody is mailed twice: `skipped` were invited already (or not verified), `capped` waited for the daily cap, `failed` had no mail sent; none of the last two is approved. `unsure`: the mail provider timed out, so the mail may have gone out; they stay approved and are not mailed again.
+export type Invited = { sent: number; failed: number; capped: number; skipped: number; unsure: number };
+export const inviteSignups = (ids: string[]) => api<Invited>("/v1/admin/waitlist-invites", "POST", { ids });
+
+export function invitedText({ sent, failed, capped, skipped, unsure }: Invited) {
+  const parts = [`Invited ${sent} ${sent === 1 ? "person" : "people"}.`];
+  if (skipped) parts.push(`${skipped} had been invited already, so no second email went out.`);
+  if (capped) parts.push(`${capped} must wait: the daily limit of invite emails was reached. Invite them tomorrow.`);
+  if (unsure) parts.push(`${unsure} may not have got the email (the mail service did not answer in time). They are invited and will not be emailed again: let them know another way.`);
+  if (failed) parts.push(`${failed} could not be emailed, so they are not invited yet. Try them again later.`);
+  return parts.join(" ");
+}
+
 export function approvalText({ signup, mail }: Approval) {
   const unverified = signup.verified_at ? "" : " This email was not verified.";
   if (mail === "sent") return `Approved ${signup.email}. An email telling them they can sign up was sent.${unverified}`;
@@ -75,7 +93,8 @@ export type Overview = {
   accounts: { total: number; by_provider: Record<string, number> };
   // scheduled, published and failed are always there; other statuses only when a post has them.
   posts: Record<string, number>;
-  waitlist: { total: number; verified: number; approved: number };
+  // approved: invited by an admin; signed_up: invited emails that have an account.
+  waitlist: { total: number; verified: number; approved: number; signed_up: number };
 };
 export const getOverview = () => api<Overview>("/v1/admin/overview");
 

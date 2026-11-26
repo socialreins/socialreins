@@ -9,7 +9,12 @@ import {
   approvalText,
   approveSignup,
   getOverview,
+  inviteSignups,
+  invitedText,
   listWaitlist,
+  MAX_INVITES,
+  previewInvites,
+  type InvitePreview,
   parseVerified,
   removeSignup,
   waitlistQuery,
@@ -78,6 +83,11 @@ export function Admin() {
   const [loaded, setLoaded] = useState<{ key: string; data: Waitlist | Failure } | null>(null);
   // The waitlist answer has no approved total; the overview does. Kept in step with approve and remove below.
   const [approved, setApproved] = useState<number | "failed" | null>(null);
+  const [signedUp, setSignedUp] = useState<number | "failed" | null>(null);
+  // Bumped after a batch of invites, so the list and the totals are read again.
+  const [reload, setReload] = useState(0);
+  const [howMany, setHowMany] = useState("10");
+  const [preview, setPreview] = useState<InvitePreview | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
   const action = useAction();
 
@@ -87,10 +97,13 @@ export function Admin() {
     return () => {
       live = false;
     };
-  }, [verified, q, hideStale, key]);
+  }, [verified, q, hideStale, key, reload]);
   useEffect(() => {
-    getOverview().then((o) => setApproved(isFailure(o) ? "failed" : o.waitlist.approved));
-  }, []);
+    getOverview().then((o) => {
+      setApproved(isFailure(o) ? "failed" : o.waitlist.approved);
+      setSignedUp(isFailure(o) ? "failed" : o.waitlist.signed_up);
+    });
+  }, [reload]);
 
   const data = loaded?.key === key ? loaded.data : null;
   if (data === "forbidden") return <Forbidden />;
@@ -118,6 +131,24 @@ export function Admin() {
     });
   }
 
+  function onPreview() {
+    const count = Math.min(MAX_INVITES, Math.max(1, Math.floor(Number(howMany)) || 1));
+    setHowMany(String(count));
+    setPreview(null);
+    action.run("preview", () => previewInvites(count), (p) => {
+      setPreview(p);
+      return p.selected.length === 0 ? "Nobody is waiting: every verified signup is invited already." : undefined;
+    });
+  }
+
+  function onInvite(p: InvitePreview) {
+    action.run("invite", () => inviteSignups(p.selected.map((s) => s.id)), (r) => {
+      setPreview(null);
+      setReload((n) => n + 1);
+      return invitedText(r);
+    });
+  }
+
   function onRemove(s: Signup) {
     action.run(`remove:${s.id}`, () => removeSignup(s.id).then((r) => orGone(s, r)), () => {
       drop(s);
@@ -142,12 +173,13 @@ export function Admin() {
         </p>
       ) : (
         <>
-          <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <dl className="grid grid-cols-2 gap-3 sm:grid-cols-5">
             {[
               ["Total", data?.total],
               ["Verified", data?.verified],
               ["Unverified", data && data.total - data.verified],
               ["Approved", approved],
+              ["Signed up", signedUp],
             ].map(([label, n]) => (
               <div key={label} className="card grid gap-1 p-4">
                 <dt className="text-sm font-bold text-ink-soft">{label}</dt>
@@ -155,6 +187,61 @@ export function Admin() {
               </div>
             ))}
           </dl>
+          <Status problem={action.problem} done={action.done} overrides={overrides} />
+          <section aria-labelledby="invite-heading" className="card grid gap-3 p-4">
+            <h3 id="invite-heading" className="font-bold">
+              Invite from the waitlist
+            </h3>
+            <p className="text-sm text-ink-soft">Invites the oldest verified signups first. Each gets an email that says how to start, and may sign up whatever the sign-up setting says.</p>
+            <form
+              className="flex flex-wrap items-end gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                onPreview();
+              }}
+            >
+              <label className="grid gap-1 text-sm font-bold">
+                How many (1 to {MAX_INVITES})
+                <input
+                  type="number"
+                  min={1}
+                  max={MAX_INVITES}
+                  inputMode="numeric"
+                  className="field w-28"
+                  value={howMany}
+                  onChange={(e) => {
+                    setHowMany(e.target.value);
+                    setPreview(null);
+                  }}
+                />
+              </label>
+              <button type="submit" className="btn btn-secondary btn-sm" disabled={action.busy !== null}>
+                {action.busy === "preview" ? "Looking..." : "Preview"}
+              </button>
+            </form>
+            {preview && preview.selected.length > 0 && (
+              <div className="grid gap-3">
+                <p>
+                  {preview.selected.length} of {preview.eligible.toLocaleString()} verified signups waiting would be invited, oldest first. {preview.left_today.toLocaleString()} invite emails are left today.
+                </p>
+                <ol className="list-decimal pl-6 text-sm">
+                  {preview.selected.map((s) => (
+                    <li key={s.id}>
+                      {s.email} <span className="text-ink-soft">joined {day(s.created_at)}</span>
+                    </li>
+                  ))}
+                </ol>
+                <div className="flex gap-3">
+                  <button type="button" className="btn btn-primary btn-sm" disabled={action.busy !== null} onClick={() => onInvite(preview)}>
+                    {action.busy === "invite" ? "Inviting..." : `Invite ${preview.selected.length} ${preview.selected.length === 1 ? "person" : "people"}`}
+                  </button>
+                  <button type="button" className={linkButton} disabled={action.busy !== null} onClick={() => setPreview(null)}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <nav aria-label="Filter" className="flex gap-1 rounded-full bg-ink/5 p-1">
               {filters.map((f) => (
@@ -176,7 +263,6 @@ export function Admin() {
             </Link>{" "}
             {hideStale ? "Leaving out unverified signups older than 30 days." : "Stale means not verified after 30 days."}
           </p>
-          <Status problem={action.problem} done={action.done} overrides={overrides} />
           {!data ? (
             <p role="status" className="text-ink-soft">
               Loading the waitlist...
