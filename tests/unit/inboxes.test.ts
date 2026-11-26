@@ -5,6 +5,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 const box = (id: string, account_ids: string[] = []): Inbox => ({
   id,
+  number: 1,
   name: id,
   is_all: id === "all",
   account_ids,

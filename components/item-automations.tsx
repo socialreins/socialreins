@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { itemAutomations, whyNot, type Verdict } from "@/lib/automations";
 import { TeamLink as Link } from "@/components/team-link";
+import { addressOf } from "@/lib/ref";
 import { isFailure } from "@/components/team-ui";
 
 // What the team's automations did with one inbox item: which ran, and for each that did not, why. Nothing shows
@@ -21,7 +22,7 @@ export function ItemAutomations({ itemId }: { itemId: string }) {
   // A run that failed, was held back, or never started: each with its reasons.
   const not = list.filter((v) => v.outcome !== "ran");
   const link = (v: Verdict) => (
-    <Link href={`/automations/${encodeURIComponent(v.automation_id)}`} className="font-bold underline decoration-signal decoration-2 underline-offset-4">
+    <Link href={`/automations/${addressOf(v.automation_id, v.automation_number)}`} className="font-bold underline decoration-signal decoration-2 underline-offset-4">
       {v.name}
     </Link>
   );

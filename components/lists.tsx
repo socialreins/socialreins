@@ -19,6 +19,7 @@ import {
   type PostList,
 } from "@/lib/lists";
 import { listPosts, postRef, type Post } from "@/lib/posts";
+import { address, moveToNumber } from "@/lib/ref";
 import { listSets, type SocialSet } from "@/lib/sets";
 import { snippet, StatusBadge } from "@/components/posts";
 import { isFailure, linkButton, problemText, Status, useAction } from "@/components/team-ui";
@@ -218,7 +219,7 @@ export function Lists() {
                       if (el) links.current.set(l.id, el);
                       else links.current.delete(l.id);
                     }}
-                    href={`/lists/${l.id}`}
+                    href={`/lists/${address(l)}`}
                     className="font-bold hover:underline">
                     {l.name}
                   </Link>
@@ -282,7 +283,10 @@ export function ListView({ id }: { id: string }) {
 
   const [tries, setTries] = useState(0);
   useEffect(() => {
-    getList(id).then(setList);
+    getList(id).then((r) => {
+      if (!isFailure(r)) moveToNumber(id, r);
+      setList(r);
+    });
   }, [id, tries]);
 
   useEffect(() => {

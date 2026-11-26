@@ -41,6 +41,7 @@ import {
 } from "@/lib/broadcasts";
 import { listContactTags, type TagCount } from "@/lib/contacts";
 import { relativeTime } from "@/lib/inbox";
+import { address, addressOf, moveToNumber } from "@/lib/ref";
 import { manages } from "@/lib/teams";
 import { useSession } from "@/components/app-shell";
 import { platformOf, platformName, PlatformIcon } from "@/components/platform-icons";
@@ -215,7 +216,7 @@ export function Broadcasts() {
       <ul aria-label="Broadcasts" className="grid gap-3">
         {list.map((b) => (
           <li key={b.id}>
-            <Link href={`/broadcasts/${b.id}`} className="card grid gap-3 p-4 hover:shadow-[0_0_0_1px_var(--edge)]">
+            <Link href={`/broadcasts/${address(b)}`} className="card grid gap-3 p-4 hover:shadow-[0_0_0_1px_var(--edge)]">
               <span className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                 <strong className="min-w-0 truncate">{b.name}</strong>
                 <StatusBadge status={b.status} />
@@ -276,7 +277,7 @@ export function BroadcastForm({ broadcast, onSaved }: { broadcast?: Broadcast; o
       return setProblem(r);
     }
     if (onSaved) onSaved(r);
-    else router.push(`/broadcasts/${r.id}`);
+    else router.push(`/broadcasts/${address(r)}`);
   }
 
   // Puts {name} where the cursor is and keeps typing there.
@@ -390,7 +391,7 @@ export function BroadcastForm({ broadcast, onSaved }: { broadcast?: Broadcast; o
         <button type="submit" className="btn btn-primary" disabled={busy}>
           {busy ? "Saving..." : "Save draft"}
         </button>
-        <Link href={broadcast ? `/broadcasts/${broadcast.id}` : "/broadcasts"} className="btn btn-quiet">
+        <Link href={broadcast ? `/broadcasts/${address(broadcast)}` : "/broadcasts"} className="btn btn-quiet">
           Cancel
         </Link>
         <span className="hint">Saving sends nothing. You review the numbers next.</span>
@@ -408,7 +409,11 @@ export function BroadcastDetail({ id }: { id: string }) {
   const [tries, setTries] = useState(0);
   useEffect(() => {
     let live = true;
-    getBroadcast(id).then((r) => live && setB(r));
+    getBroadcast(id).then((r) => {
+      if (!live) return;
+      if (!isFailure(r)) moveToNumber(id, r);
+      setB(r);
+    });
     return () => {
       live = false;
     };
@@ -460,7 +465,7 @@ export function BroadcastDetail({ id }: { id: string }) {
         broadcast={b}
         onSaved={(r) => {
           setB(r);
-          router.replace(`/broadcasts/${r.id}`);
+          router.replace(`/broadcasts/${address(r)}`);
         }}
       />
     );
@@ -677,7 +682,7 @@ function Review({ b, canManage, onStarted, onDeleted }: { b: Broadcast; canManag
               <Icon name="send" className="size-4" />
               {p ? `Send to ${people(n)}` : "Send"}
             </button>
-            <Link href={`/broadcasts/${b.id}?edit=1`} className="btn btn-secondary">
+            <Link href={`/broadcasts/${address(b)}?edit=1`} className="btn btn-secondary">
               Edit draft
             </Link>
             <button type="button" className="btn btn-quiet" disabled={preview === null} onClick={again}>
@@ -883,7 +888,7 @@ function Recipients({ b }: { b: Broadcast }) {
                   <tr key={r.id}>
                     <td className="px-4 py-2">
                       {r.contact_id ? (
-                        <Link href={`/contacts?contact=${encodeURIComponent(r.contact_id)}`} className="font-bold hover:underline">
+                        <Link href={`/contacts?contact=${addressOf(r.contact_id, r.contact_number)}`} className="font-bold hover:underline">
                           {r.display_name || (r.handle ? `@${r.handle}` : "No name")}
                         </Link>
                       ) : (

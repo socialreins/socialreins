@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import type { Failure } from "@/lib/auth";
 import { relativeTime } from "@/lib/inbox";
+import { address, moveToNumber } from "@/lib/ref";
 import {
   cancelNewsletter,
   createNewsletter,
@@ -327,7 +328,7 @@ function List() {
           <ul aria-label="Newsletters" className="grid gap-3">
             {list.map((n) => (
               <li key={n.id}>
-                <Link href={`/newsletters/${n.id}`} className="card grid gap-3 p-4 hover:shadow-[0_0_0_1px_var(--edge)]">
+                <Link href={`/newsletters/${address(n)}`} className="card grid gap-3 p-4 hover:shadow-[0_0_0_1px_var(--edge)]">
                   <span className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                     <strong className="min-w-0 truncate">{n.subject}</strong>
                     <StatusBadge status={n.status} />
@@ -381,7 +382,7 @@ export function NewsletterDraft({ saved, notice, onChange, onStale, onDeleted }:
     const r = await (saved ? updateNewsletter(saved.id, input) : createNewsletter(input));
     setBusy(false);
     if (isProblem(r)) return setProblem(r);
-    if (!saved) return router.push(`/newsletters/${r.id}`);
+    if (!saved) return router.push(`/newsletters/${address(r)}`);
     setDone(true);
     onChange?.(r);
   }
@@ -679,7 +680,11 @@ export function NewsletterDetail({ id }: { id: string }) {
   useEffect(() => {
     if (!canManage) return;
     let live = true;
-    getNewsletter(id).then((r) => live && setN(r));
+    getNewsletter(id).then((r) => {
+      if (!live) return;
+      if (!isFailure(r)) moveToNumber(id, r);
+      setN(r);
+    });
     return () => {
       live = false;
     };

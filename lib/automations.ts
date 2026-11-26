@@ -59,6 +59,8 @@ export type RunReason = { reason: string; count: number };
 export type RunStats = { sent: number; skipped: number; failed: number; running: number; waiting?: number; total: number; count: number; last_at: string | null; reasons?: RunReason[] };
 export type Automation = {
   id: string;
+  // The number in its address; the UUID `id` still works in brain's API and in old links.
+  number: number;
   name: string;
   active: boolean;
   activated_at: string;
@@ -94,6 +96,7 @@ export type Run = {
   id: string;
   automation_id: string;
   inbox_item_id: string;
+  inbox_item_number: number | null;
   status: RunStatus;
   reason: string | null;
   results: ActionResult[];
@@ -169,10 +172,10 @@ export const switchAutomation = (id: string, on: boolean) =>
   api<Automation>(`/v1/automations/${enc(id)}/${on ? "enable" : "disable"}`, "POST");
 // Why an automation did not run on an item: the conditions that failed, or another reason (see `notRunText`).
 // brain keeps these 14 days. Items held back for a safety reason (paused, cool-down, caps) are runs instead.
-export type Miss = { inbox_item_id: string; reasons: string[]; created_at: string; kind: string; platform: string; author: string | null; text: string };
+export type Miss = { inbox_item_id: string; inbox_item_number: number; reasons: string[]; created_at: string; kind: string; platform: string; author: string | null; text: string };
 export const listMisses = (id: string) => api<{ misses: Miss[] }>(`/v1/automations/${enc(id)}/misses`);
 // What each automation did with one inbox item.
-export type Verdict = { automation_id: string; name: string; outcome: "ran" | "failed" | "skipped" | "not_matched"; reasons: string[] };
+export type Verdict = { automation_id: string; automation_number: number; name: string; outcome: "ran" | "failed" | "skipped" | "not_matched"; reasons: string[] };
 export const itemAutomations = (itemId: string) => api<{ automations: Verdict[] }>(`/v1/inbox-items/${enc(itemId)}/automations`);
 export const listRuns = (id: string, cursor?: string | null) =>
   api<RunPage>(`/v1/automations/${enc(id)}/runs${cursor ? `?cursor=${enc(cursor)}` : ""}`);

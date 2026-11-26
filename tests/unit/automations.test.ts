@@ -535,7 +535,7 @@ describe("tag the contact", () => {
 
   it("reads the tags of a saved automation back and names them in the summary", () => {
     const actions = automationInput(tagged, scope, uris).actions!;
-    const saved = { id: "a", name: "A", active: true, activated_at: "", trigger: "comment_received", conditions: scope, actions, fallback_public_reply: null, created_by: null, created_at: "", updated_at: "" } as const;
+    const saved = { id: "a", number: 1, name: "A", active: true, activated_at: "", trigger: "comment_received", conditions: scope, actions, fallback_public_reply: null, created_by: null, created_at: "", updated_at: "" } as const;
     expect(canEdit(saved)).toBe(true);
     expect(draftOf(saved)).toMatchObject({ dm: "Hi {name}, see {page}", publicReply: "Sent you a DM", tags: ["vip", "lead"] });
     expect(actionsSummary(saved)).toBe("Sends a DM and replies publicly, tag: vip, tag: lead");
@@ -589,7 +589,7 @@ describe("tag the contact", () => {
     expect(flowProblems(steps, "dm_received")).toEqual([]);
     expect(stepsBody(steps)).toEqual([{ type: "send_dm", text: "Hi" }, { type: "tag_contact", tag: "vip gold" }]);
     expect(flowOutline(stepsBody(steps))).toBe("DM, tag: vip gold");
-    expect(canEdit({ id: "f", name: "F", active: true, activated_at: "", trigger: "dm_received", conditions: scope, actions: [], fallback_public_reply: null, created_by: null, created_at: "", updated_at: "", steps: stepsBody(steps) })).toBe(true);
+    expect(canEdit({ id: "f", number: 2, name: "F", active: true, activated_at: "", trigger: "dm_received", conditions: scope, actions: [], fallback_public_reply: null, created_by: null, created_at: "", updated_at: "", steps: stepsBody(steps) })).toBe(true);
     expect(flowProblems([tag], "dm_received")).toEqual([{ step: null, text: "A flow needs at least one step that sends something. Add a DM, or a mail to your team or a moderation step." }]);
     expect(flowProblems([newStep("send_dm", "Hi"), newStep("tag_contact")], "dm_received")).toEqual([{ step: 1, text: "Write the tag: 1 to 30 characters, no commas." }]);
   });
@@ -607,6 +607,7 @@ describe("tag the contact", () => {
 describe("duplicateDraft", () => {
   const source = (extra: Partial<Automation>): Automation => ({
     id: "a1",
+    number: 3,
     name: "Guide flow",
     active: true,
     activated_at: "",
@@ -703,7 +704,7 @@ describe("the template gallery", () => {
 
 describe("AI steps", () => {
   const scope = { social_set_id: null, account_ids: [] };
-  const saved = (steps: Automation["steps"]): Automation => ({ id: "a", name: "A", active: true, activated_at: "", trigger: "comment_received", conditions: scope, actions: [], fallback_public_reply: null, created_by: null, created_at: "", updated_at: "", steps });
+  const saved = (steps: Automation["steps"]): Automation => ({ id: "a", number: 1, name: "A", active: true, activated_at: "", trigger: "comment_received", conditions: scope, actions: [], fallback_public_reply: null, created_by: null, created_at: "", updated_at: "", steps });
 
   it("saves the prompt, loads it back and counts as a send", () => {
     const steps = [newStep("ai_send_dm", "Thank them"), newStep("ai_reply_publicly", "Say hi")];
