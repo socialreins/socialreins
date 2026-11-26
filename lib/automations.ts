@@ -683,7 +683,8 @@ const empty: Draft = {
   flow: false,
   steps: [],
   payloads: [],
-  cooldown: "",
+  // Brain gives a new automation 10 minutes when none is sent; showing it keeps the default honest.
+  cooldown: "10",
   dailyCap: "",
   question: false,
   languages: [],
@@ -904,8 +905,9 @@ export function automationInput(d: Draft, scope: ScopeBody, uris: string[]): Aut
       ...(t.text && d.hasLink !== "any" && { has_link: d.hasLink === "yes" }),
       ...(t.text && d.sentiment.length > 0 && { sentiment: d.sentiment }),
     },
-    // Left out when empty: a save replaces the automation, so a missing limit is none.
-    ...(limitOf(d.cooldown, MAX_COOLDOWN) !== null && { cooldown_minutes: limitOf(d.cooldown, MAX_COOLDOWN) }),
+    // Always sent: brain gives a missing cool-down 10 minutes on a new automation, and 0 is "no wait".
+    cooldown_minutes: limitOf(d.cooldown, MAX_COOLDOWN) ?? 0,
+    // Left out when empty: a save replaces the automation, so a missing daily cap is none.
     ...(limitOf(d.dailyCap, MAX_DAILY_CAP) !== null && { daily_cap: limitOf(d.dailyCap, MAX_DAILY_CAP) }),
   };
   // A flow goes without actions and without a fallback: brain refuses either next to steps.
@@ -967,6 +969,7 @@ export const reasonText: Record<string, string> = {
   automation_changed: "Stopped: the automation was changed or switched off before the flow finished",
   no_ai_key: "No AI key: add your own on the Billing page",
   no_ai_credits: "This month's AI replies and your AI credits are used up",
+  ai_daily_cap: "Our AI key has reached its limit for this team today",
   ai_failed: "The AI provider gave no answer",
   ai_empty: "The AI wrote nothing, so nothing was sent",
   ai_too_long: "The AI's text was too long to send",
@@ -1002,6 +1005,7 @@ export const reasonWhy: Record<string, string> = {
   no_public_page: "{page} is the link to the post's public page, so the text can go only under posts made here whose public page is open.",
   automation_changed: "Saving new steps or switching the automation off stops the runs that are waiting.",
   no_ai_credits: "The Scheduler and Automation plan includes 200 AI replies a month; after that each uses 1 AI credit. Add your own AI key on the Billing page for replies with no limit.",
+  ai_daily_cap: "Without a plan to bill, SocialReins limits each team to a number of AI replies a day on its key. Add your own AI key on the Billing page for replies with no limit, or try again tomorrow.",
   ai_link: "The AI may only use links and @handles that are in your prompt, so this reply was held back.",
   ai_leak: "The reply quoted a long part of your prompt word for word, so it was held back.",
   daily_cap: "A team's automations run at most 500 times a day.",
@@ -1080,6 +1084,7 @@ export const blockText: Record<string, string> = {
   paused: "The team paused all its automations, so nothing would be sent",
   no_ai_key: "The question condition needs an AI key: add your own on the Billing page",
   no_ai_credits: "The question condition could not be judged: this month's AI replies and your AI credits are used up",
+  ai_daily_cap: "The question condition could not be judged: our AI key has reached its limit for this team today",
   ai_failed: "The question condition could not be judged: the AI provider gave no answer",
 };
 export const plannedStatus: Record<PlannedStatus, string> = {

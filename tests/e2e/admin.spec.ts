@@ -159,11 +159,11 @@ test("the admin console sends a non-admin to the app", async ({ page }) => {
   }
 });
 
-test("the sidebar lists the five admin pages and marks the current one", async ({ page }) => {
+test("the sidebar lists the six admin pages and marks the current one", async ({ page }) => {
   await brain(page);
   await page.goto("/admin");
   const nav = page.getByRole("navigation", { name: "App" });
-  await expect(nav.getByRole("link")).toHaveText(["Overview", "Users", "Teams", "Waitlist", "Sign-up settings"]);
+  await expect(nav.getByRole("link")).toHaveText(["Overview", "Users", "Teams", "Waitlist", "Page reports", "Sign-up settings"]);
   await expect(nav.getByRole("link", { name: "Overview" })).toHaveAttribute("aria-current", "page");
   await nav.getByRole("link", { name: "Users" }).click();
   await expect(page).toHaveURL("/admin/users");

@@ -71,6 +71,7 @@ const adminNav: NavGroup[] = [
       { href: "/admin/users", label: "Users", icon: "user" },
       { href: "/admin/teams", label: "Teams", icon: "team" },
       { href: "/admin/waitlist", label: "Waitlist", icon: "admin" },
+      { href: "/admin/reports", label: "Page reports", icon: "admin" },
       { href: "/admin/settings", label: "Sign-up settings", icon: "settings" },
     ],
   },

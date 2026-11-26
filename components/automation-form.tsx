@@ -799,9 +799,9 @@ export function AutomationForm({
               <label htmlFor="automation-cooldown" className="font-medium">
                 Wait before answering the same person again (minutes)
               </label>
-              <input id="automation-cooldown" className="field" inputMode="numeric" placeholder="No wait" value={d.cooldown} onChange={(e) => set({ cooldown: e.target.value })} aria-invalid={tried && Number.isNaN(limitOf(d.cooldown, MAX_COOLDOWN))} aria-describedby="automation-cooldown-hint" />
+              <input id="automation-cooldown" className="field" inputMode="numeric" placeholder="0 for no wait" value={d.cooldown} onChange={(e) => set({ cooldown: e.target.value })} aria-invalid={tried && Number.isNaN(limitOf(d.cooldown, MAX_COOLDOWN))} aria-describedby="automation-cooldown-hint" />
               <p id="automation-cooldown-hint" className={tried && Number.isNaN(limitOf(d.cooldown, MAX_COOLDOWN)) ? "waitlist-error" : "hint"} role={tried && Number.isNaN(limitOf(d.cooldown, MAX_COOLDOWN)) ? "alert" : undefined}>
-                1 to 10080 (7 days), a whole number. 60 means one answer an hour for each person.
+                1 to 10080 (7 days), a whole number. 60 means one answer an hour for each person. New automations start at 10; empty means no wait.
               </p>
             </div>
             <div className="grid gap-1">
