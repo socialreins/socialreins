@@ -7,6 +7,7 @@ import { useSession } from "@/components/app-shell";
 import { Status, useAction } from "@/components/team-ui";
 import { cleanName, MAX_NAME, updateName } from "@/lib/auth";
 import { Icon, type IconName } from "@/components/ui";
+import { YourData } from "@/components/your-data";
 
 const links: { href: string; label: string; text: string; icon: IconName }[] = [
   { href: "/security", label: "Sign-in and security", text: "How you sign in to SocialReins.", icon: "security" },
@@ -50,6 +51,7 @@ export function Profile() {
           </li>
         ))}
       </ul>
+      <YourData />
     </div>
   );
 }
