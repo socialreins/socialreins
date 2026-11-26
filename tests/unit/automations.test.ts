@@ -38,6 +38,8 @@ import {
   effectFits,
   isActivity,
   whyNot,
+  linkedinAutomation,
+  blockText,
   type Automation,
   type Run,
   type Draft,
@@ -893,5 +895,23 @@ describe("x cost", () => {
   it("names why X stopped an automation", () => {
     for (const code of ["x_no_credits", "x_usage_capped", "x_budget", "x_reconnect_required"]) expect(reason(code)).not.toBe(code.replaceAll("_", " "));
     expect(reasonLabel("x_budget")).toBe("X budget used");
+  });
+});
+
+describe("linkedin", () => {
+  it("asks brain which LinkedIn accounts can run automations", async () => {
+    const fetch = vi.fn(async () => Response.json({ approved: false, accounts: [{ id: "l1", status: "linkedin_needs_approval", message: "m" }] }));
+    vi.stubGlobal("fetch", fetch);
+    const got = await linkedinAutomation();
+    expect((fetch.mock.calls[0] as unknown as [string, RequestInit])[0]).toBe(`${apiUrl}/v1/automations/linkedin`);
+    expect(got).toMatchObject({ approved: false });
+  });
+
+  it("words every LinkedIn reason and block", () => {
+    for (const code of ["linkedin_no_dm", "linkedin_needs_approval", "linkedin_personal_profile", "linkedin_needs_scope"]) {
+      expect(reason(code), code).not.toBe(code.replaceAll("_", " "));
+      expect(blockText[code], code).toBeTruthy();
+    }
+    for (const code of ["linkedin_unsupported_trigger", "linkedin_no_hide"]) expect(blockText[code], code).toBeTruthy();
   });
 });

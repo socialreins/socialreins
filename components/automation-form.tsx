@@ -17,6 +17,7 @@ import {
   LANGUAGES,
   costText,
   estimateAutomation,
+  linkedinAutomation,
   limitOf,
   timeProblems,
   whenOf,
@@ -57,10 +58,23 @@ import { ThreadsPostPicker } from "@/components/threads-post-picker";
 import { Icon, type IconName } from "@/components/ui";
 
 // Networks whose inbox can fire an automation; brain refuses an account on any other (unsupported_account).
-const AUTOMATED = ["bluesky", "facebook", "instagram", "threads", "x", "youtube"];
+const AUTOMATED = ["bluesky", "facebook", "instagram", "linkedin", "threads", "x", "youtube"];
+// What a LinkedIn account that cannot run automations shows, until brain says otherwise.
+const LINKEDIN_WAIT = "Needs LinkedIn approval";
+const linkedinNote: Record<string, string> = {
+  linkedin_needs_approval: LINKEDIN_WAIT,
+  linkedin_personal_profile: "Pages only: LinkedIn does not let apps read a profile's comments",
+  linkedin_needs_scope: "Reconnect this Page to allow comments",
+};
 
 export const automationMessages: Partial<Record<Failure, ReactNode>> = {
-  unsupported_account: "Automations run only on Bluesky, Facebook, Instagram, Threads, X and YouTube accounts. Remove the others.",
+  unsupported_account: "Automations run only on Bluesky, Facebook, Instagram, LinkedIn Pages, Threads, X and YouTube accounts. Remove the others.",
+  linkedin_unsupported_trigger: "LinkedIn has comments only to trigger on. Pick a comment, or leave the LinkedIn Page out.",
+  linkedin_no_dm: "LinkedIn gives apps no messages, so it takes a public reply only. Remove the DM, or leave the LinkedIn Page out.",
+  linkedin_no_hide: "LinkedIn lets an app delete a comment but not hide it. Remove the hide, or leave the LinkedIn Page out.",
+  linkedin_needs_approval: "LinkedIn has not approved this app to read comments yet. Leave the LinkedIn account out until it does.",
+  linkedin_personal_profile: "LinkedIn lets an app read comments on a Page's posts, not on a personal profile's. Leave the profile out.",
+  linkedin_needs_scope: "This LinkedIn Page was connected without the comment permissions. Reconnect it under Accounts, or leave it out.",
   youtube_unsupported_trigger: "YouTube only has comments to trigger on. Pick a comment, or leave the YouTube channel out.",
   youtube_no_dm: "YouTube has no DMs and no private replies. Answer with a public reply, or leave the YouTube channel out.",
   threads_unsupported_trigger: "Threads has replies and mentions only. Pick a comment or a mention, or leave the Threads account out.",
@@ -144,6 +158,27 @@ export function AutomationForm({
 }) {
   const [d, setD] = useState<Draft>(() => (copyOf ? duplicateDraft(copyOf) : draftOf(a, template, payload)));
   const [scope, setScope] = useState(scopeOf((a ?? copyOf)?.conditions ?? startScope ?? { account_ids: [] }));
+  // A LinkedIn account runs automations only when brain says it is ready; until it answers, every one counts as waiting for approval.
+  const hasLinkedin = accounts.some((x) => x.provider === "linkedin");
+  const [linkedinState, setLinkedinState] = useState<Record<string, string>>({});
+  const [linkedinDown, setLinkedinDown] = useState(false);
+  useEffect(() => {
+    if (!hasLinkedin) return;
+    let live = true;
+    linkedinAutomation().then((r) => {
+      if (!live) return;
+      if (isFailure(r)) setLinkedinDown(true);
+      else setLinkedinState(Object.fromEntries(r.accounts.map((x) => [x.id, x.status])));
+    });
+    return () => {
+      live = false;
+    };
+  }, [hasLinkedin]);
+  const locked = Object.fromEntries(
+    accounts
+      .filter((x) => x.provider === "linkedin" && (linkedinState[x.id] ?? "linkedin_needs_approval") !== "ready")
+      .map((x) => [x.id, linkedinDown ? "Could not check LinkedIn, reload to retry" : (linkedinNote[linkedinState[x.id] ?? "linkedin_needs_approval"] ?? LINKEDIN_WAIT)]),
+  );
   // What the form opened with, to tell whether leaving would lose anything.
   const now = JSON.stringify([d, scope]);
   const [opened] = useState(now);
@@ -182,7 +217,7 @@ export function AutomationForm({
   // Everything that stops a save, with the field to fix it in, for the bar's count.
   const issues: { text: string; field: string }[] = [
     ...(d.name.trim() ? [] : [{ text: "Give it a name.", field: "automation-name" }]),
-    ...(stuck.length ? [{ text: `Untick ${stuck.join(", ")}: automations run only on Bluesky, Facebook, Instagram, Threads, X and YouTube.`, field: "automation-scope" }] : []),
+    ...(stuck.length ? [{ text: `Untick ${stuck.join(", ")}: automations run only on Bluesky, Facebook, Instagram, LinkedIn Pages, Threads, X and YouTube.`, field: "automation-scope" }] : []),
     ...(t.payloads && !d.payloads.length ? [{ text: "Add at least one button payload.", field: "automation-payloads" }] : []),
     ...timeProblems(d).map((text) => ({ text, field: "automation-from-hour" })),
     ...(Number.isNaN(limitOf(d.cooldown, MAX_COOLDOWN)) ? [{ text: "The wait must be 1 to 10080 minutes, or empty.", field: "automation-cooldown" }] : []),
@@ -408,7 +443,7 @@ export function AutomationForm({
 
         <fieldset className="card grid gap-5 p-5">
           <legend className={cardTitle}>Only if</legend>
-          <ScopeField id="automation-scope" value={scope} onChange={setScope} accounts={accounts.filter((x) => AUTOMATED.includes(x.provider) || scope.accountIds.includes(x.id))} sets={sets} />
+          <ScopeField id="automation-scope" value={scope} onChange={setScope} accounts={accounts.filter((x) => AUTOMATED.includes(x.provider) || scope.accountIds.includes(x.id))} sets={sets} locked={locked} />
           {t.keywords && (
             <KeywordsField
               id="automation-keywords"

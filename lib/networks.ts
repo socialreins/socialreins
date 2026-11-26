@@ -83,7 +83,11 @@ export const networks: Network[] = [
     sections: [
       {
         heading: "Good to know",
-        bullets: ["A video or a PDF must be the only file in its post.", "The first comment is a good place for a link."],
+        bullets: [
+          "A video or a PDF must be the only file in its post.",
+          "The first comment is a good place for a link.",
+          "No inbox and no automations yet. LinkedIn lets an app read comments only on a Page's posts, after it approves the app, and never on a personal profile's. It gives apps no messages. We have built answering and liking a Page's comments and switched it off until that approval.",
+        ],
       },
     ],
   },

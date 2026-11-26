@@ -494,7 +494,7 @@ const networkApps: { name: string; where: string; url: string; steps: ReactNode[
     scopes: "openid, profile, email, w_member_social",
     env: ["LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET"],
     redirect: ["/connect/linkedin/callback"],
-    note: "This connects a personal profile. LinkedIn tokens last about 60 days and only approved partner apps get a refresh token, so you reconnect when SocialReins shows the account as expiring. There is no LinkedIn inbox: LinkedIn lets an app read comments only after it approves the app for its Community Management API, and gives apps no access to messages.",
+    note: "This connects a personal profile. LinkedIn tokens last about 60 days and only approved partner apps get a refresh token, so you reconnect when SocialReins shows the account as expiring. There is no LinkedIn inbox and no LinkedIn automation yet: LinkedIn lets an app read comments only after it approves the app for its Community Management API (a registered organization, a verified Page and a Page administrator), and gives apps no access to messages. The code for answering and liking comments on a Page is built and stays off until you set LINKEDIN_COMMUNITY_API=true after that approval; it never works for a personal profile.",
   },
   {
     name: "X",
