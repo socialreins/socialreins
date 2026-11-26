@@ -4,6 +4,8 @@ import type { Item } from "@/lib/inbox";
 // A person who wrote to one of the team's accounts, kept by brain per network.
 export type Contact = {
   id: string;
+  // The number in its address; the UUID `id` still works in brain's API and in old links.
+  number: number;
   platform: string;
   external_id: string;
   handle: string | null;

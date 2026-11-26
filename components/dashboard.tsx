@@ -5,6 +5,7 @@ import { TeamLink as Link } from "@/components/team-link";
 import type { Failure } from "@/lib/auth";
 import { compact, engagement, getAnalytics, postTotals, statWords } from "@/lib/analytics";
 import { listConnections, needingReconnect } from "@/lib/connections";
+import { address } from "@/lib/ref";
 import { manages } from "@/lib/teams";
 import { authorName, itemSummary, kindName, listInboxes, listItems, relativeTime, type Item } from "@/lib/inbox";
 import { approvalState, listPosts, postRef, rows, toZoneInput, type Post } from "@/lib/posts";
@@ -19,6 +20,7 @@ import { Icon, Skeleton } from "@/components/ui";
 const DAY = 86_400_000;
 // null while loading.
 type Load<T> = T | Failure | null;
+// inboxId is what the inbox's address holds (its number).
 type InboxSummary = { inboxId: string; items: Item[]; open: string };
 
 // Times and days of a post are those of its set's time zone, tagged with the zone ("GMT+6") when it is not the browser's.
@@ -66,7 +68,7 @@ async function loadInbox(): Promise<InboxSummary | Failure> {
   if (isFailure(page)) return page;
   // An older brain sends no count: say how many are on the first page instead.
   const open = all.open_count?.toLocaleString() ?? `${page.items.length}${page.next_cursor === null ? "" : "+"}`;
-  return { inboxId: all.id, items: page.items, open };
+  return { inboxId: address(all), items: page.items, open };
 }
 
 // The app's home: a greeting, four numbers, what needs a person (grouped, or one calm line),
@@ -298,7 +300,7 @@ export function Dashboard() {
                 <ul className="divide-y divide-[var(--line-soft)]">
                   {inbox.items.slice(0, 4).map((i) => (
                     <li key={i.id}>
-                      <Link href={`/inbox/${encodeURIComponent(inbox.inboxId)}?item=${encodeURIComponent(i.id)}`} className="grid gap-0.5 px-4 py-2.5 hover:bg-ink/[0.025]">
+                      <Link href={`/inbox/${inbox.inboxId}?item=${address(i)}`} className="grid gap-0.5 px-4 py-2.5 hover:bg-ink/[0.025]">
                         <span className="flex items-center gap-2">
                           <strong className="min-w-0 truncate font-semibold">{authorName(i.author)}</strong>
                           <span className="badge tone" data-kind={i.kind}>

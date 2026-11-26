@@ -40,6 +40,7 @@ import {
 } from "@/lib/automations";
 import { authorName, getItem, relativeTime, type Author } from "@/lib/inbox";
 import { listConnections, type Connection } from "@/lib/connections";
+import { address, addressOf, moveToNumber } from "@/lib/ref";
 import { listSets, type SocialSet } from "@/lib/sets";
 import { manages } from "@/lib/teams";
 import { useSession } from "@/components/app-shell";
@@ -318,11 +319,11 @@ function AutomationCard({ automation: a, canManage, accounts, sets, onChange, on
         </span>
         <div className="grid min-w-0 flex-1 gap-1.5">
           <span className="flex min-w-0 items-center gap-2">
-            <Link href={`/automations/${a.id}`} className="truncate font-bold hover:underline">
+            <Link href={`/automations/${address(a)}`} className="truncate font-bold hover:underline">
               {a.name}
             </Link>
             {failed > 0 && (
-              <Link href={`/automations/${a.id}?runs=failed`} title={`${failed} failed ${failed === 1 ? "run" : "runs"}: see why`} className="shrink-0 rounded text-signal-deep hover:text-ink">
+              <Link href={`/automations/${address(a)}?runs=failed`} title={`${failed} failed ${failed === 1 ? "run" : "runs"}: see why`} className="shrink-0 rounded text-signal-deep hover:text-ink">
                 <Icon name="warning" className="size-4" />
                 <span className="sr-only">
                   {failed} failed {failed === 1 ? "run" : "runs"}: see why
@@ -338,11 +339,11 @@ function AutomationCard({ automation: a, canManage, accounts, sets, onChange, on
             <ActionMenu label={`Actions for ${a.name}`} className="icon-btn" trigger={<Icon name="more" />}>
               {canEdit(a) && (
                 <>
-                  <Link href={`/automations/${a.id}?edit=1`} className={menuItem}>
+                  <Link href={`/automations/${address(a)}?edit=1`} className={menuItem}>
                     <Icon name="edit" className="size-4 text-ink-soft" />
                     Edit
                   </Link>
-                  <Link href={`/automations/new?from=${a.id}`} className={menuItem}>
+                  <Link href={`/automations/new?from=${address(a)}`} className={menuItem}>
                     <Icon name="copy" className="size-4 text-ink-soft" />
                     Duplicate
                   </Link>
@@ -583,7 +584,10 @@ export function AutomationDetail({ id }: { id: string }) {
   const confirmRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    getAutomation(id).then(setA);
+    getAutomation(id).then((r) => {
+      if (!isFailure(r)) moveToNumber(id, r);
+      setA(r);
+    });
     listRuns(id).then((r) => setRuns(isFailure(r) ? r : { runs: r.runs, next: r.next_cursor }));
     listMisses(id).then((m) => setMisses(isFailure(m) ? m : m.misses));
   }, [id]);
@@ -701,7 +705,7 @@ export function AutomationDetail({ id }: { id: string }) {
                       <Icon name="edit" className="size-4" />
                       Edit
                     </button>
-                    <Link href={`/automations/new?from=${a.id}`} className="btn btn-secondary btn-sm">
+                    <Link href={`/automations/new?from=${address(a)}`} className="btn btn-secondary btn-sm">
                       <Icon name="copy" className="size-4" />
                       Duplicate
                     </Link>
@@ -838,7 +842,7 @@ export function AutomationDetail({ id }: { id: string }) {
                               <span className="sr-only"> the run of {when(r.created_at)}, which the network refused for rate limiting and sent nothing</span>
                             </button>
                           )}
-                          <Link id={`run-${r.id}-open`} href={`/inbox?item=${encodeURIComponent(r.inbox_item_id)}`} className="font-bold underline decoration-signal decoration-2 underline-offset-4">
+                          <Link id={`run-${r.id}-open`} href={`/inbox?item=${addressOf(r.inbox_item_id, r.inbox_item_number)}`} className="font-bold underline decoration-signal decoration-2 underline-offset-4">
                             Open in inbox<span className="sr-only">, {when(r.created_at)}</span>
                           </Link>
                         </td>
@@ -900,7 +904,7 @@ export function AutomationDetail({ id }: { id: string }) {
                 <p>
                   <strong>Not run:</strong> {m.reasons.map(whyNot).join("; ")}
                 </p>
-                <Link href={`/inbox?item=${encodeURIComponent(m.inbox_item_id)}`} className="justify-self-start text-sm font-bold underline decoration-signal decoration-2 underline-offset-4">
+                <Link href={`/inbox?item=${addressOf(m.inbox_item_id, m.inbox_item_number)}`} className="justify-self-start text-sm font-bold underline decoration-signal decoration-2 underline-offset-4">
                   Open in inbox
                 </Link>
               </li>
@@ -932,7 +936,7 @@ export function NewAutomation() {
   }, [from, canManage]);
 
   if (!canManage) return <p className="text-ink-soft">Only team owners and admins can create automations.</p>;
-  const form = { accounts, ready, sets, onSaved: (a: Automation) => router.push(`/automations/${a.id}`), onCancel: () => router.push("/automations") };
+  const form = { accounts, ready, sets, onSaved: (a: Automation) => router.push(`/automations/${address(a)}`), onCancel: () => router.push("/automations") };
   if (from) {
     if (source === null)
       return (

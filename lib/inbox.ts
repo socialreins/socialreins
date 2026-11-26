@@ -14,7 +14,7 @@ export type ItemState = "open" | "done";
 export type Filters = { kinds: Kind[]; keywords: string[]; unanswered: boolean };
 // A custom inbox holds the items of its accounts; "All" (`is_all`) holds every item and no `account_ids`.
 // `open_count` (open items, follows left out) comes with the list only.
-export type Inbox = { id: string; name: string; is_all: boolean; account_ids: string[]; filters: Filters; open_count?: number; created_at: string; updated_at: string };
+export type Inbox = { id: string; number: number; name: string; is_all: boolean; account_ids: string[]; filters: Filters; open_count?: number; created_at: string; updated_at: string };
 
 // Platforms whose accounts have an inbox.
 export const INBOX_PLATFORMS = ["bluesky", "facebook", "instagram", "threads", "x", "youtube"];
@@ -44,6 +44,8 @@ export type Reply = {
 };
 export type Item = {
   id: string;
+  // The number in its address; the UUID `id` still works in brain's API and in old links.
+  number: number;
   social_account_id: string;
   platform: string;
   // Activity (a new Bluesky follower, a like or repost of one of our posts) is quiet: stored done, listed only when asked for (`ListKind` "activity"), though an automation run links to a follow.
@@ -60,6 +62,7 @@ export type Item = {
   replies: Reply[];
   // The contact behind the author, its tags and the team member the item is assigned to. Missing from an older brain.
   contact_id?: string | null;
+  contact_number?: number | null;
   contact_tags?: string[];
   assigned_to?: { id: string; name: string } | null;
   // The custom inboxes that hold it, for chips in All inboxes. Missing from an older brain.

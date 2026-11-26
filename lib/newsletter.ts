@@ -87,6 +87,8 @@ export type NewsletterStatus = "draft" | "sending" | "paused" | "sent" | "cancel
 export type NewsletterCounts = { total: number; sent: number; failed: number; pending: number };
 export type Newsletter = {
   id: string;
+  // The number in its address; the UUID `id` still works in brain's API and in old links.
+  number: number;
   subject: string;
   body: string;
   status: NewsletterStatus;

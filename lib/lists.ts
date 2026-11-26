@@ -3,6 +3,8 @@ import type { Post } from "@/lib/posts";
 
 export type PostList = {
   id: string;
+  // The number in its address; the UUID `id` still works in brain's API and in old links.
+  number: number;
   // null for a team-wide list.
   social_set_id: string | null;
   name: string;

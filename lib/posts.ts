@@ -150,7 +150,7 @@ export type Post = {
   updated_at: string;
   targets: Target[];
   // The lists the post is in, with its 1-based position ("Part N") in each.
-  lists: { id: string; name: string; position: number }[];
+  lists: { id: string; number: number; name: string; position: number }[];
   // Ties the posts of one POST /v1/post-groups call; null for a single post.
   group_id: string | null;
   // Set when the team requires approval and a member scheduled the post: it goes out only once approved.

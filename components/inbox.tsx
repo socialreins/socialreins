@@ -49,6 +49,7 @@ import {
   type ThreadContext,
 } from "@/lib/inbox";
 import { createSnippet, isProblem, libraryText, type Problem } from "@/lib/library";
+import { address, addressOf, isUuid, moveParam, moveToNumber } from "@/lib/ref";
 import { getBilling, type Billing } from "@/lib/billing";
 import { listMembers, manages } from "@/lib/teams";
 import { useSession } from "@/components/app-shell";
@@ -127,12 +128,15 @@ const UNDO_MS = 5_000;
 type Undo = { id: number; item: Item; row: Item | null; saved: Promise<Item | Failure>; problem?: Failure; undoing?: boolean };
 // A reply shown in the thread before brain answered: on its way, refused (`failed` says why), or `unsure`,
 // when no clear answer came and it may have gone out. Kept by the Inbox per thread, so it survives opening another item.
-type Pending = { id: number; thread: string; itemId: string; name: string; text: string; failed?: ReactNode; unsure?: boolean };
+type Pending = { id: number; thread: string; itemId: string; itemNo?: number; name: string; text: string; failed?: ReactNode; unsure?: boolean };
 const settled = (p: Pending) => p.failed !== undefined || p.unsure === true;
 let lastId = 0;
 
 // A change to one item, laid over a list row or the open item of the same thread. A conversation's row is its
 // latest DM, so a change made through an older DM moves only what the whole conversation shares.
+// An address names an item by its number, or by its UUID in an old link.
+const isItem = (i: Item, asked: string) => i.id === asked || String(i.number) === asked;
+
 const patched = (x: Item, i: Item): Item =>
   x.id === i.id ? { ...i, conversation: x.conversation } : { ...x, state: i.state, assigned_to: i.assigned_to, contact_tags: i.contact_tags };
 
@@ -218,7 +222,8 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   const canManage = manages(user.current_team.role);
   const router = useRouter();
   const params = useSearchParams();
-  const itemId = params.get("item");
+  // The address holds the item's number (?item=4821); an old one holds its UUID.
+  const asked = params.get("item");
   const state: ItemState = params.get("state") === "done" ? "done" : "open";
   const q = (params.get("q") ?? "").trim().slice(0, 100);
   const assigned = params.get("assigned") ?? "";
@@ -234,7 +239,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   const [loaded, setLoaded] = useState<{ key: string; page: Page | Failure } | null>(null);
   const [more, setMore] = useState<Failure | "loading" | null>(null);
   const [kind, setKind] = useState<ListKind | "all">("all");
-  const [shown, setShown] = useState<{ id: string; item: Item | Failure } | null>(null);
+  const [shown, setShown] = useState<{ asked: string; item: Item | Failure } | null>(null);
   const [editing, setEditing] = useState<InboxT | "new" | null>(null);
   const [opened, setOpened] = useState<string | null>(null);
   const [reloads, setReloads] = useState(0);
@@ -256,9 +261,11 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   }, []);
 
   const list = Array.isArray(inboxes) ? inboxes : [];
-  const current = inboxId ? list.find((i) => i.id === inboxId) : list[0];
-  const currentId = current?.id ?? inboxId;
-  const base = inboxId ? `/inbox/${encodeURIComponent(inboxId)}` : "/inbox";
+  // The address holds the inbox's number; an old one holds its UUID, and a number waits for the list to say which inbox it is.
+  const current = inboxId ? list.find((i) => i.id === inboxId || String(i.number) === inboxId) : list[0];
+  // A number the list does not know goes to brain as it is, which answers not found; only a list still loading waits.
+  const currentId = current?.id ?? (inboxId && (isUuid(inboxId) || inboxes !== null) ? inboxId : undefined);
+  const base = inboxId ? `/inbox/${current ? address(current) : encodeURIComponent(inboxId)}` : "/inbox";
   const href = (to: { item?: string | null; state?: ItemState; assigned?: string; tag?: string }) => {
     const s = new URLSearchParams();
     if ((to.state ?? state) === "done") s.set("state", "done");
@@ -283,14 +290,16 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
     });
   const items = page && !isFailure(page) ? page.items : [];
   // Until the item itself answers, its list row stands in, so a row opens at once.
-  const detail = !itemId ? null : shown?.id === itemId ? shown.item : (items.find((i) => i.id === itemId) ?? null);
+  const detail = !asked ? null : shown && (shown.asked === asked || (!isFailure(shown.item) && isItem(shown.item, asked))) ? shown.item : (items.find((i) => isItem(i, asked)) ?? null);
+  // The rest of this page goes by the item's id.
+  const itemId = detail && !isFailure(detail) ? detail.id : asked && isUuid(asked) ? asked : null;
   // What is open, as the list knows it: a conversation matches its row whichever of its DMs the address names.
   const openKey = detail && !isFailure(detail) ? threadKey(detail) : itemId;
   const refreshCounts = () => listInboxes().then((l) => Array.isArray(l) && setInboxes(l));
-  const go = (id: string | null, how: "push" | "replace" = "replace") => {
-    if (id) setOpened(id);
-    heading.current = id;
-    router[how](href({ item: id }), { scroll: false });
+  const go = (item: { id: string; number?: number } | null, how: "push" | "replace" = "replace") => {
+    if (item) setOpened(item.id);
+    heading.current = item?.id ?? null;
+    router[how](href({ item: item && address(item) }), { scroll: false });
   };
 
   useEffect(() => {
@@ -329,13 +338,25 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
 
   useEffect(() => {
     heading.current = null;
-    if (!itemId) return;
+    if (!asked) return;
+    // The address moved from the UUID to the number of the item already shown: nothing to read again.
+    if (shown && !isFailure(shown.item) && isItem(shown.item, asked)) return;
     let live = true;
-    getItem(itemId).then((r) => live && setShown({ id: itemId, item: r }));
+    getItem(asked).then((r) => {
+      if (!live) return;
+      if (!isFailure(r)) moveParam("item", asked, r);
+      setShown({ asked, item: r });
+    });
     return () => {
       live = false;
     };
-  }, [itemId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `shown` is read only to skip a second read of the item on show
+  }, [asked]);
+
+  // An old address with the inbox's UUID moves to its number.
+  useEffect(() => {
+    if (inboxId && current) moveToNumber(inboxId, current);
+  }, [inboxId, current]);
 
   async function loadMore() {
     if (!currentId || isFailure(page) || !page?.next) return;
@@ -351,7 +372,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   // A changed item: the detail shows it, the list keeps its row only while it fits the tab.
   function changed(i: Item) {
     const k = threadKey(i);
-    setShown((s) => (s && !isFailure(s.item) && threadKey(s.item) === k ? { id: s.id, item: patched(s.item, i) } : s));
+    setShown((s) => (s && !isFailure(s.item) && threadKey(s.item) === k ? { asked: s.asked, item: patched(s.item, i) } : s));
     // Done or reopened: the open counts moved.
     refreshCounts();
     setPage((p) =>
@@ -387,7 +408,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
     setTimeout(() => setUndos((l) => l.filter((x) => x.id !== u.id || x.problem)), UNDO_MS);
     if (row) {
       setPage((p) => (p && !isFailure(p) ? { ...p, items: p.items.filter((x) => x.id !== row.id) } : p));
-      go((items[at + 1] ?? items[at - 1])?.id ?? null);
+      go(items[at + 1] ?? items[at - 1] ?? null);
     }
     saved.then((r) => {
       patching.current.delete(k);
@@ -411,7 +432,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
     putBack(u);
     if (u.row) {
       refreshCounts();
-      go(u.item.id);
+      go(u.item);
     } else changed(r);
   }
 
@@ -426,7 +447,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
         const at = items.findIndex((x) => (from ? x.id === from : threadKey(x) === openKey || x.id === itemId));
         const n = at < 0 ? 0 : at + (s === "next" ? 1 : -1);
         if (!items[n]) return;
-        go(items[n].id, "push");
+        go(items[n], "push");
         rowsRef.current?.children[n]?.scrollIntoView({ block: "nearest" });
       } else if (s === "done") {
         // A held key marks one item, not the whole list.
@@ -436,8 +457,8 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
       else if (s === "reply") document.getElementById("reply-text")?.focus();
       else if (s === "search") document.getElementById("inbox-search")?.focus();
       else if (s === "nextInbox" || s === "previousInbox") {
-        const to = stepInbox(list, current?.id, s === "nextInbox" ? 1 : -1);
-        if (to) router.push(`/inbox/${encodeURIComponent(to.id)}`);
+        const next = stepInbox(list, current?.id, s === "nextInbox" ? 1 : -1);
+        if (next) router.push(`/inbox/${address(next)}`);
       } else setHelp(true);
     };
     document.addEventListener("keydown", onKey);
@@ -469,7 +490,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   const nameOf = new Map(list.map((i) => [i.id, i.name]));
   // On small screens one pane shows at a time: inboxes, then items, then the item.
   const show = (pane: "inboxes" | "items" | "detail") =>
-    (pane === "detail" ? itemId : pane === "items" ? inboxId && !itemId : !inboxId && !itemId) ? "block" : "hidden";
+    (pane === "detail" ? asked : pane === "items" ? inboxId && !asked : !inboxId && !asked) ? "block" : "hidden";
 
   return (
     // From lg up the inbox fills the window under the top bar (3rem) and main's padding (2rem twice); each pane scrolls on its own.
@@ -495,7 +516,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
               return (
                 <li key={i.id} className="group flex items-center gap-1">
                   <Link
-                    href={`/inbox/${encodeURIComponent(i.id)}`}
+                    href={`/inbox/${address(i)}`}
                     aria-current={active ? "page" : undefined}
                     className={`grid min-w-0 flex-1 gap-1 rounded-xl px-3 py-2 font-bold focus-visible:outline-offset-[-3px] ${
                       active ? "bg-ink text-paper" : "text-ink-soft hover:bg-ink/5 hover:text-ink"
@@ -578,7 +599,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
                 <Link
                   key={s}
                   aria-current={state === s ? "true" : undefined}
-                  href={href({ state: s, item: itemId })}
+                  href={href({ state: s, item: asked })}
                   className={`rounded-full px-3 py-1 text-center text-sm font-bold ${state === s ? "bg-paper text-ink shadow-sm" : "text-ink-soft hover:text-ink"}`}
                 >
                   {s === "open" ? "Open" : "Done"}
@@ -588,7 +609,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <FilterMenu label="Kind" value={kind} options={kindOptions} onChange={setKind} />
-            <FilterMenu label="Assigned" value={assigned} options={assignedOptions} onChange={(v) => router.replace(href({ assigned: v, item: itemId }), { scroll: false })} />
+            <FilterMenu label="Assigned" value={assigned} options={assignedOptions} onChange={(v) => router.replace(href({ assigned: v, item: asked }), { scroll: false })} />
           </div>
           {(kind !== "all" || assigned || tag) && (
             <ul aria-label="Active filters" className="flex flex-wrap items-center gap-1.5">
@@ -603,7 +624,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
               {assigned && (
                 <li className={chip}>
                   Assigned: {assignedOptions.find((o) => o.value === assigned)?.label ?? "one person"}
-                  <Link href={href({ assigned: "", item: itemId })} scroll={false} aria-label="Clear the assigned filter" className={chipClear}>
+                  <Link href={href({ assigned: "", item: asked })} scroll={false} aria-label="Clear the assigned filter" className={chipClear}>
                     <Icon name="close" className="size-3" />
                   </Link>
                 </li>
@@ -611,7 +632,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
               {tag && (
                 <li className={chip}>
                   Tag: {tag}
-                  <Link href={href({ tag: "", item: itemId })} scroll={false} aria-label={`Clear the tag filter ${tag}`} className={chipClear}>
+                  <Link href={href({ tag: "", item: asked })} scroll={false} aria-label={`Clear the tag filter ${tag}`} className={chipClear}>
                     <Icon name="close" className="size-3" />
                   </Link>
                 </li>
@@ -621,7 +642,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
         </div>
         {stuck.map((p) => (
           <p key={p.thread} role="alert" className="waitlist-error lg:mb-3">
-            <button type="button" className={linkButton} onClick={() => go(p.itemId, "push")}>
+            <button type="button" className={linkButton} onClick={() => go({ id: p.itemId, number: p.itemNo }, "push")}>
               A reply to {p.name} {p.unsure ? "may not have been sent" : "was not sent"}
             </button>
           </p>
@@ -698,7 +719,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
                   return (
                     <li key={i.id} className="relative">
                       <Link
-                        href={href({ item: i.id })}
+                        href={href({ item: address(i) })}
                         scroll={false}
                         onClick={() => setOpened(i.id)}
                         aria-current={selected ? "true" : undefined}
@@ -755,7 +776,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
           <Icon name="left" className="size-4" />
           Back to {current ? inboxName(current) : "the inbox"}
         </Link>
-        {!itemId ? (
+        {!asked ? (
           <div className="hidden h-full place-content-center justify-items-center gap-3 p-8 text-center text-sm text-ink-soft lg:grid">
             <p>Pick an item to read it and reply.</p>
             <p>
@@ -834,7 +855,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
           }}
           onDeleted={(id) => {
             setInboxes((l) => (Array.isArray(l) ? l.filter((x) => x.id !== id) : l));
-            if (id === inboxId) router.replace("/inbox");
+            if (id === current?.id) router.replace("/inbox");
           }}
         />
       )}
@@ -1077,7 +1098,7 @@ function Detail({
     e.preventDefault();
     // Ctrl+Enter submits even while the button is disabled.
     if (sending || !text.trim() || count > max || note?.blocked) return;
-    send({ id: ++lastId, thread: threadKey(item), itemId: item.id, name: authorName(item.author), text });
+    send({ id: ++lastId, thread: threadKey(item), itemId: item.id, itemNo: item.number, name: authorName(item.author), text });
     setText("");
   }
 
@@ -1111,7 +1132,7 @@ function Detail({
           {item.contact_id && (
             <>
               <TagEditor id="item-tags" tags={item.contact_tags ?? []} suggestions={tagOptions} disabled={meta.busy !== null} onChange={saveTags} />
-              <Link href={`/contacts?contact=${encodeURIComponent(item.contact_id)}`} className="font-bold underline decoration-signal decoration-2 underline-offset-4">
+              <Link href={`/contacts?contact=${addressOf(item.contact_id, item.contact_number)}`} className="font-bold underline decoration-signal decoration-2 underline-offset-4">
                 Open contact
               </Link>
             </>

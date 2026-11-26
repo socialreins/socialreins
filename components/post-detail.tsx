@@ -10,6 +10,7 @@ import { PostPagePanel } from "@/components/post-page-panel";
 import { RefreshStats, TargetStats } from "@/components/post-analytics";
 import { PlatformMark } from "@/components/posts";
 import { Icon } from "@/components/ui";
+import { address } from "@/lib/ref";
 import { hasStats } from "@/lib/analytics";
 import type { Connection } from "@/lib/connections";
 import { canRetry, charCount, charLimit, failureAdvice, isImageLink, limits, overallName, overallStatus, postRef, privacyName, timeline, youtubePrivacyName, youtubeText, type Overall, type Post, type Target, type TakedownResult, type ThreadPart } from "@/lib/posts";
@@ -195,7 +196,7 @@ export function PostDetail({ statusRef, ...d }: DetailProps) {
                 </li>
                 {members.flatMap((m) => m.lists).filter((l, i, all) => all.findIndex((x) => x.id === l.id) === i).map((l) => (
                   <li key={l.id}>
-                    <Link href={`/lists/${l.id}`} className="inline-flex items-center gap-1.5 font-bold text-ink hover:underline">
+                    <Link href={`/lists/${address(l)}`} className="inline-flex items-center gap-1.5 font-bold text-ink hover:underline">
                       <Icon name="lists" className="size-4" />
                       Part {l.position} · {l.name}
                     </Link>
