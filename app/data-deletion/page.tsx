@@ -34,7 +34,8 @@ export default function DataDeletion() {
       </ul>
       <p>
         This deletes your account, passkeys and sessions, and every team only you belong to, with its connected accounts,
-        posts, inbox, contacts and settings, and cancels that team&apos;s paid plan. A team with other members stays: if you
+        posts, inbox, contacts and settings, and cancels that team&apos;s paid plan. A team with other members stays: you
+        leave it, the API tokens you made there are deleted, and what you made there (posts, connected accounts) stays without your name. If you
         are its only owner, make someone else an owner or delete the team first. Posts already published on social networks
         stay there; remove them on the network. Copies in our encrypted backups expire within 30 days after that.
       </p>

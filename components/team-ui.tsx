@@ -97,7 +97,7 @@ const messages: Partial<Record<Failure, ReactNode>> = {
   review_account: "The demo account used for app review cannot do this.",
   email_mismatch: "That is not the email address of this account. Check it and try again.",
   owns_shared_team: "You own a team that other people belong to. Make someone else an owner or delete that team first.",
-  stripe_failed: "We could not cancel your paid plan with our payment provider, so nothing was deleted. Try again in a moment, or email info@socialreins.com.",
+  stripe_failed: "We could not cancel your paid plan with our payment provider, so your account was not deleted. Try again in a moment, or email info@socialreins.com.",
   plan_limit: planLimit(),
   plan_limit_accounts: planLimit("accounts"),
   plan_limit_members: planLimit("members"),

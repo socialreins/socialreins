@@ -10,7 +10,9 @@ export async function exportData(): Promise<{ blob: Blob; name: string } | Failu
     // Brain ends a whole file with `"complete":true`; a proxy may turn a failed stream into a clean end.
     if (!(await blob.slice(-40).text()).trimEnd().endsWith('"complete":true}')) return "error";
     return { blob, name: `socialreins-export-${new Date().toISOString().slice(0, 10)}.json` };
-  } catch {
+  } catch (e) {
+    // Slow to read: brain counts the export as taken, so a second try within the hour is refused.
+    if (e instanceof DOMException && e.name === "TimeoutError") return "timeout";
     // The stream ended early: brain failed part way, so the file would be cut short.
     return "error";
   }

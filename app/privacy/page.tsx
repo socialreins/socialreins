@@ -187,9 +187,9 @@ export default function Privacy() {
           signed in within the last 10 minutes and type your email address. It happens at once and cannot be undone. It deletes
           your account, passkeys and sessions, and every team only you belong to, with its invitations, sets, connected
           accounts, posts, inbox, contacts and API tokens, and cancels that team&apos;s paid plan. A team with other members
-          stays: if you are its only owner, make someone else an owner or delete the team first. Posts already published on
+          stays: you leave it and the API tokens you made there are deleted, and what you made there (posts, connected accounts) stays without your name. If you are its only owner, make someone else an owner or delete the team first. Posts already published on
           social networks stay there. We email you to confirm. Copies in our encrypted backups are removed within 30 days, and
-          Stripe keeps its own payment records. We keep a hash of your email address so a free trial cannot be used twice, and a
+          Stripe keeps its own payment records. We keep a hash of your email address (a pseudonym, not anonymous) so a free trial cannot be used twice, and a
           count of deleted accounts that holds no personal data.
         </li>
         <li>

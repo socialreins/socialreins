@@ -63,6 +63,7 @@ test("deleting asks for the typed email and says what happens", async ({ page })
   const confirm = dialog.getByRole("button", { name: "Delete my account" });
   await expect(confirm).toBeDisabled();
   const field = dialog.getByLabel("Type me@example.com to confirm");
+  await expect(field).toBeFocused();
   await field.fill("someone@example.com");
   await expect(confirm).toBeDisabled();
   await field.fill(" ME@example.com ");
@@ -100,7 +101,7 @@ test("a refused delete says why and keeps the dialog open", async ({ page }) => 
 
   state.remove = { status: 502, json: { error: "stripe_failed" } };
   await confirm.click();
-  await expect(dialog.getByRole("alert")).toContainText("nothing was deleted");
+  await expect(dialog.getByRole("alert")).toContainText("your account was not deleted");
   await expect(dialog).toBeVisible();
   expect(state.deletes).toHaveLength(3);
 });

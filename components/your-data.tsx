@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useSession } from "@/components/app-shell";
 import { Status, useAction } from "@/components/team-ui";
 import { deleteAccount, exportData } from "@/lib/account";
+import { setTabTeam } from "@/lib/auth";
 import { Icon } from "@/components/ui";
 
 // Download a copy of your data, or delete the account. Both are for the signed-in person only.
@@ -87,6 +88,8 @@ function ConfirmDelete({ onClose }: { onClose: () => void }) {
   const matches = typed.trim().toLowerCase() === user.email.toLowerCase();
   useEffect(() => {
     ref.current?.showModal();
+    // The first thing to do in it, not the Close button.
+    ref.current?.querySelector<HTMLInputElement>("#delete-email")?.focus();
   }, []);
 
   async function onDelete(e: FormEvent<HTMLFormElement>) {
@@ -94,6 +97,7 @@ function ConfirmDelete({ onClose }: { onClose: () => void }) {
     setShared([]);
     await run("delete", () => deleteAccount(typed), (r) => {
       if (r === "ok") {
+        setTabTeam(null);
         router.push("/");
         return;
       }
@@ -105,6 +109,7 @@ function ConfirmDelete({ onClose }: { onClose: () => void }) {
     <dialog
       ref={ref}
       aria-labelledby={titleId}
+      aria-describedby={`${titleId}-what`}
       onCancel={(e) => busy && e.preventDefault()}
       onClose={onClose}
       className="m-auto w-[min(32rem,calc(100vw-2rem))] rounded-2xl bg-paper p-0 text-ink shadow-2xl backdrop:bg-ink/40"
@@ -118,12 +123,12 @@ function ConfirmDelete({ onClose }: { onClose: () => void }) {
             <Icon name="close" />
           </button>
         </div>
-        <div className="grid gap-2 text-sm">
+        <div id={`${titleId}-what`} className="grid gap-2 text-sm">
           <p>This happens at once and cannot be undone.</p>
           <ul className="grid list-disc gap-1 pl-5">
             <li>Your account, passkeys and sessions are deleted, and you are signed out.</li>
             <li>Every team that only you belong to is deleted with its accounts, posts, inbox, contacts and settings, and its paid plan is cancelled.</li>
-            <li>Teams that other people belong to stay. You leave them, and the API tokens you made there stop working.</li>
+            <li>Teams that other people belong to stay. You leave them and the API tokens you made there are deleted; what you made there (posts, connected accounts) stays, without your name.</li>
             <li>Posts already published on social networks stay where they are.</li>
             <li>Copies in our encrypted backups are removed within 30 days. Stripe keeps its own payment records.</li>
           </ul>
@@ -131,7 +136,7 @@ function ConfirmDelete({ onClose }: { onClose: () => void }) {
         </div>
         <div className="grid gap-1.5">
           <label htmlFor="delete-email" className="label">
-            Type {user.email} to confirm
+            Type <span className="break-all">{user.email}</span> to confirm
           </label>
           <input
             id="delete-email"
@@ -148,8 +153,8 @@ function ConfirmDelete({ onClose }: { onClose: () => void }) {
           <div role="alert" className="waitlist-error">
             <p>You are the only owner of {shared.length === 1 ? "a team" : "teams"} with other members:</p>
             <ul className="list-disc pl-5">
-              {shared.map((name) => (
-                <li key={name}>{name}</li>
+              {shared.map((name, n) => (
+                <li key={n}>{name}</li>
               ))}
             </ul>
             <p>Make someone else an owner, or delete the team, on its Team page. Then try again.</p>
