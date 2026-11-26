@@ -161,11 +161,14 @@ export function AutomationForm({
   // A LinkedIn account runs automations only when brain says it is ready; until it answers, every one counts as waiting for approval.
   const hasLinkedin = accounts.some((x) => x.provider === "linkedin");
   const [linkedinState, setLinkedinState] = useState<Record<string, string>>({});
+  const [linkedinDown, setLinkedinDown] = useState(false);
   useEffect(() => {
     if (!hasLinkedin) return;
     let live = true;
     linkedinAutomation().then((r) => {
-      if (live && !isFailure(r)) setLinkedinState(Object.fromEntries(r.accounts.map((x) => [x.id, x.status])));
+      if (!live) return;
+      if (isFailure(r)) setLinkedinDown(true);
+      else setLinkedinState(Object.fromEntries(r.accounts.map((x) => [x.id, x.status])));
     });
     return () => {
       live = false;
@@ -174,7 +177,7 @@ export function AutomationForm({
   const locked = Object.fromEntries(
     accounts
       .filter((x) => x.provider === "linkedin" && (linkedinState[x.id] ?? "linkedin_needs_approval") !== "ready")
-      .map((x) => [x.id, linkedinNote[linkedinState[x.id] ?? "linkedin_needs_approval"] ?? LINKEDIN_WAIT]),
+      .map((x) => [x.id, linkedinDown ? "Could not check LinkedIn, reload to retry" : (linkedinNote[linkedinState[x.id] ?? "linkedin_needs_approval"] ?? LINKEDIN_WAIT)]),
   );
   // What the form opened with, to tell whether leaving would lose anything.
   const now = JSON.stringify([d, scope]);
@@ -214,7 +217,7 @@ export function AutomationForm({
   // Everything that stops a save, with the field to fix it in, for the bar's count.
   const issues: { text: string; field: string }[] = [
     ...(d.name.trim() ? [] : [{ text: "Give it a name.", field: "automation-name" }]),
-    ...(stuck.length ? [{ text: `Untick ${stuck.join(", ")}: automations run only on Bluesky, Facebook, Instagram, Threads, X and YouTube.`, field: "automation-scope" }] : []),
+    ...(stuck.length ? [{ text: `Untick ${stuck.join(", ")}: automations run only on Bluesky, Facebook, Instagram, LinkedIn Pages, Threads, X and YouTube.`, field: "automation-scope" }] : []),
     ...(t.payloads && !d.payloads.length ? [{ text: "Add at least one button payload.", field: "automation-payloads" }] : []),
     ...timeProblems(d).map((text) => ({ text, field: "automation-from-hour" })),
     ...(Number.isNaN(limitOf(d.cooldown, MAX_COOLDOWN)) ? [{ text: "The wait must be 1 to 10080 minutes, or empty.", field: "automation-cooldown" }] : []),

@@ -36,7 +36,7 @@ export const features: Feature[] = [
           "A flow runs several steps in turn, with waits and buttons. It can wait for the person to answer before it goes on, and stops if they never do.",
           "On Threads, only a reply under your post or a mention can start one. It can answer with a public reply (500 characters, an emoji counts as its bytes), hide a reply directly under your post, tag, assign or mail your team, with every condition above. Threads has no DMs, no private reply and no like for an app: an automation limited to Threads accounts is refused when you save it and in the test, and with other networks beside them the Threads items are skipped with the reason in the run log. A reply from any connected Threads account, yours or another team's, is never answered.",
           "A step can write its reply with AI from your prompt, using your own AI key or the AI replies that come with the Scheduler and Automation plan. It never adds a link or @handle your prompt does not hold.",
-          "An automation can also tag the contact, so you can find those people later or send them a broadcast. Besides replying it can mail your team, assign the conversation, hide a comment (Facebook, Instagram, Threads and X), like one (Facebook, Bluesky and X), repost (Bluesky and X) or follow back (Bluesky) and keep newer automations off the same item. Hide comments that carry a link, and spam never shows.",
+          "An automation can also tag the contact, so you can find those people later or send them a broadcast. Besides replying it can mail your team, assign the conversation, hide a comment (Facebook, Instagram, Threads and X), like one (Facebook, Bluesky, X and, once LinkedIn approves, LinkedIn Pages), repost (Bluesky and X) or follow back (Bluesky) and keep newer automations off the same item. Hide comments that carry a link, and spam never shows.",
         ],
       },
       {
@@ -80,7 +80,7 @@ export const features: Feature[] = [
       {
         heading: "LinkedIn, built and waiting for approval",
         bullets: [
-          "Built, and off for everyone until LinkedIn approves the app: reading the comments on a Page's recent posts every few hours, a public reply as the Page (up to 1,250 characters), a like on the comment, and the same conditions, cool-down, daily limit, pause switch, tags, mail, assign and stop as the other networks.",
+          "Built, and off for everyone until LinkedIn approves the app: reading the comments on a Page's recent posts every few hours, a public reply as the Page (an AI reply up to 1,250 characters, the text you type up to 300), a like on the comment, and the same conditions, cool-down, daily limit, pause switch, tags, mail, assign and stop as the other networks.",
           "Only a comment can start one. LinkedIn has no messages for apps, so an automation on LinkedIn cannot send a DM, and it cannot hide a comment (an app may only delete one, which an automation never does). It never answers a connected account, yours or another team's.",
           "A personal profile can post but never run an automation: LinkedIn lets no app read the comments on a member's posts. A Page can, once it is connected with the comment permissions. Connecting a Page needs the same LinkedIn approval, so today a LinkedIn account in the picker says \"Needs LinkedIn approval\" and cannot be chosen.",
           "LinkedIn's first tier allows 500 calls a day for the whole app and 100 for each member, and pushes nothing, so a Page is read every 3 hours and stops at 80 reads and 100 calls a day. \"Test this automation\" works on a LinkedIn account and sends nothing; it says why a run would not happen yet.",
@@ -89,7 +89,7 @@ export const features: Feature[] = [
       {
         heading: "What blocks the other networks",
         bullets: [
-          "LinkedIn: an app may read comments on a member's posts only with a permission LinkedIn gives to select developers (no application is open), and on a Page's posts only through its Community Management API, approved for each app, for a registered organization with a verified Page. It offers apps no messages at all. What can be built is built and switched off, see \"LinkedIn, built and waiting for approval\" below.",
+          "LinkedIn: an app may read comments on a member's posts only with a permission LinkedIn gives to select developers (no application is open), and on a Page's posts only through its Community Management API, approved for each app, for a registered organization with a verified Page. It offers apps no messages at all. What can be built is built and switched off, see \"LinkedIn, built and waiting for approval\" above.",
           "TikTok: the API we post with has no comment or message calls. Replying to comments exists only in TikTok's Business API for Business accounts, which needs its own access, and it has no DMs.",
           "Pinterest: we found no Pinterest API call to read comments on a Pin or messages, and no webhooks.",
           "YouTube and Threads work for public replies, within limits: YouTube's daily quota is shared by every team and every upload (a reply costs 50 of 10,000 units), and Threads replies and mentions reach people outside the app's testers only after Meta's App Review. Neither has DMs.",

@@ -77,7 +77,8 @@ export function AutomationTest({
   // The trigger reads the text (a new follower and a button tap do not).
   needsText: boolean;
 }) {
-  const first = accounts.find((a) => scopeIds.includes(a.id)) ?? accounts[0];
+  // A LinkedIn account is tried only when picked: it cannot run yet, so it is never the default.
+  const first = accounts.find((a) => scopeIds.includes(a.id)) ?? accounts.find((a) => a.provider !== "linkedin") ?? accounts[0];
   const [pick, setPick] = useState("");
   const [text, setText] = useState("");
   const [name, setName] = useState("Sam");
