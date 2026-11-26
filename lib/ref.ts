@@ -7,16 +7,17 @@ export const isUuid = (s: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a
 
 // An old query value with the UUID (?contact=, ?item=) moves to the number the same way.
 export const moveParam = (name: string, asked: string, x: { id: string; number?: number }) => {
-  if (!x.id || asked === address(x)) return;
   const url = new URL(window.location.href);
+  // The answer can land after the person went elsewhere: only the address that asked moves.
+  if (!x.id || asked === address(x) || url.searchParams.get(name) !== asked) return;
   url.searchParams.set(name, address(x));
   window.history.replaceState(null, "", url);
 };
 
 // An old address with the UUID (/lists/<uuid>) moves to the number once the page has read the thing, as the post page does.
 export const moveToNumber = (asked: string, x: { id: string; number?: number }) => {
-  if (!x.id || asked === address(x)) return;
   const url = new URL(window.location.href);
+  if (!x.id || asked === address(x) || !url.pathname.replace(/\/$/, "").endsWith(`/${asked}`)) return;
   url.pathname = url.pathname.replace(/[^/]+\/?$/, address(x));
   window.history.replaceState(null, "", url);
 };

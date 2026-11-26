@@ -238,7 +238,7 @@ export function Contacts() {
           </>
         )}
       </section>
-      {openId && <ContactPanel key={openId} id={openId} suggestions={suggestions} close={href({ contact: null })} onSaved={saved} onDeleted={deleted} />}
+      {openId && <ContactPanel key={(page && !isFailure(page) && page.items.find(open)?.id) || openId} id={openId} suggestions={suggestions} close={href({ contact: null })} onSaved={saved} onDeleted={deleted} />}
     </div>
   );
 }

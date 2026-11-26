@@ -122,10 +122,14 @@ test("the inbox, its items and their contacts go by number; old addresses move t
   await page.route(/\/v1\/contacts(\?.*)?$/, (route) => route.fulfill({ json: { items: [contact], next_cursor: null } }));
   await serve(page, "contacts", contact, { ...contact, recent: [item] });
 
+  const reads: string[] = [];
+  page.on("request", (r) => /\/v1\/inbox-items\/[^/]+$/.test(new URL(r.url()).pathname) && reads.push(r.url()));
   // The inbox and the item named by their UUIDs move to their numbers.
   await page.goto(`/t/acme22/inbox/${box.id}?item=${item.id}`);
   await expect(page.getByRole("region", { name: "Item" }).getByText("What is the price?")).toBeVisible();
   await expect.poll(() => new URL(page.url()).pathname + new URL(page.url()).search).toBe("/t/acme22/inbox/3?item=4821");
+  // The move to the number does not read the item a second time.
+  expect(reads).toHaveLength(1);
   // What it links to carries numbers: the other items and the contact.
   await expect(page.getByRole("list", { name: /Inbox|items/i }).first().getByRole("link").first()).toHaveAttribute("href", /\/t\/acme22\/inbox\/3\?item=4821$/);
   await expect(page.getByRole("link", { name: "Open contact" })).toHaveAttribute("href", "/t/acme22/contacts?contact=33");
@@ -136,4 +140,13 @@ test("the inbox, its items and their contacts go by number; old addresses move t
   await expect.poll(() => new URL(page.url()).searchParams.get("contact")).toBe("33");
   await expect(page.getByRole("list", { name: "Contact list" }).getByRole("link", { name: /Bob/ })).toHaveAttribute("href", "/t/acme22/contacts?contact=33");
   await expect(page.getByRole("list", { name: "Recent conversations" }).getByRole("link")).toHaveAttribute("href", "/t/acme22/inbox?item=4821");
+});
+
+test("an inbox number brain does not know says so instead of loading for ever", async ({ page }) => {
+  await brain(page);
+  const box = { id: UUID(5), number: 3, name: "All", is_all: true, account_ids: [], filters: { account_ids: [], kinds: [], platforms: [], keywords: [], unanswered: false }, open_count: 0, ...when };
+  await page.route("**/v1/inboxes", (route) => route.fulfill({ json: [box] }));
+  await page.route(/\/v1\/inboxes\/99\/items/, (route) => route.fulfill({ status: 404, json: { error: "not_found" } }));
+  await page.goto("/t/acme22/inbox/99");
+  await expect(page.getByRole("alert").first()).toBeVisible();
 });

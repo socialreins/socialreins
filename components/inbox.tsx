@@ -134,6 +134,9 @@ let lastId = 0;
 
 // A change to one item, laid over a list row or the open item of the same thread. A conversation's row is its
 // latest DM, so a change made through an older DM moves only what the whole conversation shares.
+// An address names an item by its number, or by its UUID in an old link.
+const isItem = (i: Item, asked: string) => i.id === asked || String(i.number) === asked;
+
 const patched = (x: Item, i: Item): Item =>
   x.id === i.id ? { ...i, conversation: x.conversation } : { ...x, state: i.state, assigned_to: i.assigned_to, contact_tags: i.contact_tags };
 
@@ -260,7 +263,8 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   const list = Array.isArray(inboxes) ? inboxes : [];
   // The address holds the inbox's number; an old one holds its UUID, and a number waits for the list to say which inbox it is.
   const current = inboxId ? list.find((i) => i.id === inboxId || String(i.number) === inboxId) : list[0];
-  const currentId = current?.id ?? (inboxId && isUuid(inboxId) ? inboxId : undefined);
+  // A number the list does not know goes to brain as it is, which answers not found; only a list still loading waits.
+  const currentId = current?.id ?? (inboxId && (isUuid(inboxId) || inboxes !== null) ? inboxId : undefined);
   const base = inboxId ? `/inbox/${current ? address(current) : encodeURIComponent(inboxId)}` : "/inbox";
   const href = (to: { item?: string | null; state?: ItemState; assigned?: string; tag?: string }) => {
     const s = new URLSearchParams();
@@ -286,7 +290,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
     });
   const items = page && !isFailure(page) ? page.items : [];
   // Until the item itself answers, its list row stands in, so a row opens at once.
-  const detail = !asked ? null : shown?.asked === asked ? shown.item : (items.find((i) => i.id === asked || String(i.number) === asked) ?? null);
+  const detail = !asked ? null : shown && (shown.asked === asked || (!isFailure(shown.item) && isItem(shown.item, asked))) ? shown.item : (items.find((i) => isItem(i, asked)) ?? null);
   // The rest of this page goes by the item's id.
   const itemId = detail && !isFailure(detail) ? detail.id : asked && isUuid(asked) ? asked : null;
   // What is open, as the list knows it: a conversation matches its row whichever of its DMs the address names.
@@ -335,6 +339,8 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   useEffect(() => {
     heading.current = null;
     if (!asked) return;
+    // The address moved from the UUID to the number of the item already shown: nothing to read again.
+    if (shown && !isFailure(shown.item) && isItem(shown.item, asked)) return;
     let live = true;
     getItem(asked).then((r) => {
       if (!live) return;
@@ -344,6 +350,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
     return () => {
       live = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `shown` is read only to skip a second read of the item on show
   }, [asked]);
 
   // An old address with the inbox's UUID moves to its number.
