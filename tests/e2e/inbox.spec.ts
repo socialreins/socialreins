@@ -567,7 +567,8 @@ test("each inbox shows its open count, kept fresh by the poll and by Mark done",
   await expect(questions.getByText("1 open in Questions")).toBeAttached();
 
   state.items.unshift(item("p7", "comment", "Is the price the same?"));
-  await page.clock.runFor(31_000);
+  // The counts refresh every fifth check, 2.5 minutes.
+  await page.clock.runFor(151_000);
   await expect(all.getByText("4 open in All")).toBeAttached();
   await expect(questions.getByText("2 open in Questions")).toBeAttached();
 
@@ -576,7 +577,7 @@ test("each inbox shows its open count, kept fresh by the poll and by Mark done",
   await expect(questions.getByText("1 open in Questions")).toBeAttached();
   // An inbox with nothing open shows no badge.
   state.items.forEach((i) => (i.state = "done"));
-  await page.clock.runFor(31_000);
+  await page.clock.runFor(151_000);
   await expect(nav.getByText(/open in/)).toHaveCount(0);
 });
 
