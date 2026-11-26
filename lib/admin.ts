@@ -40,6 +40,8 @@ export const approveSignup = (id: string) => api<Approval>(`/v1/admin/waitlist/$
 // Removing an approved entry takes its approval away.
 export const removeSignup = (id: string) => api(`/v1/admin/waitlist/${encodeURIComponent(id)}`, "DELETE");
 
+// Up to 50 mails are sent while the page waits, so this call may take far longer than the usual 10 seconds.
+const INVITE_TIMEOUT_MS = 120_000;
 // The most one batch invites; brain refuses more.
 export const MAX_INVITES = 50;
 // Who a batch of `count` would reach: the oldest verified signups not yet invited, oldest first.
@@ -47,7 +49,7 @@ export type InvitePreview = { eligible: number; left_today: number; selected: Si
 export const previewInvites = (count: number) => api<InvitePreview>(`/v1/admin/waitlist-invites?count=${count}`);
 // Needs a sign-in from the last 10 minutes. Nobody is mailed twice: `skipped` were invited already (or not verified), `capped` waited for the daily cap, `failed` had no mail sent; none of the last two is approved. `unsure`: the mail provider timed out, so the mail may have gone out; they stay approved and are not mailed again.
 export type Invited = { sent: number; failed: number; capped: number; skipped: number; unsure: number };
-export const inviteSignups = (ids: string[]) => api<Invited>("/v1/admin/waitlist-invites", "POST", { ids });
+export const inviteSignups = (ids: string[]) => api<Invited>("/v1/admin/waitlist-invites", "POST", { ids }, INVITE_TIMEOUT_MS);
 
 export function invitedText({ sent, failed, capped, skipped, unsure }: Invited) {
   const parts = [`Invited ${sent} ${sent === 1 ? "person" : "people"}.`];

@@ -99,10 +99,15 @@ export function Admin() {
     };
   }, [verified, q, hideStale, key, reload]);
   useEffect(() => {
+    let live = true;
     getOverview().then((o) => {
+      if (!live) return;
       setApproved(isFailure(o) ? "failed" : o.waitlist.approved);
       setSignedUp(isFailure(o) ? "failed" : o.waitlist.signed_up);
     });
+    return () => {
+      live = false;
+    };
   }, [reload]);
 
   const data = loaded?.key === key ? loaded.data : null;
@@ -142,11 +147,17 @@ export function Admin() {
   }
 
   function onInvite(p: InvitePreview) {
-    action.run("invite", () => inviteSignups(p.selected.map((s) => s.id)), (r) => {
-      setPreview(null);
-      setReload((n) => n + 1);
-      return invitedText(r);
-    });
+    action.run(
+      "invite",
+      async () => {
+        const r = await inviteSignups(p.selected.map((s) => s.id));
+        // Whatever the answer, some of them may be invited by now (a timeout does not stop brain): read the totals again and drop the preview.
+        setPreview(null);
+        setReload((n) => n + 1);
+        return r;
+      },
+      invitedText,
+    );
   }
 
   function onRemove(s: Signup) {
@@ -208,6 +219,7 @@ export function Admin() {
                   max={MAX_INVITES}
                   inputMode="numeric"
                   className="field w-28"
+                  disabled={action.busy !== null}
                   value={howMany}
                   onChange={(e) => {
                     setHowMany(e.target.value);
