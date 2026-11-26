@@ -17,7 +17,9 @@ export type Billing = {
   // ai_monthly: AI replies a month (UTC) on our key before AI credits; null when not metered. Optional until brain sends it.
   limits: { accounts: number | null; members: number | null; automation: boolean; contacts: number | null; inboxes?: number | null; ai_monthly?: number | null };
   // ai_replies: this month's AI replies paid from the plan's allowance.
-  usage: { accounts: number; members: number; inboxes?: number; ai_replies?: number };
+  usage: { accounts: number; members: number; contacts?: number; inboxes?: number; ai_replies?: number };
+  // Whether checkout starts with the 7-day trial: once for each person, not for each team. Optional until brain sends it.
+  trial_available?: boolean;
 };
 export type Credits = { x: number; ai: number };
 export type Provider = "anthropic" | "openai";

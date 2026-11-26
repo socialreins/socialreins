@@ -4,8 +4,9 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "rea
 import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
 import { MY_TEAM, teamPath, teamSegment } from "@/lib/team-path";
-import type { Failure, Role, Team, User } from "@/lib/auth";
+import { getProviders, type Failure, type Role, type Team, type User } from "@/lib/auth";
 import { useSession } from "@/components/app-shell";
+import { useTurnstile } from "@/components/turnstile";
 import {
   deleteTeam,
   grantable,
@@ -586,14 +587,23 @@ function Invitations({ version }: { version: number }) {
   const [email, setEmail] = useState("");
   const [role, setInviteRole] = useState<Invitation["role"]>("member");
   const { busy, problem, done, run } = useAction();
+  const [siteKey, setSiteKey] = useState<string | null>();
+  const turnstile = useTurnstile(siteKey, "invite");
 
   useEffect(() => {
     listInvitations().then(setList);
   }, [version]);
+  useEffect(() => {
+    getProviders().then((p) => setSiteKey(p.turnstileSiteKey));
+  }, []);
 
   function onInvite(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    run("invite", () => invite(email.trim(), role), (inv) => {
+    run("invite", async () => {
+      const sent = await invite(email.trim(), role, turnstile.token);
+      turnstile.reset();
+      return sent;
+    }, (inv) => {
       // A new invitation for a pending email replaces the old one.
       setList((l) => [...(Array.isArray(l) ? l.filter((x) => x.email !== inv.email) : []), inv]);
       setEmail("");
@@ -628,7 +638,8 @@ function Invitations({ version }: { version: number }) {
             <option value="admin">Admin</option>
           </select>
         </div>
-        <button type="submit" className="btn btn-primary h-9" disabled={busy !== null}>
+        {turnstile.widget}
+        <button type="submit" className="btn btn-primary h-9" disabled={busy !== null || siteKey === undefined || turnstile.missing}>
           {busy === "invite" ? "Sending..." : "Send invitation"}
         </button>
       </form>

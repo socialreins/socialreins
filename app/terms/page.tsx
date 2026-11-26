@@ -32,6 +32,10 @@ export default function Terms() {
         <li>Follow the rules of every platform you post to, such as Bluesky&apos;s.</li>
         <li>No spam, harassment, illegal content, or content that infringes other people&apos;s rights.</li>
         <li>No attempts to break, overload or get around the limits of the service or other people&apos;s accounts.</li>
+        <li>
+          A public page of a post (a link under socialreins.com/p/) must not carry phishing, scams, spam or illegal content. Anyone
+          can report a page from the page itself, and we may take a page down without notice.
+        </li>
       </ul>
 
       <h2>Ending an account</h2>

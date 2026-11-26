@@ -229,7 +229,7 @@ function PlanSection({ polling, onBilling }: { polling: boolean; onBilling: (ena
               </div>
             ))}
           </div>
-          <p className="text-ink-soft">A team&apos;s first plan starts with a 7-day free trial.</p>
+          <p className="text-ink-soft">{billing.trial_available === false ? "Your free trial has been used, so a plan is charged at once." : "A team's first plan starts with a 7-day free trial."}</p>
         </section>
       )}
       <section aria-labelledby="usage-heading" className="grid gap-2">
@@ -241,6 +241,12 @@ function PlanSection({ polling, onBilling }: { polling: boolean; onBilling: (ena
           <dd>{limitText(usage.accounts, limits.accounts)}</dd>
           <dt className="text-ink-soft">Team members</dt>
           <dd>{limitText(usage.members, limits.members)}</dd>
+          {usage.contacts !== undefined && (
+            <>
+              <dt className="text-ink-soft">Contacts</dt>
+              <dd>{limitText(usage.contacts, limits.contacts)}</dd>
+            </>
+          )}
           {usage.inboxes !== undefined && (
             <>
               <dt className="text-ink-soft">Inboxes</dt>
@@ -254,6 +260,11 @@ function PlanSection({ polling, onBilling }: { polling: boolean; onBilling: (ena
             </>
           )}
         </dl>
+        {usage.contacts !== undefined && limits.contacts !== null && usage.contacts >= limits.contacts && (
+          <p className="hint">
+            You are at the contact limit of your plan. People you already have stay and keep updating. A new person&apos;s messages still arrive and automations still answer, but they are not added as a contact, so they have no tags or notes and their messages are not grouped as one conversation.
+          </p>
+        )}
       </section>
       <section aria-labelledby="credits-heading" className="grid gap-2">
         <h2 id="credits-heading" className={heading}>

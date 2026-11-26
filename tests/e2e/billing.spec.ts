@@ -77,6 +77,14 @@ async function stripeRoutes(page: Page, answer: { status: number; json: object }
   return state;
 }
 
+test("a person who had a trial elsewhere is told the plan is charged at once, and a team at its contact limit is told what that means", async ({ page }) => {
+  await brain(page, "owner", { enabled: true, plan: null, limits: { ...limits, contacts: 2 }, usage: { accounts: 1, members: 1, contacts: 2 }, trial_available: false });
+  await page.goto("/billing");
+  await expect(page.getByText("Your free trial has been used, so a plan is charged at once.", { exact: true })).toBeVisible();
+  await expect(page.getByText("2 of 2")).toBeVisible();
+  await expect(page.getByText(/at the contact limit of your plan/)).toBeVisible();
+});
+
 test("a team with no plan sees two plan cards with no price, and owners choose one", async ({ page }) => {
   await brain(page, "owner", noPlan);
   const state = await stripeRoutes(page);

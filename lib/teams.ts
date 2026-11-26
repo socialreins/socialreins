@@ -85,8 +85,9 @@ export const setRole = (userId: string, role: Role) => api<Member>(`/v1/team/mem
 // Removing yourself is leaving the team.
 export const removeMember = (userId: string) => api(`/v1/team/members/${enc(userId)}`, "DELETE");
 export const listInvitations = () => api<Invitation[]>("/v1/team/invitations");
-export const invite = (email: string, role: Invitation["role"]) =>
-  api<Invitation>("/v1/team/invitations", "POST", { email, role });
+// `token` is the Turnstile token, sent only when brain has Turnstile on.
+export const invite = (email: string, role: Invitation["role"], token?: string | null) =>
+  api<Invitation>("/v1/team/invitations", "POST", { email, role, ...(token && { turnstile_token: token }) });
 export const revokeInvitation = (id: string) => api(`/v1/team/invitations/${enc(id)}`, "DELETE");
 export const previewInvitation = (token: string) => api<InvitationPreview>(`/v1/invitations/${enc(token)}`);
 export const acceptInvitation = (token: string) => api<Team>(`/v1/invitations/${enc(token)}`, "POST");

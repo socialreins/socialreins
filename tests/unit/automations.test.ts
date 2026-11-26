@@ -184,6 +184,11 @@ describe("limits", () => {
     for (const bad of ["0", "-1", "1.5", "abc", "501"]) expect(limitOf(bad, 500)).toBeNaN();
   });
 
+  it("starts a new automation at 10 minutes and sends an empty cool-down as 0, which brain reads as none", () => {
+    expect(draftOf(undefined)).toMatchObject({ cooldown: "10" });
+    expect(automationInput({ ...full, cooldown: "" }, scope, uris)).toMatchObject({ cooldown_minutes: 0 });
+  });
+
   it("sends the cool-down and the daily limit, and reads them back", () => {
     const input = automationInput({ ...full, cooldown: "60", dailyCap: "25" }, scope, uris);
     expect(input).toMatchObject({ cooldown_minutes: 60, daily_cap: 25 });
@@ -281,6 +286,7 @@ describe("triggers", () => {
       { type: "reply_publicly", text: "Sent you a DM" },
     ];
     expect(automationInput(full, scope, uris)).toEqual({
+      cooldown_minutes: 0,
       name: "Everything",
       trigger: "comment_received",
       conditions: { ...scope, keywords: ["price"], post_remote_ids: uris, first_per_author: true },
@@ -349,7 +355,7 @@ describe("triggers", () => {
       fallback_public_reply: "fallback",
     } as unknown as Automation;
     const again = automationInput(draftOf(saved), { social_set_id: null, account_ids: [] }, uris);
-    expect(again).toEqual({ name: "Both", trigger: "comment_received", active: false, conditions: saved.conditions, actions: saved.actions, fallback_public_reply: "fallback" });
+    expect(again).toEqual({ cooldown_minutes: 0, name: "Both", trigger: "comment_received", active: false, conditions: saved.conditions, actions: saved.actions, fallback_public_reply: "fallback" });
   });
 });
 
@@ -478,7 +484,7 @@ describe("flows", () => {
     const d = draftOf(saved);
     expect(d).toMatchObject({ flow: true, dm: "", publicReply: "", fallbackOn: false });
     const input = automationInput(d, { social_set_id: null, account_ids: ["c1"] }, []);
-    expect(input).toEqual({ name: "Guide flow", trigger: "comment_received", conditions: saved.conditions, steps: saved.steps, active: true });
+    expect(input).toEqual({ cooldown_minutes: 0, name: "Guide flow", trigger: "comment_received", conditions: saved.conditions, steps: saved.steps, active: true });
     expect(Object.keys(input)).not.toContain("actions");
     expect(Object.keys(input)).not.toContain("fallback_public_reply");
     // A simple one still goes with actions and no steps.

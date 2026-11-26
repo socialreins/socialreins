@@ -274,6 +274,7 @@ test("switching the trigger drops what the new one does not take, and says so", 
   await page.getByRole("button", { name: "Create automation" }).click();
   await expect(page).toHaveURL("/t/acme22/automations/a2");
   expect(state.bodies[0]).toEqual({
+    cooldown_minutes: 10,
     name: "Comment to DM",
     trigger: "dm_received",
     conditions: { ...noScope, keywords: ["link"], first_message: false },
@@ -306,6 +307,7 @@ test("creates a comment-to-DM automation with post links", async ({ page }) => {
   await page.getByRole("button", { name: "Create automation" }).click();
   await expect(page).toHaveURL("/t/acme22/automations/a2");
   expect(state.bodies[0]).toEqual({
+    cooldown_minutes: 10,
     name: "Guide",
     trigger: "comment_received",
     conditions: {
@@ -521,6 +523,7 @@ test("builds a flow of three steps with a wait and buttons, and saves steps with
   await page.getByRole("button", { name: "Create automation" }).click();
   await expect(page).toHaveURL("/t/acme22/automations/a2");
   expect(state.bodies[0]).toEqual({
+    cooldown_minutes: 10,
     name: "Price flow",
     trigger: "dm_received",
     conditions: { ...noScope, keywords: ["price"], first_message: false },
@@ -698,7 +701,7 @@ test("a flow shows its steps on the card, opens in the editor and saves unchange
   await expect(step(page, 3).getByLabel("Unit")).toHaveValue("days");
   await page.getByRole("button", { name: "Save automation" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Automation saved." })).toBeVisible();
-  expect(state.bodies[0]).toEqual({ name: "Guide flow", trigger: "comment_received", conditions: flowConditions, steps: flowSteps, active: true });
+  expect(state.bodies[0]).toEqual({ cooldown_minutes: 0, name: "Guide flow", trigger: "comment_received", conditions: flowConditions, steps: flowSteps, active: true });
 
   // A new label leaves the payload the flow came with, since a follow-up may listen for it.
   await page.getByRole("button", { name: "Edit" }).click();
@@ -729,6 +732,7 @@ test("a button's follow-up link opens the builder on the button trigger with its
   await page.getByRole("button", { name: "Create automation" }).click();
   await expect(page).toHaveURL("/t/acme22/automations/a2");
   expect(state.bodies[0]).toEqual({
+    cooldown_minutes: 10,
     name: "Button follow-up",
     trigger: "button_clicked",
     conditions: { social_set_id: null, account_ids: ["c1"], payloads: ["guide_yes"] },
@@ -955,6 +959,7 @@ test("a card's menu closes on Escape, duplicates into a prefilled builder that s
   // One save, a create: the original is untouched and the copy's buttons have payloads of their own.
   expect(state.bodies).toEqual([
     {
+      cooldown_minutes: 0,
       name: "Guide flow (copy)",
       trigger: "comment_received",
       conditions: flowConditions,
@@ -1344,6 +1349,7 @@ test("a like trigger offers only what has nobody to message, and saves it", asyn
   await page.getByRole("button", { name: "Create automation" }).click();
   await expect(page).toHaveURL("/t/acme22/automations/a2");
   expect(state.bodies[0]).toEqual({
+    cooldown_minutes: 10,
     name: "Follow likers",
     trigger: "like_received",
     conditions: { social_set_id: null, account_ids: [], post_remote_ids: [] },

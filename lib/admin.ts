@@ -47,6 +47,26 @@ export function approvalText({ signup, mail }: Approval) {
   return `Approved ${signup.email}, so they can sign up, but the email could not be sent. They were not told: let them know another way.${unverified}`;
 }
 
+export type PageReport = {
+  id: string;
+  // The page's public address, /p/<code>.
+  code: string;
+  team_id: string;
+  team: string;
+  reason: string;
+  message: string;
+  contact: string | null;
+  created_at: string;
+  // Reports about this page in all.
+  reports: number;
+  taken_down: boolean;
+};
+// Newest first, at most 200.
+export const listPageReports = () => api<{ reports: PageReport[] }>("/v1/admin/page-reports");
+// A taken-down page is a 404 for everyone and its team cannot switch it back on.
+export const takeDownPage = (code: string, takenDown: boolean) =>
+  api(`/v1/admin/pages/${encodeURIComponent(code)}/takedown`, "PUT", { taken_down: takenDown });
+
 export type Overview = {
   users: number;
   new_users_7d: number;

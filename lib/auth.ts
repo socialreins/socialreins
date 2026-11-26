@@ -267,6 +267,9 @@ export const codes = [
   "invalid_sample",
   "invalid_cooldown",
   "invalid_daily_cap",
+  "captcha_failed",
+  "captcha_unavailable",
+  "review_account",
 ] as const;
 export type Failure = (typeof codes)[number] | "rate_limited" | "signed_out" | "timeout" | "error";
 export type Passkey = { id: string; name: string; created_at: string; last_used_at: string | null };

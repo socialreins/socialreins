@@ -1,27 +1,32 @@
 import { api, failure, request, type Failure, type Team } from "@/lib/auth";
 import { csvCell } from "@/lib/csv";
-import { apiUrl } from "@/lib/waitlist";
+import { apiUrl, captchaError, type Captcha } from "@/lib/waitlist";
 
 const TIMEOUT_MS = 10_000;
 const enc = encodeURIComponent;
 
-export type SubscribeResult = "ok" | "invalid" | "gone" | "rate_limited" | "timeout" | "error";
+export type SubscribeResult = "ok" | "invalid" | "gone" | "rate_limited" | "timeout" | "error" | Captcha;
 export type NewsletterVerifyResult = { team: string } | "invalid" | "rate_limited" | "timeout" | "error";
 
 const failed = (e: unknown) => (e instanceof DOMException && e.name === "TimeoutError" ? "timeout" : "error");
 
 // The same answer for a new email and a known one; brain mails a link to confirm. 404 means the page or its
 // newsletter was switched off since the page loaded.
-export async function subscribe(code: string, email: string): Promise<SubscribeResult> {
+// `token` is the Turnstile token, sent only when brain has Turnstile on.
+export async function subscribe(code: string, email: string, token?: string | null): Promise<SubscribeResult> {
   try {
     const res = await fetch(`${apiUrl}/v1/public/pages/${enc(code)}/subscribe`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email, ...(token && { turnstile_token: token }) }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     if (res.ok) return "ok";
-    if (res.status === 422) return "invalid";
+    if (res.status === 422 || res.status === 503) {
+      const captcha = await captchaError(res);
+      if (captcha) return captcha;
+      return res.status === 422 ? "invalid" : "error";
+    }
     if (res.status === 404) return "gone";
     if (res.status === 429) return "rate_limited";
     return "error";

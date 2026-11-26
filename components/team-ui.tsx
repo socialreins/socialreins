@@ -92,6 +92,9 @@ export const planLimit = (limit?: string) => (
 );
 
 const messages: Partial<Record<Failure, ReactNode>> = {
+  captcha_failed: "The check didn't pass. Try again.",
+  captcha_unavailable: "We couldn't check that right now. Try again in a minute.",
+  review_account: "The demo account used for app review cannot do this.",
   plan_limit: planLimit(),
   plan_limit_accounts: planLimit("accounts"),
   plan_limit_members: planLimit("members"),
