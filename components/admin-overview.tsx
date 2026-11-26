@@ -80,6 +80,7 @@ export function AdminOverview() {
           rows={[
             ["Verified", waitlist.verified, "verified"],
             ["Approved", waitlist.approved, "approved"],
+            ["Signed up", waitlist.signed_up, "signed-up"],
           ]}
         />
       </Card>

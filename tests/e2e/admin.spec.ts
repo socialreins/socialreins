@@ -25,7 +25,7 @@ const overview = {
   teams: 300,
   accounts: { total: 7, by_provider: { bluesky: 4, x: 2, mastodon: 1 } },
   posts: { scheduled: 5, published: 40, failed: 2, draft: 9 },
-  waitlist: { total: 1200, verified: 700, approved: 30 },
+  waitlist: { total: 1200, verified: 700, approved: 30, signed_up: 12 },
 };
 const users = Array.from({ length: 5 }, (_, i) => ({
   id: `u${i}`,
@@ -52,6 +52,9 @@ async function brain(page: Page, isAdmin = true) {
     // Every admin GET as path and query, in order.
     asked: [] as string[],
     writes: [] as string[],
+    // Each batch of ids invited, as sent.
+    invited: [] as string[][],
+    inviteAnswer: null as object | null,
     mail: "sent" as "sent" | "failed" | "already_approved",
     settings: { mode: "closed", domains: [] as string[], source: "env" },
     saves: [] as unknown[],
@@ -95,6 +98,18 @@ async function brain(page: Page, isAdmin = true) {
     }
     found.approved_at ??= "2026-11-12T09:00:00Z";
     return route.fulfill({ json: { signup: found, mail: state.mail } });
+  });
+  await page.route(/\/v1\/admin\/waitlist-invites(\?.*)?$/, (route) => {
+    const req = route.request();
+    if (req.method() === "POST") {
+      const { ids } = req.postDataJSON() as { ids: string[] };
+      state.invited.push(ids);
+      for (const s of state.signups) if (ids.includes(s.id)) s.approved_at ??= "2026-11-27T09:00:00Z";
+      return route.fulfill({ json: state.inviteAnswer ?? { sent: ids.length, failed: 0, capped: 0, skipped: 0, unsure: 0 } });
+    }
+    const count = Number(get(route).get("count"));
+    const waiting = state.signups.filter((s) => s.verified_at && !s.approved_at).sort((a, b) => a.created_at.localeCompare(b.created_at));
+    return route.fulfill({ json: { eligible: waiting.length, left_today: 98, selected: waiting.slice(0, count) } });
   });
   // 5 users in all; the page asked for is cut from them.
   await page.route(/\/v1\/admin\/users(\?.*)?$/, (route) => {
@@ -315,7 +330,7 @@ test("the waitlist shows totals and signups, filtered in ?verified= and searched
   await page.goto("/admin/waitlist");
   await expect(page.getByRole("heading", { name: "Signups" })).toBeVisible();
   const total = page.locator("dl > div");
-  await expect(total).toHaveText(["Total1,200", "Verified700", "Unverified500", "Approved30"]);
+  await expect(total).toHaveText(["Total1,200", "Verified700", "Unverified500", "Approved30", "Signed up12"]);
   await expect(rows(page)).toHaveCount(3);
   await expect(rows(page).nth(1)).toContainText("new@example.com");
   await expect(rows(page).nth(1)).toContainText("landing");
@@ -409,7 +424,7 @@ test("approve tells an entry someone else approved meanwhile, and a missing one"
   const alert = main(page).getByRole("alert");
   await expect(alert).toHaveText("Someone else already removed that entry. It is gone from the list.");
   await expect(rows(page)).toHaveText([/newest@example\.com/, /old@example\.com/]);
-  await expect(page.locator("dl > div")).toHaveText(["Total1,199", "Verified700", "Unverified499", "Approved30"]);
+  await expect(page.locator("dl > div")).toHaveText(["Total1,199", "Verified700", "Unverified499", "Approved30", "Signed up12"]);
 
   // The same for Remove, here of an approved, verified entry.
   state.signups = state.signups.filter((s) => s.id !== "w1");
@@ -417,7 +432,7 @@ test("approve tells an entry someone else approved meanwhile, and a missing one"
   await page.getByRole("button", { name: "Yes, remove" }).click();
   await expect(alert).toHaveText("Someone else already removed that entry. It is gone from the list.");
   await expect(rows(page)).toHaveText([/newest@example\.com/]);
-  await expect(page.locator("dl > div")).toHaveText(["Total1,198", "Verified699", "Unverified499", "Approved29"]);
+  await expect(page.locator("dl > div")).toHaveText(["Total1,198", "Verified699", "Unverified499", "Approved29", "Signed up12"]);
 });
 
 test("approve and remove tell an admin whose rights are gone, in the console's words", async ({ page }) => {
@@ -459,7 +474,7 @@ test("remove asks first, warns about an approval, and drops the row", async ({ p
   await expect(main(page).getByRole("status")).toBeFocused();
   await expect(rows(page)).toHaveCount(2);
   await expect(main(page).getByText("old@example.com", { exact: true })).toHaveCount(0);
-  await expect(page.locator("dl > div")).toHaveText(["Total1,199", "Verified699", "Unverified500", "Approved29"]);
+  await expect(page.locator("dl > div")).toHaveText(["Total1,199", "Verified699", "Unverified500", "Approved29", "Signed up12"]);
   expect(state.writes).toEqual(["DELETE w1"]);
 });
 
@@ -609,4 +624,62 @@ test("the tables scroll sideways at phone width instead of widening the page", a
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   }
+});
+
+test("the admin previews a batch of the oldest verified signups, then confirms it once", async ({ page }) => {
+  const state = await brain(page);
+  state.signups.push(
+    signup("w5", "second@example.com", "2026-10-02T10:00:00Z", "2026-10-03T08:00:00Z"),
+    signup("w4", "first@example.com", "2026-10-01T10:00:00Z", "2026-10-01T12:00:00Z"),
+    signup("w6", "third@example.com", "2026-10-03T10:00:00Z", "2026-10-04T08:00:00Z"),
+  );
+  await page.goto("/admin/waitlist");
+  const card = main(page).getByRole("region", { name: "Invite from the waitlist" });
+  await expect(card).toBeVisible();
+  // Nothing is asked until the admin previews, and nobody is invited by a preview.
+  expect(state.asked.filter((a) => a.startsWith("waitlist-invites"))).toEqual([]);
+  await card.getByLabel("How many").fill("2");
+  await card.getByRole("button", { name: "Preview" }).click();
+  await expect(card.getByRole("listitem")).toHaveText(["first@example.com joined Oct 1, 2026", "second@example.com joined Oct 2, 2026"]);
+  await expect(card).toContainText("2 of 3 verified signups waiting would be invited, oldest first. 98 invite emails are left today.");
+  expect(state.invited).toEqual([]);
+
+  // Changing the number drops the stale preview; the confirm button names exactly who is invited.
+  await card.getByLabel("How many").fill("1");
+  await expect(card.getByRole("listitem")).toHaveCount(0);
+  await card.getByRole("button", { name: "Preview" }).click();
+  await card.getByRole("button", { name: "Cancel" }).click();
+  await expect(card.getByRole("listitem")).toHaveCount(0);
+
+  await card.getByLabel("How many").fill("2");
+  await card.getByRole("button", { name: "Preview" }).click();
+  await card.getByRole("button", { name: "Invite 2 people" }).click();
+  await expect(main(page).getByRole("status")).toHaveText("Invited 2 people.");
+  expect(state.invited).toEqual([["w4", "w5"]]);
+  // The list and the totals are read again: both now show their approval.
+  await expect(rows(page).filter({ hasText: "first@example.com" })).toContainText("Approved Nov 27, 2026");
+  await expect(card.getByRole("listitem")).toHaveCount(0);
+});
+
+test("a batch says what was skipped, capped or not mailed, and asks for a fresh sign-in when needed", async ({ page }) => {
+  const state = await brain(page);
+  state.signups.push(signup("w4", "first@example.com", "2026-10-01T10:00:00Z", "2026-10-01T12:00:00Z"));
+  await page.goto("/admin/waitlist");
+  const card = main(page).getByRole("region", { name: "Invite from the waitlist" });
+  state.inviteAnswer = { sent: 1, failed: 2, capped: 3, skipped: 4, unsure: 5 };
+  await card.getByRole("button", { name: "Preview" }).click();
+  await card.getByRole("button", { name: "Invite 1 person" }).click();
+  await expect(main(page).getByRole("status")).toHaveText(
+    "Invited 1 person. 4 had been invited already, so no second email went out. 3 must wait: the daily limit of invite emails was reached. Invite them tomorrow. 5 may not have got the email (the mail service did not answer in time). They are invited and will not be emailed again: let them know another way. 2 could not be emailed, so they are not invited yet. Try them again later.",
+  );
+
+  await page.unroute(/\/v1\/admin\/waitlist-invites(\?.*)?$/);
+  await page.route(/\/v1\/admin\/waitlist-invites(\?.*)?$/, (route) =>
+    route.request().method() === "POST"
+      ? route.fulfill({ status: 403, json: { error: "reauth_required" } })
+      : route.fulfill({ json: { eligible: 1, left_today: 100, selected: [signup("w4", "first@example.com", "2026-10-01T10:00:00Z", "2026-10-01T12:00:00Z")] } }),
+  );
+  await card.getByRole("button", { name: "Preview" }).click();
+  await card.getByRole("button", { name: "Invite 1 person" }).click();
+  await expect(main(page).getByRole("alert")).toContainText("fresh sign-in");
 });
