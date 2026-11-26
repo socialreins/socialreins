@@ -6,7 +6,10 @@ export async function exportData(): Promise<{ blob: Blob; name: string } | Failu
   if (typeof res === "string") return res;
   if (!res.ok) return failure(res);
   try {
-    return { blob: await res.blob(), name: `socialreins-export-${new Date().toISOString().slice(0, 10)}.json` };
+    const blob = await res.blob();
+    // Brain ends a whole file with `"complete":true`; a proxy may turn a failed stream into a clean end.
+    if (!(await blob.slice(-40).text()).trimEnd().endsWith('"complete":true}')) return "error";
+    return { blob, name: `socialreins-export-${new Date().toISOString().slice(0, 10)}.json` };
   } catch {
     // The stream ended early: brain failed part way, so the file would be cut short.
     return "error";

@@ -7,7 +7,7 @@ const me = {
   username: null,
   current_team: { id: "t1", name: "Acme", code: "acme22", role: "owner" },
 };
-const FILE = { readme: "Your SocialReins data", profile: { email: "me@example.com" }, teams: [] };
+const FILE = { readme: "Your SocialReins data", profile: { email: "me@example.com" }, teams: [], complete: true };
 
 // A small brain for the two account calls: `export` and `remove` set what each answers.
 async function brain(page: Page) {
@@ -40,6 +40,11 @@ test("downloads a copy of your data, once an hour", async ({ page }) => {
   const { readFileSync } = await import("node:fs");
   expect(JSON.parse(readFileSync((await download.path())!, "utf8"))).toEqual(FILE);
   await expect(page.getByRole("status")).toHaveText("Your data was downloaded.");
+
+  // A file brain did not finish (no `complete` at the end) is not saved as a good copy.
+  state.export = { status: 200, json: { ...FILE, complete: undefined } };
+  await page.getByRole("button", { name: "Download my data" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Something went wrong" })).toBeVisible();
 
   state.export = { status: 429, json: { error: "rate_limited" } };
   await page.getByRole("button", { name: "Download my data" }).click();
