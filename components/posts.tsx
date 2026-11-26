@@ -89,7 +89,7 @@ export const postMessages: Partial<Record<Failure, ReactNode>> = {
   upload_interrupted: "The upload stopped before the whole file arrived. Try again.",
   uploads_in_progress: "Your team has 3 uploads running already. Wait for one to finish, then try again.",
   unsupported_platform: "That platform can't publish yet.",
-  too_many_posts: "This team has 2000 posts, the most allowed. Delete some first.",
+  too_many_posts: "This team has 2000 drafts, scheduled or failed posts, the most allowed. Delete some first. Published posts do not count.",
   not_editable: "This post is publishing or already went out, so it can't change. Reload to see it.",
   not_deletable: "A post that is publishing, or failed with something still on a network, can't be deleted.",
   publish_quota: "The team reached its limit of 100 published posts today. Schedule this one for tomorrow.",
