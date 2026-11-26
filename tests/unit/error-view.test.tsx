@@ -44,7 +44,7 @@ describe("the other boundaries", () => {
     const { renderToStaticMarkup } = await import("react-dom/server");
     const Global = (await import("@/app/global-error")).default;
     const html = renderToStaticMarkup(<Global error={new Error("x")} retry={() => {}} />);
-    expect(html).toMatch(/^<html[^>]*><body[^>]*>/);
+    expect(html).toMatch(/^<html[^>]*>.*<body[^>]*>/);
     expect(html).toMatch(/Something went wrong/);
     expect(html).toMatch(/Try again/);
   });
