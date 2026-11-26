@@ -8,6 +8,10 @@ const nextConfig: NextConfig = {
   // brain/ is the Rust API submodule: never part of the web build or its standalone output.
   outputFileTracingExcludes: { "*": ["brain/**"] },
   cacheComponents: true,
+  // Railway builds with the commit in RAILWAY_GIT_COMMIT_SHA (the Dockerfile passes it on). A tab left open across a
+  // deploy then reloads on its next navigation instead of asking for chunks the new build removed; unset (a local or
+  // self-hosted build), nothing changes.
+  deploymentId: process.env.RAILWAY_GIT_COMMIT_SHA || undefined,
   partialPrefetching: true,
   // The app moved off /app, then under /t/<team code>/ (lib/team-path.ts); brain and old bookmarks still link to both.
   redirects: async () => [

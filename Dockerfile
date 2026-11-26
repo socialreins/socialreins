@@ -3,6 +3,8 @@ FROM node:24-alpine AS builder
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
+# Railway passes its commit as a build argument; next.config.ts uses it as the deployment id.
+ARG RAILWAY_GIT_COMMIT_SHA
 COPY . .
 RUN npm run build
 
