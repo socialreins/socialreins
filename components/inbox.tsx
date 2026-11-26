@@ -69,6 +69,8 @@ import { YouTubeContext, YouTubeDeleteReply } from "@/components/youtube-inbox";
 
 // New comments arrive on brain's per-minute tick; the open list checks twice a minute.
 const REFRESH_MS = 30_000;
+// The open counts of every inbox cost brain a pass over the team's open items: they refresh when 2.5 minutes have passed since the last time, and when the tab shows again.
+const COUNTS_AFTER_MS = 150_000;
 
 const replyMessages: Partial<Record<Failure, ReactNode>> = {
   reply_in_progress: "Another reply to this is going out right now. Wait a moment, then reload.",
@@ -295,6 +297,8 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   const itemId = detail && !isFailure(detail) ? detail.id : asked && isUuid(asked) ? asked : null;
   // What is open, as the list knows it: a conversation matches its row whichever of its DMs the address names.
   const openKey = detail && !isFailure(detail) ? threadKey(detail) : itemId;
+  // When the counts were last asked for by the refresh below; kept across filter changes, which restart that effect.
+  const countsAt = useRef(0);
   const refreshCounts = () => listInboxes().then((l) => Array.isArray(l) && setInboxes(l));
   const go = (item: { id: string; number?: number } | null, how: "push" | "replace" = "replace") => {
     if (item) setOpened(item.id);
@@ -314,19 +318,23 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
 
   useSearchInUrl(search, q);
 
-  // While the tab shows, fold the newest page into the list and refresh the open counts; a failed check waits for the next.
+  // While the tab shows, fold the newest page into the list (and now and then refresh the open counts); a failed check waits for the next.
   useEffect(() => {
     if (!currentId) return;
     let live = true;
-    const check = async () => {
+    if (countsAt.current === 0) countsAt.current = Date.now();
+    const check = async (counts = false) => {
       if (document.visibilityState !== "visible") return;
-      listInboxes().then((l) => live && Array.isArray(l) && setInboxes(l));
+      if (counts || Date.now() - countsAt.current >= COUNTS_AFTER_MS - 1000) {
+        countsAt.current = Date.now();
+        listInboxes().then((l) => live && Array.isArray(l) && setInboxes(l));
+      }
       const r = await fetchItems(currentId);
       if (!live || isFailure(r)) return;
       setLoaded((l) => (l?.key === key && !isFailure(l.page) ? { key, page: mergeFresh(l.page, r) } : l));
     };
-    const timer = setInterval(check, REFRESH_MS);
-    const onVisible = () => document.visibilityState === "visible" && check();
+    const timer = setInterval(() => check(), REFRESH_MS);
+    const onVisible = () => document.visibilityState === "visible" && check(true);
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       live = false;
