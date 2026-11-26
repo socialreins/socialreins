@@ -97,7 +97,7 @@ function Newsletter({ code, team }: { code: string; team: string }) {
         <label htmlFor="newsletter-email">Your email, to get the newsletter of {team}</label>
         <div className="waitlist-row">
           <input id="newsletter-email" type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} aria-invalid={status === "invalid" || undefined} />
-          <button type="submit" disabled={status === "sending" || turnstile.missing}>
+          <button type="submit" disabled={status === "sending" || siteKey === undefined || turnstile.missing}>
             {status === "sending" ? "Sending..." : "Subscribe"}
           </button>
         </div>
@@ -162,7 +162,7 @@ function Report({ code }: { code: string }) {
         <label htmlFor="report-email">Email for an answer (optional)</label>
         <input id="report-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
         {turnstile.widget}
-        <button type="submit" disabled={status === "sending" || turnstile.missing}>
+        <button type="submit" disabled={status === "sending" || siteKey === undefined || turnstile.missing}>
           {status === "sending" ? "Sending..." : "Send the report"}
         </button>
         <p role="status" aria-live="polite" className={failed ? "waitlist-error" : "waitlist-empty"}>

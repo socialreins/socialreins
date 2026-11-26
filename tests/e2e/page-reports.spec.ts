@@ -56,8 +56,8 @@ test("an admin sees the reports and takes a page down", async ({ page }) => {
   await page.goto("/admin/reports");
   await expect(page.getByText("Shady Co")).toBeVisible();
   await expect(page.getByText("Asks for a password")).toBeVisible();
-  await page.getByRole("button", { name: "Take down" }).click();
+  await page.getByRole("button", { name: `Take down the page ${code}` }).click();
   await expect(page.getByText(`The page ${code} is down.`)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Bring back" })).toBeVisible();
+  await expect(page.getByRole("button", { name: `Bring back the page ${code}` })).toBeVisible();
   expect(calls).toEqual([{ taken_down: true }]);
 });

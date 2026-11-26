@@ -43,7 +43,7 @@ export function AdminReports() {
         <table className="w-full text-left text-sm">
           <thead>
             <tr>
-              {["Page", "Team", "Reason", "Message", "From", "When", "Reports", ""].map((h) => (
+              {["Page", "Team", "Reason", "Message", "From", "When", "Reports", "Action"].map((h) => (
                 <th key={h} scope="col" className={th}>
                   {h}
                 </th>
@@ -66,7 +66,7 @@ export function AdminReports() {
                 <td className={`${td} whitespace-nowrap`}>{day(r.created_at)}</td>
                 <td className={td}>{r.reports}</td>
                 <td className={td}>
-                  <button type="button" className={linkButton} disabled={busy !== null} onClick={() => toggle(r.code, !r.taken_down)}>
+                  <button type="button" className={linkButton} disabled={busy !== null} aria-label={`${r.taken_down ? "Bring back" : "Take down"} the page ${r.code}`} onClick={() => toggle(r.code, !r.taken_down)}>
                     {r.taken_down ? "Bring back" : "Take down"}
                   </button>
                 </td>

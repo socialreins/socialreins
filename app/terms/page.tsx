@@ -34,7 +34,7 @@ export default function Terms() {
         <li>No attempts to break, overload or get around the limits of the service or other people&apos;s accounts.</li>
         <li>
           A public page of a post (a link under socialreins.com/p/) must not carry phishing, scams, spam or illegal content. Anyone
-          can report a page from the page itself, and we may take a page down at once.
+          can report a page from the page itself, and we may take a page down without notice.
         </li>
       </ul>
 

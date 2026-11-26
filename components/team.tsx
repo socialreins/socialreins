@@ -639,7 +639,7 @@ function Invitations({ version }: { version: number }) {
           </select>
         </div>
         {turnstile.widget}
-        <button type="submit" className="btn btn-primary h-9" disabled={busy !== null || turnstile.missing}>
+        <button type="submit" className="btn btn-primary h-9" disabled={busy !== null || siteKey === undefined || turnstile.missing}>
           {busy === "invite" ? "Sending..." : "Send invitation"}
         </button>
       </form>
