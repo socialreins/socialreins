@@ -93,6 +93,9 @@ test("home greets, and shows what failed, what is next, recent posts, the inbox 
   await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "All sets" }).click();
   await page.locator("#set-menu").getByRole("button", { name: "All sets" }).click();
   await expect.poll(() => queries.some((q) => q.get("social_set_id") === "d")).toBe(true);
+  // The week's numbers read a week back (the clock is 2026-11-10T12:00Z); the latest published posts have their own call.
+  expect(queries.some((q) => q.get("from") === "2026-11-03T12:00:00.000Z" && q.get("to") === "2026-12-10T12:00:00.000Z" && !q.has("status"))).toBe(true);
+  expect(queries.some((q) => q.get("status") === "published" && q.get("order") === "desc" && q.get("limit") === "100")).toBe(true);
 });
 
 test("a section that fails to load says so with Retry while the others render", async ({ page }) => {

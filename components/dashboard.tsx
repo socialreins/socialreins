@@ -82,10 +82,16 @@ export function Dashboard() {
 
   // Each post's set zone is read with the posts, so no time or day shifts once they show.
   const [posts, retryPosts] = useLoad(async () => {
-    const r = await listPosts({ social_set_id: setId, from: new Date(now - 30 * DAY).toISOString(), to: new Date(now + 30 * DAY).toISOString() });
+    // A week back is all the numbers and failures need; "Recently published" has its own call.
+    const r = await listPosts({ social_set_id: setId, from: new Date(now - 7 * DAY).toISOString(), to: new Date(now + 30 * DAY).toISOString() });
     if (Array.isArray(r)) await loadZones(r.map((p) => p.social_set_id));
     return r;
   }, `posts ${setId}`);
+  const [recent, retryRecent] = useLoad(async () => {
+    const r = await listPosts({ social_set_id: setId, status: "published", order: "desc", limit: 100 });
+    if (Array.isArray(r)) await loadZones(r.map((p) => p.social_set_id));
+    return r;
+  }, `recent ${setId}`);
   const [stats, retryStats] = useLoad(() => getAnalytics(setId, 7, now), `stats ${setId}`);
   const [queue] = useLoad<Queue>(() => (setId ? getQueue(setId) : Promise.resolve({ time_zone: "UTC", slots: [], next: [] })), `queue ${setId}`);
   const [inbox, retryInbox] = useLoad(loadInbox, "inbox");
@@ -99,7 +105,9 @@ export function Dashboard() {
     (p) => p.scheduled_at!,
   );
   const published = rows(list.filter((p) => p.status === "published").sort(newest), () => "");
-  // Only this week's failures: failed posts cannot be deleted, so older ones would sit here forever.
+  // The latest published posts, however old, from their own call.
+  const latest = rows((Array.isArray(recent) ? recent : []).filter((p) => p.status === "published").sort(newest), () => "");
+  // Only this week's failures: the window above reaches back a week, and older ones can be deleted from the Posts page.
   // The same reason on the same network is one row, however many posts it stopped.
   const failures = [
     ...groupBy(list.filter((p) => p.status === "failed" && Date.parse(postTime(p)) > now - 7 * DAY).sort(newest), (p) => `${p.platform}\n${p.error ?? ""}`).values(),
@@ -262,12 +270,12 @@ export function Dashboard() {
             )}
           </Panel>
 
-          <Panel id="recent" title="Recently published" link={{ href: "/posts?status=published", label: "All published" }} load={posts} retry={retryPosts} skeleton={5}>
-            {published.length === 0 ? (
-              <Empty>Nothing published in the last 30 days.</Empty>
+          <Panel id="recent" title="Recently published" link={{ href: "/posts?status=published", label: "All published" }} load={recent} retry={retryRecent} skeleton={5}>
+            {latest.length === 0 ? (
+              <Empty>Nothing published yet.</Empty>
             ) : (
               <ul className="divide-y divide-[var(--line-soft)]">
-                {published.slice(0, 5).map((r) => {
+                {latest.slice(0, 5).map((r) => {
                   const n = postTotals(r);
                   return (
                     <li key={r[0]!.id}>
