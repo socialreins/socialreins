@@ -27,3 +27,25 @@ describe("ErrorView", () => {
     expect(screen.getByRole("link", { name: "Go to your team" }).getAttribute("href")).toBe("/home");
   });
 });
+
+describe("the other boundaries", () => {
+  it("the admin one points home at the overview, the public one at the home page", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const Admin = (await import("@/app/admin/error")).default;
+    render(<Admin error={new Error("x")} retry={() => {}} />);
+    expect(screen.getByRole("link", { name: "Go to the admin overview" }).getAttribute("href")).toBe("/admin");
+    cleanup();
+    const Public = (await import("@/app/error")).default;
+    render(<Public error={new Error("x")} retry={() => {}} />);
+    expect(screen.getByRole("link", { name: "Go to the home page" }).getAttribute("href")).toBe("/");
+  });
+
+  it("the root one is a whole document with a retry", async () => {
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const Global = (await import("@/app/global-error")).default;
+    const html = renderToStaticMarkup(<Global error={new Error("x")} retry={() => {}} />);
+    expect(html).toMatch(/^<html[^>]*><body[^>]*>/);
+    expect(html).toMatch(/Something went wrong/);
+    expect(html).toMatch(/Try again/);
+  });
+});

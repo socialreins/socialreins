@@ -1,11 +1,16 @@
 "use client";
 
+import { useEffect } from "react";
+
 // Replaces the root layout when it throws, so it brings its own document and styles (the page's
 // stylesheet is not loaded here).
-export default function GlobalError({ retry }: { error: unknown; retry: () => void }) {
+export default function GlobalError({ error, retry }: { error: unknown; retry: () => void }) {
+  useEffect(() => {
+    console.error(error);
+  }, [error]);
   return (
-    <html lang="en">
-      <body style={{ fontFamily: "system-ui, sans-serif", margin: 0, padding: "4rem 1rem", textAlign: "center" }}>
+    <html lang="en" style={{ colorScheme: "light dark" }}>
+      <body role="alert" style={{ fontFamily: "system-ui, sans-serif", margin: 0, padding: "4rem 1rem", textAlign: "center" }}>
         <h1 style={{ fontSize: "1.75rem" }}>Something went wrong</h1>
         <p>Your posts and settings are safe. If SocialReins was just updated, a reload fixes it.</p>
         <p>

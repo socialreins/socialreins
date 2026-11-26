@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 /**
  * What a page shows when it throws (an unexpected answer from brain, a chunk a deploy removed):
@@ -10,12 +10,14 @@ import { useEffect } from "react";
  */
 export function ErrorView({ error, retry, home }: { error: unknown; retry: () => void; home: string }) {
   // Nothing sends it anywhere yet (no error tracker); the console and Next's digest are what there is.
+  const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     console.error(error);
+    heading.current?.focus();
   }, [error]);
   return (
     <div role="alert" className="grid max-w-xl gap-3 py-8">
-      <h1 className="font-display text-3xl font-bold tracking-tight">Something went wrong</h1>
+      <h1 ref={heading} tabIndex={-1} className="font-display text-3xl font-bold tracking-tight outline-none">Something went wrong</h1>
       <p className="text-ink-soft">
         This page hit a problem. Your posts and settings are safe. If SocialReins was just updated, a reload fixes it.
       </p>
@@ -27,7 +29,7 @@ export function ErrorView({ error, retry, home }: { error: unknown; retry: () =>
           Reload the page
         </button>
         <Link href={home} className="btn btn-quiet">
-          Go to {home === "/" ? "the home page" : "your team"}
+          Go to {home === "/" ? "the home page" : home === "/admin" ? "the admin overview" : "your team"}
         </Link>
       </div>
     </div>
