@@ -27,3 +27,8 @@ test("/app/ followed by slashes in any form never redirects off site", async ({ 
     if (location) expect(location, tail).not.toMatch(/^[/\\]{2}/);
   }
 });
+
+test("pages carry a Permissions-Policy that turns off the camera, microphone and location", async ({ request }) => {
+  const res = await request.get("/pricing");
+  expect(res.headers()["permissions-policy"]).toBe("camera=(), microphone=(), geolocation=()");
+});
