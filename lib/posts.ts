@@ -258,7 +258,8 @@ export type PostGroupInput = Omit<PostInput, "platform"> & {
   platforms: Platform[];
   overrides?: Partial<Record<Platform, { body?: string; media?: string[]; media_alt?: string[]; thread?: ThreadPart[]; first_comment?: string; cover?: string }>>;
 };
-export type PostFilter = { social_set_id?: string; status?: PostStatus; from?: string; to?: string; group_id?: string; approval?: Approval };
+// `limit` (1 to 2000) and `order` "desc" (newest first) keep a long history to what a screen shows; without them brain answers the oldest 2000.
+export type PostFilter = { social_set_id?: string; status?: PostStatus; from?: string; to?: string; group_id?: string; approval?: Approval; limit?: number; order?: "asc" | "desc" };
 
 // Each platform's limits, as brain's crates/core/src/post.rs checks them. `chars` counts graphemes
 // on Bluesky, X's weighted count on X (`xWeight`), UTF-16 code units on TikTok and Unicode code points elsewhere (on YouTube it is the
@@ -382,7 +383,7 @@ export const MAX_PARTS = 25;
 const enc = encodeURIComponent;
 
 export function listPosts(filter: PostFilter = {}) {
-  const q = new URLSearchParams(Object.entries(filter).filter((e): e is [string, string] => Boolean(e[1])));
+  const q = new URLSearchParams(Object.entries(filter).filter((e) => Boolean(e[1])).map(([k, v]) => [k, String(v)]));
   return api<Post[]>(`/v1/posts${q.size ? `?${q}` : ""}`);
 }
 export const getPost = (id: string) => api<Post>(`/v1/posts/${enc(id)}`);

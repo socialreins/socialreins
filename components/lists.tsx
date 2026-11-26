@@ -291,7 +291,7 @@ export function ListView({ id }: { id: string }) {
 
   useEffect(() => {
     if (setId === undefined) return;
-    listPosts(setId ? { social_set_id: setId } : {}).then((r) => Array.isArray(r) && setPosts(r));
+    listPosts({ ...(setId ? { social_set_id: setId } : {}), order: "desc", limit: 500 }).then((r) => Array.isArray(r) && setPosts(r));
   }, [setId]);
 
   if (list === null) return <SkeletonRows label="Loading the list..." rows={5} tall />;

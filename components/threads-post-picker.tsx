@@ -16,7 +16,7 @@ export function ThreadsPostPicker({ accountIds, onPick }: { accountIds: string[]
   const key = accountIds.join(",");
   useEffect(() => {
     let live = true;
-    listPosts({ status: "published" }).then((posts) => {
+    listPosts({ status: "published", order: "desc", limit: 500 }).then((posts) => {
       if (!live) return;
       if (isFailure(posts)) return setState("failed");
       const ours = new Set(key.split(",").filter(Boolean));
