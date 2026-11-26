@@ -206,6 +206,23 @@ test("an automation on X shows what a run costs while it is edited", async ({ pa
   await expect(page.getByRole("status").filter({ hasText: "$0.03 for 2 writes" })).toContainText("With billing on that is about 2.3 X credits");
 });
 
+test("a LinkedIn account shows Needs LinkedIn approval and cannot be picked", async ({ page }) => {
+  await brain(page, "owner");
+  await page.route("**/v1/connections", (route) => route.fulfill({ json: [alice, { ...alice, id: "l1", provider: "linkedin", handle: null, display_name: "Harun on LinkedIn" }] }));
+  let asked = 0;
+  await page.route("**/v1/automations/linkedin", (route) => {
+    asked += 1;
+    return route.fulfill({ json: { approved: false, accounts: [{ id: "l1", status: "linkedin_needs_approval", message: "m" }] } });
+  });
+  await page.goto("/automations/new?template=comment-to-dm");
+  await page.getByRole("radio", { name: "Pick accounts" }).check();
+  const li = page.getByRole("checkbox", { name: /Harun on LinkedIn/ });
+  await expect(li).toBeDisabled();
+  await expect(page.getByText("Needs LinkedIn approval")).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: /Alice/ })).toBeEnabled();
+  expect(asked).toBeGreaterThan(0);
+});
+
 test("the builder shows what the trigger takes, its networks note and a preview", async ({ page }) => {
   await brain(page, "owner");
   await page.goto("/automations/new?template=welcome");
