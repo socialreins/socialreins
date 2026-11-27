@@ -28,6 +28,11 @@ test("an old team address redirects permanently to the new one, keeping the page
   const res = await request.get("/t/old-acme/posts/12?status=draft&x=1", { maxRedirects: 0 });
   expect(res.status()).toBe(308);
   expect(where(res)).toBe("/t/acme/posts/12?status=draft&x=1");
+  // A redirect answers with the same hardening headers as a page.
+  expect(res.headers()["x-content-type-options"]).toBe("nosniff");
+  expect(res.headers()["referrer-policy"]).toBe("strict-origin-when-cross-origin");
+  expect(res.headers()["permissions-policy"]).toContain("camera=()");
+  expect(res.headers()["content-security-policy"]).toContain("frame-ancestors 'none'");
   // The same address in capitals, and an address that led back to the team's code.
   const upper = await request.get("/t/OLDER-ACME/calendar", { maxRedirects: 0 });
   expect(upper.status()).toBe(308);

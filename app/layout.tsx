@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+import { headers } from "next/headers";
 import Script from "next/script";
 import { Suspense } from "react";
 import { Analytics } from "@/components/analytics";
@@ -32,19 +33,27 @@ export const viewport: Viewport = {
   ],
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+// Every page needs the request's nonce for the inline theme script and Next.js's own scripts, so each
+// request renders on the server (proxy.ts sends it). Without the opt-out, cacheComponents refuses to
+// prerender any route that reads headers().
+export const instant = false;
+
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  // One nonce per request, from proxy.ts. Next.js puts the same value on every script it renders; the
+  // inline theme script and the beforeInteractive config.js below need it by hand.
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
   return (
     // The theme script sets data-theme before React hydrates, so React must not flag the attribute.
     <html lang="en" className={`${display.variable} ${body.variable}`} suppressHydrationWarning>
       <head>
         {/* Before paint, so the app never flashes the wrong theme (components/theme.tsx keeps it in step after). */}
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body>
-        <Script src="/config.js" strategy="beforeInteractive" />
+        <Script src="/config.js" strategy="beforeInteractive" nonce={nonce} />
         {children}
         <Suspense fallback={null}>
-          <Analytics />
+          <Analytics nonce={nonce} />
           <ConsentBanner />
         </Suspense>
         <Pwa />

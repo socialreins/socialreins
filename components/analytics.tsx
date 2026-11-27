@@ -36,7 +36,7 @@ function externalReferrer() {
 // Loads gtag.js the first time a tracked page shows after the visitor accepted, and sends one page view per tracked
 // address, without its query string. On any other page, or after a reject, GA is switched off, so nothing is sent
 // even after it loaded.
-export function Analytics() {
+export function Analytics({ nonce }: { nonce?: string }) {
   const path = usePathname();
   const choice = useChoice();
   useEffect(() => {
@@ -60,6 +60,7 @@ export function Analytics() {
       };
       w.gtag("js", new Date());
       const s = document.createElement("script");
+      s.nonce = nonce ?? "";
       s.async = true;
       s.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(id)}`;
       document.head.appendChild(s);
@@ -73,6 +74,6 @@ export function Analytics() {
       allow_ad_personalization_signals: false,
     });
     w.gtag("event", "page_view", { page_location, page_referrer, page_path: path, page_title: document.title });
-  }, [path, choice]);
+  }, [path, choice, nonce]);
   return null;
 }
