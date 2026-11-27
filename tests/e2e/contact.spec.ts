@@ -162,10 +162,30 @@ test("with Turnstile off, the waitlist and login link submit without a token", a
   expect(sent).toEqual([{ email: "someone@example.com", source: "landing" }, { email: "someone@example.com", login_only: true }]);
 });
 
-test("the CSP lets Turnstile load", async ({ request }) => {
-  const csp = (await request.get("/contact")).headers()["content-security-policy"];
-  expect(csp).toMatch(/script-src [^;]*https:\/\/challenges\.cloudflare\.com/);
+test("the CSP uses a per-request nonce, lets Turnstile load, and blocks a script without it", async ({ page, request }) => {
+  const response = await request.get("/contact");
+  const csp = response.headers()["content-security-policy"];
+  expect(csp).toMatch(/script-src 'self' 'nonce-[^']+' 'strict-dynamic' https:\/\/challenges\.cloudflare\.com/);
+  expect(csp).not.toMatch(/script-src [^;]*'unsafe-inline'/);
   expect(csp).toMatch(/frame-src https:\/\/challenges\.cloudflare\.com/);
+  const nonce = /script-src [^;]*'nonce-([^']+)'/.exec(csp)![1];
+
+  // The server HTML carries the nonce on every inline script (React empties the attribute in the live DOM after hydration).
+  const html = await response.text();
+  expect(html).toContain(`<script nonce="${nonce}">try{var t=localStorage`);
+  const inline = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>/g)].map((tag) => /nonce="([^"]+)"/.exec(tag[0])?.[1]);
+  expect(inline.length).toBeGreaterThan(0);
+  expect(inline.every((value) => value === nonce)).toBe(true);
+
+  // A parser-inserted script without the nonce (as in a page served with this policy) is blocked; one with it runs.
+  const probe = `<!doctype html><html><head><script nonce="${nonce}">window.__with_nonce=true</script><script>window.__without_nonce=true</script></head><body>probe</body></html>`;
+  await page.route("**/csp-probe", (route) => route.fulfill({ status: 200, contentType: "text/html", headers: { "Content-Security-Policy": csp }, body: probe }));
+  await page.goto("/csp-probe");
+  const ran = await page.evaluate(() => {
+    const w = window as unknown as { __with_nonce?: boolean; __without_nonce?: boolean };
+    return { withNonce: w.__with_nonce, withoutNonce: w.__without_nonce };
+  });
+  expect(ran).toEqual({ withNonce: true, withoutNonce: undefined });
 });
 
 test("public pages show no email address and link to the contact page", async ({ page }) => {

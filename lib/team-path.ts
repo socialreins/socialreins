@@ -28,13 +28,19 @@ export function splitTeamPath(pathname: string): [string | null, string] {
   return m ? [m[1].toLowerCase(), m[2] ?? "/home"] : [null, pathname];
 }
 
-// Old addresses (/home, /posts/12) for next.config.ts: each goes to the current team's address.
-// Next keeps the query string on a redirect.
-// A team's bare address (/t/k7q2mf) goes to its home.
-export const legacyRedirects = () => [
-  ...TEAM_PAGES.flatMap((p) => [
-    { source: `/${p}`, destination: `/t/${MY_TEAM}/${p}`, permanent: false },
-    { source: `/${p}/:path*`, destination: `/t/${MY_TEAM}/${p}/:path*`, permanent: false },
-  ]),
-  { source: "/t/:team", destination: "/t/:team/home", permanent: false },
-];
+// Old addresses (/home, /posts/12) for proxy.ts: each goes to the current team's address, keeping the
+// path. Next keeps the query string on a redirect; proxy.ts clones the request's address, so it keeps
+// the query too. A team's bare address (/t/k7q2mf) goes to its home.
+// The first segment after /app must start with a letter or digit, so a decoded "//evil.example" or
+// "\\evil.example" can never lead the destination off site.
+export function legacyRedirect(pathname: string): { to: string; permanent: boolean } | null {
+  if (pathname === "/app") return { to: "/home", permanent: true };
+  const old = /^\/app\/([a-z0-9][a-z0-9_-]*)(\/.*)?$/.exec(pathname);
+  if (old) return { to: `/${old[1]}${old[2] ?? ""}`, permanent: true };
+  const bare = /^\/t\/([^/]+)$/.exec(pathname);
+  if (bare) return { to: `/t/${bare[1]}/home`, permanent: false };
+  if (TEAM_PAGES.some((p) => pathname === `/${p}` || pathname.startsWith(`/${p}/`))) {
+    return { to: `/t/${MY_TEAM}${pathname}`, permanent: false };
+  }
+  return null;
+}

@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { isTeamSegment, legacyRedirects, MY_TEAM, splitTeamPath, TEAM_PAGES, teamPath, teamSegment } from "@/lib/team-path";
+import { isTeamSegment, legacyRedirect, MY_TEAM, splitTeamPath, TEAM_PAGES, teamPath, teamSegment } from "@/lib/team-path";
 import { slugProblem } from "@/lib/teams";
 
 describe("team addresses", () => {
@@ -48,11 +48,16 @@ describe("team addresses", () => {
   });
 
   it("sends every old address to the current team's", () => {
-    const redirects = legacyRedirects();
-    expect(redirects).toContainEqual({ source: "/posts/:path*", destination: "/t/_/posts/:path*", permanent: false });
-    expect(redirects).toContainEqual({ source: "/home", destination: "/t/_/home", permanent: false });
-    expect(redirects).toContainEqual({ source: "/t/:team", destination: "/t/:team/home", permanent: false });
-    expect(redirects).toHaveLength(TEAM_PAGES.length * 2 + 1);
+    expect(legacyRedirect("/posts")).toEqual({ to: "/t/_/posts", permanent: false });
+    expect(legacyRedirect("/posts/12")).toEqual({ to: "/t/_/posts/12", permanent: false });
+    expect(legacyRedirect("/home")).toEqual({ to: "/t/_/home", permanent: false });
+    expect(legacyRedirect("/t/k7q2mf")).toEqual({ to: "/t/k7q2mf/home", permanent: false });
+    expect(legacyRedirect("/app")).toEqual({ to: "/home", permanent: true });
+    expect(legacyRedirect("/app/posts/12")).toEqual({ to: "/posts/12", permanent: true });
+    for (const tail of ["%2F%2Fevil.example", "%5C%5Cevil.example", "%2Fevil.example"]) {
+      expect(legacyRedirect(`/app/${tail}`)).toBeNull();
+    }
+    expect(legacyRedirect("/pricing")).toBeNull();
   });
 
   it("has a page folder for every team page, and no other", () => {

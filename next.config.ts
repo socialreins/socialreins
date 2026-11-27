@@ -1,5 +1,5 @@
 import type { NextConfig } from "next";
-import { legacyRedirects } from "./lib/team-path";
+import { permissionsPolicy } from "./lib/security";
 
 const nextConfig: NextConfig = {
   output: "standalone",
@@ -13,13 +13,8 @@ const nextConfig: NextConfig = {
   // self-hosted build), nothing changes.
   deploymentId: process.env.RAILWAY_GIT_COMMIT_SHA || undefined,
   partialPrefetching: true,
-  // The app moved off /app, then under /t/<team code>/ (lib/team-path.ts); brain and old bookmarks still link to both.
-  redirects: async () => [
-    { source: "/app", destination: "/home", permanent: true },
-    // The first segment must start with a letter or digit, so a decoded "//evil.example" or "\\evil.example" can never lead the destination off site.
-    { source: "/app/:first([a-z0-9][a-z0-9_-]*)/:rest*", destination: "/:first/:rest*", permanent: true },
-    ...legacyRedirects(),
-  ],
+  // The app moved off /app, then under /t/<team code>/ (lib/team-path.ts). The redirects live in proxy.ts, since
+  // next.config.ts redirects answer before the headers below are added.
   headers: async () => [
     {
       source: "/:path*",
@@ -27,8 +22,7 @@ const nextConfig: NextConfig = {
       headers: [
         { key: "X-Content-Type-Options", value: "nosniff" },
         { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-        // Nothing here uses the camera, microphone or location.
-        { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+        { key: "Permissions-Policy", value: permissionsPolicy() },
         // Browsers ignore this over plain http, so a local or http-only install is unaffected.
         // Once seen over https it holds for the hostname on every port for a year.
         // No includeSubDomains: a self-hoster's other subdomains are not ours to decide for.

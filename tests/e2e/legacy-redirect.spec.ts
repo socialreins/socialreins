@@ -28,7 +28,12 @@ test("/app/ followed by slashes in any form never redirects off site", async ({ 
   }
 });
 
-test("pages carry a Permissions-Policy that turns off the camera, microphone and location", async ({ request }) => {
-  const res = await request.get("/pricing");
-  expect(res.headers()["permissions-policy"]).toBe("camera=(), microphone=(), geolocation=()");
+test("pages and redirects carry a Permissions-Policy that turns off the camera, microphone, location and payment", async ({ request }) => {
+  const page = await request.get("/pricing");
+  expect(page.headers()["permissions-policy"]).toBe("camera=(), microphone=(), geolocation=(), payment=(), publickey-credentials-get=(self), publickey-credentials-create=(self), clipboard-write=(self)");
+  const redirect = await request.get("/app/connections", { maxRedirects: 0 });
+  expect(redirect.headers()["permissions-policy"]).toBe(page.headers()["permissions-policy"]);
+  expect(redirect.headers()["x-content-type-options"]).toBe("nosniff");
+  expect(redirect.headers()["referrer-policy"]).toBe("strict-origin-when-cross-origin");
+  expect(redirect.headers()["content-security-policy"]).toContain("frame-ancestors 'none'");
 });
