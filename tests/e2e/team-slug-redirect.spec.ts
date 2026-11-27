@@ -38,12 +38,14 @@ test("an old team address redirects permanently to the new one, keeping the page
 
 test("a current address, a code and other pages are not redirected, and the placeholder is not even asked about", async ({ request }) => {
   asked = [];
-  for (const path of ["/t/acme-current/posts", "/t/_/posts", "/pricing"]) {
+  // The web server remembers each answer for 15 seconds, so a fresh address is asked about every run, also on a server that stays up.
+  const current = `acme-${Date.now().toString(36)}`;
+  for (const path of [`/t/${current}/posts`, "/t/_/posts", "/pricing"]) {
     const res = await request.get(path, { maxRedirects: 0 });
     expect(res.status(), path).toBe(200);
   }
   // Other tests in this run may ask too, so look for what this one did and did not.
-  expect(asked).toContain("acme-current");
+  expect(asked).toContain(current);
   expect(asked).not.toContain("_");
 });
 
