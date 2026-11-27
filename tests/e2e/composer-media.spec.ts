@@ -121,6 +121,22 @@ test("a file is uploaded from the device with progress, and a refused one says w
   expect(sent!.media).toEqual(["https://brain.example/media/sealed.png"]);
 });
 
+test("a full team's upload storage is named with both numbers, and points at the Library", async ({ page }) => {
+  await brain(page);
+  await page.route("**/v1/uploads", (route) =>
+    route.fulfill({ status: 413, json: { error: "storage_limit", used: 1288490189, budget: 5 * 1024 ** 3 } }),
+  );
+  await page.goto("/posts/new");
+  await page.getByLabel("Post", { exact: true }).fill("With a big video");
+  await page
+    .getByLabel("Upload files", { exact: true })
+    .setInputFiles([{ name: "clip.mp4", mimeType: "video/mp4", buffer: Buffer.alloc(500) }]);
+  const alert = page.getByRole("alert").filter({ hasText: "clip.mp4 was not uploaded" });
+  await expect(alert).toContainText(
+    "this team's upload storage is full (1.2 GB of 5 GB). An admin can raise it, or add a link in the Library instead.",
+  );
+});
+
 test("an upload holds saving until it is in or cancelled, and each refused file says why", async ({ page }) => {
   await brain(page);
   let release = () => {};

@@ -37,9 +37,9 @@ const users = Array.from({ length: 5 }, (_, i) => ({
   teams: i === 0 ? [{ id: "t1", name: "Acme", code: "acme22", role: "owner" }, { id: "t2", name: "Globex", code: "beta33", role: "member" }] : [],
 }));
 const teams = [
-  { id: "t1", name: "Acme", created_at: "2026-10-01T10:00:00Z", members: 3, accounts: 4, posts: 1500, owner_email: "ada@example.com", plan: "automation", plan_status: "active", plan_provider: "comp" },
-  { id: "t2", name: "Globex", created_at: "2026-10-02T10:00:00Z", members: 1, accounts: 0, posts: 0, owner_email: null, plan: null, plan_status: null, plan_provider: null },
-  { id: "t3", name: "Initech", created_at: "2026-10-03T10:00:00Z", members: 2, accounts: 1, posts: 9, owner_email: "bob@example.com", plan: "scheduler", plan_status: "active", plan_provider: "stripe" },
+  { id: "t1", name: "Acme", created_at: "2026-10-01T10:00:00Z", members: 3, accounts: 4, posts: 1500, owner_email: "ada@example.com", plan: "automation", plan_status: "active", plan_provider: "comp", storage_used: 1288490189, storage_budget: 5 * 1024 ** 3, storage_budget_override: null },
+  { id: "t2", name: "Globex", created_at: "2026-10-02T10:00:00Z", members: 1, accounts: 0, posts: 0, owner_email: null, plan: null, plan_status: null, plan_provider: null, storage_used: 0, storage_budget: 0, storage_budget_override: 0 },
+  { id: "t3", name: "Initech", created_at: "2026-10-03T10:00:00Z", members: 2, accounts: 1, posts: 9, owner_email: "bob@example.com", plan: "scheduler", plan_status: "active", plan_provider: "stripe", storage_used: 100_000_000, storage_budget: 200_000_000, storage_budget_override: 200_000_000 },
 ];
 
 async function brain(page: Page, isAdmin = true) {
@@ -59,6 +59,8 @@ async function brain(page: Page, isAdmin = true) {
     settings: { mode: "closed", domains: [] as string[], source: "env" },
     saves: [] as unknown[],
     plans: [] as string[],
+    // Each upload storage budget call, as sent: "PUT t1 {\"bytes\":200}".
+    storage: [] as string[],
     planAnswer: { status: 204 } as { status: number; json?: object },
     saveError: null as { status: number; error: string } | null,
   };
@@ -123,6 +125,15 @@ async function brain(page: Page, isAdmin = true) {
     const q = get(route).get("q") ?? "";
     const found = teams.filter((t) => t.name.toLowerCase().includes(q));
     return route.fulfill({ json: { total: found.length, teams: found } });
+  });
+  await page.route(/\/v1\/admin\/teams\/[^/]+\/storage-budget$/, (route) => {
+    const req = route.request();
+    const id = req.url().split("/teams/")[1].split("/")[0];
+    const { bytes } = req.postDataJSON() as { bytes: number | null };
+    state.storage.push(`PUT ${id} ${JSON.stringify(req.postDataJSON())}`);
+    const team = teams.find((t) => t.id === id)!;
+    const budget = bytes ?? 5 * 1024 ** 3;
+    return route.fulfill({ json: { used: team.storage_used, budget } });
   });
   await page.route(/\/v1\/admin\/teams\/[^/]+\/plan$/, (route) => {
     const req = route.request();
@@ -290,9 +301,9 @@ test("teams: the table and search", async ({ page }) => {
   const state = await brain(page);
   await page.goto("/admin/teams");
   await expect(rows(page)).toHaveCount(3);
-  await expect(page.getByRole("columnheader")).toHaveText(["Name", "Owner", "Plan", "Members", "Accounts", "Posts", "Created"]);
+  await expect(page.getByRole("columnheader")).toHaveText(["Name", "Owner", "Plan", "Upload storage", "Members", "Accounts", "Posts", "Created"]);
   await expect(rows(page).nth(0).getByRole("rowheader")).toHaveText("Acme");
-  await expect(rows(page).nth(0).getByRole("cell")).toHaveText(["ada@example.com", /Scheduler and Automation, comped/, "3", "4", "1,500", "Oct 1, 2026"]);
+  await expect(rows(page).nth(0).getByRole("cell")).toHaveText(["ada@example.com", /Scheduler and Automation, comped/, /Upload storage: 1.2 GB of 5 GB/, "3", "4", "1,500", "Oct 1, 2026"]);
   await expect(rows(page).nth(1)).toContainText("No owner");
   await expect(main(page).getByText("Showing 1 to 3 of 3")).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Pages" })).toHaveCount(0);
@@ -310,7 +321,7 @@ test("teams: comp a plan, end a comp, and a paid plan offers neither", async ({ 
   await expect(rows(page)).toHaveCount(3);
   // A paid plan is changed in Stripe, not here.
   await expect(rows(page).nth(2)).toContainText("Scheduler, active");
-  await expect(rows(page).nth(2).getByRole("button")).toHaveCount(0);
+  await expect(rows(page).nth(2).getByRole("button", { name: /Comp|End comp/ })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Comp Globex" }).click();
   await expect(rows(page).nth(1)).toContainText("Scheduler and Automation, comped");
@@ -323,6 +334,37 @@ test("teams: comp a plan, end a comp, and a paid plan offers neither", async ({ 
   await page.getByRole("button", { name: "Comp Acme" }).click();
   await expect(rows(page).nth(0).getByRole("alert")).toContainText("then try again");
   expect(state.plans).toEqual(['PUT t2/plan {"plan":"automation"}', "DELETE t1/plan", 'PUT t1/plan {"plan":"automation"}']);
+});
+
+test("teams: the upload storage budget is shown and set", async ({ page }) => {
+  const state = await brain(page);
+  await page.goto("/admin/teams");
+  await expect(rows(page)).toHaveCount(3);
+  // The env default (no override) and a team with none of its own.
+  await expect(rows(page).nth(0)).toContainText("Upload storage: 1.2 GB of 5 GB");
+  await expect(rows(page).nth(1)).toContainText("Upload storage: 0 bytes of unlimited");
+  const box = (n: number) => rows(page).nth(n).getByLabel("Upload storage budget in bytes, blank for the default, 0 for unlimited");
+  await expect(box(0)).toHaveValue("");
+  await expect(box(0)).toHaveAttribute("placeholder", "Default");
+  await expect(box(2)).toHaveValue("200000000");
+
+  // Bytes, then Save: brain answers the numbers after the change.
+  await box(0).fill("2147483648");
+  await rows(page).nth(0).getByRole("button", { name: "Save" }).click();
+  await expect(rows(page).nth(0).getByRole("status")).toHaveText("Upload storage budget saved: 2 GB.");
+  expect(state.storage).toEqual(['PUT t1 {"bytes":2147483648}']);
+
+  // A blank box clears the override, back to brain's default.
+  await box(1).fill("");
+  await rows(page).nth(1).getByRole("button", { name: "Save" }).click();
+  await expect(rows(page).nth(1).getByRole("status")).toHaveText("Budget back to the default.");
+  expect(state.storage).toEqual(['PUT t1 {"bytes":2147483648}', 'PUT t2 {"bytes":null}']);
+
+  // Not whole bytes: refused here, before the call.
+  await box(0).fill("5 GB");
+  await expect(rows(page).nth(0).getByRole("alert")).toContainText("Whole bytes only");
+  await expect(rows(page).nth(0).getByRole("button", { name: "Save" })).toBeDisabled();
+  expect(state.storage).toHaveLength(2);
 });
 
 test("the waitlist shows totals and signups, filtered in ?verified= and searched in ?q=", async ({ page }) => {

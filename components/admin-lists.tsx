@@ -4,9 +4,10 @@ import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import type { Failure } from "@/lib/auth";
-import { compPlan, endCompPlan, listTeams, listUsers, nextPage, pageQuery, parsePage, previousPage, showing, type AdminTeam, type AdminUser, type Page } from "@/lib/admin";
+import { compPlan, endCompPlan, listTeams, listUsers, MAX_STORAGE_BYTES, nextPage, pageQuery, parsePage, parseStorageBytes, previousPage, setStorageBudget, showing, type AdminTeam, type AdminUser, type Page } from "@/lib/admin";
 import { isFailure, linkButton, problemText, roleName, Status, useAction } from "@/components/team-ui";
 import { day, Forbidden, SearchBox, td, th } from "@/components/admin";
+import { storageText } from "@/lib/uploads";
 
 type Rows<R> = { total: number; rows: R[] };
 
@@ -195,6 +196,65 @@ function PlanCell({ team }: { team: AdminTeam }) {
   );
 }
 
+// A team's upload storage in words and bytes, with a box and Save for its own budget. Blank means
+// no override: brain's TEAM_STORAGE_BYTES applies. The text says what is used of what is allowed.
+function StorageCell({ team }: { team: AdminTeam }) {
+  const [storage, setStorage] = useState({ used: team.storage_used, budget: team.storage_budget, override: team.storage_budget_override });
+  const [text, setText] = useState(team.storage_budget_override === null ? "" : String(team.storage_budget_override));
+  const action = useAction();
+  const bytes = parseStorageBytes(text);
+  const field = "field w-36";
+  return (
+    <div className="grid justify-items-start gap-1">
+      <span>
+        Upload storage: {storageText(storage.used)} of {storage.budget === 0 ? "unlimited" : storageText(storage.budget)}
+      </span>
+      <form
+        className="flex flex-wrap items-center gap-1"
+        aria-label={`Upload storage budget for ${team.name} in bytes`}
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (bytes === "invalid") return;
+          action.run("storage", () => setStorageBudget(team.id, bytes), (r) => {
+            setStorage({ ...r, override: bytes });
+            setText(bytes === null ? "" : String(bytes));
+            return bytes === null ? "Budget back to the default." : `Upload storage budget saved: ${storageText(r.budget)}.`;
+          });
+        }}
+      >
+        <label className="sr-only" htmlFor={`storage-${team.id}`}>
+          Upload storage budget in bytes, blank for the default, 0 for unlimited
+        </label>
+        <input
+          id={`storage-${team.id}`}
+          className={field}
+          inputMode="numeric"
+          value={text}
+          placeholder={storage.override === null ? "Default" : ""}
+          aria-invalid={bytes === "invalid"}
+          onChange={(e) => setText(e.target.value)}
+        />
+        <button type="submit" className={linkButton} disabled={action.busy !== null || bytes === "invalid"}>
+          {action.busy ? "Saving..." : "Save"}
+        </button>
+      </form>
+      {bytes === "invalid" && (
+        <span role="alert" className="text-xs text-danger">
+          Whole bytes only, up to {storageText(MAX_STORAGE_BYTES)}; 0 is unlimited.
+        </span>
+      )}
+      {storage.override === null ? (
+        <span className="text-xs text-ink-soft">Default budget. Type bytes to set this team&apos;s own.</span>
+      ) : (
+        <span className="text-xs text-ink-soft">
+          Own budget. Clear the box and Save for the default.
+        </span>
+      )}
+      <Status problem={action.problem} done={action.done} overrides={{ not_found: "That team no longer exists." }} />
+    </div>
+  );
+}
+
 export function AdminTeamsList() {
   return (
     <AdminList<AdminTeam>
@@ -202,7 +262,7 @@ export function AdminTeamsList() {
       noun="teams"
       searchLabel="Search by team name"
       load={loadTeams}
-      head={["Name", "Owner", "Plan", "Members", "Accounts", "Posts", "Created"]}
+      head={["Name", "Owner", "Plan", "Upload storage", "Members", "Accounts", "Posts", "Created"]}
       row={(t) => (
         <>
           <th scope="row" className={`${td} text-left font-bold`}>
@@ -211,6 +271,9 @@ export function AdminTeamsList() {
           <td className={td}>{t.owner_email ?? <span className="text-ink-soft">No owner</span>}</td>
           <td className={td}>
             <PlanCell team={t} />
+          </td>
+          <td className={td}>
+            <StorageCell team={t} />
           </td>
           <td className={td}>{t.members.toLocaleString()}</td>
           <td className={td}>{t.accounts.toLocaleString()}</td>

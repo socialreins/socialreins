@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   approvalText,
+  MAX_STORAGE_BYTES,
+  parseStorageBytes,
+  setStorageBudget,
   inviteSignups,
   invitedText,
   previewInvites,
@@ -141,6 +144,35 @@ describe("admin list pages", () => {
     vi.stubGlobal("fetch", fetch);
     await listUsers({ q: "ada", limit: 50, offset: 100 });
     expect(fetch).toHaveBeenCalledWith(`${apiUrl}/v1/admin/users?q=ada&offset=100`, expect.objectContaining({ credentials: "include" }));
+  });
+});
+
+describe("admin team upload storage", () => {
+  it("reads the budget box: blank is the default, digits are bytes, 0 is unlimited", () => {
+    expect(parseStorageBytes("")).toBeNull();
+    expect(parseStorageBytes("   ")).toBeNull();
+    expect(parseStorageBytes("0")).toBe(0);
+    expect(parseStorageBytes(" 5368709120 ")).toBe(5368709120);
+    expect(parseStorageBytes(String(MAX_STORAGE_BYTES))).toBe(MAX_STORAGE_BYTES);
+    // Anything brain would answer 422 to is refused here, before the call.
+    for (const bad of ["-1", String(MAX_STORAGE_BYTES + 1), "5 GB", "1.5", "0x10", "9007199254740992"]) {
+      expect(parseStorageBytes(bad)).toBe("invalid");
+    }
+  });
+
+  it("sets a team's own budget, or clears it", async () => {
+    const fetch = vi.fn().mockResolvedValue(Response.json({ used: 64, budget: 200_000_000 }));
+    vi.stubGlobal("fetch", fetch);
+    expect(await setStorageBudget("t1", 200_000_000)).toEqual({ used: 64, budget: 200_000_000 });
+    expect(fetch).toHaveBeenLastCalledWith(
+      `${apiUrl}/v1/admin/teams/t1/storage-budget`,
+      expect.objectContaining({ method: "PUT", body: JSON.stringify({ bytes: 200_000_000 }) }),
+    );
+    await setStorageBudget("t1", null);
+    expect(fetch).toHaveBeenLastCalledWith(
+      `${apiUrl}/v1/admin/teams/t1/storage-budget`,
+      expect.objectContaining({ body: JSON.stringify({ bytes: null }) }),
+    );
   });
 });
 

@@ -75,7 +75,7 @@ import {
 import { fitsList, listLists, partLabel, type PostList } from "@/lib/lists";
 import { listSets, type SocialSet } from "@/lib/sets";
 import { getQueue, startZone, type Queue } from "@/lib/queue";
-import { UPLOAD_ACCEPT, uploadFile } from "@/lib/uploads";
+import { isStorageFull, storageFullText, UPLOAD_ACCEPT, uploadFile } from "@/lib/uploads";
 import { apiUrl } from "@/lib/waitlist";
 import { accountName } from "@/components/connections";
 import { platformName } from "@/components/platform-icons";
@@ -1904,18 +1904,20 @@ function ImageLinks({
         onUploading?.(-1);
         setSending((s) => s.filter((x) => x.key !== key));
         if (ctrl.signal.aborted) return;
-        if (!isFailure(r)) {
+        if (!isFailure(r) && !isStorageFull(r)) {
           latest.current = [...latest.current.filter((m) => m.trim()), r.url].slice(0, max);
           return onChange(latest.current);
         }
         const why =
-          r === "media_too_large"
-            ? "it is too large: up to 100 MB, or a video up to 1 GB."
-            : r === "media_type_not_supported"
-              ? "it is not a JPEG, PNG, WebP, GIF, PDF, MP4 or MOV file."
-              : r === "rate_limited"
-                ? "too many uploads in a minute. Wait a minute, then try again."
-                : problemText(r, postMessages);
+          isStorageFull(r)
+            ? storageFullText(r)
+            : r === "media_too_large"
+              ? "it is too large: up to 100 MB, or a video up to 1 GB. For a bigger video, add a link to it in the Library instead."
+              : r === "media_type_not_supported"
+                ? "it is not a JPEG, PNG, WebP, GIF, PDF, MP4 or MOV file."
+                : r === "rate_limited"
+                  ? "too many uploads in a minute. Wait a minute, then try again."
+                  : problemText(r, postMessages);
         setUpErrors((list) => [
           ...list,
           {
