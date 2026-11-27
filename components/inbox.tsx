@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { TeamLink as Link } from "@/components/team-link";
 import { useSearchParams } from "next/navigation";
@@ -445,7 +445,8 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   }
 
   // One-key shortcuts. Done, assign and reply act through the reader's own controls, so they do what a click does.
-  useEffect(() => {
+  // A layout effect, so the handler of a render is in place when it commits: a key right after a move would otherwise meet the one of the render before.
+  useLayoutEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const s = shortcutFor(e);
       if (!s || document.querySelector("dialog[open]")) return;
@@ -1333,7 +1334,7 @@ function Detail({
           <strong>Reconnect to enable replies.</strong> This Threads account was connected before SocialReins could read and send replies. Reconnect it under Accounts and accept the new permissions. Until Meta approves them, only the app&apos;s testers can. {accountsLink}.
         </p>
       )}
-      <ItemAutomations key={item.id} itemId={item.id} />
+      <ItemAutomations key={`automations-${item.id}`} itemId={item.id} />
       {!dm && <ModerationBar key={item.id} item={item} canDelete={canManage} onChange={onChange} />}
 
       {deleted && <p className="text-sm text-ink-soft">This comment was {item.platform === "youtube" ? "rejected" : "deleted"} on {platform}, so it takes no reply.</p>}
