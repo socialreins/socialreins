@@ -6,6 +6,8 @@ export type Signup = {
   id: string;
   email: string;
   source: string | null;
+  // What the person asked to be called, if they said.
+  name?: string | null;
   created_at: string;
   verified_at: string | null;
   // Set when an admin approved the email: it may sign up whatever the sign-up rules say.
@@ -18,16 +20,19 @@ export type Verified = boolean | null;
 // The `?verified=` value of the admin page, as brain takes it; anything else means all.
 export const parseVerified = (v: string | null): Verified => (v === "true" ? true : v === "false" ? false : null);
 
-// The waitlist's own query, for brain and for the page's links alike: `?verified=&q=`, empty parts left out.
-export function waitlistQuery(verified: Verified, q = "") {
+// The waitlist's own query, for brain and for the page's links alike: `?verified=&hide_stale=&q=`, empty parts left out.
+// `hideStale` leaves out unverified signups older than 30 days.
+export function waitlistQuery(verified: Verified, q = "", hideStale = false) {
   const p = new URLSearchParams();
   if (verified !== null) p.set("verified", String(verified));
+  if (hideStale) p.set("hide_stale", "true");
   if (q.trim()) p.set("q", q.trim());
   return p.size ? `?${p}` : "";
 }
 
 // Newest first, at most 1000; the totals ignore the filter and the search.
-export const listWaitlist = (verified: Verified, q = "") => api<Waitlist>(`/v1/admin/waitlist${waitlistQuery(verified, q)}`);
+export const listWaitlist = (verified: Verified, q = "", hideStale = false) =>
+  api<Waitlist>(`/v1/admin/waitlist${waitlistQuery(verified, q, hideStale)}`);
 
 // `mail` says what happened to the "you can sign up now" email; the approval holds either way.
 export type Approval = { signup: Signup; mail: "sent" | "failed" | "already_approved" };
@@ -35,11 +40,52 @@ export const approveSignup = (id: string) => api<Approval>(`/v1/admin/waitlist/$
 // Removing an approved entry takes its approval away.
 export const removeSignup = (id: string) => api(`/v1/admin/waitlist/${encodeURIComponent(id)}`, "DELETE");
 
-export function approvalText({ signup, mail }: Approval) {
-  if (mail === "sent") return `Approved ${signup.email}. An email telling them they can sign up was sent.`;
-  if (mail === "already_approved") return `${signup.email} was already approved. No new email was sent.`;
-  return `Approved ${signup.email}, so they can sign up, but the email could not be sent. They were not told: let them know another way.`;
+// Up to 50 mails are sent while the page waits, so this call may take far longer than the usual 10 seconds.
+const INVITE_TIMEOUT_MS = 120_000;
+// The most one batch invites; brain refuses more.
+export const MAX_INVITES = 50;
+// Who a batch of `count` would reach: the oldest verified signups not yet invited, oldest first.
+export type InvitePreview = { eligible: number; left_today: number; selected: Signup[] };
+export const previewInvites = (count: number) => api<InvitePreview>(`/v1/admin/waitlist-invites?count=${count}`);
+// Needs a sign-in from the last 10 minutes. Nobody is mailed twice: `skipped` were invited already (or not verified), `capped` waited for the daily cap, `failed` had no mail sent; none of the last two is approved. `unsure`: the mail provider timed out, so the mail may have gone out; they stay approved and are not mailed again.
+export type Invited = { sent: number; failed: number; capped: number; skipped: number; unsure: number };
+export const inviteSignups = (ids: string[]) => api<Invited>("/v1/admin/waitlist-invites", "POST", { ids }, INVITE_TIMEOUT_MS);
+
+export function invitedText({ sent, failed, capped, skipped, unsure }: Invited) {
+  const parts = [`Invited ${sent} ${sent === 1 ? "person" : "people"}.`];
+  if (skipped) parts.push(`${skipped} had been invited already, so no second email went out.`);
+  if (capped) parts.push(`${capped} must wait: the daily limit of invite emails was reached. Invite them tomorrow.`);
+  if (unsure) parts.push(`${unsure} may not have got the email (the mail service did not answer in time). They are invited and will not be emailed again: let them know another way.`);
+  if (failed) parts.push(`${failed} could not be emailed, so they are not invited yet. Try them again later.`);
+  return parts.join(" ");
 }
+
+export function approvalText({ signup, mail }: Approval) {
+  const unverified = signup.verified_at ? "" : " This email was not verified.";
+  if (mail === "sent") return `Approved ${signup.email}. An email telling them they can sign up was sent.${unverified}`;
+  if (mail === "already_approved") return `${signup.email} was already approved. No new email was sent.${unverified}`;
+  return `Approved ${signup.email}, so they can sign up, but the email could not be sent. They were not told: let them know another way.${unverified}`;
+}
+
+export type PageReport = {
+  id: string;
+  // The page's public address, /p/<code>.
+  code: string;
+  team_id: string;
+  team: string;
+  reason: string;
+  message: string;
+  contact: string | null;
+  created_at: string;
+  // Reports about this page in all.
+  reports: number;
+  taken_down: boolean;
+};
+// Newest first, at most 200.
+export const listPageReports = () => api<{ reports: PageReport[] }>("/v1/admin/page-reports");
+// A taken-down page is a 404 for everyone and its team cannot switch it back on.
+export const takeDownPage = (code: string, takenDown: boolean) =>
+  api(`/v1/admin/pages/${encodeURIComponent(code)}/takedown`, "PUT", { taken_down: takenDown });
 
 export type Overview = {
   users: number;
@@ -49,7 +95,8 @@ export type Overview = {
   accounts: { total: number; by_provider: Record<string, number> };
   // scheduled, published and failed are always there; other statuses only when a post has them.
   posts: Record<string, number>;
-  waitlist: { total: number; verified: number; approved: number };
+  // approved: invited by an admin; signed_up: invited emails that have an account.
+  waitlist: { total: number; verified: number; approved: number; signed_up: number };
 };
 export const getOverview = () => api<Overview>("/v1/admin/overview");
 
@@ -64,7 +111,19 @@ export type AdminUser = {
   teams: { id: string; name: string; role: string }[];
 };
 export type AdminUsers = { total: number; users: AdminUser[] };
-export type AdminTeam = { id: string; name: string; created_at: string; members: number; accounts: number; posts: number; owner_email: string | null };
+export type AdminTeam = {
+  id: string;
+  name: string;
+  created_at: string;
+  members: number;
+  accounts: number;
+  posts: number;
+  owner_email: string | null;
+  // The team's plan row; null when it never had one. provider is "stripe" or "comp" (free, given here).
+  plan?: string | null;
+  plan_status?: string | null;
+  plan_provider?: string | null;
+};
 export type AdminTeams = { total: number; teams: AdminTeam[] };
 
 // One page of an admin list: the search text and where the page starts.
@@ -109,6 +168,11 @@ export function showing(offset: number, rows: number, total: number) {
 // Newest first; `total` counts every match, not only this page.
 export const listUsers = (p: Page) => api<AdminUsers>(`/v1/admin/users${pageQuery(p)}`);
 export const listTeams = (p: Page) => api<AdminTeams>(`/v1/admin/teams${pageQuery(p)}`);
+
+// A comped plan is free, with no Stripe and no end. Both need a sign-in from the last 10 minutes (reauth_required);
+// comping answers has_paid_plan over a live paid plan, ending answers not_found when there is no live comp.
+export const compPlan = (team: string, plan: "scheduler" | "automation") => api<"ok">(`/v1/admin/teams/${team}/plan`, "PUT", { plan });
+export const endCompPlan = (team: string) => api<"ok">(`/v1/admin/teams/${team}/plan`, "DELETE");
 
 export type SignupMode = "open" | "closed" | "domains";
 // `source`: "env" while the rules still come from the server's environment, "saved" once saved here.

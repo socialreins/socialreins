@@ -71,7 +71,8 @@ const flowConditions = { social_set_id: null, account_ids: ["c1"], post_remote_i
 const guideFlow = (extra = {}) => automation("flow", "Guide flow", { conditions: flowConditions, actions: [], fallback_public_reply: null, steps: flowSteps, ...extra });
 
 async function brain(page: Page, role: Role) {
-  const state = { list: [automation("a1", "Price to DM", { runs: stats })], bodies: [] as unknown[] };
+  const state = { list: [automation("a1", "Price to DM", { runs: stats })], bodies: [] as unknown[], misses: [] as unknown[], estimate: { x: false, cost: null } as unknown };
+  await page.route(/\/v1\/automations\/estimate$/, (route) => route.fulfill({ json: state.estimate }));
   await page.route("**/auth/me", (route) => route.fulfill({ json: me(role) }));
   await page.route("**/v1/connections", (route) => route.fulfill({ json: [alice] }));
   await page.route(/\/v1\/social-sets$/, (route) => route.fulfill({ json: [{ id: "d", name: "All sets", is_default: true, account_ids: ["c1"], account_count: 1, created_at: "", deleted_at: null }] }));
@@ -104,6 +105,7 @@ async function brain(page: Page, role: Role) {
     state.list[at] = { ...state.list[at]!, active: verb === "enable" };
     return route.fulfill({ json: state.list[at] });
   });
+  await page.route(/\/v1\/automations\/[^/]+\/misses$/, (route) => route.fulfill({ json: { misses: state.misses } }));
   await page.route(/\/v1\/automations\/(a1|a2|flow)\/runs/, (route) => {
     const url = new URL(route.request().url());
     if (!url.pathname.includes("/a1/")) return route.fulfill({ json: { runs: [], next_cursor: null } });
@@ -168,7 +170,7 @@ const templates = [
   { title: "DM keyword reply", trigger: "dm_received", conditions: { ...noScope, keywords: ["price"], first_message: false }, actions: ["send_dm"] },
   { title: "Welcome message", trigger: "dm_received", conditions: { ...noScope, keywords: [], first_message: true }, actions: ["send_dm"] },
   { title: "New follower DM", trigger: "new_follower", conditions: noScope, actions: ["send_dm"] },
-  { title: "Mention reply", trigger: "mention_received", conditions: { ...noScope, keywords: [] }, actions: ["reply_publicly"] },
+  { title: "Mention reply", trigger: "mention_received", conditions: { ...noScope, keywords: [], first_per_author: false }, actions: ["reply_publicly"] },
   { title: "Story reply", trigger: "story_reply", conditions: { ...noScope, keywords: [] }, actions: ["send_dm"] },
 ];
 for (const t of templates) {
@@ -181,7 +183,7 @@ for (const t of templates) {
     // Seven templates and Start from scratch.
     await expect(page.getByRole("region", { name: "Start from a template" }).getByRole("link")).toHaveCount(8);
     await page.getByRole("link", { name: t.title }).click();
-    await expect(page.getByLabel("Name")).toHaveValue(t.title);
+    await expect(page.getByLabel("Name", { exact: true })).toHaveValue(t.title);
     await page.getByRole("button", { name: "Create automation" }).click();
     await expect(page).toHaveURL("/t/acme22/automations/a2");
     const body = state.bodies[0] as { conditions: unknown; actions: { type: string; text: string }[] };
@@ -191,6 +193,35 @@ for (const t of templates) {
     expect(body.actions[0]!.text).toContain("{name}");
   });
 }
+
+test("an automation on X shows what a run costs while it is edited", async ({ page }) => {
+  const state = await brain(page, "owner");
+  // The price is asked for only when the team has an X account.
+  await page.route("**/v1/connections", (route) => route.fulfill({ json: [alice, { ...alice, id: "x1", provider: "x", handle: "us.x" }] }));
+  await page.goto("/automations/new?template=comment-to-dm");
+  await expect(page.getByText("About $")).toHaveCount(0);
+  state.estimate = { x: true, cost: { writes: 2, read_usd: 0.015, write_usd: 0.03, total_usd: 0.045, credits: 2.3 } };
+  await page.getByLabel("DM text").fill("Hi {name}, here it is");
+  await expect(page.getByRole("status").filter({ hasText: "About $0.045 a run on X" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "$0.03 for 2 writes" })).toContainText("With billing on that is about 2.3 X credits");
+});
+
+test("a LinkedIn account shows Needs LinkedIn approval and cannot be picked", async ({ page }) => {
+  await brain(page, "owner");
+  await page.route("**/v1/connections", (route) => route.fulfill({ json: [alice, { ...alice, id: "l1", provider: "linkedin", handle: null, display_name: "Harun on LinkedIn" }] }));
+  let asked = 0;
+  await page.route("**/v1/automations/linkedin", (route) => {
+    asked += 1;
+    return route.fulfill({ json: { approved: false, accounts: [{ id: "l1", status: "linkedin_needs_approval", message: "m" }] } });
+  });
+  await page.goto("/automations/new?template=comment-to-dm");
+  await page.getByRole("radio", { name: "Pick accounts" }).check();
+  const li = page.getByRole("checkbox", { name: /Harun on LinkedIn/ });
+  await expect(li).toBeDisabled();
+  await expect(page.getByText("Needs LinkedIn approval")).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: /Alice/ })).toBeEnabled();
+  expect(asked).toBeGreaterThan(0);
+});
 
 test("the builder shows what the trigger takes, its networks note and a preview", async ({ page }) => {
   await brain(page, "owner");
@@ -243,6 +274,7 @@ test("switching the trigger drops what the new one does not take, and says so", 
   await page.getByRole("button", { name: "Create automation" }).click();
   await expect(page).toHaveURL("/t/acme22/automations/a2");
   expect(state.bodies[0]).toEqual({
+    cooldown_minutes: 10,
     name: "Comment to DM",
     trigger: "dm_received",
     conditions: { ...noScope, keywords: ["link"], first_message: false },
@@ -255,7 +287,7 @@ test("switching the trigger drops what the new one does not take, and says so", 
 test("creates a comment-to-DM automation with post links", async ({ page }) => {
   const state = await brain(page, "admin");
   await page.goto("/automations/new?template=comment-to-dm");
-  await page.getByLabel("Name").fill("Guide");
+  await page.getByLabel("Name", { exact: true }).fill("Guide");
   await page.getByRole("button", { name: "Remove link" }).click();
   await page.getByRole("textbox", { name: "Contains" }).fill("guide");
   await page.getByRole("textbox", { name: "Contains" }).press("Enter");
@@ -275,6 +307,7 @@ test("creates a comment-to-DM automation with post links", async ({ page }) => {
   await page.getByRole("button", { name: "Create automation" }).click();
   await expect(page).toHaveURL("/t/acme22/automations/a2");
   expect(state.bodies[0]).toEqual({
+    cooldown_minutes: 10,
     name: "Guide",
     trigger: "comment_received",
     conditions: {
@@ -364,7 +397,7 @@ test("post ids the automation came with are saved as they are, whatever they loo
   await page.goto("/automations/a1");
   await page.getByRole("button", { name: "Edit" }).click();
   await expect(page.getByLabel("Post links")).toHaveValue(ids.join("\n"));
-  await page.getByLabel("Name").fill("Renamed");
+  await page.getByLabel("Name", { exact: true }).fill("Renamed");
   await page.getByRole("button", { name: "Save automation" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Automation saved." })).toBeVisible();
   expect(state.bodies[0]).toMatchObject({ name: "Renamed", conditions: { post_remote_ids: ids } });
@@ -446,7 +479,7 @@ const step = (page: Page, n: number) => page.getByRole("group", { name: "Do this
 test("builds a flow of three steps with a wait and buttons, and saves steps without actions or a fallback", async ({ page }) => {
   const state = await brain(page, "owner");
   await page.goto("/automations/new?template=dm-keyword");
-  await page.getByLabel("Name").fill("Price flow");
+  await page.getByLabel("Name", { exact: true }).fill("Price flow");
   const doThis = page.getByRole("group", { name: "Do this" });
   await expect(doThis.getByRole("radio", { name: "One reply" })).toBeChecked();
   await doThis.getByLabel("DM text").fill("Hi {name}, want the price list?");
@@ -490,6 +523,7 @@ test("builds a flow of three steps with a wait and buttons, and saves steps with
   await page.getByRole("button", { name: "Create automation" }).click();
   await expect(page).toHaveURL("/t/acme22/automations/a2");
   expect(state.bodies[0]).toEqual({
+    cooldown_minutes: 10,
     name: "Price flow",
     trigger: "dm_received",
     conditions: { ...noScope, keywords: ["price"], first_message: false },
@@ -507,12 +541,39 @@ test("builds a flow of three steps with a wait and buttons, and saves steps with
   await expect(summary.getByRole("list", { name: "Steps" })).toContainText("Wait 2 hours");
 });
 
+test("a comment flow waits for the answer, mails the team and hides spam, and the form saves the link rule and mood", async ({ page }) => {
+  const state = await brain(page, "owner");
+  await page.goto("/automations/new?template=dm-keyword");
+  await page.getByLabel("Name", { exact: true }).fill("Spam and guide");
+  await page.getByLabel("Links in their text").selectOption("no");
+  await page.getByRole("group", { name: "Their mood" }).getByLabel(/^Negative/).check();
+  const doThis = page.getByRole("group", { name: "Do this" });
+  await doThis.getByLabel("DM text").fill("Want the guide? Say yes.");
+  await doThis.getByRole("radio", { name: "A flow of steps" }).check();
+  await doThis.getByRole("button", { name: "Wait for their reply", exact: true }).click();
+  await step(page, 2).getByLabel("Wait for").fill("3");
+  await step(page, 2).getByLabel("Unit").selectOption("hours");
+  await doThis.getByRole("button", { name: "Send a DM", exact: true }).click();
+  await step(page, 3).getByLabel("DM text").fill("Here it is, {name}.");
+  await doThis.getByRole("button", { name: "Mail your team", exact: true }).click();
+  // Hiding is for comments: this DM trigger does not offer it.
+  await expect(doThis.getByRole("button", { name: "Hide the comment", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Preview" })).toContainText("Sam replies, or after at most 3 hours");
+  await page.getByRole("button", { name: "Create automation" }).click();
+  await expect(page).toHaveURL("/t/acme22/automations/a2");
+  expect(state.bodies[0]).toMatchObject({
+    trigger: "dm_received",
+    conditions: { has_link: false, sentiment: ["negative"] },
+    steps: [{ type: "send_dm", text: "Want the guide? Say yes." }, { type: "wait_for_reply", minutes: 180 }, { type: "send_dm", text: "Here it is, {name}." }, { type: "notify_team" }],
+  });
+});
+
 test("a flow says what is wrong before it saves, and maps brain's refusals", async ({ page }) => {
   const state = await brain(page, "owner");
   await page.goto("/automations/new?template=comment-to-dm");
   const doThis = page.getByRole("group", { name: "Do this" });
   await doThis.getByRole("radio", { name: "A flow of steps" }).check();
-  await expect(doThis.getByRole("list", { name: "Good to know" })).toContainText("a flow started by a comment can send only one DM");
+  await expect(doThis.getByRole("list", { name: "Good to know" })).toContainText("a flow started by a comment sends only one DM");
   await doThis.getByRole("button", { name: "Wait", exact: true }).click();
   await step(page, 2).getByLabel("Wait for").fill("8");
   await step(page, 1).getByRole("button", { name: "Add a button" }).click();
@@ -538,7 +599,7 @@ test("a flow says what is wrong before it saves, and maps brain's refusals", asy
   // Removing every step leaves nothing to send.
   await step(page, 2).getByRole("button", { name: "Remove step 2" }).click();
   await step(page, 1).getByRole("button", { name: "Remove step 1" }).click();
-  await expect(doThis.getByRole("alert")).toHaveText("A flow needs at least one step that sends something. Add a DM.");
+  await expect(doThis.getByRole("alert")).toHaveText("A flow needs at least one step that sends something. Add a DM, or a mail to your team or a moderation step.");
   await expect(doThis.getByRole("button", { name: "Send a DM", exact: true })).toBeFocused();
 
   // Ten steps at most.
@@ -640,7 +701,7 @@ test("a flow shows its steps on the card, opens in the editor and saves unchange
   await expect(step(page, 3).getByLabel("Unit")).toHaveValue("days");
   await page.getByRole("button", { name: "Save automation" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Automation saved." })).toBeVisible();
-  expect(state.bodies[0]).toEqual({ name: "Guide flow", trigger: "comment_received", conditions: flowConditions, steps: flowSteps, active: true });
+  expect(state.bodies[0]).toEqual({ cooldown_minutes: 0, name: "Guide flow", trigger: "comment_received", conditions: flowConditions, steps: flowSteps, active: true });
 
   // A new label leaves the payload the flow came with, since a follow-up may listen for it.
   await page.getByRole("button", { name: "Edit" }).click();
@@ -671,6 +732,7 @@ test("a button's follow-up link opens the builder on the button trigger with its
   await page.getByRole("button", { name: "Create automation" }).click();
   await expect(page).toHaveURL("/t/acme22/automations/a2");
   expect(state.bodies[0]).toEqual({
+    cooldown_minutes: 10,
     name: "Button follow-up",
     trigger: "button_clicked",
     conditions: { social_set_id: null, account_ids: ["c1"], payloads: ["guide_yes"] },
@@ -729,6 +791,28 @@ test("run history shows a waiting run with its time and step, and a stopped one 
   await expect(rows.nth(2)).toContainText("Skipped");
   await expect(rows.nth(2)).toContainText("Stopped: the automation was changed or switched off before the flow finished");
   await expect(rows.nth(3)).toContainText("Step 4 of 4");
+});
+
+test("a run a rate limit refused can be retried from the run history, once", async ({ page }) => {
+  const state = await brain(page, "owner");
+  state.list.push(guideFlow());
+  const limited = { type: "send_dm", status: "skipped", reason: "rate_limited", remote_id: null };
+  const retried = { ...run("r1", "waiting", null, []), retries: 1, can_retry: false, resume_at: "2026-11-25T10:00:00Z" };
+  let posted = 0;
+  await page.route(/\/v1\/automations\/flow\/runs$/, (route) =>
+    route.fulfill({ json: { runs: [{ ...run("r1", "skipped", "rate_limited", [limited]), retries: 0, can_retry: true }, run("r2", "sent", null, [])], next_cursor: null } }),
+  );
+  await page.route(/\/v1\/automations\/flow\/runs\/r1\/retry$/, (route) => {
+    posted += 1;
+    return route.fulfill({ json: retried });
+  });
+  await page.goto("/automations/flow");
+  const history = page.getByRole("region", { name: "Run history" });
+  await expect(history.getByRole("button", { name: /^Retry/ })).toHaveCount(1);
+  await expect(history).toContainText("The network is rate limiting this account");
+  await history.getByRole("button", { name: /^Retry/ }).click();
+  await expect(history.getByRole("button", { name: /^Retry/ })).toHaveCount(0);
+  expect(posted).toBe(1);
 });
 
 test("run history says in plain words what happened to a tag", async ({ page }) => {
@@ -866,7 +950,7 @@ test("a card's menu closes on Escape, duplicates into a prefilled builder that s
   await menu.click();
   await card.getByRole("link", { name: "Duplicate" }).click();
   await expect(page).toHaveURL("/t/acme22/automations/new?from=flow");
-  await expect(page.getByLabel("Name")).toHaveValue("Guide flow (copy)");
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Guide flow (copy)");
   await expect(page.getByRole("switch", { name: "On" })).toHaveAttribute("aria-checked", "false");
   await expect(step(page, 1).getByLabel("Button 1 label")).toHaveValue("Yes please");
   await expect(step(page, 3).getByLabel("Wait for")).toHaveValue("1");
@@ -875,6 +959,7 @@ test("a card's menu closes on Escape, duplicates into a prefilled builder that s
   // One save, a create: the original is untouched and the copy's buttons have payloads of their own.
   expect(state.bodies).toEqual([
     {
+      cooldown_minutes: 0,
       name: "Guide flow (copy)",
       trigger: "comment_received",
       conditions: flowConditions,
@@ -934,12 +1019,12 @@ test("the gallery groups the templates, marks the popular ones and the networks,
 
   await page.getByRole("link", { name: "Start from scratch" }).click();
   await expect(page).toHaveURL("/t/acme22/automations/new?template=blank");
-  await expect(page.getByLabel("Name")).toHaveValue("");
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("");
   await expect(page.getByRole("radio", { name: "When someone comments" })).toBeChecked();
   // The bar counts what is missing and jumps to the first of it.
   await page.getByRole("button", { name: "2 problems" }).click();
-  await expect(page.getByLabel("Name")).toBeFocused();
-  await page.getByLabel("Name").fill("My own");
+  await expect(page.getByLabel("Name", { exact: true })).toBeFocused();
+  await page.getByLabel("Name", { exact: true }).fill("My own");
   await page.getByRole("button", { name: "1 problem" }).click();
   await expect(page.getByLabel("DM text")).toBeFocused();
   await page.getByLabel("DM text").fill("Hello {name}");
@@ -989,7 +1074,7 @@ test("saving changed steps asks first when people wait in the flow, and only the
   state.list.push(guideFlow({ runs: { ...stats, waiting: 2 } }));
   await page.goto("/automations/flow?edit=1");
   // A new name leaves the steps alone, so nothing is asked.
-  await page.getByLabel("Name").fill("Guide flow 2");
+  await page.getByLabel("Name", { exact: true }).fill("Guide flow 2");
   await page.getByRole("button", { name: "Save automation" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Automation saved." })).toBeVisible();
   expect(state.bodies).toHaveLength(1);
@@ -1037,9 +1122,9 @@ test("leaving the builder with unsaved changes asks first", async ({ page }) => 
       window.dispatchEvent(e);
       return e.defaultPrevented;
     });
-  await expect(page.getByLabel("Name")).toHaveValue("Welcome message");
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Welcome message");
   expect(await unload()).toBe(false);
-  await page.getByLabel("Name").fill("Hello there");
+  await page.getByLabel("Name", { exact: true }).fill("Hello there");
   expect(await unload()).toBe(true);
 
   const asked: string[] = [];
@@ -1050,12 +1135,12 @@ test("leaving the builder with unsaved changes asks first", async ({ page }) => 
   await page.getByRole("main").getByRole("link", { name: "Templates" }).click();
   expect(asked).toEqual(["Leave without saving? Your changes to this automation will be lost."]);
   await expect(page).toHaveURL("/t/acme22/automations/new?template=welcome");
-  await expect(page.getByLabel("Name")).toHaveValue("Hello there");
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Hello there");
 
   // Cancel asks the same, and a yes leaves.
   page.once("dialog", (d) => d.dismiss());
   await page.getByRole("button", { name: "Cancel" }).click();
-  await expect(page.getByLabel("Name")).toHaveValue("Hello there");
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Hello there");
   page.once("dialog", (d) => d.accept());
   await page.getByRole("main").getByRole("link", { name: "Templates" }).click();
   await expect(page.getByRole("heading", { name: "Start from a template" })).toBeVisible();
@@ -1068,7 +1153,7 @@ test("the browser's Back button asks before unsaved changes are lost, and only t
   const open = async () => {
     await page.goto("/automations/new");
     await page.getByRole("main").getByRole("link", { name: /Welcome message/ }).first().click();
-    await expect(page.getByLabel("Name")).toHaveValue("Welcome message");
+    await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Welcome message");
   };
 
   // Nothing changed: Back just goes back.
@@ -1083,18 +1168,18 @@ test("the browser's Back button asks before unsaved changes are lost, and only t
 
   // Changed: a no keeps the page and what was typed, as often as Back is pressed; a yes leaves.
   await open();
-  await page.getByLabel("Name").fill("Hello there");
+  await page.getByLabel("Name", { exact: true }).fill("Hello there");
   await page.goBack();
   await expect.poll(() => asked).toHaveLength(1);
   await expect(page).toHaveURL("/t/acme22/automations/new?template=welcome");
-  await expect(page.getByLabel("Name")).toHaveValue("Hello there");
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Hello there");
   await page.goBack();
   await expect(gallery).toBeVisible();
   expect(asked).toEqual(Array(2).fill("Leave without saving? Your changes to this automation will be lost."));
 
   // Saved: Back never asks.
   await open();
-  await page.getByLabel("Name").fill("Hello there");
+  await page.getByLabel("Name", { exact: true }).fill("Hello there");
   await page.getByRole("button", { name: "Create automation" }).click();
   await expect(page).toHaveURL(/\/automations\/(?!new)[^/?]+$/);
   await page.goBack();
@@ -1150,4 +1235,166 @@ test("the automation pages have no sideways scroll on a 375 wide phone", async (
   await page.getByLabel("Insert a step after step 1").click();
   await expect(page.getByRole("button", { name: "Tag the contact" }).first()).toBeVisible();
   await fits();
+});
+
+test("an AI step takes a prompt, says who pays, and saves as ai_send_dm", async ({ page }) => {
+  const state = await brain(page, "owner");
+  await page.goto("/automations/new?template=comment-to-dm");
+  await page.getByLabel("Name", { exact: true }).fill("AI answers");
+  const doThis = page.getByRole("group", { name: "Do this" });
+  await doThis.getByRole("radio", { name: "A flow of steps" }).check();
+  await step(page, 1).getByRole("button", { name: "Remove step 1" }).click();
+  await doThis.getByRole("button", { name: "AI DM", exact: true }).click();
+  await step(page, 1).getByLabel("Prompt for the AI").fill("Thank them and point them to https://acme.example/guide");
+  await expect(step(page, 1)).toContainText("200 AI replies a month come first, then AI credits");
+  await expect(page.getByRole("region", { name: "Preview" })).toContainText("Written by AI from your prompt");
+  await page.getByRole("button", { name: "Create automation" }).click();
+  await expect(page).toHaveURL("/t/acme22/automations/a2");
+  expect(state.bodies[0]).toMatchObject({ steps: [{ type: "ai_send_dm", prompt: "Thank them and point them to https://acme.example/guide" }] });
+  await expect(page.getByRole("region", { name: "AI answers" })).toContainText("1 step: AI DM.");
+});
+
+test("run history names the model of an AI reply and says when credits ran out", async ({ page }) => {
+  const state = await brain(page, "owner");
+  state.list.push(guideFlow({ steps: [{ type: "ai_send_dm", prompt: "Say hi" }] }));
+  const ai = (status: string, why: string | null, model?: string) => ({ type: "ai_send_dm", status, reason: why, remote_id: null, ...(model && { provider: "anthropic", model }) });
+  await page.route(/\/v1\/automations\/flow\/runs/, (route) =>
+    route.fulfill({ json: { runs: [run("x1", "sent", null, [ai("sent", null, "claude-haiku-5-5")]), run("x2", "skipped", "no_ai_credits", [ai("skipped", "no_ai_credits")])], next_cursor: null } }),
+  );
+  await page.goto("/automations/flow");
+  const history = page.getByRole("region", { name: "Run history" });
+  await expect(history.getByRole("listitem").filter({ hasText: "AI DM: sent, written by claude-haiku-5-5" })).toHaveCount(1);
+  await expect(history).toContainText("This month's AI replies and your AI credits are used up");
+});
+
+test("Test this automation tries the form as it stands, shows what would go and saves nothing", async ({ page }) => {
+  const state = await brain(page, "owner");
+  const tried: { automation: { trigger: string; actions: unknown[]; name: string }; sample: Record<string, unknown> }[] = [];
+  const step = { reason: null, text: null, wait_minutes: null, tag: null };
+  const answers = [
+    {
+      trigger: "comment_received",
+      matched: true,
+      mismatches: [],
+      blocks: [],
+      steps: [
+        { ...step, type: "send_dm", status: "would_send", text: "Hi Sam, here it is" },
+        { ...step, type: "ai_reply_publicly", status: "would_fail", reason: "ai_link", provider: "anthropic", model: "claude-haiku-5-5" },
+      ],
+    },
+    { trigger: "comment_received", matched: false, mismatches: ["no_keyword"], blocks: [], steps: [] },
+    { trigger: "comment_received", matched: true, mismatches: [], blocks: ["no_public_page"], steps: [] },
+    { trigger: "comment_received", matched: true, mismatches: [], blocks: [], steps: [{ ...step, type: "send_dm", status: "would_send", text: "Hi there" }] },
+  ];
+  await page.route("**/v1/automations/test", (route) => {
+    tried.push(route.request().postDataJSON());
+    return route.fulfill({ json: answers[tried.length - 1] });
+  });
+  await page.goto("/automations/new?template=comment-to-dm");
+  const panel = page.getByRole("group", { name: "Test this automation" });
+  await expect(panel.getByLabel("Their comment or message")).toHaveAttribute("placeholder", "Can I get the link?");
+  await expect(panel.getByLabel("As account")).toContainText("alice.bsky.social");
+  // Enter in any field tries it and does not save the form.
+  await panel.getByLabel("From").fill("Sam");
+  await panel.getByLabel("From").press("Enter");
+  await expect(panel).toContainText("It would run.");
+  await expect(panel).toContainText("Hi Sam, here it is");
+  await expect(panel).toContainText("AI public reply: Would fail");
+  await expect(panel).toContainText("the AI added a link");
+  await expect(panel).toContainText("Written by AI (claude-haiku-5-5)");
+  expect(tried[0]).toMatchObject({
+    automation: { trigger: "comment_received", name: "Comment to DM", actions: [{ type: "send_dm" }] },
+    sample: { account_id: "c1", text: "Can I get the link?", author_name: "Sam" },
+  });
+  expect(state.bodies).toHaveLength(0);
+  // A sample that does not match says why; a rule that would stop it is named.
+  await panel.getByLabel("Their comment or message").fill("hello");
+  await panel.getByRole("button", { name: "Test" }).click();
+  await expect(panel).toContainText("It would not run.");
+  await expect(panel).toContainText("The text has none of the keywords");
+  await panel.getByRole("button", { name: "Test" }).click();
+  await expect(panel).toContainText("this post has no open public page");
+  // An edit makes the answer stale, and a name is not needed to try.
+  await page.getByLabel("Name", { exact: true }).fill("");
+  await expect(panel).not.toContainText("changed since this test");
+  await page.getByLabel("DM text").fill("Hi {name}, here is the guide");
+  await expect(panel).toContainText("changed since this test");
+  await panel.getByLabel("Their comment or message").press("Enter");
+  await expect(panel).toContainText("Hi there");
+  expect(tried).toHaveLength(4);
+  expect(tried[3]!.automation).toMatchObject({ name: "Test", actions: [{ type: "send_dm", text: "Hi {name}, here is the guide" }] });
+  // With the text gone the form can't be saved, so it can't be tried, and says why.
+  await page.getByLabel("DM text").fill("");
+  await expect(panel.getByRole("button", { name: "Test" })).toBeDisabled();
+  await expect(panel).toContainText("Fix this first: Write a DM text or a public reply.");
+  expect(state.bodies).toHaveLength(0);
+});
+
+test("a like trigger offers only what has nobody to message, and saves it", async ({ page }) => {
+  const state = await brain(page, "owner");
+  await page.goto("/automations/new?template=blank");
+  await page.getByLabel("Name").fill("Follow likers");
+  await page.getByText("When someone likes a post").click();
+  await expect(page.getByText("Bluesky only. Runs when someone likes one of your posts")).toBeVisible();
+  const doThis = page.getByRole("group", { name: "Do this" });
+  // Nobody to message or tag, no comment to like or repost: only follow back, mail, stop remain.
+  await expect(doThis.getByLabel("DM text")).toHaveCount(0);
+  await expect(doThis.getByLabel("Tag the contact")).toHaveCount(0);
+  await expect(doThis.getByLabel("Like the comment")).toHaveCount(0);
+  await expect(doThis.getByLabel("Hide the comment")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Preview" })).toContainText("Sam liked your post");
+  await expect(page.getByRole("button", { name: /\d problem/ })).toContainText("1 problem");
+  await doThis.getByLabel("Follow them back").check();
+  await doThis.getByLabel("Mail your team").check();
+  await page.getByRole("button", { name: "Create automation" }).click();
+  await expect(page).toHaveURL("/t/acme22/automations/a2");
+  expect(state.bodies[0]).toEqual({
+    cooldown_minutes: 10,
+    name: "Follow likers",
+    trigger: "like_received",
+    conditions: { social_set_id: null, account_ids: [], post_remote_ids: [] },
+    actions: [{ type: "notify_team" }, { type: "follow_back" }],
+    active: true,
+    fallback_public_reply: null,
+  });
+  // Under a comment, like and repost are offered; moving to a like drops them and the DM, and says so.
+  await page.goto("/automations/new?template=comment-to-dm");
+  const comment = page.getByRole("group", { name: "Do this" });
+  await comment.getByLabel("Like the comment").check();
+  await comment.getByLabel("Repost the comment").check();
+  await page.getByText("When someone likes a post").click();
+  await expect(page.getByRole("status").filter({ hasText: "were removed: " })).toContainText("hide, like and repost");
+  await expect(page.getByRole("status").filter({ hasText: "were removed: " })).toContainText("DM");
+});
+
+test("a flow adds follow back and repost where there is a post, and none of the messages behind a like", async ({ page }) => {
+  const state = await brain(page, "owner");
+  await page.goto("/automations/new?template=comment-to-dm");
+  await page.getByRole("radio", { name: "A flow of steps" }).check();
+  await page.getByRole("button", { name: "Repost the comment", exact: true }).click();
+  await expect(page.getByRole("listitem", { name: /Repost the comment/ })).toContainText("Only Bluesky accounts can");
+  await page.getByRole("button", { name: "Follow them back", exact: true }).click();
+  await page.getByRole("button", { name: "Create automation" }).click();
+  await expect(page).toHaveURL("/t/acme22/automations/a2");
+  expect((state.bodies[0] as { steps: { type: string }[] }).steps.map((s) => s.type)).toEqual(["send_dm", "repost_comment", "follow_back"]);
+});
+
+test("the automation page lists items it did not run on, with why", async ({ page }) => {
+  const state = await brain(page, "owner");
+  state.misses = [
+    { inbox_item_id: "p1", reasons: ["no_keyword"], created_at: "2026-10-29T10:00:00Z", kind: "comment", platform: "bluesky", author: "Bob", text: "nice post" },
+    { inbox_item_id: "p9", reasons: ["wrong_post", "not_yet_on"], created_at: "2026-10-29T09:00:00Z", kind: "like", platform: "bluesky", author: null, text: "" },
+  ];
+  await page.goto("/automations/a1");
+  const list = page.getByRole("list", { name: "Items it did not run on" });
+  await expect(list.getByRole("listitem")).toHaveCount(2);
+  await expect(list.getByRole("listitem").first()).toContainText("Bob");
+  await expect(list.getByRole("listitem").first()).toContainText("commented");
+  await expect(list.getByRole("listitem").first()).toContainText("Not run: The text has none of the keywords");
+  await expect(list.getByRole("listitem").nth(1)).toContainText("Someone");
+  await expect(list.getByRole("listitem").nth(1)).toContainText("It is not on one of the posts this automation is limited to; The automation was switched on after this came");
+  await expect(list.getByRole("link", { name: "Open in inbox" }).first()).toHaveAttribute("href", "/t/acme22/inbox?item=p1");
+  state.misses = [];
+  await page.reload();
+  await expect(page.getByText("No item it listens for failed to match")).toBeVisible();
 });

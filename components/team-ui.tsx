@@ -79,6 +79,7 @@ const limitWords: Record<string, string> = {
   accounts: "Your plan's account limit is reached.",
   members: "Your plan's team member limit is reached.",
   automation: "Automations are not on your plan.",
+  inboxes: "Your plan's inbox limit is reached.",
   plan: "The team has no plan, so posts don't publish. Scheduled posts wait and go out once a plan is chosen.",
 };
 export const planLimit = (limit?: string) => (
@@ -91,11 +92,18 @@ export const planLimit = (limit?: string) => (
 );
 
 const messages: Partial<Record<Failure, ReactNode>> = {
+  captcha_failed: "The check didn't pass. Try again.",
+  captcha_unavailable: "We couldn't check that right now. Try again in a minute.",
+  review_account: "The demo account used for app review cannot do this.",
+  email_mismatch: "That is not the email address of this account. Check it and try again.",
+  owns_shared_team: "You own a team that other people belong to. Make someone else an owner or delete that team first.",
+  stripe_failed: "We could not cancel your paid plan with our payment provider, so your account was not deleted. Try again in a moment, or email info@socialreins.com.",
   plan_limit: planLimit(),
   plan_limit_accounts: planLimit("accounts"),
   plan_limit_members: planLimit("members"),
   plan_limit_automation: planLimit("automation"),
   plan_limit_plan: planLimit("plan"),
+  plan_limit_inboxes: planLimit("inboxes"),
   forbidden: "Your role in this team can't do that.",
   not_found: "That is no longer there. Reload the page to see the latest.",
   invalid_name: "Use a name of 1 to 60 characters.",
@@ -104,10 +112,10 @@ const messages: Partial<Record<Failure, ReactNode>> = {
   default_set: "The set that holds every account can't be deleted.",
   invalid_sets: "One of those sets no longer exists. Reload the page and try again.",
   default_set_required: "An account can't leave the set that holds every account.",
-  // The form checks length and characters itself, so brain's refusal is a reserved word.
+  // The form checks the address while it is typed (SlugField), so these only show when that check was missed.
   invalid_slug: "That address is reserved or not allowed. Pick a different one.",
-  slug_taken: "Another team already uses that address. Pick a different one.",
-  slug_changed_too_often: "The address was changed 5 times today, the most allowed. Try again tomorrow.",
+  slug_taken: "That address is taken, or another team gave it up lately. Pick a different one.",
+  slug_changed_too_often: "The address was changed 3 times in the last 30 days, the most allowed. Try again later.",
   invalid_role: "Pick one of the roles in the list.",
   invalid_email: "That email address doesn't look right. Check it and try again.",
   already_member: "That person is already in this team.",

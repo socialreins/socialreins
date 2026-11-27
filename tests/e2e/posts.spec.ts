@@ -86,7 +86,8 @@ test("calendar shows the month's posts, with filter and month steps; posts lists
     const q = new URL(route.request().url()).searchParams;
     queries.push(q);
     if (q.get("status") === "draft") return route.fulfill({ json: [post("p-draft", { body: "An unfinished thought" })] });
-    if (q.get("from")?.startsWith("2026-10-31")) {
+    // A day either side of the month: a post may sit on another day in its set's zone.
+    if (q.get("from")?.startsWith("2026-10-30")) {
       return route.fulfill({
         json: [
           post("p-sched", { status: "scheduled", scheduled_at: "2026-11-12T09:30:00Z", body: "Launch day" }),
@@ -102,7 +103,7 @@ test("calendar shows the month's posts, with filter and month steps; posts lists
   const days = page.getByRole("list", { name: "Posts in November 2026" });
   await expect(days.getByRole("link", { name: /10:30.*Launch day$/ })).toHaveAttribute("href", "/t/acme22/posts/p-sched");
   await expect(page.getByRole("region", { name: "Drafts" }).getByRole("link", { name: "An unfinished thought" })).toHaveAttribute("href", "/t/acme22/posts/p-draft");
-  expect(queries[0]?.get("to")).toBe("2026-11-30T23:00:00.000Z");
+  expect(queries.find((q) => q.get("from"))?.get("to")).toBe("2026-12-01T23:00:00.000Z");
 
   await page.getByRole("navigation", { name: "App" }).getByRole("link", { name: "Calendar" }).click();
   await expect(page).toHaveURL("/t/acme22/calendar");
@@ -116,7 +117,7 @@ test("calendar shows the month's posts, with filter and month steps; posts lists
 
   await page.getByRole("button", { name: "Next month" }).click();
   await expect(page.getByRole("heading", { name: "December 2026" })).toBeVisible();
-  await expect.poll(() => queries.some((q) => q.get("from") === "2026-11-30T23:00:00.000Z")).toBe(true);
+  await expect.poll(() => queries.some((q) => q.get("from") === "2026-11-29T23:00:00.000Z")).toBe(true);
   await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "All sets" }).click();
   await page.locator("#set-menu").getByRole("button", { name: "Clients" }).click();
   await expect(page.locator("#set-menu")).toBeHidden();
@@ -156,9 +157,9 @@ async function listMonth(page: Page) {
     route.fulfill({
       json:
         new URL(route.request().url()).searchParams.get("status") === "draft"
-          ? [post("p-draft", { body: "An unfinished launch note" })]
+          ? [post("p-draft", { body: "An unfinished launch note", error: "Not posted: it was due at 2026-11-09 08:00 UTC and is more than an hour late. Schedule it again." })]
           : [
-              post("p-old", { status: "published", scheduled_at: "2026-11-03T08:00:00Z", published_at: "2026-11-03T08:00:00Z", body: "Hello Bluesky", targets: [target()] }),
+              post("p-old", { status: "published", scheduled_at: "2026-11-03T08:00:00Z", published_at: "2026-11-03T08:00:00Z", body: "Hello Bluesky", targets: [target({ retried: true })] }),
               post("p-fail", { status: "failed", scheduled_at: "2026-11-05T08:00:00Z", error: "Bluesky refused the image", body: "Broken upload" }),
               post("p-today", { status: "scheduled", scheduled_at: "2026-11-10T15:00:00Z", body: "Launch day" }),
               post("p-x", { platform: "x", status: "scheduled", scheduled_at: "2026-11-20T15:00:00Z", body: "Follow-up on X" }),
@@ -166,6 +167,27 @@ async function listMonth(page: Page) {
     }),
   );
 }
+
+test("a retry that is still waiting says when it runs, and is Retried once only after", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-11-10T12:00:00+01:00"));
+  await brain(page);
+  const waiting = target({ status: "pending", remote_id: null, remote_url: null, published_at: null, error: "Rate limited. Nothing was posted.", retried: true, retry_at: "2026-11-10T11:05:00Z" });
+  const ran = { ...waiting, retry_at: null };
+  let current = waiting;
+  await page.route(/\/v1\/posts(\?.*)?$/, (route) =>
+    route.fulfill({
+      json: new URL(route.request().url()).searchParams.get("status") === "draft" ? [] : [post("p-wait", { status: "queued", scheduled_at: "2026-11-10T11:58:00Z", body: "Busy platform", targets: [current] })],
+    }),
+  );
+  await page.goto("/posts");
+  const row = page.getByRole("listitem").filter({ hasText: "Busy platform" });
+  await expect(row.getByText(/^Retrying at /)).toBeVisible();
+  await expect(row.getByText("Retried once")).toHaveCount(0);
+  current = ran;
+  await page.reload();
+  await expect(row.getByText("Retried once")).toBeVisible();
+  await expect(row.getByText(/^Retrying at /)).toHaveCount(0);
+});
 
 test("posts shows today and later first and folds the earlier days of the month", async ({ page }) => {
   await listMonth(page);
@@ -181,6 +203,9 @@ test("posts shows today and later first and folds the earlier days of the month"
   await expect(earlier.getByRole("link", { name: "View on Bluesky" })).toBeVisible();
   await expect(earlier.getByText("Failed", { exact: true })).toBeVisible();
   await expect(earlier.getByText("Bluesky refused the image")).toBeVisible();
+  await expect(earlier.getByText("Retried once")).toBeVisible();
+  // A draft brain put back for being late says why.
+  await expect(page.getByRole("region", { name: "Drafts" }).getByText(/more than an hour late/)).toBeVisible();
 
   // Another month shows every day, with nothing folded.
   await page.getByRole("button", { name: "Previous month" }).click();
@@ -249,7 +274,7 @@ test("on a phone the posts list fits the screen", async ({ page }) => {
 test("a team without Bluesky sees a note linking to connections", async ({ page }) => {
   await brain(page, { accounts: [] });
   await page.goto("/posts/new");
-  const note = page.getByText("No Bluesky, Threads, LinkedIn, X, TikTok, YouTube, Facebook or Instagram account is connected to this team yet");
+  const note = page.getByText("No Bluesky, Threads, LinkedIn, X, TikTok, YouTube, Pinterest, Facebook or Instagram account is connected to this team yet");
   await expect(note).toBeVisible();
   await expect(page.getByRole("link", { name: "Connect an account" })).toHaveAttribute("href", "/t/acme22/connections");
 });
@@ -319,6 +344,57 @@ test("schedule sends the local time as UTC and moves to the post's address", asy
     thread: [],
     scheduled_at: "2026-11-20T08:30:00.000Z",
   });
+});
+
+test("the composer picks times in the set's queue time zone, DST included", async ({ page }) => {
+  await brain(page, { accounts: [{ ...alice, set_ids: ["d", "s1"] }] });
+  await page.route(/\/v1\/social-sets\/s1\/queue$/, (route) => route.fulfill({ json: { time_zone: "America/New_York", slots: [{ weekday: 1, time: "09:00" }], next: [] } }));
+  const sent: Record<string, unknown>[] = [];
+  await page.route("**/v1/posts", (route) => {
+    sent.push(route.request().postDataJSON());
+    return route.fulfill({ status: 201, json: post("p1", { ...sent.at(-1), status: "scheduled" }) });
+  });
+  await page.route("**/v1/posts/p1", (route) => route.fulfill({ json: post("p1", { ...sent.at(-1), social_set_id: "s1", status: "scheduled" }) }));
+  await page.goto("/posts/new");
+  await page.getByLabel("Set", { exact: true }).selectOption("s1");
+  await page.getByLabel("Post", { exact: true }).fill("Summer");
+  await expect(page.getByText("In this set's time zone, America/New_York.")).toBeVisible();
+  // 09:30 in New York is 13:30 UTC in July and 14:30 in December, whatever the browser's zone.
+  await page.getByLabel("Publish at").fill("2026-07-01T09:30");
+  await page.getByRole("button", { name: "Schedule" }).click();
+  await expect(page).toHaveURL("/t/acme22/posts/p1");
+  expect(sent[0]!.scheduled_at).toBe("2026-07-01T13:30:00.000Z");
+  await expect(page.getByLabel("Publish at")).toHaveValue("2026-07-01T09:30");
+});
+
+test("no time is typed before the set's zone is known, and a skipped time moves past the gap", async ({ page }) => {
+  await brain(page, { accounts: [{ ...alice, set_ids: ["d", "s1"] }] });
+  let answer = () => {};
+  const held = new Promise<void>((done) => (answer = done));
+  await page.route(/\/v1\/social-sets\/s1\/queue$/, async (route) => {
+    await held;
+    await route.fulfill({ json: { time_zone: "America/New_York", slots: [{ weekday: 1, time: "09:00" }], next: [] } });
+  });
+  const sent: Record<string, unknown>[] = [];
+  await page.route("**/v1/posts", (route) => {
+    sent.push(route.request().postDataJSON());
+    return route.fulfill({ status: 201, json: post("p1", { ...sent.at(-1), status: "scheduled" }) });
+  });
+  await page.route("**/v1/posts/p1", (route) => route.fulfill({ json: post("p1", { ...sent.at(-1), social_set_id: "s1", status: "scheduled" }) }));
+  await page.goto("/posts/new");
+  await page.getByLabel("Set", { exact: true }).selectOption("s1");
+  await page.getByLabel("Post", { exact: true }).fill("Spring");
+  await expect(page.getByLabel("Publish at")).toBeDisabled();
+  await expect(page.getByText("Loading time zone...")).toBeVisible();
+  answer();
+  await expect(page.getByLabel("Publish at")).toBeEnabled();
+  // 02:30 on 8 March 2026 does not exist in New York: it becomes 03:00 EDT, 07:00 UTC.
+  await page.getByLabel("Publish at").fill("2026-03-08T02:30");
+  await expect(page.getByLabel("Publish at")).toHaveValue("2026-03-08T03:00");
+  await expect(page.getByText("02:30 does not exist that day (the clocks go forward), so it is 03:00.")).toBeVisible();
+  await page.getByRole("button", { name: "Schedule" }).click();
+  await expect(page).toHaveURL("/t/acme22/posts/p1");
+  expect(sent[0]!.scheduled_at).toBe("2026-03-08T07:00:00.000Z");
 });
 
 test("a thread is written, checked, previewed and sent in order", async ({ page }) => {
@@ -427,7 +503,7 @@ test("publish now polls until the post is published", async ({ page }) => {
   // No "publishing" message is left behind once the post is out.
   await expect(page.getByText(/Publishing|Sent to Bluesky/)).toHaveCount(0);
   await expect(page.getByRole("link", { name: "View on Bluesky" })).toHaveAttribute("href", "https://bsky.app/profile/alice.bsky.social/post/1");
-  await expect(page.getByText("Alice: published")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Bluesky Published" }).getByText("Alice", { exact: true })).toBeVisible();
   expect(polls).toBe(2);
 });
 
@@ -483,14 +559,18 @@ test("a failed post is read-only with its error and target statuses", async ({ p
       json: post("p5", {
         status: "failed",
         error: "Alice: the image is over 1 MB.",
-        targets: [target({ status: "failed", remote_url: null, error: "image too large" })],
+        targets: [target({ status: "failed", remote_url: null, remote_id: null, error: "image too large" })],
       }),
     }),
   );
   await page.goto("/posts/p5");
   await expect(page.getByRole("status").filter({ hasText: "Failed." })).toBeVisible();
-  await expect(page.getByText("What went wrong: Alice: the image is over 1 MB.")).toBeVisible();
-  await expect(page.getByText("Alice: failed. image too large")).toBeVisible();
+  // The account's own error, with what to do about it, and Retry or Duplicate for it.
+  const why = page.getByRole("group", { name: "What went wrong for Alice" });
+  await expect(why).toContainText("image too large");
+  await expect(why).toContainText("What to do:");
+  await expect(why.getByRole("button", { name: "Retry Bluesky" })).toBeVisible();
+  await expect(why.getByRole("link", { name: "Duplicate" })).toHaveAttribute("href", "/t/acme22/posts/new?from=p5");
   await expect(page.getByRole("button", { name: /Delete|Take down|Save draft/ })).toHaveCount(0);
 });
 
@@ -575,16 +655,15 @@ test("a post for several platforms is one group, published on each", async ({ pa
   });
   expect(published).toEqual(["g-b", "g-t", "g-i"]);
   await expect(page.getByRole("link", { name: "View on Bluesky" })).toHaveAttribute("href", "https://example.com/bluesky/1");
-  // Every version is listed first, with its status; the open one is marked.
-  const versions = page.getByRole("navigation", { name: "Versions of this post" });
-  await expect(versions.getByRole("listitem")).toHaveText([/Bluesky\s*Published/, /Threads\s*Published/, /Instagram\s*Published/]);
-  await expect(versions.locator("[aria-current=page]")).toHaveText(/Bluesky/);
-  await expect(versions.getByRole("link", { name: /Bluesky/ })).toHaveCount(0);
-  await expect(versions.getByRole("link", { name: /Threads/ })).toHaveAttribute("href", "/t/acme22/posts/g-t");
-  const others = page.getByRole("region", { name: "Same post on other platforms" });
-  await expect(others.getByRole("link", { name: "Threads post" })).toHaveAttribute("href", "/t/acme22/posts/g-t");
-  await expect(others.getByRole("link", { name: "View on Threads" })).toHaveAttribute("href", "https://example.com/threads/1");
-  await expect(others.getByRole("link", { name: "View on Instagram" })).toHaveAttribute("href", "https://example.com/instagram/1");
+  // One post with a tab per network, each with its status; the opened one is selected.
+  const tabs = page.getByRole("tablist", { name: "Networks" });
+  await expect(tabs.getByRole("tab")).toHaveText([/Bluesky\s*Published/, /Threads\s*Published/, /Instagram\s*Published/]);
+  await expect(tabs.getByRole("tab", { selected: true })).toHaveText(/Bluesky/);
+  await tabs.getByRole("tab", { name: /Threads/ }).click();
+  await expect(page.getByRole("link", { name: "View on Threads" })).toHaveAttribute("href", "https://example.com/threads/1");
+  await page.keyboard.press("ArrowRight");
+  await expect(tabs.getByRole("tab", { name: /Instagram/ })).toBeFocused();
+  await expect(page.getByRole("link", { name: "View on Instagram" })).toHaveAttribute("href", "https://example.com/instagram/1");
 });
 
 test("Instagram without an image is flagged before brain is asked", async ({ page }) => {
@@ -888,6 +967,120 @@ test("a published YouTube post shows its visibility", async ({ page }) => {
   await expect(shown).toContainText("Private");
 });
 
+const pinAcc = { ...account("c9", "pinterest", "Ann Pins"), handle: "annpins" };
+const pinBoards = [
+  { id: "111", name: "Recipes", privacy: "PUBLIC" },
+  { id: "222", name: "Travel", privacy: "PROTECTED" },
+];
+const pinterestBoards = (page: Page, id = "c9") => page.route(`**/v1/connections/${id}/pinterest/boards`, (route) => route.fulfill({ json: { boards: pinBoards } }));
+
+test("a pin goes to the picked board with its title and link, and the image's alt text", async ({ page }) => {
+  await brain(page, { accounts: [pinAcc] });
+  await pinterestBoards(page);
+  let sent: Record<string, unknown> | undefined;
+  await page.route("**/v1/posts", (route) => {
+    sent = route.request().postDataJSON();
+    return route.fulfill({ status: 201, json: post("p1", sent) });
+  });
+  await page.goto("/posts/new");
+  await page.getByLabel("Post", { exact: true }).fill("A recipe worth saving");
+  await page.getByRole("button", { name: "Add image" }).click();
+  await page.getByLabel("Image 1 link").fill("https://example.com/pie.jpg");
+  const board = page.getByLabel("Board", { exact: true });
+  await expect(board.getByRole("option", { name: "Travel (protected)" })).toHaveCount(1);
+  // The account has no default board, so one must be chosen.
+  await expect(page.getByText("This account has no default board, so choose one.")).toBeVisible();
+  await board.selectOption("222");
+  await page.getByLabel("Title (optional)").fill("  Apple pie  ");
+  await page.getByLabel("Link (optional)").fill("https://example.com/pie");
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page).toHaveURL("/t/acme22/posts/p1");
+  expect(sent).toMatchObject({ platform: "pinterest", body: "A recipe worth saving", pinterest: { board_id: "222", title: "Apple pie", link: "https://example.com/pie" } });
+});
+
+test("a pin without a board uses the account's default board", async ({ page }) => {
+  await brain(page, { accounts: [{ ...pinAcc, default_board_id: "111", default_board_name: "Recipes" }] });
+  await pinterestBoards(page);
+  let sent: Record<string, unknown> | undefined;
+  await page.route("**/v1/posts", (route) => {
+    sent = route.request().postDataJSON();
+    return route.fulfill({ status: 201, json: post("p1", sent) });
+  });
+  await page.goto("/posts/new");
+  await page.getByLabel("Post", { exact: true }).fill("Pasta");
+  await page.getByRole("button", { name: "Add image" }).click();
+  await page.getByLabel("Image 1 link").fill("https://example.com/pasta.jpg");
+  const board = page.getByLabel("Board", { exact: true });
+  await expect(board.getByRole("option", { name: "Default board: Recipes" })).toHaveCount(1);
+  await expect(page.getByText("This account has no default board")).toHaveCount(0);
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page).toHaveURL("/t/acme22/posts/p1");
+  expect(sent).toMatchObject({ platform: "pinterest", pinterest: { board_id: null, title: null, link: null } });
+});
+
+test("a pin needs an image, a title within 100 characters and a web link", async ({ page }) => {
+  await brain(page, { accounts: [{ ...pinAcc, default_board_id: "111", default_board_name: "Recipes" }] });
+  await pinterestBoards(page);
+  await page.goto("/posts/new");
+  await page.getByLabel("Post", { exact: true }).fill("Pasta");
+  await page.getByLabel("Title (optional)").fill("t".repeat(101));
+  await expect(page.getByText("101 of 100 characters")).toBeVisible();
+  await page.getByLabel("Link (optional)").fill("ftp://example.com");
+  await expect(page.getByText("Use a web address that starts with http:// or https://.")).toBeVisible();
+  await expect(page.getByLabel("Title (optional)")).toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByLabel("Link (optional)")).toHaveAttribute("aria-invalid", "true");
+});
+
+test("a group gives the Pinterest settings to its Pinterest post, and one account's boards are offered only for one account", async ({ page }) => {
+  await brain(page, { accounts: [pinAcc, facebookAcc] });
+  await pinterestBoards(page);
+  let sent: Record<string, unknown> | undefined;
+  await page.route("**/v1/post-groups", (route) => {
+    sent = route.request().postDataJSON();
+    return route.fulfill({ status: 201, json: { group_id: "g1", posts: [post("g-p", { platform: "pinterest", group_id: "g1" }), post("g-f", { platform: "facebook", group_id: "g1" })] } });
+  });
+  await page.goto("/posts/new");
+  await page.getByLabel("Post", { exact: true }).fill("Pasta night");
+  await page.getByRole("button", { name: "Add image" }).click();
+  await page.getByLabel("Image 1 link").fill("https://example.com/pasta.jpg");
+  await page.getByRole("tab", { name: "Pinterest" }).click();
+  await page.getByLabel("Board", { exact: true }).selectOption("111");
+  await page.getByLabel("Title (optional)").fill("Pasta");
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page).toHaveURL("/t/acme22/posts/g-p");
+  expect(sent).toMatchObject({ pinterest: { board_id: "111", title: "Pasta", link: null } });
+});
+
+test("with several Pinterest accounts the pin uses each default board, and a saved board that is not listed stays visible", async ({ page }) => {
+  const second = { ...account("c10", "pinterest", "Second Pins"), handle: "second", default_board_id: "111" };
+  await brain(page, { accounts: [{ ...pinAcc, default_board_id: "111" }, second] });
+  await pinterestBoards(page);
+  await page.goto("/posts/new");
+  await expect(page.getByText("This pin goes to 2 Pinterest accounts")).toBeVisible();
+  await expect(page.getByLabel("Board", { exact: true })).toHaveCount(0);
+
+  await brain(page, { accounts: [pinAcc] });
+  await page.route("**/v1/posts/p9", (route) => route.fulfill({ json: post("p9", { platform: "pinterest", media: ["https://example.com/pie.jpg"], pinterest: { board_id: "999", title: null, link: null } }) }));
+  await page.goto("/posts/p9");
+  const board = page.getByLabel("Board", { exact: true });
+  await expect(board.getByRole("option", { name: "Board 999 (not in the list)" })).toHaveCount(1);
+  await expect(board).toHaveValue("999");
+});
+
+test("a saved pin shows its settings", async ({ page }) => {
+  await brain(page, { accounts: [pinAcc] });
+  await page.route("**/v1/posts/p8", (route) =>
+    route.fulfill({
+      json: post("p8", { platform: "pinterest", status: "published", published_at: "2026-11-03T08:00:00Z", media: ["https://example.com/pie.jpg"], pinterest: { board_id: "222", title: "Apple pie", link: "https://example.com/pie" }, targets: [target({ social_account_id: "c9" })] }),
+    }),
+  );
+  await page.goto("/posts/p8");
+  const shown = page.getByRole("region", { name: "Pinterest settings" });
+  await expect(shown).toContainText("Board 222");
+  await expect(shown).toContainText("Title: Apple pie");
+  await expect(shown).toContainText("Link: https://example.com/pie");
+});
+
 const xAcc = { ...account("c6", "x", "Ann on X"), handle: "ann_lee" };
 
 test("X counts its own way, takes four images and a thread", async ({ page }) => {
@@ -1142,7 +1335,7 @@ test("a group publish that stops partway names what is left and carries on", asy
   await page.getByRole("button", { name: "Publish the rest" }).click();
   await expect(page.getByText(/Not published yet/)).toHaveCount(0);
   expect(published).toEqual(["g-b", "g-t", "g-t", "g-i"]);
-  await expect(page.getByRole("region", { name: "Same post on other platforms" }).getByText("Publishing")).toHaveCount(2);
+  await expect(page.getByRole("tab", { name: /Publishing/ })).toHaveCount(3);
 });
 
 test("calendar shows the versions of one post as one line, marked with each platform", async ({ page }) => {
@@ -1162,52 +1355,65 @@ test("calendar shows the versions of one post as one line, marked with each plat
   await expect(table.getByRole("link", { name: /^Scheduled: 10:30.*Bluesky: Instagram: Launch day$/ })).toHaveAttribute("href", "/t/acme22/posts/p-bluesky");
 });
 
-// A group of posts, one per platform, with the given statuses. DELETE takes a published post down, except
-// where `refuse` answers that post's first DELETE differently. Opens the Bluesky post; returns the DELETEs seen.
-async function groupPage(page: Page, statuses: Record<string, string>, refuse: Record<string, () => { status: number; json: unknown }> = {}) {
+// A group of posts, one per platform, with the given statuses. POST /v1/post-groups/g1/takedown takes the published
+// ones down, except where `refuse` names a post's first answer; TikTok never comes down. Opens the Bluesky post;
+// returns the post ids each take-down call took down.
+async function groupPage(page: Page, statuses: Record<string, string>, refuse: Record<string, string> = {}) {
   await brain(page, { accounts: [alice, threadsAcc, instaAcc] });
-  const platforms: Record<string, string> = { "g-b": "bluesky", "g-t": "threads", "g-i": "instagram" };
+  const platforms: Record<string, string> = { "g-b": "bluesky", "g-t": "threads", "g-i": "instagram", "g-k": "tiktok" };
   let state: Post[] = Object.entries(statuses).map(([id, status]) =>
     post(id, { platform: platforms[id], group_id: "g1", status, published_at: status === "published" ? "2026-11-03T08:00:00Z" : null }),
   );
-  const deleted: string[] = [];
+  const calls: string[][] = [];
   await page.route(/\/v1\/posts\/g-.$/, (route) => {
     const id = route.request().url().split("/").at(-1)!;
-    if (route.request().method() === "GET") return route.fulfill({ json: state.find((p) => p.id === id) });
-    deleted.push(id);
-    const answer = refuse[id];
-    if (answer) {
-      delete refuse[id];
-      return route.fulfill(answer());
-    }
-    state = state.map((p) => (p.id === id ? { ...p, status: "deleted" } : p));
     return route.fulfill({ json: state.find((p) => p.id === id) });
   });
   await page.route(/\/v1\/posts\?group_id=g1$/, (route) => route.fulfill({ json: state }));
+  await page.route(/\/v1\/post-groups\/g1\/takedown$/, (route) => {
+    const tried: string[] = [];
+    const results = state.map((p) => {
+      const r = { post_id: p.id, platform: p.platform, state: "failed", message: null as string | null };
+      if (p.status === "deleted") r.state = "already_gone";
+      else if (p.status !== "published") r.state = "not_published";
+      else if (p.platform === "tiktok") r.message = "TikTok does not let other apps delete posts. Delete the post in the TikTok app if it is still up.";
+      else if (refuse[p.id]) {
+        r.message = refuse[p.id]!;
+        delete refuse[p.id];
+      } else {
+        tried.push(p.id);
+        r.state = "taken_down";
+      }
+      return r;
+    });
+    state = state.map((p) => (tried.includes(p.id) ? { ...p, status: "deleted" } : p));
+    calls.push(tried);
+    return route.fulfill({ json: { group_id: "g1", posts: state, results } });
+  });
   await page.goto("/posts/g-b");
-  return deleted;
+  return calls;
 }
 
-test("take down all asks once, names the platforms and takes each post down in turn", async ({ page }) => {
-  const deleted = await groupPage(page, { "g-b": "published", "g-t": "published", "g-i": "published" });
+test("take down all asks once, names the platforms and takes the group down in one call", async ({ page }) => {
+  const calls = await groupPage(page, { "g-b": "published", "g-t": "published", "g-i": "published" });
   await page.getByRole("button", { name: "Take down all" }).click();
   await expect(page.getByText("Take these 3 posts down from Bluesky, Threads, and Instagram?")).toBeVisible();
   await expect(page.getByRole("button", { name: "Yes, take them all down" })).toBeFocused();
-  expect(deleted).toEqual([]);
+  expect(calls).toEqual([]);
   await page.getByRole("button", { name: "Yes, take them all down" }).click();
   const report = page.getByRole("status").filter({ hasText: "Taken down from Bluesky, Threads, and Instagram." });
   await expect(report).toBeFocused();
   await expect(report.getByRole("listitem")).toHaveText(["Bluesky: taken down", "Threads: taken down", "Instagram: taken down"]);
-  expect(deleted).toEqual(["g-b", "g-t", "g-i"]);
+  expect(calls).toEqual([["g-b", "g-t", "g-i"]]);
   await expect(page.getByRole("button", { name: "Take down all" })).toHaveCount(0);
-  await expect(page.getByRole("region", { name: "Same post on other platforms" }).getByText("Taken down", { exact: true })).toHaveCount(2);
+  await expect(page.getByRole("tab", { name: /Taken down/ })).toHaveCount(3);
 });
 
 test("take down all names the platforms still up after a failure and retries only those", async ({ page }) => {
-  const deleted = await groupPage(
+  const calls = await groupPage(
     page,
     { "g-b": "published", "g-t": "published", "g-i": "published" },
-    { "g-t": () => ({ status: 422, json: { error: "takedown_failed", message: "Threads token expired. Reconnect, then try again." } }) },
+    { "g-t": "Threads token expired. Reconnect, then try again." },
   );
   await page.getByRole("button", { name: "Take down all" }).click();
   await page.getByRole("button", { name: "Yes, take them all down" }).click();
@@ -1215,29 +1421,49 @@ test("take down all names the platforms still up after a failure and retries onl
   await expect(report).toBeFocused();
   await expect(report).toContainText("Taken down from Bluesky and Instagram.");
   await expect(report.getByRole("listitem")).toHaveText(["Bluesky: taken down", "Threads: Threads token expired. Reconnect, then try again.", "Instagram: taken down"]);
-  expect(deleted).toEqual(["g-b", "g-t", "g-i"]);
+  expect(calls).toEqual([["g-b", "g-i"]]);
   await report.getByRole("button", { name: "Retry Threads" }).click();
   const done = page.getByRole("status").filter({ hasText: "Taken down from Bluesky, Threads, and Instagram." });
   await expect(done).toBeFocused();
-  expect(deleted).toEqual(["g-b", "g-t", "g-i", "g-t"]);
+  expect(calls).toEqual([["g-b", "g-i"], ["g-t"]]);
   await expect(page.getByRole("button", { name: /Retry/ })).toHaveCount(0);
 });
 
 test("take down all leaves posts that are not published alone, and is hidden when none is", async ({ page }) => {
-  const deleted = await groupPage(page, { "g-b": "published", "g-t": "draft", "g-i": "failed" });
+  const calls = await groupPage(page, { "g-b": "published", "g-t": "draft", "g-i": "failed" });
   await page.getByRole("button", { name: "Take down all" }).click();
   await expect(page.getByText("Take this post down from Bluesky?").first()).toBeVisible();
   await page.getByRole("button", { name: "Yes, take it down" }).first().click();
   await expect(page.getByRole("status").filter({ hasText: "Taken down from Bluesky." })).toBeFocused();
-  expect(deleted).toEqual(["g-b"]);
+  expect(calls).toEqual([["g-b"]]);
   await expect(page.getByRole("button", { name: "Take down all" })).toHaveCount(0);
 });
 
 test("take down all is hidden when no post of the group is published", async ({ page }) => {
-  const deleted = await groupPage(page, { "g-b": "draft", "g-t": "scheduled", "g-i": "failed" });
+  const calls = await groupPage(page, { "g-b": "draft", "g-t": "scheduled", "g-i": "failed" });
   await expect(page.getByRole("region", { name: "Same post on other platforms" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Take down all" })).toHaveCount(0);
-  expect(deleted).toEqual([]);
+  expect(calls).toEqual([]);
+});
+
+test("take down all leaves TikTok out and says where to delete it", async ({ page }) => {
+  const calls = await groupPage(page, { "g-b": "published", "g-t": "published", "g-k": "published" });
+  const hint = "TikTok does not let other apps delete a post. Delete it in the TikTok app.";
+  await expect(page.getByText(hint)).toBeVisible();
+  await page.getByRole("button", { name: "Take down all" }).click();
+  await expect(page.getByText("Take these 2 posts down from Bluesky and Threads?")).toBeVisible();
+  await page.getByRole("button", { name: "Yes, take them all down" }).click();
+  const report = page.getByRole("status").filter({ hasText: "Taken down from Bluesky and Threads." });
+  await expect(report.getByRole("listitem")).toHaveText(["Bluesky: taken down", "Threads: taken down"]);
+  await expect(page.getByRole("button", { name: "Take down all" })).toHaveCount(0);
+  await expect(page.getByText(hint)).toBeVisible();
+  expect(calls).toEqual([["g-b", "g-t"]]);
+});
+
+test("a group with only TikTok still up has no Take down all", async ({ page }) => {
+  await groupPage(page, { "g-b": "deleted", "g-t": "deleted", "g-k": "published" });
+  await expect(page.getByText("TikTok does not let other apps delete a post. Delete it in the TikTok app.").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Take down all" })).toHaveCount(0);
 });
 
 test("the editor warns when a ticked platform's account needs a reconnect", async ({ page }) => {
@@ -1305,6 +1531,8 @@ test("TikTok settings: privacy is chosen, the disclosure and consent follow TikT
   const privacy = page.getByLabel("Who can view this video");
   await expect(privacy).toHaveValue("");
   await expect(page.locator("#tiktok-privacy-note")).toHaveText("Only the options TikTok offers this account are listed.");
+  await expect(page.locator("#tiktok-audit-note")).toContainText("has not passed its audit private");
+  await expect(privacy).toHaveAccessibleDescription(/Only the options TikTok offers.*has not passed its audit/);
   await expect(privacy.getByRole("option")).toHaveText(["Select who can view this video", "Followers", "Everyone", "Only me"]);
   for (const name of ["Comment", "Stitch"]) await expect(page.getByLabel(name)).not.toBeChecked();
   // Duets are off in the creator's TikTok settings, so the box is greyed out.
@@ -1443,7 +1671,7 @@ test("the versions of a saved post that can still change open on one form and ar
 
   await page.getByLabel("Post", { exact: true }).fill("Too long");
   await page.getByRole("button", { name: "Save draft" }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "Saved Bluesky. Threads takes at most 500 characters. Fix it and save again" })).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "Saved Bluesky. Threads takes at most 500 characters, where an emoji counts as its UTF-8 bytes (4 for most). Fix it and save again" })).toBeVisible();
 
   await page.getByLabel("Post", { exact: true }).fill("Hello again");
   await page.getByRole("button", { name: "Save draft" }).click();

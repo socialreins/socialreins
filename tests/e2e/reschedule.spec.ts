@@ -50,7 +50,8 @@ const post = (id: string, extra: Record<string, unknown> = {}) => ({
 // The month's posts in `state`; PUT /v1/posts/{id} saves into it unless `refuse` answers for that id.
 async function calendar(page: Page, state: Post[], refuse: Record<string, { status: number; json: unknown }> = {}) {
   await page.clock.setFixedTime(new Date("2026-11-10T12:00:00+01:00"));
-  await page.setViewportSize({ width: 1440, height: 900 });
+  // Tall enough for the whole grid: a page that scrolls while a chip is held cancels the drag.
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.route("**/auth/me", (route) => route.fulfill({ json: me }));
   await page.route(/\/v1\/social-sets$/, (route) => route.fulfill({ json: sets }));
   await page.route("**/v1/connections", (route) => route.fulfill({ json: [alice, threadsAcc] }));
@@ -104,6 +105,27 @@ test("dragging a chip to another day moves every version of the post, keeping th
   await expect(cell(20).getByRole("link", { name: /Launch day$/ })).toBeVisible();
   await expect(cell(12).getByRole("link", { name: /Launch day$/ })).toHaveCount(0);
   if (shots) await page.screenshot({ path: `${shots}/calendar-moved.png` });
+});
+
+test.describe("with the browser in New York and the set in Sydney", () => {
+  test.use({ timezoneId: "America/New_York" });
+  test("posts sit on, drag to and Move to the set's days", async ({ page }) => {
+    await page.route(/\/v1\/social-sets\/d\/queue$/, (route) => route.fulfill({ json: { time_zone: "Australia/Sydney", slots: [{ weekday: 1, time: "09:00" }], next: [] } }));
+    // 09:00 on 12 November in Sydney is 17:00 on the 11th in New York.
+    const { puts, table, cell } = await calendar(page, [post("p1", { body: "Launch day", scheduled_at: "2026-11-11T22:00:00Z" })]);
+    await expect(cell(12).getByRole("link", { name: /Launch day$/ })).toBeVisible();
+    await expect(cell(12)).toContainText("9:00");
+    await table.getByRole("button", { name: "Move to... Launch day" }).click();
+    const picker = page.getByRole("dialog", { name: "Move Launch day" });
+    await expect(picker.getByLabel("New date")).toHaveValue("2026-11-12");
+    await expect(picker.getByText("It keeps its time, 9:00 AM in Australia/Sydney.")).toBeVisible();
+    await picker.getByRole("button", { name: "Cancel" }).click();
+    await table.locator("li[data-movable]").dragTo(cell(20));
+    await expect(page.getByRole("status").filter({ hasText: "Moved to Fri, Nov 20, 9:00 AM." })).toBeVisible();
+    expect(puts[0]!.body.scheduled_at).toBe("2026-11-19T22:00:00.000Z");
+    await expect(cell(20).getByRole("link", { name: /Launch day$/ })).toBeVisible();
+    await expect(cell(19).getByRole("link")).toHaveCount(0);
+  });
 });
 
 test("a move brain refuses goes back to its day and says why", async ({ page }) => {

@@ -4,8 +4,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import type { Failure } from "@/lib/auth";
-import { listTeams, listUsers, nextPage, pageQuery, parsePage, previousPage, showing, type AdminTeam, type AdminUser, type Page } from "@/lib/admin";
-import { isFailure, problemText, roleName } from "@/components/team-ui";
+import { compPlan, endCompPlan, listTeams, listUsers, nextPage, pageQuery, parsePage, previousPage, showing, type AdminTeam, type AdminUser, type Page } from "@/lib/admin";
+import { isFailure, linkButton, problemText, roleName, Status, useAction } from "@/components/team-ui";
 import { day, Forbidden, SearchBox, td, th } from "@/components/admin";
 
 type Rows<R> = { total: number; rows: R[] };
@@ -155,6 +155,46 @@ export function AdminUsersList() {
   );
 }
 
+const planNames: Record<string, string> = { scheduler: "Scheduler", automation: "Scheduler and Automation" };
+const live = (status?: string | null) => status === "trialing" || status === "active" || status === "past_due";
+
+// A team's plan in words, with Comp or End comp. A comp is free (no Stripe, no end); a live paid plan is never replaced here.
+function PlanCell({ team }: { team: AdminTeam }) {
+  const [plan, setPlan] = useState({ plan: team.plan ?? null, status: team.plan_status ?? null, provider: team.plan_provider ?? null });
+  const action = useAction();
+  const comped = plan.provider === "comp" && live(plan.status);
+  const paid = plan.provider === "stripe" && live(plan.status);
+  const name = plan.plan ? (planNames[plan.plan] ?? plan.plan) : null;
+  const words = !name ? "No plan" : comped ? `${name}, comped` : `${name}, ${plan.status}`;
+  return (
+    <div className="grid justify-items-start gap-1">
+      <span>{words}</span>
+      {!paid && (
+        <button
+          type="button"
+          className={linkButton}
+          disabled={action.busy !== null}
+          aria-label={`${comped ? "End comp for" : "Comp"} ${team.name}`}
+          onClick={() =>
+            comped
+              ? action.run("end", () => endCompPlan(team.id), () => {
+                  setPlan((p) => ({ ...p, status: "canceled" }));
+                  return "Comp ended.";
+                })
+              : action.run("comp", () => compPlan(team.id, "automation"), () => {
+                  setPlan({ plan: "automation", status: "active", provider: "comp" });
+                  return "Comped Scheduler and Automation.";
+                })
+          }
+        >
+          {action.busy ? "Saving..." : comped ? "End comp" : "Comp"}
+        </button>
+      )}
+      <Status problem={action.problem} done={action.done} overrides={{ has_paid_plan: "This team pays for a plan; change it in Stripe.", not_found: "There is no comp to end." }} />
+    </div>
+  );
+}
+
 export function AdminTeamsList() {
   return (
     <AdminList<AdminTeam>
@@ -162,13 +202,16 @@ export function AdminTeamsList() {
       noun="teams"
       searchLabel="Search by team name"
       load={loadTeams}
-      head={["Name", "Owner", "Members", "Accounts", "Posts", "Created"]}
+      head={["Name", "Owner", "Plan", "Members", "Accounts", "Posts", "Created"]}
       row={(t) => (
         <>
           <th scope="row" className={`${td} text-left font-bold`}>
             {t.name}
           </th>
           <td className={td}>{t.owner_email ?? <span className="text-ink-soft">No owner</span>}</td>
+          <td className={td}>
+            <PlanCell team={t} />
+          </td>
           <td className={td}>{t.members.toLocaleString()}</td>
           <td className={td}>{t.accounts.toLocaleString()}</td>
           <td className={td}>{t.posts.toLocaleString()}</td>

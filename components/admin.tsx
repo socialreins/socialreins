@@ -9,7 +9,12 @@ import {
   approvalText,
   approveSignup,
   getOverview,
+  inviteSignups,
+  invitedText,
   listWaitlist,
+  MAX_INVITES,
+  previewInvites,
+  type InvitePreview,
   parseVerified,
   removeSignup,
   waitlistQuery,
@@ -72,24 +77,38 @@ export function Admin() {
   const params = useSearchParams();
   const verified = parseVerified(params.get("verified"));
   const q = (params.get("q") ?? "").trim();
-  const key = waitlistQuery(verified, q);
+  const hideStale = params.get("hide_stale") === "true";
+  const key = waitlistQuery(verified, q, hideStale);
   // The answer remembers its filter, so a new filter shows loading, not the old rows.
   const [loaded, setLoaded] = useState<{ key: string; data: Waitlist | Failure } | null>(null);
   // The waitlist answer has no approved total; the overview does. Kept in step with approve and remove below.
   const [approved, setApproved] = useState<number | "failed" | null>(null);
+  const [signedUp, setSignedUp] = useState<number | "failed" | null>(null);
+  // Bumped after a batch of invites, so the list and the totals are read again.
+  const [reload, setReload] = useState(0);
+  const [howMany, setHowMany] = useState("10");
+  const [preview, setPreview] = useState<InvitePreview | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
   const action = useAction();
 
   useEffect(() => {
     let live = true;
-    listWaitlist(verified, q).then((data) => live && setLoaded({ key, data }));
+    listWaitlist(verified, q, hideStale).then((data) => live && setLoaded({ key, data }));
     return () => {
       live = false;
     };
-  }, [verified, q, key]);
+  }, [verified, q, hideStale, key, reload]);
   useEffect(() => {
-    getOverview().then((o) => setApproved(isFailure(o) ? "failed" : o.waitlist.approved));
-  }, []);
+    let live = true;
+    getOverview().then((o) => {
+      if (!live) return;
+      setApproved(isFailure(o) ? "failed" : o.waitlist.approved);
+      setSignedUp(isFailure(o) ? "failed" : o.waitlist.signed_up);
+    });
+    return () => {
+      live = false;
+    };
+  }, [reload]);
 
   const data = loaded?.key === key ? loaded.data : null;
   if (data === "forbidden") return <Forbidden />;
@@ -117,6 +136,30 @@ export function Admin() {
     });
   }
 
+  function onPreview() {
+    const count = Math.min(MAX_INVITES, Math.max(1, Math.floor(Number(howMany)) || 1));
+    setHowMany(String(count));
+    setPreview(null);
+    action.run("preview", () => previewInvites(count), (p) => {
+      setPreview(p);
+      return p.selected.length === 0 ? "Nobody is waiting: every verified signup is invited already." : undefined;
+    });
+  }
+
+  function onInvite(p: InvitePreview) {
+    action.run(
+      "invite",
+      async () => {
+        const r = await inviteSignups(p.selected.map((s) => s.id));
+        // Whatever the answer, some of them may be invited by now (a timeout does not stop brain): read the totals again and drop the preview.
+        setPreview(null);
+        setReload((n) => n + 1);
+        return r;
+      },
+      invitedText,
+    );
+  }
+
   function onRemove(s: Signup) {
     action.run(`remove:${s.id}`, () => removeSignup(s.id).then((r) => orGone(s, r)), () => {
       drop(s);
@@ -141,12 +184,13 @@ export function Admin() {
         </p>
       ) : (
         <>
-          <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <dl className="grid grid-cols-2 gap-3 sm:grid-cols-5">
             {[
               ["Total", data?.total],
               ["Verified", data?.verified],
               ["Unverified", data && data.total - data.verified],
               ["Approved", approved],
+              ["Signed up", signedUp],
             ].map(([label, n]) => (
               <div key={label} className="card grid gap-1 p-4">
                 <dt className="text-sm font-bold text-ink-soft">{label}</dt>
@@ -154,22 +198,83 @@ export function Admin() {
               </div>
             ))}
           </dl>
+          <Status problem={action.problem} done={action.done} overrides={overrides} />
+          <section aria-labelledby="invite-heading" className="card grid gap-3 p-4">
+            <h3 id="invite-heading" className="font-bold">
+              Invite from the waitlist
+            </h3>
+            <p className="text-sm text-ink-soft">Invites the oldest verified signups first. Each gets an email that says how to start, and may sign up whatever the sign-up setting says.</p>
+            <form
+              className="flex flex-wrap items-end gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                onPreview();
+              }}
+            >
+              <label className="grid gap-1 text-sm font-bold">
+                How many (1 to {MAX_INVITES})
+                <input
+                  type="number"
+                  min={1}
+                  max={MAX_INVITES}
+                  inputMode="numeric"
+                  className="field w-28"
+                  disabled={action.busy !== null}
+                  value={howMany}
+                  onChange={(e) => {
+                    setHowMany(e.target.value);
+                    setPreview(null);
+                  }}
+                />
+              </label>
+              <button type="submit" className="btn btn-secondary btn-sm" disabled={action.busy !== null}>
+                {action.busy === "preview" ? "Looking..." : "Preview"}
+              </button>
+            </form>
+            {preview && preview.selected.length > 0 && (
+              <div className="grid gap-3">
+                <p>
+                  {preview.selected.length} of {preview.eligible.toLocaleString()} verified signups waiting would be invited, oldest first. {preview.left_today.toLocaleString()} invite emails are left today.
+                </p>
+                <ol className="list-decimal pl-6 text-sm">
+                  {preview.selected.map((s) => (
+                    <li key={s.id}>
+                      {s.email} <span className="text-ink-soft">joined {day(s.created_at)}</span>
+                    </li>
+                  ))}
+                </ol>
+                <div className="flex gap-3">
+                  <button type="button" className="btn btn-primary btn-sm" disabled={action.busy !== null} onClick={() => onInvite(preview)}>
+                    {action.busy === "invite" ? "Inviting..." : `Invite ${preview.selected.length} ${preview.selected.length === 1 ? "person" : "people"}`}
+                  </button>
+                  <button type="button" className={linkButton} disabled={action.busy !== null} onClick={() => setPreview(null)}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <nav aria-label="Filter" className="flex gap-1 rounded-full bg-ink/5 p-1">
               {filters.map((f) => (
                 <Link
                   key={f.label}
                   aria-current={verified === f.value ? "true" : undefined}
-                  href={`/admin/waitlist${waitlistQuery(f.value, q)}`}
+                  href={`/admin/waitlist${waitlistQuery(f.value, q, hideStale)}`}
                   className={`rounded-full px-3 py-1.5 text-center text-sm font-bold ${verified === f.value ? "bg-paper text-ink shadow-sm" : "text-ink-soft hover:text-ink"}`}
                 >
                   {f.label}
                 </Link>
               ))}
             </nav>
-            <SearchBox label="Search by email" q={q} hrefFor={(text) => `/admin/waitlist${waitlistQuery(verified, text)}`} />
+            <SearchBox label="Search by email" q={q} hrefFor={(text) => `/admin/waitlist${waitlistQuery(verified, text, hideStale)}`} />
           </div>
-          <Status problem={action.problem} done={action.done} overrides={overrides} />
+          <p className="text-sm text-ink-soft">
+            <Link href={`/admin/waitlist${waitlistQuery(verified, q, !hideStale)}`} className={linkButton}>
+              {hideStale ? "Show stale entries" : "Hide stale entries"}
+            </Link>{" "}
+            {hideStale ? "Leaving out unverified signups older than 30 days." : "Stale means not verified after 30 days."}
+          </p>
           {!data ? (
             <p role="status" className="text-ink-soft">
               Loading the waitlist...
@@ -179,11 +284,11 @@ export function Admin() {
           ) : (
             // Scrolls sideways on phones rather than squeezing the emails.
             <div className="card overflow-x-auto">
-              <table className="w-full min-w-[48rem] border-collapse text-sm">
+              <table className="w-full min-w-[54rem] border-collapse text-sm">
                 <caption className="sr-only">Waitlist signups, newest first</caption>
                 <thead>
                   <tr className="text-left text-xs text-ink-soft">
-                    {["Email", "Source", "Joined", "Status", "Actions"].map((h) => (
+                    {["Email", "Name", "Source", "Joined", "Status", "Actions"].map((h) => (
                       <th key={h} scope="col" className={th}>
                         {h}
                       </th>
@@ -196,6 +301,7 @@ export function Admin() {
                       <th scope="row" className={`${td} text-left font-bold`}>
                         {s.email}
                       </th>
+                      <td className={td}>{s.name}</td>
                       <td className={`${td} text-ink-soft`}>{s.source}</td>
                       <td className={`${td} whitespace-nowrap`}>{day(s.created_at)}</td>
                       <td className={`${td} whitespace-nowrap`}>
@@ -238,10 +344,10 @@ export function Admin() {
                                 type="button"
                                 className={linkButton}
                                 disabled={action.busy !== null}
-                                aria-label={`Approve ${s.email}`}
+                                aria-label={`Approve ${s.email}${s.verified_at ? "" : " (not verified)"}`}
                                 onClick={() => onApprove(s)}
                               >
-                                {action.busy === `approve:${s.id}` ? "Approving..." : "Approve"}
+                                {action.busy === `approve:${s.id}` ? "Approving..." : s.verified_at ? "Approve" : "Approve (not verified)"}
                               </button>
                             )}
                             <button

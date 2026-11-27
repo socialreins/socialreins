@@ -18,9 +18,13 @@ export async function captchaError(res: Response): Promise<Captcha | null> {
   return code === "captcha_failed" || code === "captcha_unavailable" ? code : null;
 }
 
-// The API answers 200 for a new email and for a duplicate, so both count as joined.
-// Brain then emails a link that confirms the spot; there is no Turnstile on the waitlist.
-export async function joinWaitlist(email: string, source = "landing"): Promise<WaitlistResult> {
+// The API answers 200 for a new email and for a duplicate, so both count as joined, and brain then emails a
+// link that confirms the spot (there is no Turnstile on the waitlist). The answer carries a `name_token` that
+// lets this browser add a name right after; for an email already on the list it opens nothing.
+export async function joinWaitlist(
+  email: string,
+  source = "landing",
+): Promise<{ result: WaitlistResult; nameToken: string | null }> {
   try {
     const res = await fetch(`${apiUrl}/v1/waitlist`, {
       method: "POST",
@@ -28,7 +32,31 @@ export async function joinWaitlist(email: string, source = "landing"): Promise<W
       body: JSON.stringify({ email, source }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
-    if (res.ok) return "joined";
+    if (res.ok) {
+      const token: unknown = (await res.json().catch(() => null))?.name_token;
+      return { result: "joined", nameToken: typeof token === "string" ? token : null };
+    }
+    if (res.status === 422) return { result: "invalid", nameToken: null };
+    if (res.status === 429) return { result: "rate_limited", nameToken: null };
+    return { result: "error", nameToken: null };
+  } catch (e) {
+    return { result: e instanceof DOMException && e.name === "TimeoutError" ? "timeout" : "error", nameToken: null };
+  }
+}
+
+export type NameResult = "saved" | "invalid" | "rate_limited" | "timeout" | "error";
+
+// Adds the optional name with the token the join answered. Brain answers 200 for any well-formed token, so a
+// "saved" does not prove the name was stored; 422 means the name is not allowed (empty, over 80 characters).
+export async function addWaitlistName(token: string, name: string): Promise<NameResult> {
+  try {
+    const res = await fetch(`${apiUrl}/v1/waitlist/name`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, name }),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (res.ok) return "saved";
     if (res.status === 422) return "invalid";
     if (res.status === 429) return "rate_limited";
     return "error";
@@ -37,7 +65,7 @@ export async function joinWaitlist(email: string, source = "landing"): Promise<W
   }
 }
 
-// Everyone on the waitlist, confirmed or not; null when brain can't say.
+// People who confirmed their email; null when brain can't say.
 export async function waitlistCount(): Promise<number | null> {
   try {
     const res = await fetch(`${apiUrl}/v1/waitlist/count`, { signal: AbortSignal.timeout(TIMEOUT_MS) });

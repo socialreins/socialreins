@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { TeamLink as Link } from "@/components/team-link";
 import { useSearchParams } from "next/navigation";
@@ -10,10 +10,16 @@ import { listConnections, safeAvatar, type Connection } from "@/lib/connections"
 import { listContactTags, updateContact } from "@/lib/contacts";
 import {
   assignItem,
+  attachmentName,
   authorName,
   chatRows,
   getConversation,
   getItem,
+  getThread,
+  hasThread,
+  inboxName,
+  isActivity,
+  itemSummary,
   kindName,
   listInboxes,
   listItems,
@@ -22,34 +28,49 @@ import {
   mergeFresh,
   messageCount,
   relativeTime,
+  replyLength,
   replyToItem,
+  runAction,
   sentAlready,
   setItemState,
   shortcutFor,
+  stepInbox,
   threadKey,
+  unboxed,
+  windowNote,
+  type Attachment,
   type Author,
   type ConversationPage,
   type Inbox as InboxT,
   type Item,
   type ItemState,
-  type Kind,
+  type ListKind,
   type Page,
+  type ThreadContext,
 } from "@/lib/inbox";
 import { createSnippet, isProblem, libraryText, type Problem } from "@/lib/library";
-import { graphemes } from "@/lib/posts";
-import { listSets, type SocialSet } from "@/lib/sets";
+import { address, addressOf, isUuid, moveParam, moveToNumber } from "@/lib/ref";
+import { getBilling, type Billing } from "@/lib/billing";
 import { listMembers, manages } from "@/lib/teams";
 import { useSession } from "@/components/app-shell";
-import { accountName } from "@/components/connections";
+import { accountName, Avatar } from "@/components/connections";
 import { InboxEditor, inboxMessages } from "@/components/inbox-editor";
+import { DeleteReply, DmTools, ItemActionsMenu, MessageTools, useItemActions } from "@/components/inbox-actions";
+import { ModerationBar } from "@/components/inbox-moderation";
+import { ItemAutomations } from "@/components/item-automations";
 import { SnippetMenu } from "@/components/library";
 import { platformName } from "@/components/platform-icons";
 import { TagEditor } from "@/components/tag-editor";
-import { isFailure, linkButton, problemText, Status, useAction, useSearchInUrl } from "@/components/team-ui";
+import { isFailure, linkButton, planLimit, problemText, Status, useAction, useSearchInUrl } from "@/components/team-ui";
 import { Icon } from "@/components/ui";
+import { ThreadsActions } from "@/components/threads-actions";
+import { XActions } from "@/components/x-inbox";
+import { YouTubeContext, YouTubeDeleteReply } from "@/components/youtube-inbox";
 
 // New comments arrive on brain's per-minute tick; the open list checks twice a minute.
 const REFRESH_MS = 30_000;
+// The open counts of every inbox cost brain a pass over the team's open items: they refresh when 2.5 minutes have passed since the last time, and when the tab shows again.
+const COUNTS_AFTER_MS = 150_000;
 
 const replyMessages: Partial<Record<Failure, ReactNode>> = {
   reply_in_progress: "Another reply to this is going out right now. Wait a moment, then reload.",
@@ -65,16 +86,21 @@ const accountsLink = (
   </Link>
 );
 const sendMessages: Record<string, ReactNode> = {
+  meta_reconnect_required: <>Meta refused this account&apos;s sign-in. Reconnect it. {accountsLink}</>,
   no_dm_access: <>This account&apos;s app password doesn&apos;t allow DMs. Reconnect with an app password that allows DMs. {accountsLink}</>,
   dm_not_allowed: "They only accept DMs from people they follow, so Bluesky didn't take it.",
   reconnect_required: <>Bluesky refused the app password. Reconnect the account. {accountsLink}</>,
+  threads_reconnect_required: <>Threads refused this account&apos;s token (it expired or was revoked). Reconnect it. {accountsLink}</>,
+  threads_permission_missing: <>This Threads account was connected before SocialReins could reply. Reconnect it and accept the new permissions. {accountsLink}</>,
+  threads_no_dm: "Threads has no direct messages, so nothing was sent.",
 };
 
-const kindOptions: { value: Kind | "all"; label: string }[] = [
+const kindOptions: { value: ListKind | "all"; label: string }[] = [
   { value: "all", label: "All" },
   { value: "comment", label: "Comments" },
   { value: "mention", label: "Mentions" },
   { value: "dm", label: "DMs" },
+  { value: "activity", label: "Activity (likes, reposts, follows)" },
 ];
 
 // Who the list shows: everyone's items, mine, or the ones nobody has. In the address as ?assigned=.
@@ -91,6 +117,8 @@ const shortcuts: [string, string][] = [
   ["R", "Write a reply"],
   ["A", "Assign to me"],
   ["/", "Search this inbox"],
+  ["[", "Previous inbox"],
+  ["]", "Next inbox"],
   ["?", "Show these shortcuts"],
   ["Ctrl or Cmd + Enter", "Send the reply"],
 ];
@@ -102,12 +130,15 @@ const UNDO_MS = 5_000;
 type Undo = { id: number; item: Item; row: Item | null; saved: Promise<Item | Failure>; problem?: Failure; undoing?: boolean };
 // A reply shown in the thread before brain answered: on its way, refused (`failed` says why), or `unsure`,
 // when no clear answer came and it may have gone out. Kept by the Inbox per thread, so it survives opening another item.
-type Pending = { id: number; thread: string; itemId: string; name: string; text: string; failed?: ReactNode; unsure?: boolean };
+type Pending = { id: number; thread: string; itemId: string; itemNo?: number; name: string; text: string; failed?: ReactNode; unsure?: boolean };
 const settled = (p: Pending) => p.failed !== undefined || p.unsure === true;
 let lastId = 0;
 
 // A change to one item, laid over a list row or the open item of the same thread. A conversation's row is its
 // latest DM, so a change made through an older DM moves only what the whole conversation shares.
+// An address names an item by its number, or by its UUID in an old link.
+const isItem = (i: Item, asked: string) => i.id === asked || String(i.number) === asked;
+
 const patched = (x: Item, i: Item): Item =>
   x.id === i.id ? { ...i, conversation: x.conversation } : { ...x, state: i.state, assigned_to: i.assigned_to, contact_tags: i.contact_tags };
 
@@ -193,7 +224,8 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   const canManage = manages(user.current_team.role);
   const router = useRouter();
   const params = useSearchParams();
-  const itemId = params.get("item");
+  // The address holds the item's number (?item=4821); an old one holds its UUID.
+  const asked = params.get("item");
   const state: ItemState = params.get("state") === "done" ? "done" : "open";
   const q = (params.get("q") ?? "").trim().slice(0, 100);
   const assigned = params.get("assigned") ?? "";
@@ -204,12 +236,12 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
 
   const [inboxes, setInboxes] = useState<InboxT[] | Failure | null>(null);
   const [accounts, setAccounts] = useState<Connection[] | Failure | null>(null);
-  const [sets, setSets] = useState<SocialSet[]>([]);
+  const [billing, setBilling] = useState<Billing | null>(null);
   // Loaded data remembers what it was loaded for, so a new inbox, tab or item shows loading, not stale rows.
   const [loaded, setLoaded] = useState<{ key: string; page: Page | Failure } | null>(null);
   const [more, setMore] = useState<Failure | "loading" | null>(null);
-  const [kind, setKind] = useState<Kind | "all">("all");
-  const [shown, setShown] = useState<{ id: string; item: Item | Failure } | null>(null);
+  const [kind, setKind] = useState<ListKind | "all">("all");
+  const [shown, setShown] = useState<{ asked: string; item: Item | Failure } | null>(null);
   const [editing, setEditing] = useState<InboxT | "new" | null>(null);
   const [opened, setOpened] = useState<string | null>(null);
   const [reloads, setReloads] = useState(0);
@@ -225,15 +257,17 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   useEffect(() => {
     listInboxes().then(setInboxes);
     listConnections().then(setAccounts);
-    listSets().then((r) => Array.isArray(r) && setSets(r));
+    getBilling().then((r) => !isFailure(r) && setBilling(r));
     listMembers().then((r) => Array.isArray(r) && setMembers(r));
     listContactTags().then((r) => Array.isArray(r) && setTagOptions(r.map((t) => t.tag)));
   }, []);
 
   const list = Array.isArray(inboxes) ? inboxes : [];
-  const current = inboxId ? list.find((i) => i.id === inboxId) : list[0];
-  const currentId = current?.id ?? inboxId;
-  const base = inboxId ? `/inbox/${encodeURIComponent(inboxId)}` : "/inbox";
+  // The address holds the inbox's number; an old one holds its UUID, and a number waits for the list to say which inbox it is.
+  const current = inboxId ? list.find((i) => i.id === inboxId || String(i.number) === inboxId) : list[0];
+  // A number the list does not know goes to brain as it is, which answers not found; only a list still loading waits.
+  const currentId = current?.id ?? (inboxId && (isUuid(inboxId) || inboxes !== null) ? inboxId : undefined);
+  const base = inboxId ? `/inbox/${current ? address(current) : encodeURIComponent(inboxId)}` : "/inbox";
   const href = (to: { item?: string | null; state?: ItemState; assigned?: string; tag?: string }) => {
     const s = new URLSearchParams();
     if ((to.state ?? state) === "done") s.set("state", "done");
@@ -258,14 +292,18 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
     });
   const items = page && !isFailure(page) ? page.items : [];
   // Until the item itself answers, its list row stands in, so a row opens at once.
-  const detail = !itemId ? null : shown?.id === itemId ? shown.item : (items.find((i) => i.id === itemId) ?? null);
+  const detail = !asked ? null : shown && (shown.asked === asked || (!isFailure(shown.item) && isItem(shown.item, asked))) ? shown.item : (items.find((i) => isItem(i, asked)) ?? null);
+  // The rest of this page goes by the item's id.
+  const itemId = detail && !isFailure(detail) ? detail.id : asked && isUuid(asked) ? asked : null;
   // What is open, as the list knows it: a conversation matches its row whichever of its DMs the address names.
   const openKey = detail && !isFailure(detail) ? threadKey(detail) : itemId;
+  // When the counts were last asked for by the refresh below; kept across filter changes, which restart that effect.
+  const countsAt = useRef(0);
   const refreshCounts = () => listInboxes().then((l) => Array.isArray(l) && setInboxes(l));
-  const go = (id: string | null, how: "push" | "replace" = "replace") => {
-    if (id) setOpened(id);
-    heading.current = id;
-    router[how](href({ item: id }), { scroll: false });
+  const go = (item: { id: string; number?: number } | null, how: "push" | "replace" = "replace") => {
+    if (item) setOpened(item.id);
+    heading.current = item?.id ?? null;
+    router[how](href({ item: item && address(item) }), { scroll: false });
   };
 
   useEffect(() => {
@@ -280,19 +318,23 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
 
   useSearchInUrl(search, q);
 
-  // While the tab shows, fold the newest page into the list and refresh the open counts; a failed check waits for the next.
+  // While the tab shows, fold the newest page into the list (and now and then refresh the open counts); a failed check waits for the next.
   useEffect(() => {
     if (!currentId) return;
     let live = true;
-    const check = async () => {
+    if (countsAt.current === 0) countsAt.current = Date.now();
+    const check = async (counts = false) => {
       if (document.visibilityState !== "visible") return;
-      listInboxes().then((l) => live && Array.isArray(l) && setInboxes(l));
+      if (counts || Date.now() - countsAt.current >= COUNTS_AFTER_MS - 1000) {
+        countsAt.current = Date.now();
+        listInboxes().then((l) => live && Array.isArray(l) && setInboxes(l));
+      }
       const r = await fetchItems(currentId);
       if (!live || isFailure(r)) return;
       setLoaded((l) => (l?.key === key && !isFailure(l.page) ? { key, page: mergeFresh(l.page, r) } : l));
     };
-    const timer = setInterval(check, REFRESH_MS);
-    const onVisible = () => document.visibilityState === "visible" && check();
+    const timer = setInterval(() => check(), REFRESH_MS);
+    const onVisible = () => document.visibilityState === "visible" && check(true);
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       live = false;
@@ -304,13 +346,25 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
 
   useEffect(() => {
     heading.current = null;
-    if (!itemId) return;
+    if (!asked) return;
+    // The address moved from the UUID to the number of the item already shown: nothing to read again.
+    if (shown && !isFailure(shown.item) && isItem(shown.item, asked)) return;
     let live = true;
-    getItem(itemId).then((r) => live && setShown({ id: itemId, item: r }));
+    getItem(asked).then((r) => {
+      if (!live) return;
+      if (!isFailure(r)) moveParam("item", asked, r);
+      setShown({ asked, item: r });
+    });
     return () => {
       live = false;
     };
-  }, [itemId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `shown` is read only to skip a second read of the item on show
+  }, [asked]);
+
+  // An old address with the inbox's UUID moves to its number.
+  useEffect(() => {
+    if (inboxId && current) moveToNumber(inboxId, current);
+  }, [inboxId, current]);
 
   async function loadMore() {
     if (!currentId || isFailure(page) || !page?.next) return;
@@ -326,7 +380,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   // A changed item: the detail shows it, the list keeps its row only while it fits the tab.
   function changed(i: Item) {
     const k = threadKey(i);
-    setShown((s) => (s && !isFailure(s.item) && threadKey(s.item) === k ? { id: s.id, item: patched(s.item, i) } : s));
+    setShown((s) => (s && !isFailure(s.item) && threadKey(s.item) === k ? { asked: s.asked, item: patched(s.item, i) } : s));
     // Done or reopened: the open counts moved.
     refreshCounts();
     setPage((p) =>
@@ -354,13 +408,15 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
     const at = items.findIndex((x) => threadKey(x) === k);
     const row = state === "open" && at >= 0 ? items[at]! : null;
     const saved = setItemState(i.id, "done", i.kind === "dm");
+    // Bluesky is told the conversation was read, as its own app would; best effort.
+    if (i.kind === "dm" && i.platform === "bluesky") void runAction(i.id, { action: "mark_read" });
     const u: Undo = { id: ++lastId, item: i, row, saved };
     setUndos((l) => [...l, u]);
     // A line that turned into a failure stays until dismissed.
     setTimeout(() => setUndos((l) => l.filter((x) => x.id !== u.id || x.problem)), UNDO_MS);
     if (row) {
       setPage((p) => (p && !isFailure(p) ? { ...p, items: p.items.filter((x) => x.id !== row.id) } : p));
-      go((items[at + 1] ?? items[at - 1])?.id ?? null);
+      go(items[at + 1] ?? items[at - 1] ?? null);
     }
     saved.then((r) => {
       patching.current.delete(k);
@@ -384,12 +440,13 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
     putBack(u);
     if (u.row) {
       refreshCounts();
-      go(u.item.id);
+      go(u.item);
     } else changed(r);
   }
 
   // One-key shortcuts. Done, assign and reply act through the reader's own controls, so they do what a click does.
-  useEffect(() => {
+  // A layout effect, so the handler of a render is in place when it commits: a key right after a move would otherwise meet the one of the render before.
+  useLayoutEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const s = shortcutFor(e);
       if (!s || document.querySelector("dialog[open]")) return;
@@ -399,7 +456,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
         const at = items.findIndex((x) => (from ? x.id === from : threadKey(x) === openKey || x.id === itemId));
         const n = at < 0 ? 0 : at + (s === "next" ? 1 : -1);
         if (!items[n]) return;
-        go(items[n].id, "push");
+        go(items[n], "push");
         rowsRef.current?.children[n]?.scrollIntoView({ block: "nearest" });
       } else if (s === "done") {
         // A held key marks one item, not the whole list.
@@ -408,7 +465,10 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
       else if (s === "assign") document.getElementById("assign-me")?.click();
       else if (s === "reply") document.getElementById("reply-text")?.focus();
       else if (s === "search") document.getElementById("inbox-search")?.focus();
-      else setHelp(true);
+      else if (s === "nextInbox" || s === "previousInbox") {
+        const next = stepInbox(list, current?.id, s === "nextInbox" ? 1 : -1);
+        if (next) router.push(`/inbox/${address(next)}`);
+      } else setHelp(true);
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -430,9 +490,16 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   const stuck = outbox.filter((p, n) => settled(p) && p.thread !== openKey && outbox.findIndex((x) => settled(x) && x.thread === p.thread) === n);
   const noAccounts = Array.isArray(accounts) && accounts.length === 0;
   const accountList = Array.isArray(accounts) ? accounts : [];
+  const accountById = new Map(accountList.map((a) => [a.id, a]));
+  const custom = list.filter((i) => !i.is_all);
+  const left = Array.isArray(inboxes) && Array.isArray(accounts) ? unboxed(accountList, list) : [];
+  // The plan's inbox count is reached ("All inboxes" never counts); existing ones stay.
+  const max = billing?.enabled ? billing.limits.inboxes : null;
+  const atLimit = max != null && custom.length >= max;
+  const nameOf = new Map(list.map((i) => [i.id, i.name]));
   // On small screens one pane shows at a time: inboxes, then items, then the item.
   const show = (pane: "inboxes" | "items" | "detail") =>
-    (pane === "detail" ? itemId : pane === "items" ? inboxId && !itemId : !inboxId && !itemId) ? "block" : "hidden";
+    (pane === "detail" ? asked : pane === "items" ? inboxId && !asked : !inboxId && !asked) ? "block" : "hidden";
 
   return (
     // From lg up the inbox fills the window under the top bar (3rem) and main's padding (2rem twice); each pane scrolls on its own.
@@ -458,19 +525,30 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
               return (
                 <li key={i.id} className="group flex items-center gap-1">
                   <Link
-                    href={`/inbox/${encodeURIComponent(i.id)}`}
+                    href={`/inbox/${address(i)}`}
                     aria-current={active ? "page" : undefined}
-                    className={`flex min-w-0 flex-1 items-center gap-2 rounded-xl px-3 py-2 font-bold focus-visible:outline-offset-[-3px] ${
+                    className={`grid min-w-0 flex-1 gap-1 rounded-xl px-3 py-2 font-bold focus-visible:outline-offset-[-3px] ${
                       active ? "bg-ink text-paper" : "text-ink-soft hover:bg-ink/5 hover:text-ink"
                     }`}
                   >
-                    <Icon name="inbox" className={`size-4 ${active ? "text-signal" : ""}`} />
-                    <span className="truncate">{i.name}</span>
+                    <span className="flex min-w-0 items-center gap-2">
+                      <Icon name="inbox" className={`size-4 shrink-0 ${active ? "text-signal" : ""}`} />
+                      <span className="truncate">{inboxName(i)}</span>
+                    </span>
+                    {!i.is_all && i.account_ids.length > 0 && (
+                      <span aria-hidden="true" className="flex -space-x-1.5 pl-6">
+                        {i.account_ids.slice(0, 4).flatMap((id) => {
+                          const a = accountById.get(id);
+                          return a ? [<span key={id} className="rounded-full ring-2 ring-paper"><Avatar connection={a} size="size-5" /></span>] : [];
+                        })}
+                        {i.account_ids.length > 4 && <span className="pl-2.5 text-xs font-normal">+{i.account_ids.length - 4}</span>}
+                      </span>
+                    )}
                   </Link>
                   {Boolean(i.open_count) && (
                     <span className="badge tone shrink-0 tabular-nums" data-kind="dm">
                       {i.open_count}
-                      <span className="sr-only"> open in {i.name}</span>
+                      <span className="sr-only"> open in {inboxName(i)}</span>
                     </span>
                   )}
                   {canManage && !i.is_all && (
@@ -488,12 +566,26 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
             })}
           </ul>
         )}
-        {canManage && (
-          <button type="button" className="btn btn-secondary btn-sm mt-3 w-full" onClick={() => setEditing("new")}>
-            <Icon name="plus" className="size-4" />
-            New inbox
-          </button>
+        {Array.isArray(inboxes) && custom.length === 0 && (
+          <p className="card mt-3 p-3 text-sm text-ink-soft">
+            <strong className="block text-ink">No inboxes yet</strong>
+            Group accounts into an inbox, for example one per brand.
+          </p>
         )}
+        {left.length > 0 && custom.length > 0 && (
+          <p className="mt-3 text-sm text-ink-soft">
+            {left.length === 1 ? "1 account is" : `${left.length} accounts are`} in no inbox, so {left.length === 1 ? "its" : "their"} messages show only in All inboxes.
+          </p>
+        )}
+        {canManage &&
+          (atLimit ? (
+            <p className="mt-3 text-sm text-ink-soft">{planLimit("inboxes")}</p>
+          ) : (
+            <button type="button" className="btn btn-secondary btn-sm mt-3 w-full" onClick={() => setEditing("new")}>
+              <Icon name="plus" className="size-4" />
+              New inbox
+            </button>
+          ))}
       </nav>
 
       <section aria-labelledby="items-heading" className={`${show("items")} grid content-start gap-3 lg:flex lg:flex-col lg:gap-0`}>
@@ -502,12 +594,12 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
           Inboxes
         </Link>
         <h2 id="items-heading" className="font-display text-lg font-extrabold tracking-tight lg:mb-3">
-          {current?.name ?? "Inbox"}
+          {current ? inboxName(current) : "Inbox"}
         </h2>
         <div className="grid gap-2 lg:mb-3">
           <div className="flex items-center gap-2">
             <label className="relative block min-w-0 flex-1">
-              <span className="sr-only">Search {current?.name ?? "this inbox"}</span>
+              <span className="sr-only">Search {current ? inboxName(current) : "this inbox"}</span>
               <Icon name="search" className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-soft" />
               <input id="inbox-search" type="search" maxLength={100} className="field w-full py-1.5 pl-9" placeholder="Search text or author" value={search} onChange={(e) => setSearch(e.target.value)} />
             </label>
@@ -516,7 +608,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
                 <Link
                   key={s}
                   aria-current={state === s ? "true" : undefined}
-                  href={href({ state: s, item: itemId })}
+                  href={href({ state: s, item: asked })}
                   className={`rounded-full px-3 py-1 text-center text-sm font-bold ${state === s ? "bg-paper text-ink shadow-sm" : "text-ink-soft hover:text-ink"}`}
                 >
                   {s === "open" ? "Open" : "Done"}
@@ -526,7 +618,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <FilterMenu label="Kind" value={kind} options={kindOptions} onChange={setKind} />
-            <FilterMenu label="Assigned" value={assigned} options={assignedOptions} onChange={(v) => router.replace(href({ assigned: v, item: itemId }), { scroll: false })} />
+            <FilterMenu label="Assigned" value={assigned} options={assignedOptions} onChange={(v) => router.replace(href({ assigned: v, item: asked }), { scroll: false })} />
           </div>
           {(kind !== "all" || assigned || tag) && (
             <ul aria-label="Active filters" className="flex flex-wrap items-center gap-1.5">
@@ -541,7 +633,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
               {assigned && (
                 <li className={chip}>
                   Assigned: {assignedOptions.find((o) => o.value === assigned)?.label ?? "one person"}
-                  <Link href={href({ assigned: "", item: itemId })} scroll={false} aria-label="Clear the assigned filter" className={chipClear}>
+                  <Link href={href({ assigned: "", item: asked })} scroll={false} aria-label="Clear the assigned filter" className={chipClear}>
                     <Icon name="close" className="size-3" />
                   </Link>
                 </li>
@@ -549,7 +641,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
               {tag && (
                 <li className={chip}>
                   Tag: {tag}
-                  <Link href={href({ tag: "", item: itemId })} scroll={false} aria-label={`Clear the tag filter ${tag}`} className={chipClear}>
+                  <Link href={href({ tag: "", item: asked })} scroll={false} aria-label={`Clear the tag filter ${tag}`} className={chipClear}>
                     <Icon name="close" className="size-3" />
                   </Link>
                 </li>
@@ -559,18 +651,28 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
         </div>
         {stuck.map((p) => (
           <p key={p.thread} role="alert" className="waitlist-error lg:mb-3">
-            <button type="button" className={linkButton} onClick={() => go(p.itemId, "push")}>
+            <button type="button" className={linkButton} onClick={() => go({ id: p.itemId, number: p.itemNo }, "push")}>
               A reply to {p.name} {p.unsure ? "may not have been sent" : "was not sent"}
             </button>
           </p>
         ))}
         {/* p-px keeps the card's 1px ring inside the scroller. */}
         <div className="grid content-start gap-3 lg:block lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain lg:p-px">
+          {accountList.some((a) => a.provider === "threads" && a.replies_denied) && (
+            <p role="note" className="card mb-3 p-3 text-sm">
+              <strong className="block">Reconnect to enable replies</strong>
+              {accountList.filter((a) => a.provider === "threads" && a.replies_denied).map(accountName).join(", ")} {accountList.filter((a) => a.provider === "threads" && a.replies_denied).length === 1 ? "was" : "were"} connected before SocialReins could read Threads replies, so none reach this inbox yet. Until Meta approves the new permissions, only the app&apos;s testers can reconnect with them.{" "}
+              <Link href="/connections" className="font-bold underline decoration-signal decoration-2 underline-offset-4">
+                Reconnect it under Accounts
+              </Link>
+              .
+            </p>
+          )}
           {noAccounts ? (
             <div className="card grid gap-3 p-5">
               <p>
                 <strong className="block">No accounts connected</strong>
-                <span className="text-ink-soft">Connect a Bluesky account and its comments, mentions and DMs land here.</span>
+                <span className="text-ink-soft">Connect a Bluesky, Facebook, Instagram, Threads or X account and its comments, mentions and DMs land here. Threads has replies and mentions, no DMs.</span>
               </p>
               <Link href="/connections" className="btn btn-primary justify-self-start">
                 Connect an account
@@ -595,6 +697,8 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
                 ? "Nothing marked done yet."
                 : kind !== "all"
                   ? "No items of this kind here."
+                  : current && !current.is_all && current.account_ids.length === 0
+                  ? "This inbox has no accounts. Edit it to add some."
                   : "Nothing here yet. New comments, mentions and DMs show up here within a minute."}
             </p>
             {loadMoreButton}
@@ -624,7 +728,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
                   return (
                     <li key={i.id} className="relative">
                       <Link
-                        href={href({ item: i.id })}
+                        href={href({ item: address(i) })}
                         scroll={false}
                         onClick={() => setOpened(i.id)}
                         aria-current={selected ? "true" : undefined}
@@ -646,10 +750,17 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
                               {relativeTime(c?.last_at ?? i.received_at)}
                             </time>
                           </span>
-                          <span className="line-clamp-2 text-sm text-ink-soft">{i.text || "(no text)"}</span>
+                          <span className="line-clamp-2 text-sm text-ink-soft">{itemSummary(i)}</span>
                           <span className="mt-0.5 flex items-center gap-2">
                             <KindBadge kind={i.kind} />
                             {c && <span className="text-xs text-ink-soft">{messageCount(c.count)}</span>}
+                            {/* With one custom inbox every row would carry the same chip. */}
+                            {current?.is_all &&
+                              custom.length > 1 &&
+                              i.inbox_ids?.flatMap((id) => {
+                                const n = nameOf.get(id);
+                                return n ? [<span key={id} className="badge max-w-32 truncate">{n}</span>] : [];
+                              })}
                             {i.assigned_to && (
                               <span className="ml-auto grid size-5 place-items-center rounded-full bg-ink text-[0.65rem] font-bold text-paper" title={`Assigned to ${i.assigned_to.name}`}>
                                 <span aria-hidden="true">{i.assigned_to.name.charAt(0).toUpperCase()}</span>
@@ -672,9 +783,9 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
       <section aria-label="Item" className={`${show("detail")} lg:block lg:overflow-y-auto lg:overscroll-contain lg:p-px`}>
         <Link href={href({ item: null })} scroll={false} className="mb-3 flex items-center gap-1 text-sm font-bold text-ink-soft hover:text-ink lg:hidden">
           <Icon name="left" className="size-4" />
-          Back to {current?.name ?? "the inbox"}
+          Back to {current ? inboxName(current) : "the inbox"}
         </Link>
-        {!itemId ? (
+        {!asked ? (
           <div className="hidden h-full place-content-center justify-items-center gap-3 p-8 text-center text-sm text-ink-soft lg:grid">
             <p>Pick an item to read it and reply.</p>
             <p>
@@ -700,6 +811,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
             focus={opened === detail.id}
             account={accountList.find((a) => a.id === detail.social_account_id)}
             me={user}
+            canManage={canManage}
             members={members}
             tagOptions={tagOptions}
             pending={outbox.filter((p) => p.thread === openKey)}
@@ -741,22 +853,59 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
         <InboxEditor
           inbox={editing === "new" ? null : editing}
           accounts={accountList}
-          sets={sets}
           onClose={() => setEditing(null)}
           onSaved={(saved) => {
             setInboxes((l) => (Array.isArray(l) ? (l.some((x) => x.id === saved.id) ? l.map((x) => (x.id === saved.id ? saved : x)) : [...l, saved]) : l));
             // The saved inbox comes without its count, and new filters change it.
             listInboxes().then((l) => Array.isArray(l) && setInboxes(l));
+            if (editing === "new") getBilling().then((r) => !isFailure(r) && setBilling(r));
             // Its filters changed, so its items did too.
             if (saved.id === currentId) setReloads((n) => n + 1);
           }}
           onDeleted={(id) => {
             setInboxes((l) => (Array.isArray(l) ? l.filter((x) => x.id !== id) : l));
-            if (id === inboxId) router.replace("/inbox");
+            if (id === current?.id) router.replace("/inbox");
           }}
         />
       )}
     </div>
+  );
+}
+
+const stills: Attachment["kind"][] = ["image", "sticker", "gif"];
+
+// A thumbnail linking to the file. Meta's links expire: a still that no longer loads falls back to the kind's label.
+// no-referrer: the platform learns nothing beyond the link it gave out.
+function AttachmentLink({ a }: { a: Attachment }) {
+  const [broken, setBroken] = useState(false);
+  const name = attachmentName[a.kind];
+  const still = a.preview_url ?? (stills.includes(a.kind) ? a.url : undefined);
+  return (
+    <a href={a.url} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer" className="group relative block rounded-xl hover:opacity-90">
+      {still && !broken ? (
+        // eslint-disable-next-line @next/next/no-img-element -- a platform link that expires, not ours to optimize
+        <img src={still} alt={name} loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(true)} className="size-28 rounded-xl border border-ink/10 bg-canvas object-cover" />
+      ) : (
+        <span className="badge tone gap-1">
+          {name}
+          <Icon name="external" className="size-3.5" />
+        </span>
+      )}
+      <span className="sr-only"> (view the original, opens in a new tab)</span>
+    </a>
+  );
+}
+
+function Attachments({ items }: { items?: Attachment[] }) {
+  if (!items?.length) return null;
+  return (
+    <ul aria-label="Attachments" className="flex max-w-[90%] flex-wrap gap-2">
+      {items.map((a, n) => (
+        <li key={n}>
+          <AttachmentLink a={a} />
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -774,6 +923,7 @@ function Detail({
   account,
   focus,
   me,
+  canManage,
   members,
   tagOptions,
   pending,
@@ -787,6 +937,8 @@ function Detail({
   account?: Connection;
   focus: boolean;
   me: Person;
+  // Owners and admins block, hide, report and delete replies.
+  canManage: boolean;
   members: Person[];
   tagOptions: string[];
   // This thread's replies not yet confirmed, and the Inbox's setter over all of them.
@@ -804,6 +956,8 @@ function Detail({
   // The unsure reply whose Send again waits for a yes.
   const [confirming, setConfirming] = useState<number | null>(null);
   const [reloads, setReloads] = useState(0);
+  // The posts above an item, read from Bluesky as the account sees them.
+  const [read, setRead] = useState<{ id: string; context: ThreadContext | Failure } | null>(null);
   const [sent, setSent] = useState<{ text: string; n: number } | null>(null);
   // Saving the typed text as a saved reply: null, or the name being typed.
   const [naming, setNaming] = useState<string | null>(null);
@@ -833,6 +987,19 @@ function Detail({
     // Read again too when a reply of this thread settles: it may have gone out while another item was open.
   }, [dm, item.id, newest, reloads, pending.length]);
 
+  const acts = useItemActions(item);
+  const aboveId = hasThread(item) ? item.id : null;
+  // null while they load.
+  const above = read?.id === aboveId ? read.context : null;
+  useEffect(() => {
+    if (!aboveId) return;
+    let live = true;
+    getThread(aboveId).then((context) => live && setRead({ id: aboveId, context }));
+    return () => {
+      live = false;
+    };
+  }, [aboveId]);
+
   const thread = dm ? (convo?.items ?? []) : [item];
   // A reply goes to the latest message of a conversation.
   const latest = thread.at(-1) ?? item;
@@ -840,8 +1007,19 @@ function Detail({
   const isOpen = item.state === "open" || (dm && ((row?.conversation?.open_count ?? 0) > 0 || thread.some((i) => i.state === "open")));
   const max = maxFor(item.kind, account?.provider);
   const platform = platformName(account?.provider ?? "bluesky");
-  const count = graphemes(text);
+  const count = replyLength(account?.provider, text);
   const sending = pending.some((p) => !settled(p));
+  // Meta: how long a DM can still be answered (never for Bluesky), and a deleted comment takes no reply.
+  const win = dm ? (latest.reply_window ?? item.reply_window) : null;
+  // The note counts down while the item stays open.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!win) return;
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, [win]);
+  const note = win ? windowNote(win, now) : null;
+  const deleted = item.moderation?.deleted === true;
 
   const assign = (id: string | null) =>
     meta.run("assign", () => assignItem(item.id, id, dm), (r) => {
@@ -928,8 +1106,8 @@ function Detail({
   function onReply(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     // Ctrl+Enter submits even while the button is disabled.
-    if (sending || !text.trim() || count > max) return;
-    send({ id: ++lastId, thread: threadKey(item), itemId: item.id, name: authorName(item.author), text });
+    if (sending || !text.trim() || count > max || note?.blocked) return;
+    send({ id: ++lastId, thread: threadKey(item), itemId: item.id, itemNo: item.number, name: authorName(item.author), text });
     setText("");
   }
 
@@ -953,7 +1131,7 @@ function Detail({
           </h2>
           <p className="truncate text-sm text-ink-soft">
             {item.author.handle && item.author.name ? `@${item.author.handle}, ` : ""}
-            {dm ? "DMs with" : `${kindName[item.kind]} to`} {account ? accountName(account) : "your account"}
+            {dm ? "DMs with" : isActivity(item.kind) ? "Activity on" : `${kindName[item.kind]} to`} {account ? accountName(account) : "your account"}
             {messages ? `, ${messageCount(messages)}` : ""}
           </p>
         </div>
@@ -963,7 +1141,7 @@ function Detail({
           {item.contact_id && (
             <>
               <TagEditor id="item-tags" tags={item.contact_tags ?? []} suggestions={tagOptions} disabled={meta.busy !== null} onChange={saveTags} />
-              <Link href={`/contacts?contact=${encodeURIComponent(item.contact_id)}`} className="font-bold underline decoration-signal decoration-2 underline-offset-4">
+              <Link href={`/contacts?contact=${addressOf(item.contact_id, item.contact_number)}`} className="font-bold underline decoration-signal decoration-2 underline-offset-4">
                 Open contact
               </Link>
             </>
@@ -986,6 +1164,8 @@ function Detail({
           )}
         </div>
         <Status problem={meta.problem} done={meta.done} overrides={metaMessages} />
+        {acts.wanted && dm && <DmTools itemId={item.id} canManage={canManage} state={acts.actions} reload={acts.reload} />}
+        {acts.wanted && <ItemActionsMenu item={item} canManage={canManage} state={acts.actions} loading={acts.loading} failed={acts.failed} reload={acts.reload} />}
       </header>
 
       {/* A conversation scrolls in its own box on every screen, so it can open at the newest message. */}
@@ -1016,6 +1196,43 @@ function Detail({
             </button>
           </li>
         )}
+        {item.platform === "youtube" && <YouTubeContext item={item} />}
+        {aboveId && above === null && (
+          <li role="status" className="h-16 rounded-2xl bg-ink/5 motion-safe:animate-pulse">
+            <span className="sr-only">Loading the posts above...</span>
+          </li>
+        )}
+        {aboveId && above && isFailure(above) && (
+          <li className="text-xs text-ink-soft">The posts above this one couldn&apos;t be loaded. {problemText(above)}</li>
+        )}
+        {aboveId && above && !isFailure(above) && (
+          <>
+            {above.truncated && <li className="text-xs text-ink-soft">Earlier posts are deleted or hidden from this account.</li>}
+            {above.posts.map((p, n) => (
+              <li key={p.uri} data-row="context" className="grid gap-1 rounded-2xl border border-ink/10 bg-ink/[0.03] px-4 py-3 text-sm">
+                <p className="flex items-center gap-2">
+                  {n === 0 && <span className="sr-only">Earlier in this thread: </span>}
+                  <AuthorAvatar author={p.author} size="size-6" />
+                  <strong className="min-w-0 truncate">{authorName(p.author)}</strong>
+                  {p.created_at && (
+                    <time dateTime={p.created_at} className="ml-auto shrink-0 text-xs text-ink-soft">
+                      {relativeTime(p.created_at)}
+                    </time>
+                  )}
+                </p>
+                {p.text && <p className="whitespace-pre-wrap break-words">{p.text}</p>}
+                <Attachments items={p.attachments} />
+                {p.url && (
+                  <a href={p.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs font-bold text-ink-soft hover:text-ink">
+                    View on {platformName(item.platform)}
+                    <Icon name="external" className="size-3.5" />
+                    <span className="sr-only">(opens in a new tab)</span>
+                  </a>
+                )}
+              </li>
+            ))}
+          </>
+        )}
         {dm && convo?.has_more && (
           <li className="grid justify-items-center gap-1">
             <button type="button" className="btn btn-secondary btn-sm" disabled={earlier === "loading"} onClick={loadEarlier}>
@@ -1035,7 +1252,9 @@ function Detail({
             </li>
           ) : r.type === "them" ? (
             <li key={r.key} data-row="them" className="grid justify-items-start gap-1">
-              <p className="max-w-[90%] whitespace-pre-wrap break-words rounded-2xl rounded-tl-md bg-canvas px-4 py-3">{r.text || "(no text)"}</p>
+              {(r.text || !r.item.attachments?.length) && <p className="max-w-[90%] whitespace-pre-wrap break-words rounded-2xl rounded-tl-md bg-canvas px-4 py-3">{r.text || itemSummary(r.item)}</p>}
+              <Attachments items={r.item.attachments} />
+              {dm && r.item.platform === "bluesky" && <MessageTools itemId={r.item.id} canManage={canManage} />}
               <p className="flex flex-wrap items-center gap-x-3 text-xs text-ink-soft">
                 <time dateTime={r.at}>{when(r.at)}</time>
                 {r.item.remote_url && (
@@ -1061,6 +1280,10 @@ function Detail({
                     <span className="sr-only">reply on {platform}</span>
                   </a>
                 )}
+                {canManage && r.reply.kind === "public" && r.reply.remote_url && item.platform === "bluesky" && (
+                  <DeleteReply itemId={item.id} replyId={r.reply.id} state={acts.actions} reload={acts.reload} />
+                )}
+                {canManage && r.reply.kind === "public" && item.platform === "youtube" && <YouTubeDeleteReply itemId={item.id} replyId={r.reply.id} onChange={onChange} />}
               </p>
             </li>
           ),
@@ -1104,8 +1327,19 @@ function Detail({
         ))}
       </ol>
 
-      {/* A follow has nothing to reply to. */}
-      <form onSubmit={onReply} hidden={item.kind === "follow"} className="grid gap-2 border-t border-ink/10 pt-4 [&[hidden]]:hidden">
+      <XActions item={item} />
+      <ThreadsActions item={item} canManage={canManage} />
+      {account?.provider === "threads" && account.replies_denied && (
+        <p role="note" className="rounded-xl border border-ink/15 bg-canvas p-3 text-sm">
+          <strong>Reconnect to enable replies.</strong> This Threads account was connected before SocialReins could read and send replies. Reconnect it under Accounts and accept the new permissions. Until Meta approves them, only the app&apos;s testers can. {accountsLink}.
+        </p>
+      )}
+      <ItemAutomations key={`automations-${item.id}`} itemId={item.id} />
+      {!dm && <ModerationBar key={item.id} item={item} canDelete={canManage} onChange={onChange} />}
+
+      {deleted && <p className="text-sm text-ink-soft">This comment was {item.platform === "youtube" ? "rejected" : "deleted"} on {platform}, so it takes no reply.</p>}
+      {/* A follow, like or repost has nothing to reply to, nor does a deleted comment. */}
+      <form onSubmit={onReply} hidden={isActivity(item.kind) || deleted} className="grid gap-2 border-t border-ink/10 pt-4 [&[hidden]]:hidden">
         <div className="flex flex-wrap items-end justify-between gap-2">
           <label htmlFor="reply-text" className="label">
             {dm ? "Send DM" : "Reply publicly"}
@@ -1122,12 +1356,17 @@ function Detail({
           onKeyDown={(e) => {
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) e.currentTarget.form?.requestSubmit();
           }}
-          aria-describedby="reply-count"
+          aria-describedby={note ? "reply-count window-note" : "reply-count"}
           aria-invalid={count > max || undefined}
           placeholder={dm ? `Message ${authorName(item.author)}` : `Reply to ${authorName(item.author)} on ${platform}`}
         />
+        {note && (
+          <p id="window-note" className={`text-sm ${note.blocked ? "font-bold text-signal-deep" : "text-ink-soft"}`}>
+            {note.text}
+          </p>
+        )}
         <div className="flex flex-wrap items-center gap-3">
-          <button type="submit" className="btn btn-primary" disabled={sending || !text.trim() || count > max}>
+          <button type="submit" className="btn btn-primary" disabled={sending || !text.trim() || count > max || note?.blocked}>
             <Icon name="send" className="size-4" />
             {dm ? "Send DM" : "Reply publicly"}
           </button>
@@ -1188,7 +1427,7 @@ function Detail({
 
       <div className="flex flex-wrap items-center gap-3 border-t border-ink/10 pt-4">
         {isOpen ? (
-          <button id="mark-done" type="button" className="btn btn-secondary btn-sm" onClick={() => onDone(item)}>
+          <button id="mark-done" type="button" className="btn btn-secondary btn-sm" onClick={() => onDone(dm ? latest : item)}>
             Mark done
           </button>
         ) : (

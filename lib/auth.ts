@@ -8,7 +8,7 @@ export type Role = "owner" | "admin" | "member";
 // picked for itself, shown instead of the code when set; brain takes either in X-Team and ?team=.
 // `public_pages`: posts of the team may have a public page (`/p/<code>`); `newsletter`: those pages offer a sign-up;
 // `require_approval`: a member's post waits for an owner or admin to approve it.
-export type Team = { id: string; name: string; code: string; slug?: string | null; role: Role; public_pages?: boolean; newsletter?: boolean; newsletter_sender?: { name: string; address: string; logo?: string | null } | null; require_approval?: boolean };
+export type Team = { id: string; name: string; code: string; slug?: string | null; role: Role; public_pages?: boolean; newsletter?: boolean; newsletter_sender?: { name: string; address: string; logo?: string | null } | null; require_approval?: boolean; automations_paused?: boolean };
 export type User = {
   id: string;
   email: string;
@@ -82,7 +82,7 @@ export async function signOut(): Promise<boolean> {
 }
 
 // Error codes brain sends for the auth endpoints.
-const codes = [
+export const codes = [
   "invalid_credentials",
   "reauth_required",
   "invalid_name",
@@ -119,11 +119,17 @@ const codes = [
   "unsupported_platform",
   "too_many_posts",
   "not_editable",
+  "not_retryable",
+  "paused",
+  "daily_cap",
   "details_too_long",
   "public_pages_off",
   "not_deletable",
   "publish_quota",
   "refreshed_recently",
+  "publish_in_progress",
+  "nothing_to_retry",
+  "outcome_unknown",
   "invalid_range",
   "media_required",
   "thread_not_supported",
@@ -137,11 +143,18 @@ const codes = [
   "media_too_large",
   "invalid_cover_type",
   "cover_too_large",
+  "alt_text_too_long",
+  "invalid_alt_text",
   "tiktok_privacy_not_offered",
   "invalid_override",
   "no_accounts",
   "invalid_filters",
   "too_many_inboxes",
+  "invalid_accounts",
+  "invalid_upload",
+  "too_many_uploads",
+  "upload_interrupted",
+  "uploads_in_progress",
   "all_inbox",
   "invalid_state",
   "invalid_text",
@@ -169,6 +182,13 @@ const codes = [
   "tiktok_branded_content_private",
   "reconnect_required",
   "tiktok_failed",
+  "pinterest_failed",
+  "pinterest_not_supported",
+  "invalid_pinterest_board",
+  "pinterest_title_too_long",
+  "invalid_pinterest_link",
+  "pinterest_board_required",
+  "invalid_board",
   "invalid_time_zone",
   "invalid_slot",
   "duplicate_slot",
@@ -218,11 +238,41 @@ const codes = [
   "plan_limit_members",
   "plan_limit_automation",
   "plan_limit_plan",
+  "plan_limit_inboxes",
   "already_subscribed",
   "no_customer",
   "billing_unavailable",
   "stripe_failed",
   "invalid_plan",
+  "unsupported_account",
+  "x_unsupported_trigger",
+  "bluesky_unsupported_trigger",
+  "youtube_unsupported_trigger",
+  "youtube_no_dm",
+  "linkedin_unsupported_trigger",
+  "linkedin_no_dm",
+  "linkedin_no_hide",
+  "linkedin_needs_approval",
+  "linkedin_personal_profile",
+  "linkedin_needs_scope",
+  "threads_unsupported_trigger",
+  "threads_no_dm",
+  "threads_no_like",
+  "bluesky_only_trigger",
+  "bluesky_only_action",
+  "meta_one_private_reply",
+  "meta_reply_window",
+  "has_paid_plan",
+  "invalid_pack",
+  "invalid_sample",
+  "invalid_cooldown",
+  "invalid_daily_cap",
+  "captcha_failed",
+  "captcha_unavailable",
+  "review_account",
+  "email_mismatch",
+  "owns_shared_team",
+  "stripe_failed",
 ] as const;
 export type Failure = (typeof codes)[number] | "rate_limited" | "signed_out" | "timeout" | "error";
 export type Passkey = { id: string; name: string; created_at: string; last_used_at: string | null };

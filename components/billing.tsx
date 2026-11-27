@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import type { Failure } from "@/lib/auth";
 import { useSession } from "@/components/app-shell";
-import { getAiKey, getBilling, getCredits, isLive, openPortal, removeAiKey, setAiKey, startCheckout, type AiKey, type Billing, type Credits, type Interval, type Plan, type PlanChoice, type Provider } from "@/lib/billing";
+import { buyCredits, getAiKey, getBilling, getCredits, isLive, openPortal, removeAiKey, setAiKey, startCheckout, type AiKey, type Billing, type Credits, type Interval, type Pack, type Plan, type PlanChoice, type Provider } from "@/lib/billing";
 import { manages } from "@/lib/teams";
 import { isFailure, linkButton, Status, useAction } from "@/components/team-ui";
 import { LoadFailed, Skeleton } from "@/components/ui";
@@ -22,23 +22,35 @@ const planOverrides = {
   billing_unavailable: "Billing is not available right now. Try again later.",
   stripe_failed: "Payment page could not be opened. Try again.",
   invalid_plan: "That plan is not available.",
+  invalid_pack: "That credit pack is not available.",
 };
 // USD, decision 0006: yearly is two months free.
 const choices: { plan: PlanChoice; name: string; monthly: number; yearly: number; features: string[] }[] = [
-  { plan: "scheduler", name: "Scheduler", monthly: 19, yearly: 190, features: ["10 connected accounts", "3 team members", "No inbox or automations"] },
+  { plan: "scheduler", name: "Scheduler", monthly: 19, yearly: 190, features: ["10 connected accounts", "3 team members", "1 inbox", "No automations"] },
   {
     plan: "automation",
     name: "Scheduler and Automation",
     monthly: 49,
     yearly: 490,
-    features: ["25 connected accounts", "Unlimited team members", "Inbox, automations, broadcasts and newsletters", "2,500 contacts"],
+    features: ["25 connected accounts", "Unlimited team members", "10 inboxes", "Automations, broadcasts and newsletters", "2,500 contacts"],
   },
 ];
-const banners = { success: "Thanks. Your plan will show here in a moment.", canceled: "Checkout was canceled." };
+const banners: Record<string, string> = {
+  success: "Thanks. Your plan will show here in a moment.",
+  canceled: "Checkout was canceled.",
+  credits_success: "Thanks. Your credits will show here in a moment. Reload if they don't.",
+  credits_canceled: "The credit purchase was canceled.",
+};
+// USD, decision 0006: one credit is one X post, and credits never expire.
+const packs: { pack: Pack; posts: number; price: number }[] = [
+  { pack: "x100", posts: 100, price: 5 },
+  { pack: "x500", posts: 500, price: 20 },
+];
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
 
 // When the plan ends or renews, in a sentence.
 function planDate(p: Plan, owner: boolean) {
+  if (p.comped && p.status === "active") return "Free plan, given by SocialReins. Nothing to pay.";
   if (p.status === "trialing" && p.trial_ends_at) return `Trial ends ${date(p.trial_ends_at)}.`;
   if (p.status === "past_due") return owner ? "Payment failed, update your card in Manage billing." : "Payment failed, retrying.";
   if (!p.current_period_end) return null;
@@ -56,25 +68,32 @@ const limitText = (used: number, limit: number | null) => (limit === null ? `${u
 
 export function BillingPage() {
   const { user } = useSession();
-  // Brain sends the browser back from Stripe to /billing?checkout=success or canceled; show it once, then clean the address.
-  const [returned] = useState(() => new URLSearchParams(window.location.search).get("checkout"));
+  // Whether AI steps are metered: billing is on. Unknown until the plan loads.
+  const [metered, setMetered] = useState<boolean | null>(null);
+  // Brain sends the browser back from Stripe to /billing?checkout= (a plan) or ?credits= (a pack), success or canceled; show it once, then clean the address.
+  const [returned] = useState(() => {
+    const q = new URLSearchParams(window.location.search);
+    const credits = q.get("credits");
+    return q.get("checkout") ?? (credits ? `credits_${credits}` : null);
+  });
   useEffect(() => {
     if (returned) window.history.replaceState(null, "", window.location.pathname);
   }, [returned]);
   return (
     <div className="grid max-w-3xl gap-10">
-      {returned === "success" || returned === "canceled" ? (
-        <p role="status" className={returned === "success" ? "waitlist-done" : "text-ink-soft"}>
+      {/* Own keys only: a query like ?checkout=__proto__ must not reach the prototype. */}
+      {returned && Object.hasOwn(banners, returned) ? (
+        <p role="status" className={returned.endsWith("success") ? "waitlist-done" : "text-ink-soft"}>
           {banners[returned]}
         </p>
       ) : null}
-      <PlanSection polling={returned === "success"} />
-      {manages(user.current_team.role) ? <AiKeySection /> : <p className="text-ink-soft">Only team owners and admins can set the team&apos;s own AI key.</p>}
+      <PlanSection polling={returned === "success"} onBilling={setMetered} />
+      {manages(user.current_team.role) ? <AiKeySection metered={metered} /> : <p className="text-ink-soft">Only team owners and admins can set the team&apos;s own AI key.</p>}
     </div>
   );
 }
 
-function PlanSection({ polling }: { polling: boolean }) {
+function PlanSection({ polling, onBilling }: { polling: boolean; onBilling: (enabled: boolean) => void }) {
   const { user } = useSession();
   const owner = user.current_team.role === "owner";
   const action = useAction();
@@ -88,8 +107,9 @@ function PlanSection({ polling }: { polling: boolean }) {
     setData(null);
     const [billing, credits] = await Promise.all([getBilling(), getCredits()]);
     setData(isFailure(billing) ? billing : { billing, credits });
+    if (!isFailure(billing)) onBilling(billing.enabled);
     return billing;
-  }, []);
+  }, [onBilling]);
   useEffect(() => {
     let stop = false;
     (async () => {
@@ -137,7 +157,7 @@ function PlanSection({ polling }: { polling: boolean }) {
         <h2 id="plan-heading" className={heading}>
           Plan
         </h2>
-        <p>Self-hosted: nothing is capped.</p>
+        <p>Billing is off: nothing is capped.</p>
       </section>
     );
   const { plan, limits, usage } = billing;
@@ -157,7 +177,7 @@ function PlanSection({ polling }: { polling: boolean }) {
         ) : (
           <p>No plan</p>
         )}
-        {isLive(plan) && owner && (
+        {isLive(plan) && !plan.comped && owner && (
           <button type="button" className="btn btn-primary justify-self-start" disabled={off} onClick={() => go("portal", openPortal)}>
             {label("portal", "Manage billing")}
           </button>
@@ -209,7 +229,7 @@ function PlanSection({ polling }: { polling: boolean }) {
               </div>
             ))}
           </div>
-          <p className="text-ink-soft">New plans start with a 7-day free trial.</p>
+          <p className="text-ink-soft">{billing.trial_available === false ? "Your free trial has been used, so a plan is charged at once." : "A team's first plan starts with a 7-day free trial."}</p>
         </section>
       )}
       <section aria-labelledby="usage-heading" className="grid gap-2">
@@ -221,7 +241,30 @@ function PlanSection({ polling }: { polling: boolean }) {
           <dd>{limitText(usage.accounts, limits.accounts)}</dd>
           <dt className="text-ink-soft">Team members</dt>
           <dd>{limitText(usage.members, limits.members)}</dd>
+          {usage.contacts !== undefined && (
+            <>
+              <dt className="text-ink-soft">Contacts</dt>
+              <dd>{limitText(usage.contacts, limits.contacts)}</dd>
+            </>
+          )}
+          {usage.inboxes !== undefined && (
+            <>
+              <dt className="text-ink-soft">Inboxes</dt>
+              <dd>{limitText(usage.inboxes, limits.inboxes ?? null)}</dd>
+            </>
+          )}
+          {typeof limits.ai_monthly === "number" && limits.ai_monthly > 0 && (
+            <>
+              <dt className="text-ink-soft">AI replies this month</dt>
+              <dd>{limitText(usage.ai_replies ?? 0, limits.ai_monthly)}</dd>
+            </>
+          )}
         </dl>
+        {usage.contacts !== undefined && limits.contacts !== null && usage.contacts >= limits.contacts && (
+          <p className="hint">
+            You are at the contact limit of your plan. People you already have stay and keep updating. A new person&apos;s messages still arrive and automations still answer, but they are not added as a contact, so they have no tags or notes and their messages are not grouped as one conversation.
+          </p>
+        )}
       </section>
       <section aria-labelledby="credits-heading" className="grid gap-2">
         <h2 id="credits-heading" className={heading}>
@@ -239,13 +282,25 @@ function PlanSection({ polling }: { polling: boolean }) {
             <dd>{credits.ai}</dd>
           </dl>
         )}
+        {owner && (
+          <>
+            <div className="flex flex-wrap gap-3">
+              {packs.map((p) => (
+                <button key={p.pack} type="button" className="btn btn-secondary" disabled={off} onClick={() => go(p.pack, () => buyCredits(p.pack))}>
+                  {label(p.pack, `Buy ${p.posts} X posts, $${p.price}`)}
+                </button>
+              ))}
+            </div>
+            <p className="text-ink-soft">One credit posts once to X, and each thread part counts. Credits never expire.</p>
+          </>
+        )}
       </section>
     </>
   );
 }
 
 // Rendered for owners and admins only. The key goes to brain and is never shown again, only its provider and last 4 characters.
-function AiKeySection() {
+function AiKeySection({ metered }: { metered: boolean | null }) {
   // undefined: loading; null: none set.
   const [saved, setSaved] = useState<AiKey | null | Failure | undefined>(undefined);
   const [provider, setProvider] = useState<Provider>("anthropic");
@@ -271,7 +326,13 @@ function AiKeySection() {
       <h2 id="ai-key-heading" className={heading}>
         Bring your own AI key
       </h2>
-      <p className="text-ink-soft">With your own key, AI steps in automations are not metered. Without one, they use credits.</p>
+      {metered !== null && (
+        <p className="text-ink-soft">
+          {metered
+            ? "With your own key, AI steps in automations are not metered. Without one, they use credits."
+            : "AI steps in automations use your own key when one is set. Without one, they use the app's key, if it has one. Billing is off, so nothing is metered."}
+        </p>
+      )}
       {saved === undefined ? (
         <Skeleton className="h-10 w-full" />
       ) : isFailure(saved) ? (
@@ -313,7 +374,7 @@ function AiKeySection() {
               onClick={() =>
                 action.run("remove", removeGone, () => {
                   setSaved(null);
-                  return "Removed the key. AI steps use credits again.";
+                  return metered === false ? "Removed the key." : "Removed the key. AI steps use credits again.";
                 })
               }
             >

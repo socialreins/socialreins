@@ -167,6 +167,7 @@ function Start({ mode }: { mode: Mode }) {
               ["X", "X_CLIENT_ID, X_CLIENT_SECRET", "/connect/x/callback"],
               ["TikTok", "TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET", "/connect/tiktok/callback"],
               ["YouTube", "GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET", "/connect/youtube/callback"],
+              ["Pinterest", "PINTEREST_APP_ID, PINTEREST_APP_SECRET", "/connect/pinterest/callback"],
             ].map(([network, values, path]) => (
               <tr key={network}>
                 <th scope="row" className="border-b border-ink/10 p-3 align-top">{network}</th>
@@ -213,6 +214,7 @@ const howTos: [string, string][] = [
   ["newsletters", "Newsletters"],
   ["analytics", "Analytics"],
   ["team-address", "Team address"],
+  ["install-app", "Install the app"],
 ];
 
 // The same keys as `shortcuts` in components/inbox.tsx.
@@ -251,7 +253,7 @@ function Use({ mode }: { mode: Mode }) {
         Open Posts and write a post. Under Post to, pick the networks. Add your text, photos or a video, and a first comment or a thread where the network allows one. With two or more networks ticked, each has its own tab where you can give it a different text and different media. Then publish now or pick a time to schedule it. The <Link href="/post-types" className={link}>post types page</Link> lists what each network accepts.
       </p>
       <h2>4. Check and take down</h2>
-      <p>Calendar shows what is scheduled, and you can drag a scheduled post to another day or use its Move to button. Duplicate on a saved post copies it into a new one. A published post shows a result for each account, with the reason when a network refused it. Taking a published post down removes it from its network, and a post sent to several networks has Take down all. It stays in SocialReins, marked as taken down.</p>
+      <p>Calendar shows what is scheduled, and you can drag a scheduled post to another day or use its Move to button. Duplicate on a saved post copies it into a new one. A published post shows a result for each account, with the reason when a network refused it. Taking a published post down removes it from its network, and a post sent to several networks has Take down all (TikTok has no delete option for other apps, so delete that one in the TikTok app). It stays in SocialReins, marked as taken down.</p>
       <h2>5. Invite your team</h2>
       <p>Open Team to invite people by email as an admin or a member. Lists group posts into an ordered series.</p>
 
@@ -311,7 +313,7 @@ function Use({ mode }: { mode: Mode }) {
       <h2 id="feeds">Post from an RSS or Atom feed</h2>
       <ol>
         <li>Open Feeds and choose Add feed.</li>
-        <li>Paste the feed&apos;s link, and pick the set and its networks. TikTok and YouTube are not offered, and an item needs an image to go to Instagram.</li>
+        <li>Paste the feed&apos;s link, and pick the set and its networks. TikTok, YouTube and Pinterest are not offered, and an item needs an image to go to Instagram.</li>
         <li>Choose what a new item becomes: Save a draft, Add to the queue or Post right away.</li>
         <li>
           Write the post text. <C>{"{title}"}</C>, <C>{"{link}"}</C> and <C>{"{summary}"}</C> are filled in from each item.
@@ -331,7 +333,7 @@ function Use({ mode }: { mode: Mode }) {
 
       <h2 id="inbox">Answer comments and DMs in the inbox</h2>
       <p>
-        Open Inbox. Comments and DMs arrive in one list, and DMs with one person are grouped into one conversation that opens as a chat. Search the list by text or author, switch between Open and Done, and filter with the Kind and Assigned menus. In the reader you reply, choose Mark done, assign the item to a teammate and insert a saved reply. The inbox is live on Bluesky; Facebook Pages and Instagram are in testing.
+        Open Inbox. Comments and DMs arrive in one list, and DMs with one person are grouped into one conversation that opens as a chat. Search the list by text or author, switch between Open and Done, and filter with the Kind and Assigned menus. In the reader you reply, choose Mark done, assign the item to a teammate and insert a saved reply. The inbox is live on Bluesky; Facebook Pages and Instagram are in testing. Threads is in testing too: replies to your posts and posts that mention you arrive, you can reply and hide a reply, and Threads has no DMs (an account connected before replies were added needs to be connected again once). X is in testing too: under Accounts, open an X account&apos;s settings and turn on X inbox, choose how often it is read and the most it may spend a month (X charges for every post and message it returns), and reconnect the account once so X grants the DM permissions.
       </p>
       <p>Keyboard shortcuts, which wait while you type in a box:</p>
       <ul>
@@ -346,12 +348,13 @@ function Use({ mode }: { mode: Mode }) {
       <h2 id="automations">Build an automation or a flow</h2>
       <ol>
         <li>Open Automations and choose New automation, then pick a template, such as Comment to DM or Welcome message, or start from scratch.</li>
-        <li>Under When, pick the trigger: a comment keyword, a DM keyword, a first message, a new follower (Bluesky), a mention, a story reply or a button tap.</li>
+        <li>Under When, pick the trigger: a comment keyword, a DM keyword, a first message, a new follower, a like of your post, a repost of your post (those three on Bluesky), a mention, a story reply or a button tap.</li>
         <li>Under Only if, narrow it to keywords, accounts or posts.</li>
         <li>Under Do this, choose One reply (a DM, a public reply, or both) or A flow of steps. A flow has up to 10 steps: a DM with up to 3 buttons, a public reply, a wait, or Tag the contact.</li>
-        <li>Save it and switch it on. Its page lists every run with what was sent and, when something was skipped or refused, the reason.</li>
+        <li>Save it and switch it on. Its page lists every run with what was sent and, when something was skipped or refused, the reason, and under it the recent items it did not run on and why. The same reasons show under an item in the inbox.</li>
       </ol>
-      <p>Automations are live on Bluesky; Facebook and Instagram are in testing.</p>
+      <p>On Bluesky a like or repost of your post can also start an automation. It has nobody to message or tag, so it can follow the person back, mail your team, assign the item or stop newer automations. Reposting and following back are done on Bluesky accounts only, and liking on Bluesky and Facebook.</p>
+      <p>Automations are live on Bluesky; Facebook and Instagram are in testing, and so is X (comments, mentions and DMs; X has no private reply, so keep a fallback public reply). Threads is in testing too: its replies and mentions can start an automation that answers with a public reply, hides the reply or tags the person. Threads has no DMs, no private reply and no like, so a DM or a like is refused when only Threads accounts are picked, and with other networks beside them the Threads items are skipped and the run log says why.</p>
 
       <h2 id="broadcasts">Send a broadcast</h2>
       <ol>
@@ -383,6 +386,11 @@ function Use({ mode }: { mode: Mode }) {
       <h2 id="analytics">Read your analytics</h2>
       <p>
         Open Analytics and pick the last 7, 30 or 90 days. It shows the totals, engagement by day, a table by network and your top posts, for the set picked in the top bar. It reads likes and comments on Bluesky, Facebook, Instagram and YouTube, shares on Bluesky and Facebook, and views on YouTube; the other networks say Not available yet. A published post&apos;s own page shows the numbers of each account, with Refresh stats. There are no reach, audience or follower reports yet.
+      </p>
+
+      <h2 id="install-app">Install the app</h2>
+      <p>
+        SocialReins installs like an app. In Chrome or Edge, open the account menu at the foot of the sidebar and choose Install app, which shows when the browser offers it (the site must be on https). In Safari on a Mac, choose File, then Add to Dock. On an iPhone or iPad, tap Share, then Add to Home Screen. On Android, use Install app in the Chrome menu. The app opens in its own window. It does not work offline: without a connection you see a short notice.
       </p>
 
       <h2 id="team-address">Give your team its own address</h2>
@@ -468,10 +476,11 @@ const networkApps: { name: string; where: string; url: string; steps: ReactNode[
       "Create a second app and add the Threads API use case. Threads has its own app ID and secret, separate from the Meta app above.",
       "In the Threads settings, add the redirect address below. Add your Threads account as a Threads tester and accept the invite in Threads while the app is in development.",
       "Copy the Threads app ID and Threads app secret from the Threads settings, not from Settings, Basic.",
+      "Optional: the replies and mentions webhook. Add the Threads webhooks sub-use case, set its callback URL to the webhook address below and the verify token to any long random string (THREADS_WEBHOOK_VERIFY_TOKEN), and subscribe replies and mentions. Threads delivers it only to an approved app, and SocialReins reads replies and mentions about every 5 minutes without it.",
     ],
-    scopes: "threads_basic, threads_content_publish, threads_manage_replies, threads_delete",
+    scopes: "threads_basic, threads_content_publish, threads_manage_replies, threads_delete, threads_read_replies, threads_manage_mentions",
     env: ["THREADS_APP_ID", "THREADS_APP_SECRET"],
-    redirect: ["/connect/threads/callback"],
+    redirect: ["/connect/threads/callback", "/webhooks/threads (webhook)"],
   },
   {
     name: "LinkedIn",
@@ -485,7 +494,7 @@ const networkApps: { name: string; where: string; url: string; steps: ReactNode[
     scopes: "openid, profile, email, w_member_social",
     env: ["LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET"],
     redirect: ["/connect/linkedin/callback"],
-    note: "This connects a personal profile. LinkedIn tokens last about 60 days and only approved partner apps get a refresh token, so you reconnect when SocialReins shows the account as expiring.",
+    note: "This connects a personal profile. LinkedIn tokens last about 60 days and only approved partner apps get a refresh token, so you reconnect when SocialReins shows the account as expiring. There is no LinkedIn inbox and no LinkedIn automation yet: LinkedIn lets an app read comments only after it approves the app for its Community Management API (a registered organization, a verified Page and a Page administrator), and gives apps no access to messages. The code for answering and liking comments on a Page is built and stays off until you set LINKEDIN_COMMUNITY_API=true after that approval; it never works for a personal profile.",
   },
   {
     name: "X",
@@ -497,10 +506,10 @@ const networkApps: { name: string; where: string; url: string; steps: ReactNode[
       "Add the redirect address below as the callback URI and any address you own as the website URL.",
       "Copy the OAuth 2.0 Client ID and Client Secret. These are not the API key and secret.",
     ],
-    scopes: "tweet.read, tweet.write, users.read, offline.access, media.write",
+    scopes: "tweet.read, tweet.write, users.read, offline.access, media.write, dm.read, dm.write, like.write, tweet.moderate.write",
     env: ["X_CLIENT_ID", "X_CLIENT_SECRET"],
     redirect: ["/connect/x/callback"],
-    note: "X charges for API use under its own plans. SocialReins reads the account's plan to set the post length limit, and you can set it yourself on the account.",
+    note: "X charges for API use under its own plans, and reading counts: each post, user and DM it returns is billed. SocialReins reads the account's plan to set the post length limit, and you can set it yourself on the account. The last four scopes are for the inbox (DMs, likes, hiding a reply); a person may untick them and still publish. The inbox is off for each account until a team turns it on and sets its monthly budget; an account connected without them is asked to reconnect once to read DMs, like and hide.",
   },
   {
     name: "TikTok",
@@ -532,6 +541,21 @@ const networkApps: { name: string; where: string; url: string; steps: ReactNode[
     env: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"],
     redirect: ["/connect/youtube/callback", "/auth/google/callback (Google sign-in)"],
     note: "While the consent screen is in Testing, only your listed test users can connect and Google ends their access after 7 days. Publish the app, and finish Google's verification for these scopes, to lift that.",
+  },
+  {
+    name: "Pinterest",
+    where: "the Pinterest developer site",
+    url: "https://developers.pinterest.com/apps/",
+    steps: [
+      "Sign in with the Pinterest account that will own the app, and choose Connect app.",
+      "Give it a name, describe what it does and link your privacy policy, then ask for access. Pinterest answers with Trial access first, which can take a few days.",
+      "Open the app, and add the redirect address below as a redirect URI.",
+      "Copy the App id and App secret.",
+    ],
+    scopes: "boards:read, boards:write, pins:read, pins:write, user_accounts:read",
+    env: ["PINTEREST_APP_ID", "PINTEREST_APP_SECRET"],
+    redirect: ["/connect/pinterest/callback"],
+    note: "Pinterest has three levels of access. Sandbox is a separate test address (api-sandbox.pinterest.com) with its own token, which SocialReins does not use. Trial access, which a new app gets, works on the real address, but every pin and board the app makes is visible only to the account that made it, and Pinterest allows the whole app 1,000 requests and 300 pin or board changes a day. Standard access makes the pins public and allows 100 changes a minute for each user (Pinterest can change these limits): ask for it with Upgrade on the app's card, with a screen recording of the sign-in flow and of a pin made through your app. A pin goes to a board you pick, or to the account's default board, which you set under Accounts after connecting. Secret boards are not listed. Pinterest gives tools no way to read comments, so there is no Pinterest inbox or automation.",
   },
 ];
 

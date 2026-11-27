@@ -71,6 +71,7 @@ const adminNav: NavGroup[] = [
       { href: "/admin/users", label: "Users", icon: "user" },
       { href: "/admin/teams", label: "Teams", icon: "team" },
       { href: "/admin/waitlist", label: "Waitlist", icon: "admin" },
+      { href: "/admin/reports", label: "Page reports", icon: "admin" },
       { href: "/admin/settings", label: "Sign-up settings", icon: "settings" },
     ],
   },
@@ -246,12 +247,12 @@ export function AppShell({ children, admin = false }: { children: ReactNode; adm
       <Suspense fallback={null}>
         <TeamInAddress onCode={setUrlTeam} />
       </Suspense>
-      <div className={`app-root ${admin ? "admin-root" : ""} min-h-dvh md:grid ${collapsed ? "md:grid-cols-[4rem_minmax(0,1fr)]" : "md:grid-cols-[15rem_minmax(0,1fr)]"}`}>
+      <div className={`app-root ${admin ? "admin-root" : ""} min-h-dvh pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] md:grid ${collapsed ? "md:grid-cols-[4rem_minmax(0,1fr)]" : "md:grid-cols-[15rem_minmax(0,1fr)]"}`}>
         <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-20 focus:rounded-full focus:bg-paper focus:px-4 focus:py-2 focus:font-bold">
           Skip to content
         </a>
         <aside
-          className="sticky top-0 z-10 max-h-dvh border-b border-[var(--line)] bg-[var(--side)] md:h-dvh md:border-r md:border-b-0"
+          className="sticky top-0 z-10 max-h-dvh border-b pt-[env(safe-area-inset-top)] border-[var(--line)] bg-[var(--side)] md:h-dvh md:border-r md:border-b-0"
           onKeyDown={(e) => {
             if (e.key === "Escape" && open) closeMenu();
           }}

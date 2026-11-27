@@ -50,6 +50,28 @@ export const sameSlots = (a: Slot[], b: Slot[]) => a.length === b.length && a.ev
 
 // A queue brain has never saved is UTC with no slots: start it in the browser's zone instead.
 export const startZone = (q: Queue, browser: string) => (q.time_zone === "UTC" && q.slots.length === 0 ? browser : q.time_zone);
+// The set's time zone as the composer uses it: the browser's when its queue can't be read.
+export async function zoneOf(setId: string) {
+  const browser = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const q = await getQueue(setId);
+  const zone = typeof q === "string" ? browser : startZone(q, browser);
+  // A zone this browser's ICU doesn't know would throw in every date call: use the browser's.
+  try {
+    new Intl.DateTimeFormat(undefined, { timeZone: zone });
+    return zone;
+  } catch {
+    return browser;
+  }
+}
+
+// Each set's zone as pages place its posts on days and times, read again (`loadZones`) each time a page loads.
+export const setZones = new Map<string, string>();
+export const browserZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
+export const zoneFor = (setId: string) => setZones.get(setId) ?? browserZone();
+export const loadZones = (setIds: Iterable<string>) => Promise.all([...new Set(setIds)].map((id) => zoneOf(id).then((z) => void setZones.set(id, z))));
+// A post's time is tagged with its zone ("GMT+6", "EST") only when it is not the browser's.
+export const zoneTag = (zone: string, at: Date) =>
+  zone === browserZone() ? null : (new Intl.DateTimeFormat(undefined, { timeZone: zone, timeZoneName: "short" }).formatToParts(at).find((p) => p.type === "timeZoneName")?.value ?? zone);
 
 // Every IANA zone the browser knows, with UTC and `extra` (the saved one) in case it is missing.
 export function timeZones(extra: string) {

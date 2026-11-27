@@ -17,14 +17,16 @@ import {
   matchesFilters,
   monthRange,
   monthWeeks,
-  moveToDay,
+  inZone,
+  moveToZoneDay,
   NOTE_MAX,
   parseFilters,
   postDay,
+  postRef,
   repeatSummary,
   rows,
   sameDay,
-  toLocalInput,
+  toZoneInput,
   updatePost,
   type Platform,
   type Post,
@@ -32,6 +34,7 @@ import {
   type PostStatus,
 } from "@/lib/posts";
 import { listSets, type SocialSet } from "@/lib/sets";
+import { loadZones, setZones, zoneFor, zoneOf, zoneTag, browserZone } from "@/lib/queue";
 import { PlatformIcon, platformName, platformOf } from "@/components/platform-icons";
 import { manages } from "@/lib/teams";
 import { isFailure, problemText, Status, useAction } from "@/components/team-ui";
@@ -41,20 +44,22 @@ import { postTotals, statWords } from "@/lib/analytics";
 
 export const postMessages: Partial<Record<Failure, ReactNode>> = {
   too_long:
-    "The post is too long: at most 300 characters (and 3000 bytes) on Bluesky, 500 on Threads, 3000 on LinkedIn, 2200 on Instagram, 280 on X (a link counts as 23, an emoji as 2), 2200 on TikTok. On YouTube the first line is the title, at most 100 characters, and the rest the description, at most 5000 bytes.",
-  too_many_images: "Too many images: at most 4 on Bluesky and X, 20 on Threads, Instagram and LinkedIn (or one PDF), 10 on Facebook, one video on YouTube, one video or 35 photos on TikTok.",
-  media_required: "Instagram needs at least one image or video, and YouTube and TikTok need a video (TikTok also takes photos).",
+    "The post is too long: at most 300 characters (and 3000 bytes) on Bluesky, 500 on Threads, 3000 on LinkedIn, 2200 on Instagram, 280 on X (a link counts as 23, an emoji as 2), 2200 on TikTok, 800 on Pinterest. On YouTube the first line is the title, at most 100 characters, and the rest the description, at most 5000 bytes.",
+  too_many_images: "Too many images: at most 4 on Bluesky and X, 20 on Threads, Instagram and LinkedIn (or one PDF), 10 on Facebook, one video on YouTube, one video or 35 photos on TikTok, 5 images or one video on Pinterest.",
+  media_required: "Instagram and Pinterest need at least one image or video, and YouTube and TikTok need a video (TikTok also takes photos).",
   invalid_text: "YouTube doesn't allow < or > in a title or description.",
-  thread_not_supported: "LinkedIn, Facebook, Instagram, YouTube and TikTok can't post threads.",
+  thread_not_supported: "LinkedIn, Facebook, Instagram, YouTube, TikTok and Pinterest can't post threads.",
   first_comment_not_supported: "Only Facebook, Instagram, LinkedIn and YouTube can post a first comment.",
   first_comment_too_long: "The first comment is too long: at most 8000 characters on Facebook, 2200 on Instagram, 1250 on LinkedIn, 10000 on YouTube.",
   cover_not_supported: "Only Instagram, Facebook and YouTube take a cover image. TikTok can only pick a frame of the video.",
   invalid_cover: "The cover image needs a public https link.",
   cover_needs_one_video: "A cover image goes with exactly one video: add one link to the video.",
-  media_type_not_supported: "A media file is a type this platform doesn't take. Bluesky and X take JPEG, PNG, WebP or GIF images or an MP4 or MOV video, Instagram JPEG, PNG or WebP images or videos, TikTok a video or JPEG, PNG or WebP photos, YouTube one MP4 or MOV video, and only LinkedIn takes a PDF.",
-  mixed_media: "A video goes on its own on Bluesky, Facebook, LinkedIn, X and TikTok (a PDF on LinkedIn and a GIF on X too): post it without the other images.",
+  media_type_not_supported: "A media file is a type this platform doesn't take. Bluesky and X take JPEG, PNG, WebP or GIF images or an MP4 or MOV video, Instagram JPEG, PNG or WebP images or videos, TikTok a video or JPEG, PNG or WebP photos, Pinterest JPEG, PNG or WebP images or one video, YouTube one MP4 or MOV video, and only LinkedIn takes a PDF.",
+  mixed_media: "A video goes on its own on Bluesky, Facebook, LinkedIn, X, TikTok and Pinterest (a PDF on LinkedIn and a GIF on X too): post it without the other images.",
   media_too_large: "A media file is too large: images of at most 1 MB on Bluesky, 5 MB on X (a GIF 15 MB), and no file over 100 MB.",
   invalid_cover_type: "The cover image must be a JPEG or PNG (Instagram also takes WebP).",
+  alt_text_too_long: "An image's alt text is too long: at most 1000 characters.",
+  invalid_alt_text: "An image's alt text has a character that is not allowed. Use plain text.",
   cover_too_large: "The cover image is too large: at most 8 MB on Instagram, 10 MB on Facebook, 2 MB on YouTube.",
   tiktok_privacy_not_offered: "TikTok doesn't offer that visibility to this account now. Pick one of the choices shown and save again.",
   tiktok_privacy_required: "Choose who can see the TikTok post.",
@@ -63,7 +68,14 @@ export const postMessages: Partial<Record<Failure, ReactNode>> = {
   tiktok_disclosure_incomplete: "You need to indicate if your content promotes yourself, a third party, or both.",
   tiktok_branded_content_private: "Branded content visibility cannot be set to private.",
   tiktok_not_supported: "Only a TikTok post takes TikTok settings.",
-  reconnect_required: "TikTok refused the account's access. Reconnect it under Connections.",
+  pinterest_not_supported: "Only a Pinterest post takes Pinterest settings.",
+  invalid_pinterest_board: "That isn't a Pinterest board id. Pick one of the account's boards.",
+  pinterest_title_too_long: "A pin's title can have at most 100 characters.",
+  invalid_pinterest_link: "The link must be a web address starting with http:// or https://, at most 2048 characters.",
+  pinterest_board_required: "Choose a board for the pin, or set a default board for the Pinterest account under Accounts.",
+  invalid_board: "That board isn't one of this Pinterest account's boards.",
+  pinterest_failed: "Pinterest could not be reached. Try again in a moment.",
+  reconnect_required: "The network refused the account's access. Reconnect it under Connections.",
   tiktok_failed: "TikTok could not be reached. Try again in a moment.",
   invalid_override: "A customized platform isn't one the post goes to.",
   no_accounts: "This set has no connected account to post to.",
@@ -71,10 +83,15 @@ export const postMessages: Partial<Record<Failure, ReactNode>> = {
   invalid_media: "Images must be public https links to JPEG, PNG, WebP or GIF files, or Google Drive or Dropbox share links. LinkedIn also takes one PDF.",
   empty_post: "Write something or add an image first. YouTube also needs a title: the first line.",
   invalid_set: "That set no longer exists. Pick another one.",
+  invalid_accounts: "Pick at least one account of each platform in this set; an account you picked may have left the set.",
+  invalid_upload: "An uploaded file is no longer kept, or belongs to another team. Upload it again.",
+  too_many_uploads: "Your team keeps too many uploads (200 files or 10 GB, an upload in progress counting 1 GB). An upload clears a day after it was made, once every post that names it has gone out.",
+  upload_interrupted: "The upload stopped before the whole file arrived. Try again.",
+  uploads_in_progress: "Your team has 3 uploads running already. Wait for one to finish, then try again.",
   unsupported_platform: "That platform can't publish yet.",
-  too_many_posts: "This team has 2000 posts, the most allowed. Delete some first.",
+  too_many_posts: "This team has 2000 drafts, scheduled or failed posts, the most allowed. Delete some first. Published posts do not count.",
   not_editable: "This post is publishing or already went out, so it can't change. Reload to see it.",
-  not_deletable: "A post that is publishing or failed can't be deleted.",
+  not_deletable: "A post that is publishing, or failed with something still on a network, can't be deleted.",
   publish_quota: "The team reached its limit of 100 published posts today. Schedule this one for tomorrow.",
   rate_limited: "Too many publish or take down actions. Wait a minute, then try again.",
   not_found: "This post no longer exists.",
@@ -86,6 +103,9 @@ export const postMessages: Partial<Record<Failure, ReactNode>> = {
   not_scheduled: "Only a scheduled post can repeat. Schedule it first.",
   repeat_not_supported: "TikTok posts can't repeat: TikTok needs a person to confirm each post.",
   invalid_repeat: "That repeat isn't valid. Repeat every 1 to 12 days, weeks or months, and end it never, after 1 to 100 more posts or on a date after the post's own.",
+  publish_in_progress: "This post is still going out. Wait for it to finish, then try again.",
+  nothing_to_retry: "Nothing is left to retry. Reload to see the post as it is now.",
+  outcome_unknown: "Every failure here may already have posted. Check the accounts on the networks first, and use Duplicate if a post is missing.",
   refreshed_recently: "The stats were refreshed less than a minute ago. Wait a minute, then try again.",
   too_many_repeats: "Too many repeating posts. Turn the repeat off on another post first.",
 };
@@ -99,7 +119,28 @@ export const statusName: Record<PostStatus, string> = {
   deleted: "Taken down",
 };
 
-const time = (d: Date) => d.toLocaleTimeString(undefined, { timeStyle: "short" });
+// A post's time of day in the zone of its set, tagged with the zone ("GMT+6") when that is not the browser's.
+// `block` puts the tag on its own line, for a column.
+function Stamp({ post, block }: { post: Post; block?: boolean }) {
+  const d = postDay(post)!;
+  const zone = zoneFor(post.social_set_id);
+  const text = d.toLocaleTimeString(undefined, { timeStyle: "short", timeZone: zone });
+  const tag = zoneTag(zone, d);
+  return (
+    <span title={`${text} in ${zone.replaceAll("_", " ")}`} className="tabular-nums">
+      {text}
+      {tag && <span className={`${block ? "block" : "ml-1"} text-[0.65rem] leading-3`}>{tag}</span>}
+    </span>
+  );
+}
+
+// The calendar's one rule for days: a post sits on, and moves between, days of its own set's time zone
+// (its queue zone), and the grid's dates (today, the month) are those of the set picked in the top bar,
+// or the browser's for all sets. `at` gives a post's wall time there as a local Date for the date maths.
+const at = (p: Post) => {
+  const d = postDay(p);
+  return d && inZone(d, setZones.get(p.social_set_id));
+};
 export const snippet = (p: Post) => (p.body.trim() ? p.body.trim().slice(0, 60) + (p.body.trim().length > 60 ? "..." : "") : "(images only)");
 const bluesky = platformOf("bluesky")!;
 const legend: PostStatus[] = ["scheduled", "queued", "published", "failed", "deleted"];
@@ -187,7 +228,7 @@ export function AccountNote() {
       </span>
       <p className="min-w-0 flex-1 basis-60">
         <strong className="block">Connect an account first</strong>
-        <span className="text-ink-soft">No Bluesky, Threads, LinkedIn, X, TikTok, YouTube, Facebook or Instagram account is connected to this team yet, so posts have nowhere to go.</span>
+        <span className="text-ink-soft">No Bluesky, Threads, LinkedIn, X, TikTok, YouTube, Pinterest, Facebook or Instagram account is connected to this team yet, so posts have nowhere to go.</span>
       </p>
       <Link href="/connections" className="btn btn-primary">
         Connect an account
@@ -210,7 +251,7 @@ export function PlatformMark({ platform, className = "size-3.5", named }: { plat
 }
 
 // The versions of one post on a day's line: the same status and time, so both show once.
-const chips = (posts: Post[]) => rows(posts, (p) => `${p.status} ${approvalState(p)} ${postDay(p)?.toDateString()} ${postDay(p) && time(postDay(p)!)}`);
+const chips = (posts: Post[]) => rows(posts, (p) => `${p.status} ${approvalState(p)} ${p.social_set_id} ${Math.floor((postDay(p)?.getTime() ?? 0) / 60_000)}`);
 
 function PostChip({ posts }: { posts: Post[] }) {
   const p = posts[0]!;
@@ -218,12 +259,12 @@ function PostChip({ posts }: { posts: Post[] }) {
   return (
     <li className="flex min-w-0 items-center rounded text-xs hover:bg-ink/[0.045]">
       <span aria-hidden="true" className="dot ml-1.5 shrink-0" data-status={p.status} data-approval={approvalState(p) ?? undefined} />
-      <Link href={`/posts/${p.id}`} className="min-w-0 flex-1 truncate px-1.5 py-1 hover:underline">
+      <Link href={`/posts/${postRef(p)}`} className="min-w-0 flex-1 truncate px-1.5 py-1 hover:underline">
         {p.lists.length > 0 && <span className="block truncate font-bold">{p.lists.map(partLabel).join(", ")}</span>}
         {posts.map((v) => (
           <PlatformMark key={v.id} platform={v.platform} />
         ))}{" "}
-        <span className="text-ink-soft tabular-nums">{time(postDay(p)!)}</span> {snippet(p)}
+        <span className="text-ink-soft"><Stamp post={p} /></span> {snippet(p)}
       </Link>
       <span className="sr-only">{stateName(p)}</span>
       {remote.map((t) => (
@@ -274,11 +315,11 @@ function GridChip({ posts, onDrag, onMove }: { posts: Post[]; onDrag: (posts: Po
           <Icon name="clock" className="size-3" />
         </button>
       )}
-      <Link href={`/posts/${p.id}`} className="grid min-w-0 px-1.5 py-0.5 leading-4 hover:underline">
+      <Link href={`/posts/${postRef(p)}`} className="grid min-w-0 px-1.5 py-0.5 leading-4 hover:underline">
         <span className="flex min-w-0 items-center gap-1 whitespace-nowrap text-ink-soft">
           <span aria-hidden="true" className="dot shrink-0" data-status={p.status} data-approval={approvalState(p) ?? undefined} />
           <span className="sr-only">{stateName(p)}: </span>
-          <span className="tabular-nums">{time(postDay(p)!)}</span>
+          <Stamp post={p} />
           {posts.map((v) => (
             <PlatformMark key={v.id} platform={v.platform} className="size-3" />
           ))}
@@ -352,10 +393,26 @@ function MoveDialog({ posts, onClose, onMove }: { posts: Post[]; onClose: () => 
   const ref = useRef<HTMLDialogElement>(null);
   const id = useId();
   const when = postDay(posts[0]!)!;
-  const [value, setValue] = useState(toLocalInput(when.toISOString()).slice(0, 10));
+  const setId = posts[0]!.social_set_id;
+  // The post keeps its time of day in its set's time zone, and the dates are that zone's days, as `move` reads them.
+  const [zone, setZone] = useState<string | null>(setZones.get(setId) ?? null);
+  const [value, setValue] = useState(zone ? toZoneInput(when.toISOString(), zone).slice(0, 10) : "");
   const day = value ? new Date(`${value}T00:00`) : null;
-  const ok = day !== null && moveToDay(when, day) !== null;
+  const ok = day !== null && zone !== null && moveToZoneDay(when, day, zone) !== null;
   useEffect(() => ref.current?.showModal(), []);
+  const iso = when.toISOString();
+  useEffect(() => {
+    if (zone) return;
+    let live = true;
+    zoneOf(setId).then((z) => {
+      if (!live) return;
+      setZone(z);
+      setValue((v) => v || toZoneInput(iso, z).slice(0, 10));
+    });
+    return () => {
+      live = false;
+    };
+  }, [setId, zone, iso]);
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!ok) return;
@@ -377,15 +434,15 @@ function MoveDialog({ posts, onClose, onMove }: { posts: Post[]; onClose: () => 
             type="date"
             className="field"
             required
-            min={toLocalInput(new Date().toISOString()).slice(0, 10)}
+            min={toZoneInput(new Date().toISOString(), zoneFor(setId)).slice(0, 10)}
             value={value}
             onChange={(e) => setValue(e.target.value)}
             aria-describedby={`${id}-hint`}
           />
           <p id={`${id}-hint`} className="hint">
-            It keeps its time, {time(when)}{posts.length > 1 ? `, on all ${posts.length} networks` : ""}.
+            {zone === null ? "Loading time zone..." : `It keeps its time, ${when.toLocaleTimeString(undefined, { timeStyle: "short", timeZone: zone })} in ${zone}${posts.length > 1 ? `, on all ${posts.length} networks` : ""}.`}
           </p>
-          {value && !ok && <p className="waitlist-error">That is in the past. Pick a later day.</p>}
+          {value && zone !== null && !ok && <p className="waitlist-error">That is in the past. Pick a later day.</p>}
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="submit" className="btn btn-primary btn-sm" disabled={!ok}>
@@ -404,7 +461,7 @@ function MoveDialog({ posts, onClose, onMove }: { posts: Post[]; onClose: () => 
 function MonthList({ posts, y, m, title }: { posts: Post[]; y: number; m: number; title: string }) {
   const days = new Map<number, Post[]>();
   for (const p of posts.filter(postDay).sort((a, b) => postDay(a)!.getTime() - postDay(b)!.getTime())) {
-    const d = postDay(p)!;
+    const d = at(p)!;
     if (d.getFullYear() === y && d.getMonth() === m) days.set(d.getDate(), [...(days.get(d.getDate()) ?? []), p]);
   }
   if (days.size === 0) return <EmptyState title={`Nothing scheduled or published in ${title}.`} />;
@@ -426,6 +483,33 @@ function MonthList({ posts, y, m, title }: { posts: Post[]; y: number; m: number
   );
 }
 
+// Says which time zone the days and times are in: the one zone, or each post's own when its sets differ.
+function ZoneNote({ setId, sets, posts }: { setId: string; sets: SocialSet[] | Failure | null; posts: Post[] }) {
+  const name = (id: string) => (Array.isArray(sets) ? sets.find((s) => s.id === id)?.name : undefined) ?? "its set";
+  // The default set is every set, so its posts speak for themselves.
+  const one = Array.isArray(sets) && sets.some((s) => s.id === setId && !s.is_default);
+  const byZone = new Map<string, string[]>();
+  for (const id of one ? [setId] : [...new Set(posts.map((p) => p.social_set_id))]) byZone.set(zoneFor(id), [...(byZone.get(zoneFor(id)) ?? []), name(id)]);
+  const pretty = (z: string) => z.replaceAll("_", " ");
+  if (byZone.size > 1)
+    return (
+      <p className="hint" data-zone-note>
+        Your sets use different time zones, so each post shows the day and time of its own set&apos;s zone: {[...byZone].map(([z, n]) => `${pretty(z)} (${n.join(", ")})`).join(", ")}. A time in a zone other than your browser&apos;s ({pretty(browserZone())}) carries its zone.
+      </p>
+    );
+  const zone = [...byZone.keys()][0] ?? browserZone();
+  return (
+    <p className="hint" data-zone-note>
+      Days and times are in {pretty(zone)}
+      {one ? `, the time zone of ${name(setId)}` : zone === browserZone() ? ", your browser's zone" : ""}. Change a set&apos;s zone on the{" "}
+      <Link href="/queue" className="underline">
+        Queue
+      </Link>{" "}
+      page.
+    </p>
+  );
+}
+
 // The Posts list's choices, in the order the chips show them.
 const statusChips: PostStatus[] = ["scheduled", "queued", "published", "failed", "deleted", "draft"];
 const noFilters: PostFilters = { q: "", status: "all", network: "all", approval: "all" };
@@ -439,13 +523,18 @@ function PostRow({ posts, onMove, review }: { posts: Post[]; onMove?: (posts: Po
   const approval = approvalState(p);
   const remote = posts.flatMap((v) => v.targets.filter((t) => t.remote_url && t.status === "published").map((t) => ({ ...t, platform: v.platform })));
   const error = p.status === "failed" ? failText(posts) : undefined;
+  // The earliest retry still waiting, else whether one has run.
+  const retryAt = posts.flatMap((v) => v.targets.flatMap((t) => (t.retry_at ? [new Date(t.retry_at)] : []))).sort((a, b) => +a - +b)[0];
+  const retried = !retryAt && posts.some((v) => v.targets.some((t) => t.retried));
   // A published row's likes and comments over all its networks, once brain has read any.
   const totals = p.status === "published" ? postTotals(posts) : null;
   const stats = totals && statWords(totals, ["likes", "comments"]);
   return (
     <li className="relative flex flex-wrap items-start gap-x-3 gap-y-0.5 px-3 py-2.5 hover:bg-ink/[0.03] sm:items-center sm:px-4">
-      <Link href={`/posts/${p.id}`} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-sm after:absolute after:inset-0 sm:flex-nowrap">
-        <span className="w-[4.5rem] shrink-0 text-ink-soft tabular-nums">{time(postDay(p)!)}</span>
+      <Link href={`/posts/${postRef(p)}`} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-sm after:absolute after:inset-0 sm:flex-nowrap">
+        <span className="w-[4.5rem] shrink-0 text-ink-soft">
+          <Stamp post={p} block />
+        </span>
         <span className="flex min-w-9 shrink-0 items-center gap-1">
           {posts.map((v) => (
             <PlatformMark key={v.id} platform={v.platform} className="size-4" />
@@ -464,6 +553,16 @@ function PostRow({ posts, onMove, review }: { posts: Post[]; onMove?: (posts: Po
       <StatusBadge status={p.status} />
       <ApprovalBadge post={p} />
       <RepeatBadge post={p} />
+      {retryAt && (
+        <span className="text-xs text-ink-soft" title="Sending again once by itself, after an error that posted nothing">
+          Retrying at {retryAt.toLocaleTimeString(undefined, { timeStyle: "short", timeZone: zoneFor(p.social_set_id) })}
+        </span>
+      )}
+      {retried && (
+        <span className="text-xs text-ink-soft" title="Sent again once by itself, after an error that posted nothing">
+          Retried once
+        </span>
+      )}
       {review && approval === "pending" && (
         <>
           <button type="button" className="btn btn-primary btn-sm relative z-10" disabled={review.busy} aria-label={`Approve ${snippet(p)}`} onClick={() => review.approve(posts)}>
@@ -481,7 +580,7 @@ function PostRow({ posts, onMove, review }: { posts: Post[]; onMove?: (posts: Po
         </button>
       )}
       <Link
-        href={`/posts/new?from=${encodeURIComponent(p.id)}`}
+        href={`/posts/new?from=${postRef(p)}`}
         aria-label={`Duplicate ${snippet(p)}`}
         title="Duplicate"
         className="relative z-10 shrink-0 rounded-md p-1 text-ink-soft hover:bg-ink/10 hover:text-ink"
@@ -555,11 +654,10 @@ function Chips<T extends string>({ label, value, options, onPick }: { label: str
 }
 
 // The month's posts by day under the filters: from today on first, earlier days of the current month folded.
-function PostList({ rows: all, y, m, title, filters, onClear, review }: { rows: Post[][]; y: number; m: number; title: string; filters: PostFilters; onClear: () => void; review?: Review }) {
-  const now = new Date();
+function PostList({ rows: all, y, m, title, filters, onClear, review, now }: { rows: Post[][]; y: number; m: number; title: string; filters: PostFilters; onClear: () => void; review?: Review; now: Date }) {
   const days = new Map<number, Post[][]>();
   for (const r of all.filter((r) => matchesFilters(r, filters))) {
-    const d = postDay(r[0]!)!;
+    const d = at(r[0]!)!;
     days.set(d.getDate(), [...(days.get(d.getDate()) ?? []), r]);
   }
   if (all.length === 0)
@@ -618,10 +716,10 @@ function PostList({ rows: all, y, m, title, filters, onClear, review }: { rows: 
 
 // /posts lists the month's posts by day with the drafts below; /calendar shows the month as a grid (a list of days on narrow screens).
 export function Posts({ view }: { view: "list" | "calendar" }) {
-  const now = new Date();
-  const [month, setMonth] = useState({ y: now.getFullYear(), m: now.getMonth() });
-  // The set picked in the top bar filters the calendar and drafts.
+  // The set picked in the top bar filters the calendar and drafts, and its zone dates the grid.
   const [setId] = useCurrentSet();
+  const now = inZone(new Date(), setId ? setZones.get(setId) : undefined);
+  const [month, setMonth] = useState({ y: now.getFullYear(), m: now.getMonth() });
   const [sets, setSets] = useState<SocialSet[] | Failure | null>(null);
   const [posts, setPosts] = useState<Post[] | Failure | null>(null);
   const [drafts, setDrafts] = useState<Post[] | Failure | null>(null);
@@ -651,27 +749,39 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
   }
   const review: Review | undefined = manages(team.role) ? { busy: decision.busy !== null, approve: (g) => decide(g, "approve"), reject: setRejecting } : undefined;
 
+  // Each set's zone is read before the month's posts show, so none jumps a day.
+  const [zonesRead, setZonesRead] = useState(false);
   useEffect(() => {
-    listSets().then(setSets);
+    listSets().then(async (r) => {
+      setSets(r);
+      if (Array.isArray(r)) await loadZones(r.map((s) => s.id));
+      setZonesRead(true);
+    });
   }, []);
 
   useEffect(() => {
+    if (!zonesRead) return;
     let live = true;
-    listPosts({ social_set_id: setId, ...monthRange(month.y, month.m) }).then((r) => live && setPosts(r));
+    // A day either side: a post's day in its set's zone can be a day off the browser's month.
+    const { from, to } = monthRange(month.y, month.m);
+    const pad = (iso: string, days: number) => new Date(new Date(iso).getTime() + days * 86_400_000).toISOString();
+    listPosts({ social_set_id: setId, from: pad(from, -1), to: pad(to, 1) }).then((r) => live && setPosts(r));
     return () => {
       live = false;
     };
-  }, [month, setId, reload]);
+  }, [month, setId, reload, zonesRead]);
 
   // Moves the versions of one post to `day` at the same time: shown there at once, then one PUT each with
   // the post as it is and the new time. A version brain refuses goes back to its day, named with brain's reason.
   async function move(group: Post[], day: Date) {
     setDragging(null);
     setOver(null);
-    const to = moveToDay(postDay(group[0]!)!, day);
+    // The same wall time in the set's time zone, as the composer schedules it.
+    const zone = setZones.get(group[0]!.social_set_id) ?? (await zoneOf(group[0]!.social_set_id));
+    const to = moveToZoneDay(postDay(group[0]!)!, day, zone);
     if (!to) return setMoved({ ok: false, text: "A post can't move to a time that has passed." });
     const iso = to.toISOString();
-    const label = to.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    const label = to.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: zone });
     const ids = new Set(group.map((p) => p.id));
     setMoved({ ok: true, text: `Moving to ${label}...` });
     setPosts((old) => (Array.isArray(old) ? old.map((p) => (ids.has(p.id) ? { ...p, scheduled_at: iso } : p)) : old));
@@ -732,7 +842,7 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
   };
   const monthRows = chips(
     calendarPosts
-      .filter((p) => postDay(p)?.getFullYear() === month.y && postDay(p)?.getMonth() === month.m)
+      .filter((p) => at(p)?.getFullYear() === month.y && at(p)?.getMonth() === month.m)
       .sort((a, b) => postDay(a)!.getTime() - postDay(b)!.getTime()),
   );
   const draftRows = Array.isArray(drafts) ? rows(drafts, () => "") : [];
@@ -763,6 +873,7 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
             </h2>
           </div>
         </div>
+        {zonesRead && <ZoneNote setId={setId} sets={sets} posts={calendarPosts} />}
         {view === "list" && (
           <div className="grid gap-3">
             <div role="search" className="flex w-full max-w-md items-center gap-2">
@@ -842,7 +953,7 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
                 Loading posts...
               </p>
             )}
-            {view === "list" && <PostList rows={monthRows} y={month.y} m={month.m} title={title} filters={filters} onClear={clear} review={review} />}
+            {view === "list" && <PostList rows={monthRows} y={month.y} m={month.m} title={title} filters={filters} onClear={clear} review={review} now={now} />}
             {/* Narrow screens get the month as a list of days; the grid needs about 46rem. */}
             {view === "calendar" && (
             <div className="lg:hidden">
@@ -866,11 +977,12 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
                 {monthWeeks(month.y, month.m).map((week, i) => (
                   <tr key={i}>
                     {week.map((day, j) => {
-                      const list = day ? monthRows.filter((r) => sameDay(postDay(r[0]!)!, day)) : [];
+                      const list = day ? monthRows.filter((r) => sameDay(at(r[0]!)!, day)) : [];
                       const today = day && sameDay(day, now);
                       // While a chip is dragged, each day says whether it can take it: not its own day, not the past.
-                      const from = dragging && postDay(dragging[0]!);
-                      const drop = day && from ? (!sameDay(day, from) && moveToDay(from, day) ? "ok" : "no") : undefined;
+                      const from = dragging && at(dragging[0]!);
+                      const real = dragging && postDay(dragging[0]!);
+                      const drop = day && from && real ? (!sameDay(day, from) && moveToZoneDay(real, day, zoneFor(dragging[0]!.social_set_id)) ? "ok" : "no") : undefined;
                       const key = day?.toDateString() ?? "";
                       return (
                         <td
@@ -988,13 +1100,15 @@ export function Posts({ view }: { view: "list" | "calendar" }) {
               const p = v[0]!;
               return (
               <li key={p.id} className="tone relative grid content-start gap-2 rounded-2xl bg-paper p-4 hover:bg-ink/[0.02]" data-status="draft">
-                <Link href={`/posts/${p.id}`} className="font-bold text-ink after:absolute after:inset-0 after:rounded-2xl">
+                <Link href={`/posts/${postRef(p)}`} className="font-bold text-ink after:absolute after:inset-0 after:rounded-2xl">
                   {v.map((v) => (
                     <PlatformMark key={v.id} platform={v.platform} className="size-4" />
                   ))}{" "}
                   {snippet(p)}
                 </Link>
                 {p.lists.length > 0 && <p className="text-sm font-bold">{p.lists.map(partLabel).join(", ")}</p>}
+                {/* Why brain put it back, e.g. it was over an hour late. */}
+                {p.error && <p className="text-sm text-signal-deep">{p.error}</p>}
                 {approvalState(p) && (
                   <p className="text-sm text-signal-deep">
                     <ApprovalBadge post={p} /> {p.approval_note}

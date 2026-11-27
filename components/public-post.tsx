@@ -2,7 +2,10 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { flushSync } from "react-dom";
+import { getProviders } from "@/lib/auth";
 import { subscribe, type SubscribeResult } from "@/lib/newsletter";
+import { reportPage, REPORT_REASONS, type ReportReason, type ReportResult } from "@/lib/page-report";
+import { captchaMessages, useTurnstile } from "@/components/turnstile";
 import { getPublicPost, linked, pageMedia, type PublicPost } from "@/lib/posts";
 import { platformName } from "@/components/platform-icons";
 import { PlatformMark } from "@/components/posts";
@@ -52,6 +55,7 @@ function Part({ body, media }: { body: string; media: string[] }) {
 }
 
 const subscribeProblems: Record<Exclude<SubscribeResult, "ok">, string> = {
+  ...captchaMessages,
   invalid: "That doesn't look like an email address.",
   gone: "This newsletter is not open any more.",
   rate_limited: "Too many attempts from this connection. Wait a minute, then try again.",
@@ -63,12 +67,18 @@ const subscribeProblems: Record<Exclude<SubscribeResult, "ok">, string> = {
 function Newsletter({ code, team }: { code: string; team: string }) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<SubscribeResult | "idle" | "sending">("idle");
+  const [siteKey, setSiteKey] = useState<string | null>();
+  const turnstile = useTurnstile(siteKey, "subscribe");
+  useEffect(() => {
+    getProviders().then((p) => setSiteKey(p.turnstileSiteKey));
+  }, []);
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     // Commit the empty message first so a repeated identical error is announced again.
     flushSync(() => setStatus("sending"));
-    setStatus(await subscribe(code, email.trim()));
+    setStatus(await subscribe(code, email.trim(), turnstile.token));
+    turnstile.reset();
   }
 
   if (status === "ok")
@@ -87,15 +97,79 @@ function Newsletter({ code, team }: { code: string; team: string }) {
         <label htmlFor="newsletter-email">Your email, to get the newsletter of {team}</label>
         <div className="waitlist-row">
           <input id="newsletter-email" type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} aria-invalid={status === "invalid" || undefined} />
-          <button type="submit" disabled={status === "sending"}>
+          <button type="submit" disabled={status === "sending" || siteKey === undefined || turnstile.missing}>
             {status === "sending" ? "Sending..." : "Subscribe"}
           </button>
         </div>
+        {turnstile.widget}
         <p role="status" aria-live="polite" className={failed ? "waitlist-error" : "waitlist-empty"}>
           {failed ? subscribeProblems[status] : ""}
         </p>
       </form>
     </section>
+  );
+}
+
+const reportProblems: Record<Exclude<ReportResult, "ok">, string> = {
+  ...captchaMessages,
+  invalid: "Check the reason, the note (up to 1000 characters) and the email address.",
+  gone: "This page is not available any more.",
+  rate_limited: "Too many reports from this connection. Try again later.",
+  timeout: "That took too long. Try again in a moment.",
+  error: "The report didn't go through. Try again in a moment.",
+};
+
+// "Report this page": anyone may tell the operators the page is phishing, spam or illegal. Brain mails them and an admin can take it down.
+function Report({ code }: { code: string }) {
+  const [reason, setReason] = useState<ReportReason>("phishing");
+  const [message, setMessage] = useState("");
+  const [email, setEmail] = useState("");
+  const [status, setStatus] = useState<ReportResult | "idle" | "sending">("idle");
+  const [siteKey, setSiteKey] = useState<string | null>();
+  const turnstile = useTurnstile(siteKey, "report");
+  useEffect(() => {
+    getProviders().then((p) => setSiteKey(p.turnstileSiteKey));
+  }, []);
+
+  async function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    flushSync(() => setStatus("sending"));
+    setStatus(await reportPage(code, { reason, message, email, token: turnstile.token }));
+    turnstile.reset();
+  }
+
+  if (status === "ok")
+    return (
+      <p role="status" tabIndex={-1} ref={(el) => el?.focus()} className="text-sm outline-none">
+        Thank you. We read every report.
+      </p>
+    );
+  const failed = status !== "idle" && status !== "sending";
+  return (
+    <details className="text-sm text-ink-soft">
+      <summary className="cursor-pointer font-bold text-ink">Report this page</summary>
+      <form onSubmit={onSubmit} className="waitlist mt-3">
+        <label htmlFor="report-reason">What is wrong with it?</label>
+        <select id="report-reason" value={reason} onChange={(e) => setReason(e.target.value as ReportReason)}>
+          {REPORT_REASONS.map((r) => (
+            <option key={r.value} value={r.value}>
+              {r.label}
+            </option>
+          ))}
+        </select>
+        <label htmlFor="report-message">More detail (optional)</label>
+        <textarea id="report-message" maxLength={1000} rows={3} value={message} onChange={(e) => setMessage(e.target.value)} />
+        <label htmlFor="report-email">Email for an answer (optional)</label>
+        <input id="report-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        {turnstile.widget}
+        <button type="submit" disabled={status === "sending" || siteKey === undefined || turnstile.missing}>
+          {status === "sending" ? "Sending..." : "Send the report"}
+        </button>
+        <p role="status" aria-live="polite" className={failed ? "waitlist-error" : "waitlist-empty"}>
+          {failed ? reportProblems[status] : ""}
+        </p>
+      </form>
+    </details>
   );
 }
 
@@ -146,6 +220,7 @@ export function PublicPostView({ code }: { code: string }) {
         </ul>
       )}
       {post.newsletter && <Newsletter code={code} team={post.team} />}
+      <Report code={code} />
     </article>
   );
 }

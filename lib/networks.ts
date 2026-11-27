@@ -55,7 +55,15 @@ export const networks: Network[] = [
       ["First comment", "No. Use a thread instead."],
       ["Polls", NOT_YET("Threads")],
     ],
-    sections: [],
+    sections: [
+      {
+        heading: "Good to know",
+        bullets: [
+          "The Threads inbox is in testing. Replies to your posts and posts that mention you arrive, you can reply (500 characters, an emoji counts as its bytes) and hide a reply under your post. Threads has no DMs, and an app cannot like, repost or follow there.",
+          "An account connected before replies were added needs to be connected again once, to allow reading them.",
+        ],
+      },
+    ],
   },
   {
     slug: "linkedin",
@@ -75,7 +83,11 @@ export const networks: Network[] = [
     sections: [
       {
         heading: "Good to know",
-        bullets: ["A video or a PDF must be the only file in its post.", "The first comment is a good place for a link."],
+        bullets: [
+          "A video or a PDF must be the only file in its post.",
+          "The first comment is a good place for a link.",
+          "No inbox and no automations yet. LinkedIn lets an app read comments only on a Page's posts, after it approves the app, and never on a personal profile's. It gives apps no messages. We have built answering and liking a Page's comments and switched it off until that approval.",
+        ],
       },
     ],
   },
@@ -157,6 +169,7 @@ export const networks: Network[] = [
         bullets: [
           "YouTube refuses the characters < and > in a title or description.",
           "YouTube only takes a custom thumbnail from a verified channel.",
+          "The YouTube inbox is in testing. It reads comments on your videos and Shorts, and it is off until you turn it on for a channel, because every SocialReins team shares one daily YouTube quota. You can reply in public, hold or reject a comment and delete your own reply. YouTube has no DMs, private replies or likes for comments in its API.",
         ],
       },
     ],
@@ -179,7 +192,7 @@ export const networks: Network[] = [
     sections: [
       {
         heading: "Good to know",
-        bullets: ["X takes images up to 5 MB. A larger photo is made smaller for you before it is posted."],
+        bullets: ["X takes images up to 5 MB. A larger photo is made smaller for you before it is posted.", "The X inbox is in testing. It is off until you turn it on for an account, because X charges for every post, user and DM it returns."],
       },
     ],
   },
@@ -208,6 +221,37 @@ export const networks: Network[] = [
       },
     ],
   },
+  {
+    slug: "pinterest",
+    description: "What SocialReins posts to Pinterest: image pins, carousels of 2 to 5 images and video pins, each with a title, link and alt text, on the board you pick.",
+    name: "Pinterest",
+    account: "a Pinterest account",
+    rows: [
+      ["One image", "Yes. JPEG, PNG or WebP; a WebP is turned into a JPEG for you."],
+      ["Carousel of images", "Yes, 2 to 5 images."],
+      ["One video", "Yes. MP4 or MOV, on its own."],
+      ["Board", "You pick one for each pin, or set a default board for the account."],
+      ["Title", "Optional, up to 100 characters."],
+      ["Description", "The text of your post, up to 800 characters."],
+      ["Link", "Optional. Where the pin leads, up to 2,048 characters."],
+      ["Alt text", "Yes. A pin has one: the first image's, cut to 500 characters."],
+      ["Text only", "No. A pin needs an image or a video."],
+      ["Photos and videos mixed in one post", "No. A pin is images or one video, not both."],
+      ["First comment", "No."],
+      ["Thread (reply chain)", "No."],
+      ["Video cover image", NOT_YET("Pinterest")],
+    ],
+    sections: [
+      {
+        heading: "Good to know",
+        bullets: [
+          "Pinterest shows pins made by an app with Trial access only to the account that made them. Until Pinterest approves the app behind your install for Standard access, your pins are visible only to you.",
+          "Secret boards are not listed, so pick or default to a public or protected board.",
+          "Pinterest has no way for a tool to read comments on pins, so there is no Pinterest inbox or automation.",
+        ],
+      },
+    ],
+  },
 ];
 
 // What works on a network beyond posting, for its page and /post-types. The same facts as `us` in lib/compare.ts
@@ -216,10 +260,11 @@ export const networks: Network[] = [
 const STATS: Record<string, string> = { bluesky: "likes, comments and shares", facebook: "likes, comments and shares", instagram: "likes and comments", youtube: "views, likes and comments" };
 export function beyondPosting(slug: string, name: string, support: (feature: string) => string): [string, string][] {
   const tiktok = slug === "tiktok";
+  const pinterest = slug === "pinterest";
   return [
-    ["Bulk upload from a CSV file", tiktok ? "No. Every TikTok post needs its own privacy and disclosure choices, so post from the composer." : "Yes."],
+    ["Bulk upload from a CSV file", tiktok ? "No. Every TikTok post needs its own privacy and disclosure choices, so post from the composer." : pinterest ? "Yes, for a row that names pinterest, with an image or a video and a default board on the account." : "Yes."],
     ["Recurring posts", tiktok ? "No. TikTok needs a person to confirm each post." : "Yes: daily, weekly or monthly."],
-    ["Posts from an RSS or Atom feed", tiktok ? "No. Feeds are not offered for TikTok." : slug === "youtube" ? "No. YouTube takes video only." : slug === "instagram" ? "Yes. A feed item needs an image to go to Instagram." : "Yes."],
+    ["Posts from an RSS or Atom feed", tiktok ? "No. Feeds are not offered for TikTok." : pinterest ? "No. A feed item has no image or board for a pin." : slug === "youtube" ? "No. YouTube takes video only." : slug === "instagram" ? "Yes. A feed item needs an image to go to Instagram." : "Yes."],
     ["Post analytics", STATS[slug] ? `Yes: ${STATS[slug]} for each post.` : "No."],
     ["Inbox", support("inboxes")],
     ["Automations", support("automations")],

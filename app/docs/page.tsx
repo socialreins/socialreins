@@ -27,7 +27,7 @@ export default function Docs() {
         <div className="grid gap-5 md:grid-cols-2">
           {docModes.map((m) => (
             <section key={m} aria-labelledby={`docs-${m}`} className="grid content-start gap-4 rounded-3xl border border-ink/10 bg-paper p-6">
-              <p className="justify-self-start rounded-full bg-signal/15 px-2.5 py-0.5 text-xs font-bold text-signal-deep">{about[m].tag}</p>
+              <p className="justify-self-start rounded-full bg-signal/10 px-2.5 py-0.5 text-xs font-bold text-signal-deep">{about[m].tag}</p>
               <h2 id={`docs-${m}`} className="font-display text-2xl font-extrabold tracking-tight">
                 {about[m].name}
               </h2>

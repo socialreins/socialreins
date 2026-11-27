@@ -43,7 +43,7 @@ test("the install guide has the commands, and a docs page fits a phone", async (
 });
 
 test("the use guide has a how-to for each part of the app, in both versions", async ({ page }) => {
-  const parts = { queue: "Set up the queue", csv: "Upload posts from a CSV file", recurring: "Repeat a post", feeds: "Post from an RSS or Atom feed", approvals: "Approve posts before they go out", library: "Keep media and text in the library", inbox: "Answer comments and DMs in the inbox", automations: "Build an automation or a flow", broadcasts: "Send a broadcast", newsletters: "Send a newsletter", analytics: "Read your analytics", "team-address": "Give your team its own address" };
+  const parts = { queue: "Set up the queue", csv: "Upload posts from a CSV file", recurring: "Repeat a post", feeds: "Post from an RSS or Atom feed", approvals: "Approve posts before they go out", library: "Keep media and text in the library", inbox: "Answer comments and DMs in the inbox", automations: "Build an automation or a flow", broadcasts: "Send a broadcast", newsletters: "Send a newsletter", analytics: "Read your analytics", "team-address": "Give your team its own address", "install-app": "Install the app" };
   for (const mode of ["self-hosted", "cloud"]) {
     await page.goto(`/docs/${mode}/use`);
     await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
@@ -75,11 +75,18 @@ test("the Network apps guide lists every network with its redirect address and k
     ["X", "/connect/x/callback", "X_CLIENT_SECRET"],
     ["TikTok", "/connect/tiktok/callback", "TIKTOK_CLIENT_KEY"],
     ["YouTube", "/connect/youtube/callback", "GOOGLE_CLIENT_ID"],
+    ["Pinterest", "/connect/pinterest/callback", "PINTEREST_APP_SECRET"],
   ]) {
     const section = article.locator("section").filter({ has: page.getByRole("heading", { name, level: 2, exact: true }) });
     await expect(section).toContainText(redirect);
     await expect(section).toContainText(key);
   }
+  // The three levels of Pinterest access are explained where the app is created.
+  await page.goto("/docs/self-hosted/apps");
+  const pinterest = page.getByRole("article").locator("section").filter({ has: page.getByRole("heading", { name: "Pinterest", level: 2, exact: true }) });
+  await expect(pinterest).toContainText("Sandbox is a separate test address");
+  await expect(pinterest).toContainText("Trial access");
+  await expect(pinterest).toContainText("Standard access makes the pins public");
   await page.goto("/docs/cloud/apps");
   await expect(page.getByRole("article")).toContainText("You do not create any app or key");
 });

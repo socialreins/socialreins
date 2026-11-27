@@ -8,11 +8,16 @@ const nextConfig: NextConfig = {
   // brain/ is the Rust API submodule: never part of the web build or its standalone output.
   outputFileTracingExcludes: { "*": ["brain/**"] },
   cacheComponents: true,
+  // Railway builds with the commit in RAILWAY_GIT_COMMIT_SHA (the Dockerfile passes it on). A tab left open across a
+  // deploy then reloads on its next navigation instead of asking for chunks the new build removed; unset (a local or
+  // self-hosted build), nothing changes.
+  deploymentId: process.env.RAILWAY_GIT_COMMIT_SHA || undefined,
   partialPrefetching: true,
   // The app moved off /app, then under /t/<team code>/ (lib/team-path.ts); brain and old bookmarks still link to both.
   redirects: async () => [
     { source: "/app", destination: "/home", permanent: true },
-    { source: "/app/:path*", destination: "/:path*", permanent: true },
+    // The first segment must start with a letter or digit, so a decoded "//evil.example" or "\\evil.example" can never lead the destination off site.
+    { source: "/app/:first([a-z0-9][a-z0-9_-]*)/:rest*", destination: "/:first/:rest*", permanent: true },
     ...legacyRedirects(),
   ],
   headers: async () => [
@@ -22,6 +27,8 @@ const nextConfig: NextConfig = {
       headers: [
         { key: "X-Content-Type-Options", value: "nosniff" },
         { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+        // Nothing here uses the camera, microphone or location.
+        { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
         // Browsers ignore this over plain http, so a local or http-only install is unaffected.
         // Once seen over https it holds for the hostname on every port for a year.
         // No includeSubDomains: a self-hoster's other subdomains are not ours to decide for.

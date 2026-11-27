@@ -46,7 +46,10 @@ async function brain(page: Page, role: Role, billing: object, key: { provider: s
 test("a self-hosted install says nothing is capped and offers no plan or upgrade", async ({ page }) => {
   await brain(page, "owner", { enabled: false, plan: null, limits: {}, usage: { accounts: 1, members: 1 } });
   await page.goto("/billing");
-  await expect(page.getByText("Self-hosted: nothing is capped.")).toBeVisible();
+  await expect(page.getByText("Billing is off: nothing is capped.")).toBeVisible();
+  // AI steps are not metered either, so the AI key section says nothing about credits.
+  await expect(page.getByText("Billing is off, so nothing is metered.")).toBeVisible();
+  await expect(page.getByText(/use credits/)).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Choose|Manage billing/ })).toHaveCount(0);
   await expect(page.getByText("No plan")).toHaveCount(0);
 });
@@ -57,9 +60,13 @@ const portal = "https://billing.stripe.com/p/session/abc";
 
 // Brain's checkout and portal answers: `status` and `json` for the next call, every body kept.
 async function stripeRoutes(page: Page, answer: { status: number; json: object } = { status: 200, json: { url: stripe } }) {
-  const state = { checkout: [] as unknown[], portal: 0, answer };
+  const state = { checkout: [] as unknown[], credits: [] as unknown[], portal: 0, answer };
   await page.route(/\/v1\/team\/billing\/checkout$/, (route) => {
     state.checkout.push(route.request().postDataJSON());
+    return route.fulfill(state.answer);
+  });
+  await page.route(/\/v1\/team\/billing\/credits$/, (route) => {
+    state.credits.push(route.request().postDataJSON());
     return route.fulfill(state.answer);
   });
   await page.route(/\/v1\/team\/billing\/portal$/, (route) => {
@@ -70,6 +77,14 @@ async function stripeRoutes(page: Page, answer: { status: number; json: object }
   return state;
 }
 
+test("a person who had a trial elsewhere is told the plan is charged at once, and a team at its contact limit is told what that means", async ({ page }) => {
+  await brain(page, "owner", { enabled: true, plan: null, limits: { ...limits, contacts: 2 }, usage: { accounts: 1, members: 1, contacts: 2 }, trial_available: false });
+  await page.goto("/billing");
+  await expect(page.getByText("Your free trial has been used, so a plan is charged at once.", { exact: true })).toBeVisible();
+  await expect(page.getByText("2 of 2")).toBeVisible();
+  await expect(page.getByText(/at the contact limit of your plan/)).toBeVisible();
+});
+
 test("a team with no plan sees two plan cards with no price, and owners choose one", async ({ page }) => {
   await brain(page, "owner", noPlan);
   const state = await stripeRoutes(page);
@@ -79,7 +94,7 @@ test("a team with no plan sees two plan cards with no price, and owners choose o
   await expect(cards.getByText("10 connected accounts")).toBeVisible();
   await expect(cards.getByText("25 connected accounts")).toBeVisible();
   await expect(cards.getByText("2,500 contacts")).toBeVisible();
-  await expect(page.getByText("New plans start with a 7-day free trial.", { exact: true })).toBeVisible();
+  await expect(page.getByText("A team's first plan starts with a 7-day free trial.", { exact: true })).toBeVisible();
   // Yearly, two months free, is the default; monthly is one click away.
   await expect(page.getByRole("radio", { name: "Yearly, 2 months free" })).toBeChecked();
   await expect(cards).toContainText("$190 a year");
@@ -201,12 +216,14 @@ test("coming back from a canceled checkout says so and offers the plans again", 
 });
 
 test("a trialing plan shows its end date, usage against limits and credits, with no price", async ({ page }) => {
-  await brain(page, "member", { enabled: true, plan: trial, limits, usage: { accounts: 3, members: 2 } });
+  await brain(page, "member", { enabled: true, plan: trial, limits: { ...limits, inboxes: 10, ai_monthly: 200 }, usage: { accounts: 3, members: 2, inboxes: 4, ai_replies: 12 } });
   await page.goto("/billing");
   await expect(page.getByText("Growth", { exact: true })).toBeVisible();
   await expect(page.getByText("Trial ends")).toBeVisible();
   await expect(page.getByText("Accounts").locator("xpath=following-sibling::dd[1]")).toHaveText("3 of 5");
   await expect(page.getByText("Team members").locator("xpath=following-sibling::dd[1]")).toHaveText("2, unlimited");
+  await expect(page.getByText("Inboxes", { exact: true }).locator("xpath=following-sibling::dd[1]")).toHaveText("4 of 10");
+  await expect(page.getByText("AI replies this month").locator("xpath=following-sibling::dd[1]")).toHaveText("12 of 200");
   await expect(page.getByText("X posts").locator("xpath=following-sibling::dd[1]")).toHaveText("40");
   await expect(page.getByText("AI", { exact: true }).locator("xpath=following-sibling::dd[1]")).toHaveText("120");
   await expect(page.getByText("Only the team owner can change the plan.")).toBeVisible();
@@ -314,4 +331,40 @@ test("a connect callback that hit the account limit shows the message with Upgra
   const alert = page.getByRole("alert").filter({ hasText: "account limit is reached" });
   await expect(alert).toBeVisible();
   await expect(alert.getByRole("link", { name: "Upgrade" })).toHaveAttribute("href", "/t/acme22/billing");
+});
+
+test("an owner buys an X credit pack on Stripe and comes back to a thank you", async ({ page }) => {
+  await brain(page, "owner", { ...noPlan, plan: trial, limits });
+  const state = await stripeRoutes(page);
+  await page.goto("/billing");
+  await expect(page.getByText("Credits never expire.", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: "Buy 500 X posts, $20" }).click();
+  await expect(page).toHaveURL(stripe);
+  expect(state.credits).toEqual([{ pack: "x500" }]);
+  await page.goto("/billing?credits=success");
+  await expect(page.getByRole("status").filter({ hasText: "Your credits will show here" })).toBeVisible();
+  await expect(page).toHaveURL(/\/billing$/);
+});
+
+test("only the owner sees the credit packs", async ({ page }) => {
+  await brain(page, "admin", { ...noPlan, plan: trial, limits });
+  await page.goto("/billing");
+  await expect(page.getByText("X posts", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Buy/ })).toHaveCount(0);
+});
+
+test("an unknown return value shows no banner and the page still works", async ({ page }) => {
+  await brain(page, "owner", noPlan);
+  await page.goto("/billing?checkout=__proto__");
+  await expect(page.getByText("No plan", { exact: true })).toBeVisible();
+  await expect(page.getByRole("status")).toHaveCount(0);
+});
+
+test("a comped plan says it is free and offers nothing to manage or buy as a plan", async ({ page }) => {
+  const comped = { ...trial, status: "active", trial_ends_at: null, comped: true };
+  await brain(page, "owner", { ...noPlan, plan: comped, limits });
+  await page.goto("/billing");
+  await expect(page.getByText("Free plan, given by SocialReins. Nothing to pay.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Manage billing" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Choose/ })).toHaveCount(0);
 });

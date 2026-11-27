@@ -24,9 +24,16 @@ export type Target = {
   comment_error?: string | null;
   // Why the cover image could not be set on the published video; the post is up (a warning).
   cover_error?: string | null;
+  // Why a network did not get the images' alt text; the post went out without it.
+  alt_error?: string | null;
+  // Sent again once by brain, about 5 minutes after an error that posted nothing.
+  retried?: boolean;
+  // When that retry runs; set only while the target waits for it, null once it has run.
+  retry_at?: string | null;
 };
 // A follow-up post of a thread: a reply to the one before.
-export type ThreadPart = { body: string; media: string[] };
+// `media_alt` is the alt text of each image, in the order of `media` (an empty string for an image without).
+export type ThreadPart = { body: string; media: string[]; media_alt?: string[] };
 // The platforms brain publishes to.
 // What the user chooses for a TikTok post, as brain's POST /v1/posts takes it (TikTok's Content Sharing
 // Guidelines): who can see it (no default), the interactions (all off), the commercial content disclosure
@@ -94,13 +101,35 @@ export function mergeCreators(list: TikTokCreator[]): TikTokCreator {
 // A YouTube video's visibility (brain's `youtube.privacy`); brain uploads as private without one.
 export type YouTubePrivacy = "private" | "unlisted" | "public";
 export const youtubePrivacyName: Record<YouTubePrivacy, string> = { private: "Private", unlisted: "Unlisted", public: "Public" };
-export type Platform = "bluesky" | "threads" | "linkedin" | "facebook" | "instagram" | "youtube" | "x" | "tiktok";
+// What the user chooses for a Pinterest pin, as brain's POST /v1/posts takes it: the board (else the account's
+// default board), a title of at most 100 characters and the link the pin leads to. The text is the description.
+export type PinterestSettings = { board_id?: string | null; title?: string | null; link?: string | null };
+// One board of a Pinterest account, from GET /v1/connections/{id}/pinterest/boards.
+export type PinterestBoard = { id: string; name: string; privacy: string | null };
+export const getPinterestBoards = (accountId: string) =>
+  api<{ boards: PinterestBoard[]; default_board_id?: string }>(`/v1/connections/${encodeURIComponent(accountId)}/pinterest/boards`);
+// Sets (or, with null, removes) the board a pin goes to when its post names none.
+export const setDefaultBoard = (accountId: string, boardId: string | null) =>
+  api<{ default_board_id: string | null; default_board_name: string | null }>(`/v1/connections/${encodeURIComponent(accountId)}/pinterest`, "PUT", {
+    default_board_id: boardId,
+  });
+export const PIN_TITLE_MAX = 100;
+export const PIN_LINK_MAX = 2048;
+export type Platform = "bluesky" | "threads" | "linkedin" | "facebook" | "instagram" | "youtube" | "x" | "tiktok" | "pinterest";
+// What a post's address holds: its number. A brain from before numbers sends none, so the id stands in (it works in brain's API too).
+export const postRef = (p: Pick<Post, "id"> & Partial<Pick<Post, "number">>) => String(p.number ?? p.id);
 export type Post = {
   id: string;
+  // The number in the post's address (/posts/48213); the UUID `id` still works in brain's API and in old links.
+  number: number;
   social_set_id: string;
   platform: Platform;
+  // The accounts picked for it; null or absent: every account of its platform in its set.
+  account_ids?: string[] | null;
   body: string;
   media: string[];
+  // The alt text of each image, in the order of `media`: empty when none has one, else as long as `media`.
+  media_alt?: string[];
   thread: ThreadPart[];
   // Text the account comments on the post right after it is published; null for none.
   first_comment?: string | null;
@@ -110,6 +139,8 @@ export type Post = {
   tiktok?: TikTokSettings | null;
   // A YouTube post's settings; null or no privacy means private.
   youtube?: { privacy?: YouTubePrivacy | null } | null;
+  // A Pinterest pin's settings; null for none (the account's default board, no title or link).
+  pinterest?: PinterestSettings | null;
   status: PostStatus;
   scheduled_at: string | null;
   published_at: string | null;
@@ -119,7 +150,7 @@ export type Post = {
   updated_at: string;
   targets: Target[];
   // The lists the post is in, with its 1-based position ("Part N") in each.
-  lists: { id: string; name: string; position: number }[];
+  lists: { id: string; number: number; name: string; position: number }[];
   // Ties the posts of one POST /v1/post-groups call; null for a single post.
   group_id: string | null;
   // Set when the team requires approval and a member scheduled the post: it goes out only once approved.
@@ -197,8 +228,13 @@ export const approvalName = { pending: "Needs approval", rejected: "Changes requ
 export type PostInput = {
   social_set_id: string;
   platform: Platform;
+  // null: every account of the platform in the set. Absent: every one on a create, unchanged on an edit.
+  // brain answers invalid_accounts for one outside it.
+  account_ids?: string[] | null;
   body: string;
   media: string[];
+  // Alt text per image in the order of `media`. Left out on an edit, brain keeps the texts it has for the same links.
+  media_alt?: string[];
   thread?: ThreadPart[];
   first_comment?: string;
   // A cover image link for the post's one video (Instagram, Facebook, YouTube); "" or absent for none.
@@ -207,6 +243,8 @@ export type PostInput = {
   tiktok?: TikTokSettings;
   // YouTube settings: only a YouTube post takes them, and a group gives them to its YouTube post.
   youtube?: { privacy: YouTubePrivacy };
+  // Pinterest settings: only a Pinterest post takes them, and a group gives them to its Pinterest post.
+  pinterest?: PinterestSettings;
   // ISO time to publish; null keeps the post a draft. A past time means now. Left out with `queue`.
   scheduled_at?: string | null;
   // New posts only: brain schedules the post at the set's earliest free queue slot.
@@ -218,9 +256,10 @@ export type PostInput = {
 // (a first_comment of "" leaves it out on a platform that can't post one).
 export type PostGroupInput = Omit<PostInput, "platform"> & {
   platforms: Platform[];
-  overrides?: Partial<Record<Platform, { body?: string; media?: string[]; thread?: ThreadPart[]; first_comment?: string; cover?: string }>>;
+  overrides?: Partial<Record<Platform, { body?: string; media?: string[]; media_alt?: string[]; thread?: ThreadPart[]; first_comment?: string; cover?: string }>>;
 };
-export type PostFilter = { social_set_id?: string; status?: PostStatus; from?: string; to?: string; group_id?: string; approval?: Approval };
+// `limit` (1 to 2000) and `order` "desc" (newest first) keep a long history to what a screen shows; without them brain answers the oldest 2000.
+export type PostFilter = { social_set_id?: string; status?: PostStatus; from?: string; to?: string; group_id?: string; approval?: Approval; limit?: number; order?: "asc" | "desc" };
 
 // Each platform's limits, as brain's crates/core/src/post.rs checks them. `chars` counts graphemes
 // on Bluesky, X's weighted count on X (`xWeight`), UTF-16 code units on TikTok and Unicode code points elsewhere (on YouTube it is the
@@ -239,6 +278,8 @@ export const limits: Record<Platform, { chars: number; media: number; thread: bo
   youtube: { chars: 100, media: 1, thread: false, comment: 10_000, cover: true },
   x: { chars: 280, media: 4, thread: true, comment: null, cover: false },
   tiktok: { chars: 2200, media: 35, thread: false, comment: null, cover: false },
+  // The description; a pin takes 1 to 5 images (2 or more are a carousel) or one video.
+  pinterest: { chars: 800, media: 5, thread: false, comment: null, cover: false },
 };
 // The image types each cover platform takes: Instagram's cover_url wants a JPEG; Facebook and YouTube take JPEG or PNG.
 export const coverTypes: Partial<Record<Platform, string>> = { instagram: "a JPEG, PNG or WebP", facebook: "a JPEG or PNG", youtube: "a JPEG or PNG" };
@@ -254,6 +295,8 @@ export const mediaTypes: Record<Platform, { types: string[]; text: string }> = {
   youtube: { types: [MP4, MOV], text: "an MP4 or MOV video" },
   x: { types: [JPEG, PNG, WEBP, GIF, MP4, MOV], text: "JPEG, PNG, WebP or GIF images or an MP4 or MOV video" },
   tiktok: { types: [JPEG, PNG, WEBP, MP4, MOV], text: "one MP4 or MOV video, or JPEG, PNG or WebP photos" },
+  // brain turns WebP images into JPEGs for Pinterest at publish.
+  pinterest: { types: [JPEG, PNG, WEBP, MP4, MOV], text: "1 to 5 JPEG, PNG or WebP images or one MP4 or MOV video" },
 };
 // The file sizes brain refuses on save, for the platforms given (crates/core/src/post.rs: VIDEO_LIMITS, size_limit).
 // A still image over a platform's own limit is shrunk at publish, so only brain's 100 MB applies to it.
@@ -268,6 +311,48 @@ export function sizeHint(platforms: Platform[]): string {
   const video = own.length === platforms.length && own.length > 0 ? each("video") : `1 GB${own.length ? ` (${each("video")})` : ""}`;
   return `Size limits: a video up to ${video}; an image or PDF up to 100 MB${own.length ? " (a photo too large for a network is made smaller for you)" : ""}${own.length ? `; a GIF up to ${each("gif")}` : ""}. Sizes are checked when you save.`;
 }
+// Most characters of one image's alt text: brain's limit, the strictest of the networks that take one.
+export const ALT_MAX = 1000;
+// Networks that take an image's alt text; the others (Facebook, TikTok, YouTube) have no place for it.
+export const altPlatforms: Platform[] = ["bluesky", "threads", "instagram", "linkedin", "x", "pinterest"];
+// The alt texts the posts carry, by image link: the same link is described once wherever it appears.
+export function altMap(posts: { media: string[]; media_alt?: string[]; thread?: ThreadPart[] }[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  const add = (media: string[], alt: string[] | undefined) =>
+    media.forEach((m, i) => {
+      if (alt?.[i]?.trim() && !(m in out)) out[m] = alt[i]!;
+    });
+  for (const p of posts) {
+    add(p.media, p.media_alt);
+    for (const t of p.thread ?? []) add(t.media, t.media_alt);
+  }
+  return out;
+}
+// The alt text of each link, in order, for brain's `media_alt` (empty for a link without one).
+export const altList = (media: string[], alts: Record<string, string>) => media.map((m) => (alts[m] ?? "").trim());
+// Whether the description written for the link `from` may stay with the link `to` it was edited into: only
+// while the user is typing the same link (a single character added, removed or changed), never for a pasted
+// or dropped link or a big change, which is most likely another image. A description left on the wrong image
+// would be posted as that image's.
+export function keepsAlt(from: string, to: string, inputType = ""): boolean {
+  if (/^insert(FromPaste|FromDrop|FromYank|ReplacementText)/.test(inputType)) return false;
+  let start = 0;
+  while (start < from.length && start < to.length && from[start] === to[start]) start++;
+  let end = 0;
+  while (end < from.length - start && end < to.length - start && from[from.length - 1 - end] === to[to.length - 1 - end]) end++;
+  return Math.max(from.length, to.length) - start - end <= 1;
+}
+// `text` cut to `ALT_MAX` characters, counted as brain counts them (code points, not UTF-16 units).
+export const capAlt = (text: string) => ([...text].length > ALT_MAX ? [...text].slice(0, ALT_MAX).join("") : text);
+// What to send as `media_alt`: nothing for a new post without any alt text (so brain's old behaviour stays),
+// and on an edit always the full list, since brain keeps the stored texts of the same links when it is left out.
+export const altOut = (media: string[], alts: Record<string, string>, editing: boolean) =>
+  media.length > 0 && (editing || media.some((m) => alts[m]?.trim())) ? altList(media, alts) : undefined;
+// Whether a link may be an image, as far as its extension tells: alt text is for images only.
+export const isImageLink = (url: string) => {
+  const t = linkType(url);
+  return t === null || [JPEG, PNG, GIF, WEBP].includes(t);
+};
 // What a link's extension says its file is; null when it says nothing (a Drive link, no extension).
 export function linkType(url: string): string | null {
   const ext = /\.([a-z0-9]+)(?:[?#]|$)/i.exec(url.split(/[?#]/)[0] ?? "")?.[1]?.toLowerCase();
@@ -276,7 +361,7 @@ export function linkType(url: string): string | null {
 }
 // Whether a file of this type must be the post's only media item (a video, a PDF on LinkedIn, a GIF on X).
 const alone = (platform: Platform, t: string) =>
-  ((t === MP4 || t === MOV) && ["bluesky", "facebook", "linkedin", "x", "tiktok"].includes(platform)) ||
+  ((t === MP4 || t === MOV) && ["bluesky", "facebook", "linkedin", "x", "tiktok", "pinterest"].includes(platform)) ||
   (t === PDF && platform === "linkedin") ||
   (t === GIF && platform === "x");
 // A hint from the links' extensions of what brain's media checks will likely say. Never blocks a save: brain
@@ -298,7 +383,7 @@ export const MAX_PARTS = 25;
 const enc = encodeURIComponent;
 
 export function listPosts(filter: PostFilter = {}) {
-  const q = new URLSearchParams(Object.entries(filter).filter((e): e is [string, string] => Boolean(e[1])));
+  const q = new URLSearchParams(Object.entries(filter).filter((e) => Boolean(e[1])).map(([k, v]) => [k, String(v)]));
   return api<Post[]>(`/v1/posts${q.size ? `?${q}` : ""}`);
 }
 export const getPost = (id: string) => api<Post>(`/v1/posts/${enc(id)}`);
@@ -324,6 +409,17 @@ export async function decidePost(p: Pick<Post, "id" | "group_id">, decision: "ap
   return typeof r === "string" ? r : [r];
 }
 
+// Sends the failed targets of a post (or of every post of a group) again. brain answers 202 with the post(s) queued;
+// 409 publish_in_progress, nothing_to_retry or outcome_unknown (every failure may already have posted).
+export async function retryPost(p: Pick<Post, "id" | "group_id">): Promise<Post[] | Failure> {
+  if (p.group_id) {
+    const r = await api<{ posts: Post[] }>(`/v1/post-groups/${enc(p.group_id)}/retry`, "POST");
+    return typeof r === "string" ? r : r.posts;
+  }
+  const r = await api<Post>(`/v1/posts/${enc(p.id)}/retry`, "POST");
+  return typeof r === "string" ? r : [r];
+}
+
 export type DeleteResult = "ok" | Post | Failure | { takedownFailed: string };
 
 // "ok": a draft or scheduled post is gone. A Post: a published post was taken down. brain answers
@@ -339,34 +435,36 @@ export async function deletePost(id: string): Promise<DeleteResult> {
   return failure(res);
 }
 
-// What happened to one post of a take-down-all run. "waiting": not tried, because brain's rate limit stopped the run.
-export type Takedown =
-  | { id: string; state: "down" | "gone" | "waiting" }
-  | { id: string; state: "failed"; failure?: Failure; message?: string };
+// What brain's group take down did to one post. `not_published`: a draft, scheduled, queued or failed post has nothing to take down.
+export type TakedownResult = {
+  post_id: string;
+  platform: Platform;
+  state: "taken_down" | "already_gone" | "failed" | "not_published";
+  message: string | null;
+};
 
-// Takes `ids` down one request after another, never in parallel: brain allows 10 publish or take-down
-// calls a minute per user, and a group has at most one post per platform. A failure of one post does not
-// stop the others; a rate limit does, since every later call would be refused too.
-export async function takeDownAll(ids: string[]): Promise<Takedown[]> {
-  const out: Takedown[] = [];
-  for (const id of ids) {
-    const r = await deletePost(id);
-    if (r === "rate_limited") {
-      out.push(...ids.slice(out.length).map((id) => ({ id, state: "waiting" as const })));
-      break;
-    }
-    if (r === "not_found") out.push({ id, state: "gone" });
-    else if (typeof r === "string" && r !== "ok") out.push({ id, state: "failed", failure: r });
-    else if (typeof r === "object" && "takedownFailed" in r) out.push({ id, state: "failed", message: r.takedownFailed });
-    else out.push({ id, state: "down" });
-  }
-  return out;
-}
+// Takes every published post of a group down in one call, one platform after another on brain's side. A platform that
+// can't come down (TikTok has no delete call) shows as `failed` in `results` and does not stop the others; calling again
+// only tries what is still up. It calls every account, so it gets the connect timeout.
+export const takeDownGroup = (groupId: string) =>
+  api<{ posts: Post[]; results: TakedownResult[] }>(`/v1/post-groups/${enc(groupId)}/takedown`, "POST", undefined, CONNECT_TIMEOUT_MS);
 
 const segmenter =typeof Intl !== "undefined" && "Segmenter" in Intl ? new Intl.Segmenter(undefined, { granularity: "grapheme" }) : null;
 // What Bluesky counts as characters: user-perceived graphemes, so an emoji family is one.
 export const graphemes = (text: string) => (segmenter ? [...segmenter.segment(text)].length : [...text].length);
 export const utf8Bytes = (text: string) => new TextEncoder().encode(text).length;
+
+// What Threads counts against its 500 limit, as brain's threads_length does: each character 1, except an emoji, which
+// counts its UTF-8 bytes whole (4 for most). A grapheme is an emoji when it holds a character that shows as an emoji on
+// its own (the list is brain's emoji_base, kept the same by hand), a variation selector or a keycap; a zero width joiner
+// alone is not enough, since Bangla conjuncts use one. Text-style symbols like a check mark stay 1.
+const EMOJI =
+  /[\u{1F300}-\u{1FAFF}\u{1F1E6}-\u{1F1FF}\u{1F004}\u{1F0CF}\u{1F18E}\u{1F191}-\u{1F19A}\u{1F201}\u{1F21A}\u{1F22F}\u{1F232}-\u{1F23A}\u{1F250}-\u{1F251}\u{231A}-\u{231B}\u{23E9}-\u{23EC}\u{23F0}\u{23F3}\u{25FD}-\u{25FE}\u{2614}-\u{2615}\u{2648}-\u{2653}\u{267F}\u{2693}\u{26A1}\u{26AA}-\u{26AB}\u{26BD}-\u{26BE}\u{26C4}-\u{26C5}\u{26CE}\u{26D4}\u{26EA}\u{26F2}-\u{26F3}\u{26F5}\u{26FA}\u{26FD}\u{2705}\u{270A}-\u{270B}\u{2728}\u{274C}\u{274E}\u{2753}-\u{2755}\u{2757}\u{2795}-\u{2797}\u{27B0}\u{27BF}\u{2B1B}-\u{2B1C}\u{2B50}\u{2B55}\u{FE0F}\u{20E3}]/u;
+// Without Intl.Segmenter the text is split by code point, so a symbol joined to a variation selector counts 1, not its bytes.
+export const threadsLength = (text: string) => {
+  const parts = segmenter ? [...segmenter.segment(text)].map((s) => s.segment) : [...text];
+  return parts.reduce((n, g) => n + (EMOJI.test(g) ? utf8Bytes(g) : [...g].length), 0);
+};
 
 // A YouTube post's title (the body's first line) and description (the rest), as brain's youtube_text splits them.
 export function youtubeText(body: string) {
@@ -413,7 +511,9 @@ export const charCount = (platform: Platform, text: string) =>
       ? xWeight(text)
       : platform === "tiktok"
         ? text.length
-        : [...(platform === "youtube" ? youtubeText(text).title : text)].length;
+        : platform === "threads"
+          ? threadsLength(text)
+          : [...(platform === "youtube" ? youtubeText(text).title : text)].length;
 
 // Whether the text is over the platform's limit; YouTube also limits its description's bytes.
 export const overLimit = (platform: Platform, text: string, xLong = false) =>
@@ -425,7 +525,7 @@ export function checkPost(body: string, media: string[], platform: Platform = "b
   const max = limits[platform];
   // A YouTube video needs a title, so it needs a body even with its video.
   if (!body.trim() && (media.length === 0 || platform === "youtube")) return "empty_post";
-  if ((platform === "instagram" || platform === "youtube" || platform === "tiktok") && media.length === 0) return "media_required";
+  if ((platform === "instagram" || platform === "youtube" || platform === "tiktok" || platform === "pinterest") && media.length === 0) return "media_required";
   if (platform === "youtube" && /[<>]/.test(body)) return "invalid_text";
   if (overLimit(platform, body, xLong) || (platform === "bluesky" && utf8Bytes(body) > MAX_BYTES)) return "too_long";
   if (media.length > max.media) return "too_many_images";
@@ -496,6 +596,60 @@ export function toLocalInput(iso: string | null) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 export const fromLocalInput = (value: string) => (value ? new Date(value).toISOString() : null);
+
+// How far `zone` is ahead of UTC at the instant `ms`, in ms (DST included).
+function zoneOffset(ms: number, zone: string) {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: zone, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" }).formatToParts(new Date(ms));
+  const n = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+  return Date.UTC(n("year"), n("month") - 1, n("day"), n("hour"), n("minute"), n("second")) - Math.floor(ms / 1000) * 1000;
+}
+
+// toLocalInput and fromLocalInput in an IANA `zone` instead of the browser's: the composer shows
+// times in the set's queue zone. The same in every zone: a wall time a spring-forward change skips
+// moves forward to the first time after the gap (02:30 becomes 03:00), and one a fall-back change
+// repeats is its first occurrence (the earlier instant).
+export function toZoneInput(iso: string | null, zone: string) {
+  if (!iso) return "";
+  const ms = new Date(iso).getTime();
+  const d = new Date(ms + zoneOffset(ms, zone));
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+}
+export function fromZoneInput(value: string, zone: string) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(value);
+  if (!m) return null;
+  const wall = Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!, +m[4]!, +m[5]!);
+  // A change moves the offset at most once in a day: the offsets a day either side are the two.
+  const DAY = 86_400_000;
+  const before = zoneOffset(wall - DAY, zone);
+  const after = zoneOffset(wall + DAY, zone);
+  const fits = [wall - before, wall - after].filter((t) => zoneOffset(t, zone) === wall - t);
+  if (fits.length) return new Date(Math.min(...fits)).toISOString();
+  // In a gap: the change's instant, found by the minute, is the first valid time after it.
+  let lo = Math.min(wall - before, wall - after);
+  let hi = Math.max(wall - before, wall - after);
+  while (hi - lo > 60_000) {
+    const mid = lo + Math.floor((hi - lo) / 120_000) * 60_000;
+    if (zoneOffset(mid, zone) === after) hi = mid;
+    else lo = mid;
+  }
+  return new Date(hi).toISOString();
+}
+
+// The wall time of `d` in `zone` as a browser-local Date, so the calendar's date maths (getDate,
+// sameDay, monthWeeks) reads days of `zone`. No zone: `d` as it is, the browser's.
+export function inZone(d: Date, zone?: string) {
+  if (!zone) return d;
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(toZoneInput(d.toISOString(), zone))!;
+  return new Date(+m[1]!, +m[2]! - 1, +m[3]!, +m[4]!, +m[5]!, d.getSeconds());
+}
+
+// `when` moved to the calendar day `day` at the same wall time in `zone`, the set's queue zone;
+// null when that moment is not in the future. A skipped or repeated time follows fromZoneInput.
+export function moveToZoneDay(when: Date, day: Date, zone: string, now = new Date()): Date | null {
+  const date = `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`;
+  const to = new Date(fromZoneInput(`${date}T${toZoneInput(when.toISOString(), zone).slice(11)}`, zone)!);
+  return to.getTime() > now.getTime() ? to : null;
+}
 
 // The local month as an ISO range: from inclusive, to exclusive, as brain filters scheduled_at.
 export const monthRange = (year: number, month: number) => ({
@@ -577,18 +731,22 @@ export function moveToDay(when: Date, day: Date, now = new Date()): Date | null 
 }
 
 // A saved post as PUT /v1/posts/{id} takes it back, the way the editor sends an edit of an unchanged post,
-// with only `scheduled_at` new. PUT replaces the post, so everything else must go back as it was.
+// with only `scheduled_at` new. PUT replaces the post, so everything else must go back as it was, except the
+// accounts, which brain keeps when they are left out.
 export function editInput(p: Post, scheduled_at: string | null): PostInput {
   return {
     social_set_id: p.social_set_id,
     platform: p.platform,
+    // No account_ids: brain keeps the post's pick, even with an account gone since.
     body: p.body,
     media: p.media,
+    media_alt: p.media_alt,
     thread: limits[p.platform].thread ? (p.thread ?? []) : [],
     first_comment: p.first_comment?.trim() ? p.first_comment : undefined,
     cover: p.cover?.trim() || undefined,
     tiktok: p.platform === "tiktok" ? (p.tiktok ?? undefined) : undefined,
     youtube: p.platform === "youtube" ? { privacy: p.youtube?.privacy ?? "private" } : undefined,
+    pinterest: p.platform === "pinterest" ? (p.pinterest ?? undefined) : undefined,
     scheduled_at,
   };
 }
@@ -702,4 +860,70 @@ export function pageMeta(post: PublicPost): Metadata {
     openGraph: { title, description, type: "article", images: image ? [image] : undefined },
     twitter: { card: image ? "summary_large_image" : "summary", title, description, images: image ? [image] : undefined },
   };
+}
+
+// The one status of a post and the versions made with it (a group is one post to the person): published only when every
+// version went out, "partial" when some version or account did and some did not.
+export type Overall = PostStatus | "partial";
+export function overallStatus(members: Post[]): Overall {
+  if (members.some((m) => m.status === "queued")) return "queued";
+  if (members.every((m) => m.status === "draft")) return "draft";
+  if (members.some((m) => m.status === "scheduled" || m.status === "draft")) return "scheduled";
+  if (members.every((m) => m.status === "deleted")) return "deleted";
+  const live = members.filter((m) => m.status !== "deleted");
+  const failed = (m: Post) => m.status === "failed" || m.targets.some((t) => t.status === "failed");
+  const worked = (m: Post) => m.targets.some((t) => t.status === "published" || t.status === "deleted");
+  const bad = live.some(failed);
+  const good = live.some(worked);
+  return bad && good ? "partial" : bad ? "failed" : "published";
+}
+export const overallName: Record<Overall, string> = { draft: "Draft", scheduled: "Scheduled", queued: "Publishing", published: "Published", failed: "Failed", deleted: "Taken down", partial: "Partly published" };
+
+// brain's phrases for a failure that may already have posted: a retry would post twice, so brain offers none.
+const MAY_HAVE_POSTED = ["may have posted", "may still post", "may be live"];
+export const mayHavePosted = (error: string | null | undefined) => !!error && MAY_HAVE_POSTED.some((p) => error.includes(p));
+// Whether Retry can send a failed target again (brain's `retryable`): it failed before anything went out, or midway
+// through a thread, and the platform did not say it may have posted.
+export const canRetry = (t: Target, p: Pick<Post, "thread" | "status">) =>
+  (p.status === "published" || p.status === "failed") && t.status === "failed" && (!t.remote_id || (t.parts ?? []).length < (p.thread ?? []).length) && !mayHavePosted(t.error);
+
+// What to do about a failed target, in plain words, from what brain's error says. `link` names where in the app to go.
+export type Advice = { text: string; link?: "accounts" };
+export function failureAdvice(t: Pick<Target, "error" | "retry_at" | "retried">, retryable: boolean, zone: string): Advice {
+  const e = (t.error ?? "").toLowerCase();
+  if (t.retry_at) {
+    const at = new Date(t.retry_at).toLocaleString("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: zone });
+    return { text: `SocialReins sends it again by itself on ${at}. You do not need to do anything.` };
+  }
+  if (mayHavePosted(t.error)) return { text: "Check the account on the network first: the post may be live. If it is not, use Duplicate and publish the copy. Retry is not offered, since it could post twice." };
+  // The network refused the content: sending it again changes nothing.
+  if (/aspect|too large|too long|too many (images|files|characters|hashtags)|size|format|not supported|unsupported|dimension|resolution|duration|\b(image|video|media)\b/.test(e)) return { text: "The network refused the content. Use Duplicate, change the text or media as the message says, and publish the copy." };
+  if (/reconnect|(token|access|password).{0,30}(expired|invalid|revoked|denied)|revoked|unauthori[sz]ed|\b401\b|\b403\b|permission/.test(e)) return { text: "Reconnect the account on the Accounts page, then Retry.", link: "accounts" };
+  if (/tomorrow|daily (limit|quota)|per day/.test(e)) return { text: retryable ? "The network's daily limit was reached. Retry tomorrow." : "The network's daily limit was reached. Try again tomorrow with Duplicate." };
+  if (/rate.?limit|\b429\b|too many requests|slow down/.test(e)) return { text: retryable ? "Wait a few minutes, then Retry." : "Try again later with Duplicate." };
+  return { text: retryable ? `Retry once${t.retried ? " more" : ""}. If it fails again, use Duplicate and check the account on the Accounts page.` : "Use Duplicate, then check the account on the Accounts page." };
+}
+
+// One line of a post's history. brain keeps no event log, so these are the times it does store: when the post was made,
+// planned, decided on, published or taken down per account, and when it last changed (a failure).
+export type TimelineEvent = { at: string; text: string; tone: "ok" | "bad" | "info" };
+export function timeline(members: Post[], names: { account: (id: string | null) => string; network: (p: Platform) => string }, author?: string): TimelineEvent[] {
+  const first = [...members].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))[0];
+  if (!first) return [];
+  const out: TimelineEvent[] = [{ at: first.created_at, text: `Created${author ? ` by ${author}` : ""}${members.length > 1 ? ` for ${members.length} networks` : ""}`, tone: "info" }];
+  const plan = members.find((m) => m.scheduled_at)?.scheduled_at;
+  if (plan) out.push({ at: plan, text: "Planned for", tone: "info" });
+  const decided = members.find((m) => m.approval_at);
+  if (decided?.approval_at) out.push({ at: decided.approval_at, text: decided.approval === "approved" ? "Approved" : "Changes requested", tone: decided.approval === "approved" ? "ok" : "bad" });
+  for (const m of members) {
+    const net = names.network(m.platform);
+    for (const t of m.targets) {
+      const name = `${net}, ${names.account(t.social_account_id)}`;
+      if (t.status === "published" && t.published_at) out.push({ at: t.published_at, text: `Published on ${name}`, tone: "ok" });
+      if (t.status === "deleted") out.push({ at: m.updated_at, text: `Taken down from ${name}`, tone: "info" });
+      if (t.status === "failed") out.push({ at: m.updated_at, text: `Failed on ${name}${t.retried ? " after an automatic retry" : ""}`, tone: "bad" });
+      if (t.retry_at) out.push({ at: t.retry_at, text: `Automatic retry on ${name}`, tone: "info" });
+    }
+  }
+  return out.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
 }

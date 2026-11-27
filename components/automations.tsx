@@ -16,18 +16,23 @@ import {
   filterRuns,
   getAutomation,
   listAutomations,
+  listMisses,
   listRuns,
+  retryRun,
   proportions,
   reason,
+  reasonLabel,
   reasonWhy,
   RUN_FILTERS,
   sameSteps,
   switchAutomation,
   TEMPLATE_GROUPS,
   templates,
+  whyNot,
   TRIGGERS,
   triggers,
   type Automation,
+  type Miss,
   type Run,
   type RunFilter,
   type Step,
@@ -35,6 +40,7 @@ import {
 } from "@/lib/automations";
 import { authorName, getItem, relativeTime, type Author } from "@/lib/inbox";
 import { listConnections, type Connection } from "@/lib/connections";
+import { address, addressOf, moveToNumber } from "@/lib/ref";
 import { listSets, type SocialSet } from "@/lib/sets";
 import { manages } from "@/lib/teams";
 import { useSession } from "@/components/app-shell";
@@ -177,6 +183,17 @@ function Stats({ runs }: { runs: Automation["runs"] }) {
           )}
         </p>
       </div>
+      {(runs.reasons?.length ?? 0) > 0 && (
+        <p className="text-xs text-ink-soft">
+          Held back or failed:{" "}
+          {runs.reasons!.slice(0, 4).map((r, i) => (
+            <span key={r.reason}>
+              {i > 0 && ", "}
+              {r.count} {reasonLabel(r.reason)}
+            </span>
+          ))}
+        </p>
+      )}
       <div
         role="img"
         aria-label={share ? `${Math.round(share.sent)}% sent, ${Math.round(share.skipped)}% skipped, ${Math.round(share.failed)}% failed` : "No runs yet"}
@@ -278,7 +295,7 @@ export function TemplateGallery() {
   );
 }
 
-const triggerShort: Record<Trigger, string> = { comment_received: "Comments", dm_received: "DMs", mention_received: "Mentions", new_follower: "Followers", story_reply: "Story replies", button_clicked: "Button taps" };
+const triggerShort: Record<Trigger, string> = { comment_received: "Comments", dm_received: "DMs", mention_received: "Mentions", new_follower: "Followers", story_reply: "Story replies", story_mention: "Story mentions", like_received: "Likes", repost_received: "Reposts", button_clicked: "Button taps" };
 type ListFilter = "all" | "on" | "off" | Trigger;
 
 // One automation on the list: what starts it, what it does, its switch, its numbers and a menu.
@@ -302,11 +319,11 @@ function AutomationCard({ automation: a, canManage, accounts, sets, onChange, on
         </span>
         <div className="grid min-w-0 flex-1 gap-1.5">
           <span className="flex min-w-0 items-center gap-2">
-            <Link href={`/automations/${a.id}`} className="truncate font-bold hover:underline">
+            <Link href={`/automations/${address(a)}`} className="truncate font-bold hover:underline">
               {a.name}
             </Link>
             {failed > 0 && (
-              <Link href={`/automations/${a.id}?runs=failed`} title={`${failed} failed ${failed === 1 ? "run" : "runs"}: see why`} className="shrink-0 rounded text-signal-deep hover:text-ink">
+              <Link href={`/automations/${address(a)}?runs=failed`} title={`${failed} failed ${failed === 1 ? "run" : "runs"}: see why`} className="shrink-0 rounded text-signal-deep hover:text-ink">
                 <Icon name="warning" className="size-4" />
                 <span className="sr-only">
                   {failed} failed {failed === 1 ? "run" : "runs"}: see why
@@ -322,11 +339,11 @@ function AutomationCard({ automation: a, canManage, accounts, sets, onChange, on
             <ActionMenu label={`Actions for ${a.name}`} className="icon-btn" trigger={<Icon name="more" />}>
               {canEdit(a) && (
                 <>
-                  <Link href={`/automations/${a.id}?edit=1`} className={menuItem}>
+                  <Link href={`/automations/${address(a)}?edit=1`} className={menuItem}>
                     <Icon name="edit" className="size-4 text-ink-soft" />
                     Edit
                   </Link>
-                  <Link href={`/automations/new?from=${a.id}`} className={menuItem}>
+                  <Link href={`/automations/new?from=${address(a)}`} className={menuItem}>
                     <Icon name="copy" className="size-4 text-ink-soft" />
                     Duplicate
                   </Link>
@@ -413,6 +430,7 @@ export function Automations() {
         Your automations
       </h2>
       {!canManage && <p className="text-ink-soft">Only team owners and admins can create or change automations.</p>}
+      <PausedNotice />
       <p role="status" className="sr-only">
         {said}
       </p>
@@ -489,6 +507,22 @@ export function Automations() {
   );
 }
 
+// Shown while the team's "Pause all automations" is on: nothing goes out, whatever each switch says.
+function PausedNotice() {
+  const { user } = useSession();
+  if (!user.current_team.automations_paused) return null;
+  return (
+    <p className="card border-signal-deep p-4 text-sm">
+      <strong>All automations are paused.</strong> Nothing is sent, whatever each switch says.{" "}
+      {manages(user.current_team.role) && (
+        <Link href="/team" className="underline">
+          Switch it off on the Team page
+        </Link>
+      )}
+    </p>
+  );
+}
+
 // One reply as the steps of a timeline, in the order brain runs them.
 const asSteps = (a: Automation): Step[] => a.steps ?? a.actions;
 
@@ -531,6 +565,8 @@ export function AutomationDetail({ id }: { id: string }) {
   const params = useSearchParams();
   const [a, setA] = useState<Automation | Failure | null>(null);
   const [runs, setRuns] = useState<{ runs: Run[]; next: string | null } | Failure | null>(null);
+  // Recent items it listens for but did not run on, with why (brain keeps them 14 days).
+  const [misses, setMisses] = useState<Miss[] | Failure | null>(null);
   // The list's Edit opens the builder at once (?edit=1), and its warning mark the failed runs (?runs=failed).
   const [editing, setEditing] = useState(params.get("edit") === "1");
   const [filter, setFilter] = useState<RunFilter>(RUN_FILTERS.find((f) => f === params.get("runs")) ?? "all");
@@ -542,13 +578,18 @@ export function AutomationDetail({ id }: { id: string }) {
   const { accounts, ready, sets } = useScopeData();
   const del = useAction();
   const more = useAction();
+  const retrying = useAction();
   const editRef = useRef<HTMLButtonElement>(null);
   const deleteRef = useRef<HTMLButtonElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    getAutomation(id).then(setA);
+    getAutomation(id).then((r) => {
+      if (!isFailure(r)) moveToNumber(id, r);
+      setA(r);
+    });
     listRuns(id).then((r) => setRuns(isFailure(r) ? r : { runs: r.runs, next: r.next_cursor }));
+    listMisses(id).then((m) => setMisses(isFailure(m) ? m : m.misses));
   }, [id]);
 
   // shortcut: one request per run's item (50 a page), 4 at a time, since brain's runs carry no author; ask brain for it in the run if this gets slow.
@@ -602,6 +643,7 @@ export function AutomationDetail({ id }: { id: string }) {
 
   return (
     <div className="enter grid grid-cols-[minmax(0,1fr)] gap-10">
+      <PausedNotice />
       {editing && canManage && canEdit(a) ? (
         <AutomationForm
           automation={a}
@@ -663,7 +705,7 @@ export function AutomationDetail({ id }: { id: string }) {
                       <Icon name="edit" className="size-4" />
                       Edit
                     </button>
-                    <Link href={`/automations/new?from=${a.id}`} className="btn btn-secondary btn-sm">
+                    <Link href={`/automations/new?from=${address(a)}`} className="btn btn-secondary btn-sm">
                       <Icon name="copy" className="size-4" />
                       Duplicate
                     </Link>
@@ -766,13 +808,41 @@ export function AutomationDetail({ id }: { id: string }) {
                                 <li key={i}>
                                   {actionName[x.type] ?? String(x.type).replaceAll("_", " ")}: {(x.status === "done" ? "done" : (statusName[x.status] ?? x.status)).toLowerCase()}
                                   {x.reason && x.reason !== r.reason ? ` (${reason(x.reason)})` : ""}
+                                  {x.model ? `, written by ${x.model}` : ""}
                                 </li>
                               ))}
                             </ul>
                           )}
                         </td>
                         <td className="whitespace-nowrap px-4 py-3 text-right">
-                          <Link href={`/inbox?item=${encodeURIComponent(r.inbox_item_id)}`} className="font-bold underline decoration-signal decoration-2 underline-offset-4">
+                          {r.can_retry && canManage && (
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm mb-1.5"
+                              disabled={retrying.busy !== null}
+                              onClick={() =>
+                                retrying.run(
+                                  `retry-${r.id}`,
+                                  async () => {
+                                    const res = await retryRun(id, r.id);
+                                    // A refusal means it can't be retried now: take the button away so it isn't tried again.
+                                    if (isFailure(res) && res !== "error" && res !== "timeout" && res !== "signed_out")
+                                      setRuns((cur) => (cur && !isFailure(cur) ? { ...cur, runs: cur.runs.map((x) => (x.id === r.id ? { ...x, can_retry: false } : x)) } : cur));
+                                    return res;
+                                  },
+                                  (next) => {
+                                    setRuns((cur) => (cur && !isFailure(cur) ? { ...cur, runs: cur.runs.map((x) => (x.id === next.id ? next : x)) } : cur));
+                                    // The button is gone: the focus goes to the row's link instead of the page.
+                                    requestAnimationFrame(() => document.getElementById(`run-${r.id}-open`)?.focus());
+                                  },
+                                )
+                              }
+                            >
+                              {retrying.busy === `retry-${r.id}` ? "Retrying..." : "Retry"}
+                              <span className="sr-only"> the run of {when(r.created_at)}, which the network refused for rate limiting and sent nothing</span>
+                            </button>
+                          )}
+                          <Link id={`run-${r.id}-open`} href={`/inbox?item=${addressOf(r.inbox_item_id, r.inbox_item_number)}`} className="font-bold underline decoration-signal decoration-2 underline-offset-4">
                             Open in inbox<span className="sr-only">, {when(r.created_at)}</span>
                           </Link>
                         </td>
@@ -797,12 +867,56 @@ export function AutomationDetail({ id }: { id: string }) {
               </button>
             )}
             <Status problem={more.problem} done={null} />
+            <Status problem={retrying.problem} done={null} overrides={{ not_retryable: "This run can't be retried: it did not end on a rate limit, it was retried already, or the automation is switched off.", paused: "Your automations are paused. Resume them first.", daily_cap: "The team's 500 automation runs for today are used." }} />
           </>
+        )}
+      </section>
+
+      <section aria-labelledby="misses-heading" className="grid grid-cols-[minmax(0,1fr)] gap-4">
+        <h2 id="misses-heading" className={heading}>
+          Items it did not run on
+        </h2>
+        <p className="hint">
+          Recent items this automation listens for but did not match, with why, kept for 14 days. Items it was held back on (paused, cool-down, daily limit) are in the run history as skipped.
+        </p>
+        {misses === null ? (
+          <div role="status" className="h-20 rounded-2xl bg-ink/5 motion-safe:animate-pulse">
+            <span className="sr-only">Loading...</span>
+          </div>
+        ) : isFailure(misses) ? (
+          <p role="alert" className="waitlist-error">
+            This couldn&apos;t be loaded. {problemText(misses)}
+          </p>
+        ) : misses.length === 0 ? (
+          <p className="card p-5 text-ink-soft">No item it listens for failed to match in the last 14 days.</p>
+        ) : (
+          <ul aria-label="Items it did not run on" className="card divide-y divide-ink/10">
+            {misses.map((m) => (
+              <li key={m.inbox_item_id} className="grid gap-1 p-4">
+                <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                  <strong>{m.author ?? "Someone"}</strong>
+                  <span className="text-ink-soft">{missKind[m.kind] ?? m.kind}</span>
+                  <time className="text-ink-soft" dateTime={m.created_at}>
+                    {when(m.created_at)}
+                  </time>
+                </p>
+                {m.text && <p className="line-clamp-2 break-words text-ink-soft">{m.text}</p>}
+                <p>
+                  <strong>Not run:</strong> {m.reasons.map(whyNot).join("; ")}
+                </p>
+                <Link href={`/inbox?item=${addressOf(m.inbox_item_id, m.inbox_item_number)}`} className="justify-self-start text-sm font-bold underline decoration-signal decoration-2 underline-offset-4">
+                  Open in inbox
+                </Link>
+              </li>
+            ))}
+          </ul>
         )}
       </section>
     </div>
   );
 }
+
+const missKind: Record<string, string> = { comment: "commented", mention: "mentioned you", dm: "sent a DM", follow: "followed you", like: "liked a post", repost: "reposted a post" };
 
 // A new automation starts at the template gallery; a picked template (?template=) opens the builder prefilled,
 // and Duplicate (?from=<id>) opens it as a copy of that automation.
@@ -822,7 +936,7 @@ export function NewAutomation() {
   }, [from, canManage]);
 
   if (!canManage) return <p className="text-ink-soft">Only team owners and admins can create automations.</p>;
-  const form = { accounts, ready, sets, onSaved: (a: Automation) => router.push(`/automations/${a.id}`), onCancel: () => router.push("/automations") };
+  const form = { accounts, ready, sets, onSaved: (a: Automation) => router.push(`/automations/${address(a)}`), onCancel: () => router.push("/automations") };
   if (from) {
     if (source === null)
       return (

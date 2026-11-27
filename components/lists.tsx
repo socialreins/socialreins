@@ -18,7 +18,8 @@ import {
   type ListDetail,
   type PostList,
 } from "@/lib/lists";
-import { listPosts, type Post } from "@/lib/posts";
+import { listPosts, postRef, type Post } from "@/lib/posts";
+import { address, moveToNumber } from "@/lib/ref";
 import { listSets, type SocialSet } from "@/lib/sets";
 import { snippet, StatusBadge } from "@/components/posts";
 import { isFailure, linkButton, problemText, Status, useAction } from "@/components/team-ui";
@@ -218,7 +219,7 @@ export function Lists() {
                       if (el) links.current.set(l.id, el);
                       else links.current.delete(l.id);
                     }}
-                    href={`/lists/${l.id}`}
+                    href={`/lists/${address(l)}`}
                     className="font-bold hover:underline">
                     {l.name}
                   </Link>
@@ -282,12 +283,15 @@ export function ListView({ id }: { id: string }) {
 
   const [tries, setTries] = useState(0);
   useEffect(() => {
-    getList(id).then(setList);
+    getList(id).then((r) => {
+      if (!isFailure(r)) moveToNumber(id, r);
+      setList(r);
+    });
   }, [id, tries]);
 
   useEffect(() => {
     if (setId === undefined) return;
-    listPosts(setId ? { social_set_id: setId } : {}).then((r) => Array.isArray(r) && setPosts(r));
+    listPosts({ ...(setId ? { social_set_id: setId } : {}), order: "desc", limit: 500 }).then((r) => Array.isArray(r) && setPosts(r));
   }, [setId]);
 
   if (list === null) return <SkeletonRows label="Loading the list..." rows={5} tall />;
@@ -375,7 +379,7 @@ export function ListView({ id }: { id: string }) {
                 <li key={item.post_id} className="flex flex-wrap items-center gap-3 p-4">
                   <strong className="w-16 shrink-0">{name}</strong>
                   <div className="grid min-w-0 flex-1 basis-48 gap-1">
-                    <Link href={`/posts/${p.id}`} className="truncate hover:underline">
+                    <Link href={`/posts/${postRef(p)}`} className="truncate hover:underline">
                       {snippet(p)}
                     </Link>
                     <p className="flex flex-wrap items-center gap-2 text-sm text-ink-soft">

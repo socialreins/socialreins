@@ -105,15 +105,16 @@ describe("feed helpers", () => {
     expect(fillTemplate("{title}")).toBe("Five ways to plan a week of posts");
   });
 
-  it("offers the set's networks without TikTok and YouTube", () => {
+  it("offers the set's networks without TikTok, YouTube and Pinterest", () => {
     const accounts = [
       { provider: "x", set_ids: ["d", "s1"] },
       { provider: "bluesky", set_ids: ["d"] },
       { provider: "bluesky", set_ids: ["d"] },
       { provider: "tiktok", set_ids: ["d"] },
       { provider: "youtube", set_ids: ["d", "s1"] },
+      { provider: "pinterest", set_ids: ["d", "s1"] },
     ];
-    const order = ["instagram", "bluesky", "x", "tiktok", "youtube"];
+    const order = ["instagram", "bluesky", "x", "tiktok", "youtube", "pinterest"];
     expect(feedPlatforms("d", accounts, order)).toEqual(["bluesky", "x"]);
     expect(feedPlatforms("s1", accounts, order)).toEqual(["x"]);
     expect(feedPlatforms("s2", accounts, order)).toEqual([]);

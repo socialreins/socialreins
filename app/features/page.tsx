@@ -6,7 +6,7 @@ import { publicPage } from "@/lib/seo";
 
 export const metadata: Metadata = {
   title: "Features: SocialReins",
-  description: "Everything SocialReins does today: publishing to eight networks, scheduling, teams, post analytics, an API and an MCP server, with an inbox live on Bluesky.",
+  description: "Everything SocialReins does today: publishing to nine networks, scheduling, teams, post analytics, an API and an MCP server, with an inbox live on Bluesky.",
   ...publicPage("/features"),
 };
 
@@ -47,12 +47,12 @@ export default function Features() {
                 {g.name}
               </h2>
               {g.href && (
-                <Link href={g.href} aria-label={`${g.name}: learn more`} className={link}>
-                  Learn more
+                <Link href={g.href} className={link}>
+                  Learn more<span className="sr-only"> about {g.name}</span>
                 </Link>
               )}
             </div>
-            {g.note && <p className="justify-self-start rounded-lg bg-signal/15 px-3 py-1.5 text-sm font-bold text-signal-deep">{g.note}</p>}
+            {g.note && <p className="justify-self-start rounded-lg bg-signal/10 px-3 py-1.5 text-sm font-bold text-signal-deep">{g.note}</p>}
             <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {g.items.map((i) => (
                 <div key={i.name} className="rounded-2xl border border-ink/10 bg-paper p-4">

@@ -10,24 +10,24 @@ export const metadata: Metadata = {
   ...publicPage("/post-types"),
 };
 
-const networks = ["Bluesky", "Threads", "LinkedIn", "Facebook Page", "Instagram", "YouTube", "X", "TikTok"];
+const networks = ["Bluesky", "Threads", "LinkedIn", "Facebook Page", "Instagram", "YouTube", "X", "TikTok", "Pinterest"];
 
 // "!" marks a cell the network allows through its API but SocialReins does not post yet.
 // Mirrors brain's crates/core/src/post.rs, controllers/posts.rs and connectors, and `limits` in lib/posts.ts.
 const rows: [string, string[]][] = [
-  ["Text only", ["Yes", "Yes", "Yes", "Yes", "No", "No", "Yes", "No"]],
-  ["One image", ["Yes", "Yes", "Yes", "Yes", "Yes, JPEG, PNG or WebP", "No", "Yes", "Yes"]],
-  ["Several images (max)", ["Yes, up to 4", "Yes, up to 20", "Yes, up to 20", "Yes, up to 10", "Yes, up to 20", "No", "Yes, up to 4", "Yes, up to 35"]],
-  ["One video", ["Yes", "Yes", "Yes, MP4", "Yes, as a Reel", "Yes, as a Reel", "Yes", "Yes", "Yes"]],
-  ["Several videos or photos mixed in one post", ["No", "Yes, up to 20", "No", "No", "Yes, up to 20 (Motion Carousel)", "No", "No", "No"]],
-  ["Reels / Shorts", ["No", "No", "No", "Yes, one video", "Yes, one video", "Yes, a vertical video becomes a Short", "No", "Yes, every video"]],
-  ["PDF document", ["No", "No", "Yes, one PDF", "No", "No", "No", "No", "No"]],
-  ["GIF", ["Yes", "No", "Yes", "Yes", "No", "No", "Yes, one", "No"]],
-  ["Video cover image", ["No", "No", "No", "Yes", "Yes, JPEG, PNG or WebP", "Yes", "No", "No!"]],
-  ["Thread (reply chain)", ["Yes, up to 25 replies", "Yes, up to 25 replies", "No", "No", "No", "No", "Yes, up to 25 replies", "No"]],
-  ["First comment", ["No", "No", "Yes", "Yes", "Yes", "Yes", "No", "No"]],
-  ["Stories", ["No", "No", "No", "No!", "No!", "No", "No", "No"]],
-  ["Polls", ["No", "No!", "No!", "No", "No", "No", "No!", "No"]],
+  ["Text only", ["Yes", "Yes", "Yes", "Yes", "No", "No", "Yes", "No", "No"]],
+  ["One image", ["Yes", "Yes", "Yes", "Yes", "Yes, JPEG, PNG or WebP", "No", "Yes", "Yes", "Yes, JPEG, PNG or WebP"]],
+  ["Several images (max)", ["Yes, up to 4", "Yes, up to 20", "Yes, up to 20", "Yes, up to 10", "Yes, up to 20", "No", "Yes, up to 4", "Yes, up to 35", "Yes, up to 5"]],
+  ["One video", ["Yes", "Yes", "Yes, MP4", "Yes, as a Reel", "Yes, as a Reel", "Yes", "Yes", "Yes", "Yes"]],
+  ["Several videos or photos mixed in one post", ["No", "Yes, up to 20", "No", "No", "Yes, up to 20 (Motion Carousel)", "No", "No", "No", "No"]],
+  ["Reels / Shorts", ["No", "No", "No", "Yes, one video", "Yes, one video", "Yes, a vertical video becomes a Short", "No", "Yes, every video", "No"]],
+  ["PDF document", ["No", "No", "Yes, one PDF", "No", "No", "No", "No", "No", "No"]],
+  ["GIF", ["Yes", "No", "Yes", "Yes", "No", "No", "Yes, one", "No", "No"]],
+  ["Video cover image", ["No", "No", "No", "Yes", "Yes, JPEG, PNG or WebP", "Yes", "No", "No!", "No!"]],
+  ["Thread (reply chain)", ["Yes, up to 25 replies", "Yes, up to 25 replies", "No", "No", "No", "No", "Yes, up to 25 replies", "No", "No"]],
+  ["First comment", ["No", "No", "Yes", "Yes", "Yes", "Yes", "No", "No", "No"]],
+  ["Stories", ["No", "No", "No", "No!", "No!", "No", "No", "No", "No"]],
+  ["Polls", ["No", "No!", "No!", "No", "No", "No", "No!", "No", "No"]],
 ];
 
 function Cell({ value }: { value: string }) {
@@ -60,7 +60,7 @@ export default function PostTypes() {
       </div>
 
       {/* The table is 66rem wide; below that only the first networks show, so say there are more. */}
-      <p className="-mb-5 text-sm text-ink-soft min-[70rem]:hidden">Scroll the table sideways to see all eight networks.</p>
+      <p className="-mb-5 text-sm text-ink-soft min-[70rem]:hidden">Scroll the table sideways to see all nine networks.</p>
       <div className="relative min-w-0 overflow-x-auto rounded-lg border border-ink/10 bg-paper" tabIndex={0} role="region" aria-label="Post types by network">
         <table className="w-full min-w-[66rem] border-collapse text-left text-[0.95rem] leading-snug">
           <thead>
@@ -99,9 +99,9 @@ export default function PostTypes() {
         <h2>Beyond posting</h2>
         <ul>
           <li>Post analytics: likes and comments on Bluesky, Facebook, Instagram and YouTube, shares on Bluesky and Facebook, and views on YouTube. Nothing is read on the other networks.</li>
-          <li>Bulk upload from a CSV file and recurring posts work on every network except TikTok, where each post needs a person&apos;s own choices.</li>
-          <li>RSS and Atom feeds post to every network except TikTok and YouTube, and an item needs an image to go to Instagram.</li>
-          <li>The inbox and automations are live on Bluesky. Facebook Pages and Instagram are in testing.</li>
+          <li>Bulk upload from a CSV file and recurring posts work on every network except TikTok, where each post needs a person&apos;s own choices. A Pinterest row goes there only when it names pinterest, and needs an image or a video and a default board on the account.</li>
+          <li>RSS and Atom feeds post to every network except TikTok, YouTube and Pinterest, and an item needs an image to go to Instagram.</li>
+          <li>The inbox and automations are live on Bluesky. Facebook Pages, Instagram and X are in testing.</li>
         </ul>
         <p>
           The <Link href="/features" className="font-bold underline decoration-signal decoration-2 underline-offset-4 hover:text-signal-deep">features page</Link> lists everything else.

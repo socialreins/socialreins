@@ -1,14 +1,24 @@
 "use client";
 
 import { PostPagePanel } from "@/components/post-page-panel";
+import { PostDetail, PostSummary } from "@/components/post-detail";
+import { Preview } from "@/components/post-preview";
 
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { TeamLink as Link } from "@/components/team-link";
 import { useTeamPath, useTeamRouter as useRouter } from "@/components/team-link";
 import type { Failure } from "@/lib/auth";
 import { listConnections, needingReconnect, xLongPosts, type Connection } from "@/lib/connections";
 import {
+  ALT_MAX,
+  altList,
+  altMap,
+  altOut,
+  altPlatforms,
+  isImageLink,
+  keepsAlt,
+  capAlt,
   charCount,
   checkComment,
   checkCover,
@@ -25,7 +35,7 @@ import {
   createPostGroup,
   decidePost,
   deletePost,
-  fromLocalInput,
+  fromZoneInput,
   getPost,
   getTikTokCreator,
   limits,
@@ -34,7 +44,6 @@ import {
   mergeCreators,
   noTikTok,
   overLimit,
-  privacyName,
   publishing,
   publishPost,
   noRepeat,
@@ -43,9 +52,11 @@ import {
   repeatSummary,
   saveRepeat,
   type RepeatForm,
-  takeDownAll,
-  toLocalInput,
+  takeDownGroup as takeDownGroupCall,
+  toZoneInput,
   updatePost,
+  postRef,
+  retryPost,
   utf8Bytes,
   YOUTUBE_DESCRIPTION_BYTES,
   youtubeText,
@@ -53,7 +64,7 @@ import {
   type Post,
   type PostGroupInput,
   type PostInput,
-  type Takedown,
+  type TakedownResult,
   type Target,
   type ThreadPart,
   type TikTokCreator,
@@ -63,24 +74,28 @@ import {
 } from "@/lib/posts";
 import { fitsList, listLists, partLabel, type PostList } from "@/lib/lists";
 import { listSets, type SocialSet } from "@/lib/sets";
-import { getQueue, type Queue } from "@/lib/queue";
-import { accountName, Avatar } from "@/components/connections";
+import { getQueue, startZone, type Queue } from "@/lib/queue";
+import { UPLOAD_ACCEPT, uploadFile } from "@/lib/uploads";
+import { apiUrl } from "@/lib/waitlist";
+import { accountName } from "@/components/connections";
 import { platformName } from "@/components/platform-icons";
-import { AccountNote, ApprovalBadge, ChangesDialog, PlatformMark, postMessages, snippet, StatusBadge, statusName } from "@/components/posts";
+import { AccountNote, ApprovalBadge, ChangesDialog, PlatformMark, postMessages, snippet, StatusBadge } from "@/components/posts";
 import { isFailure, problemText, Status, useAction } from "@/components/team-ui";
 import { RefreshStats, TargetStats } from "@/components/post-analytics";
 import { hasStats } from "@/lib/analytics";
 import { useCurrentSet, useSession } from "@/components/app-shell";
 import { ReconnectNotice } from "@/components/connections";
 import { TikTokConsent, TikTokPanel } from "@/components/tiktok-settings";
-import { manages } from "@/lib/teams";
+import { noPin, PinterestPanel, pinForm, pinLinkOk, pinNeedsBoard, pinOut, pinTitleOk, type PinForm } from "@/components/pinterest-settings";
+import { listMembers, manages } from "@/lib/teams";
 import { Icon } from "@/components/ui";
 import { RepeatControl } from "@/components/repeat";
 import { LibraryPicker, SaveToLibrary, SnippetMenu } from "@/components/library";
 
 const POLL_MS = 2000;
 const POLL_FOR_MS = 60_000;
-const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+// In `zone`, the set's queue time zone, so the composer and the queue agree.
+const when = (iso: string, zone: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short", timeZone: zone });
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const canEdit = (p: Post) => p.status === "draft" || p.status === "scheduled";
 // Where the editor's tab strip stands: the shared post, or one platform's own version and settings.
@@ -96,6 +111,7 @@ function platformProblem(platform: Platform, failure: Failure, xLong = false): R
   if (failure === "too_long" && platform === "youtube")
     return `YouTube takes a title (the first line) of at most ${limits.youtube.chars} characters and a description (the rest) of at most ${YOUTUBE_DESCRIPTION_BYTES.toLocaleString("en")} bytes.`;
   if (failure === "too_long" && platform === "x") return `X takes at most ${charLimit("x", xLong).toLocaleString("en")} characters, where a link counts as 23 and an emoji or a Chinese, Japanese or Korean character as 2.`;
+  if (failure === "too_long" && platform === "threads") return `Threads takes at most ${limits.threads.chars.toLocaleString("en")} characters, where an emoji counts as its UTF-8 bytes (4 for most).`;
   if (failure === "too_many_images" && platform === "tiktok") return "TikTok takes one video, or up to 35 photos.";
   if (failure === "too_long") return `${name} takes at most ${limits[platform].chars.toLocaleString("en")} characters.`;
   if (failure === "too_many_images" && platform === "x") return "X takes at most 4 images, or one GIF or video.";
@@ -127,6 +143,8 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const startSet = useRef(useCurrentSet()[0]);
   const [body, setBody] = useState("");
   const [media, setMedia] = useState<string[]>([]);
+  // The alt text of each image, by its link: the same link has the same description wherever it is used.
+  const [alts, setAlts] = useState<Record<string, string>>({});
   const [thread, setThread] = useState<ThreadPart[]>([]);
   // The first comment, and per-platform text that replaces it on that platform.
   const [comment, setComment] = useState("");
@@ -141,6 +159,8 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const [queueRead, setQueueRead] = useState<{ key: string; value: Queue | Failure } | null>(null);
   // The YouTube video's visibility: private unless chosen.
   const [ytPrivacy, setYtPrivacy] = useState<YouTubePrivacy>("private");
+  // The Pinterest pin's board, title and link.
+  const [pin, setPin] = useState<PinForm>(noPin);
   // The open tab, and whether the action bar lists the issues.
   const [tab, setTab] = useState<Tab>("all");
   const [issuesOpen, setIssuesOpen] = useState(false);
@@ -148,6 +168,11 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const [scheduleOpen, setScheduleOpen] = useState(false);
   // The platforms ticked for a new post; null means every platform with an account in the set.
   const [chosen, setChosen] = useState<Platform[] | null>(null);
+  // The accounts picked per platform; a platform not in it goes to every one of its accounts in the set.
+  const [picked, setPicked] = useState<Partial<Record<Platform, string[]>>>({});
+  // Files still uploading in any media box; nothing saves until they are in or cancelled.
+  const [uploading, setUploading] = useState(0);
+  const onUploading = (delta: number) => setUploading((n) => n + delta);
   // Per-platform text that replaces the main post on that platform.
   const [custom, setCustom] = useState<Partial<Record<Platform, string>>>({});
   // A platform's own files in place of the shared ones; an empty list posts it without any.
@@ -158,7 +183,10 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const [whole, setWhole] = useState(false);
   // Group posts still to publish after Publish now stopped partway, in order.
   const [unsent, setUnsent] = useState<string[]>([]);
+  // When to publish, as ISO; the field shows it in the set's time zone.
   const [at, setAt] = useState("");
+  // The typed wall time a spring-forward change skips, when `at` moved past the gap.
+  const [skipped, setSkipped] = useState("");
   // The Repeat control: what a new post is scheduled with, or a saved scheduled post's rule.
   const [repeat, setRepeat] = useState<RepeatForm>(noRepeat);
   const [lists, setLists] = useState<PostList[]>([]);
@@ -168,7 +196,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const [pollNote, setPollNote] = useState("");
   // Take down all: the one confirmation, and what happened to each post (kept across a retry).
   const [askingAll, setAskingAll] = useState(false);
-  const [downs, setDowns] = useState<(Takedown & { platform: Platform })[] | null>(null);
+  const [downs, setDowns] = useState<TakedownResult[] | null>(null);
   const [downsShown, setDownsShown] = useState(0);
   // Bumped after Publish now, to move focus onto the status line that follows the post.
   const [sent, setSent] = useState(0);
@@ -176,6 +204,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const [copied, setCopied] = useState<Post | Failure | null>(null);
   // The "Request changes" dialog is open.
   const [rejecting, setRejecting] = useState(false);
+  const [authors, setAuthors] = useState<Record<string, string>>({});
   const statusRef = useRef<HTMLParagraphElement>(null);
   const addPartRef = useRef<HTMLButtonElement>(null);
   const partRefs = useRef<(HTMLTextAreaElement | null)[]>([]);
@@ -191,15 +220,19 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     setSetId(p.social_set_id);
     setBody(p.body);
     setMedia(p.media);
+    setAlts(altMap([p]));
     setThread(p.thread ?? []);
     setComment(p.first_comment ?? "");
     setCommentCustom({});
     setCover(p.cover ?? "");
     setTikTok(p.tiktok ?? noTikTok);
     setYtPrivacy(p.youtube?.privacy ?? "private");
+    setPin(pinForm(p.pinterest));
     setCustom({});
     setMediaCustom({});
-    setAt(toLocalInput(p.status === "scheduled" ? p.scheduled_at : null));
+    setAt(p.status === "scheduled" ? (p.scheduled_at ?? "") : "");
+    setPicked(p.account_ids ? { [p.platform]: p.account_ids } : {});
+    setSkipped("");
     setRepeat(repeatForm(p.repeat));
     setListId("");
     setWhole(false);
@@ -216,6 +249,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   // The group's per-platform text, media, comment, thread, cover and settings, `mine` being the shared one.
   function fillGroup(mine: Post, all: Post[]) {
     const rest = all.filter((g) => g.id !== mine.id);
+    setAlts(altMap([mine, ...rest]));
     setCustom(Object.fromEntries(rest.filter((g) => g.body !== mine.body).map((g) => [g.platform, g.body])));
     setMediaCustom(Object.fromEntries(rest.filter((g) => !same(g.media, mine.media)).map((g) => [g.platform, g.media])));
     const commented = all.filter((g) => limits[g.platform].comment !== null);
@@ -228,6 +262,9 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     if (tk) setTikTok(tk.tiktok ?? noTikTok);
     const yt = all.find((g) => g.platform === "youtube");
     if (yt) setYtPrivacy(yt.youtube?.privacy ?? "private");
+    const pn = all.find((g) => g.platform === "pinterest");
+    if (pn) setPin(pinForm(pn.pinterest));
+    setPicked(Object.fromEntries(all.filter((g) => g.account_ids).map((g) => [g.platform, g.account_ids!])));
   }
 
   // Duplicate: a new post with the content and platforms of `mine` and its group, but no time, and TikTok's
@@ -237,6 +274,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     fillGroup(mine, all);
     setPost(null);
     setAt("");
+    setSkipped("");
     // A copy goes out once unless asked to repeat again.
     setRepeat(noRepeat);
     setChosen(all.map((g) => g.platform));
@@ -255,9 +293,13 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
       setAccountsLoaded(true);
     });
     listLists().then((r) => Array.isArray(r) && setLists(r));
+    // Who made the post; left out when the member list can't be read.
+    if (id) listMembers().then((r) => Array.isArray(r) && setAuthors(Object.fromEntries(r.map((m) => [m.id, m.name || m.email]))));
     if (id)
       getPost(id).then((r) => {
         if (isFailure(r)) return setPost(r);
+        // An old address with the UUID moves to the post's number, unless the person has already left this page.
+        if (id !== postRef(r) && window.location.pathname.endsWith(`/posts/${id}`)) window.history.replaceState(null, "", to(`/posts/${postRef(r)}`) + window.location.search + window.location.hash);
         load(r);
         if (r.group_id) listPosts({ group_id: r.group_id }).then((g) => Array.isArray(g) && setGroup(g));
       });
@@ -273,6 +315,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   }, [id, from]);
 
   const postId = post && !isFailure(post) ? post.id : undefined;
+  const postNumber = post && !isFailure(post) ? postRef(post) : undefined;
   const status = post && !isFailure(post) ? post.status : undefined;
   // TikTok's guidelines have the editor show the account's live creator info while a TikTok post is edited.
   // X takes 25,000 characters when every X account of the picked set is on a paid plan, else 280.
@@ -319,15 +362,16 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     };
   }, [ttKey]);
 
+  // Every post reads its set's queue for the time zone; only a new one offers Add to queue.
   const queueKey = !id && !postId ? setId : "";
   useEffect(() => {
-    if (!queueKey) return;
+    if (!setId) return;
     let live = true;
-    getQueue(queueKey).then((value) => live && setQueueRead({ key: queueKey, value }));
+    getQueue(setId).then((value) => live && setQueueRead({ key: setId, value }));
     return () => {
       live = false;
     };
-  }, [queueKey]);
+  }, [setId]);
 
   useEffect(() => {
     if (confirming) confirmRef.current?.focus();
@@ -355,6 +399,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
 
   async function save(mode: "draft" | "schedule" | "publish" | "queue") {
     flushSync(() => setLocal(null));
+    if (uploading > 0) return setLocal("Wait for the uploads to finish, or cancel them.");
     if (selected.length === 0) return setLocal("Pick at least one platform to post to.");
     for (const p of selected) {
       const e = entry(p);
@@ -363,6 +408,8 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
       const bad = checkComment(commentText(p), p) ?? checkCover(coverFor(p) ?? "", p, mediaFor(p).length);
       if (bad) return setLocal(platformProblem(p, bad));
     }
+    const none = selected.find((p) => accountIdsFor(p)?.length === 0);
+    if (none) return setLocal(`Pick at least one ${platformName(none)} account to post to.`);
     if (selected.includes("tiktok")) {
       const problem = tiktokProblem();
       if (problem) return setLocal(problem);
@@ -371,7 +418,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     const shared = {
       social_set_id: setId,
       // brain picks the time for a queued post and refuses one sent with scheduled_at.
-      ...(mode === "queue" ? { queue: true as const } : { scheduled_at: mode === "schedule" ? fromLocalInput(at) : null }),
+      ...(mode === "queue" ? { queue: true as const } : { scheduled_at: mode === "schedule" ? at : null }),
       list_id: listChoices.some((l) => l.id === listId) ? listId : undefined,
     };
     const input: PostInput = { ...shared, platform: selected[0]!, ...entry(selected[0]!) };
@@ -382,6 +429,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
       const o = {
         body: customFor(p),
         media: mediaCustomFor(p) && mediaFor(p),
+        media_alt: mediaCustomFor(p) ? altOut(mediaFor(p), alts, !!postId) : undefined,
         thread: limits[p].thread || parts.length === 0 ? undefined : [],
         first_comment: limits[p].comment === null ? (comment.trim() ? "" : undefined) : commentCustomFor(p),
         // The cover goes only to the platforms that take one, so none needs an empty override.
@@ -429,19 +477,22 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
         const saved = postId ? await updatePost(postId, input) : await createPost(input);
         if (isFailure(saved)) return saved;
         // Keep this editor mounted on the new post's own address.
-        if (!postId) window.history.replaceState(null, "", to(`/posts/${saved.id}`));
+        if (!postId) window.history.replaceState(null, "", to(`/posts/${postRef(saved)}`));
         load(saved);
         if (mode !== "publish") return repeating(saved);
         // Group posts a failed Publish now left behind go out with this one.
         const r = await publishAll([saved.id, ...unsent.filter((u) => u !== saved.id)]);
         return isFailure(r) ? r : r[0]!;
       }
-      const g = await createPostGroup({ ...shared, platforms: selected, body, media: images, thread: parts, first_comment: comment.trim() ? comment : undefined, tiktok: selected.includes("tiktok") ? tiktokOut : undefined, youtube: selected.includes("youtube") ? { privacy: ytPrivacy } : undefined, overrides });
+      // Only the platforms with some unticked: brain gives the others every account, later ones too.
+      const picked = selected.flatMap((p) => accountIdsFor(p) ?? []);
+      const picks = picked.length ? picked : undefined;
+      const g = await createPostGroup({ ...shared, platforms: selected, account_ids: picks, body, media: images, media_alt: altOut(images, alts, false), thread: parts, first_comment: comment.trim() ? comment : undefined, tiktok: selected.includes("tiktok") ? tiktokOut : undefined, youtube: selected.includes("youtube") ? { privacy: ytPrivacy } : undefined, pinterest: selected.includes("pinterest") ? pinOut(pinFor) : undefined, overrides });
       if (isFailure(g)) return g;
       const posts = g.posts;
       made = posts.length;
       // The editor carries on as the first post; the others are listed below it.
-      window.history.replaceState(null, "", to(`/posts/${posts[0]!.id}`));
+      window.history.replaceState(null, "", to(`/posts/${postRef(posts[0]!)}`));
       load(posts[0]!);
       setGroup(posts);
       if (mode !== "publish") return repeating(posts[0]!);
@@ -453,8 +504,8 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
       if (unrepeated) setLocal(<>The post is scheduled, but the repeat was not saved. {problemText(unrepeated, postMessages)}</>);
       // The status line says Publishing and updates itself; a separate message would go stale.
       if (mode === "publish") return void setSent((n) => n + 1);
-      if (p.status === "scheduled" && mode === "queue") return `${made > 1 ? `Added ${made} posts, one per platform, to the queue for` : "Added to the queue for"} ${when(p.scheduled_at!)}.`;
-      if (p.status === "scheduled") return `${made > 1 ? `Scheduled ${made} posts, one per platform, for` : "Scheduled for"} ${when(p.scheduled_at!)}.`;
+      if (p.status === "scheduled" && mode === "queue") return `${made > 1 ? `Added ${made} posts, one per platform, to the queue for` : "Added to the queue for"} ${when(p.scheduled_at!, zone)}.`;
+      if (p.status === "scheduled") return `${made > 1 ? `Scheduled ${made} posts, one per platform, for` : "Scheduled for"} ${when(p.scheduled_at!, zone)}.`;
       return made > 1 ? `Saved ${made} drafts, one per platform.` : "Draft saved.";
     });
   }
@@ -535,23 +586,63 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
     else if (!ok) askRef.current?.focus();
   }
 
-  // Takes `items` down one by one, then reads the group again so the list and this page show the result.
-  async function takeDownGroup(items: { id: string; platform: Platform }[]) {
+  // Takes the group's published posts down in one call, then shows each platform's result and the group as it now is.
+  // TikTok has no delete call, so its answer is left out: the hint under the list says where to delete it.
+  async function takeDownGroup() {
     flushSync(() => setAskingAll(false));
-    await run("takedown-all", async () => {
-      const r = await takeDownAll(items.map((i) => i.id));
-      const g = await listPosts({ group_id: groupId! });
-      if (Array.isArray(g)) {
-        setGroup(g);
-        const mine = g.find((p) => p.id === postId);
-        if (mine) setPost(mine);
+    const show = (posts: Post[]) => {
+      setGroup(posts);
+      const mine = posts.find((p) => p.id === postId);
+      if (mine) setPost(mine);
+    };
+    return run("takedown-all", async () => {
+      const r = await takeDownGroupCall(groupId!);
+      // A call that failed as a whole (timeout, 5xx) may still have taken some posts down: read the group again.
+      if (isFailure(r)) {
+        const g = await listPosts({ group_id: groupId! });
+        if (Array.isArray(g)) show(g);
       }
       return r;
     }, (r) => {
-      const platform = (id: string) => items.find((i) => i.id === id)!.platform;
-      const fresh = r.map((t) => ({ ...t, platform: platform(t.id) }));
-      setDowns((old) => (old ? old.map((o) => fresh.find((f) => f.id === o.id) ?? o) : fresh));
+      show(r.posts);
+      const fresh = r.results.filter((t) => t.platform !== "tiktok" && t.state !== "not_published");
+      if (fresh.length === 0) return;
+      // A retry says "already gone" for what the first call took down: keep the first answer.
+      setDowns((old) => fresh.map((f) => (f.state === "already_gone" && old?.find((o) => o.post_id === f.post_id && o.state === "taken_down")) || f));
       setDownsShown((n) => n + 1);
+    });
+  }
+
+  // Takes one version of a post down (the page's own, or another of its group); `true` when it came down.
+  async function takeDownOne(p: Post) {
+    flushSync(() => setLocal(null));
+    let refused: string | null = null;
+    const ok = await run("takedown", async () => {
+      const r = await deletePost(p.id);
+      if (typeof r === "object" && "takedownFailed" in r) {
+        refused = r.takedownFailed;
+        return "error" as const;
+      }
+      return r;
+    }, (r) => {
+      if (r === "ok") return;
+      setGroup((g) => g.map((x) => (x.id === r.id ? r : x)));
+      if (r.id === postId) setPost(r);
+      return `Taken down from ${platformName(r.platform)}.`;
+    });
+    // brain's message says what to do, e.g. which account still has the post.
+    if (refused !== null) flushSync(() => setLocal(refused || postMessages.not_deletable));
+    return ok;
+  }
+
+  // Sends the failed accounts of a post, or of its whole group, again; the page polls until they settle.
+  async function retry(p: Pick<Post, "id" | "group_id">) {
+    flushSync(() => setLocal(null));
+    await run("retry", () => retryPost(p), (out) => {
+      setGroup((g) => g.map((x) => out.find((o) => o.id === x.id) ?? x));
+      const mine = out.find((o) => o.id === postId);
+      if (mine) setPost(mine);
+      return "Retrying. This page updates by itself.";
     });
   }
 
@@ -564,11 +655,17 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const mayReview = manages(user.current_team.role);
   // A member's post can't go out before an owner or admin approved it: brain answers approval_required.
   const needsApproval = !!user.current_team.require_approval && !mayReview && !(post && !isFailure(post) && post.approval === "approved");
-  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const queue = queueRead?.key === queueKey && queueKey && !isFailure(queueRead.value) ? queueRead.value : null;
+  const setQueue = queueRead?.key === setId && !isFailure(queueRead.value) ? queueRead.value : null;
+  const browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  // The set's queue zone; the browser's until it is read, or when it can't be.
+  const zone = setQueue ? startZone(setQueue, browserZone) : browserZone;
+  // No time is typed before the set's zone is known (read, or failed to read), so none shifts after.
+  const zoneKnown = !!setId && queueRead?.key === setId;
+  const queue = queueKey ? setQueue : null;
   // A queue that couldn't be read leaves the button on: brain answers queue_empty if need be.
   const queueEmpty = queue?.slots.length === 0;
   const queueNext = queue?.next[0];
+  const authorName = post && !isFailure(post) && post.created_by ? authors[post.created_by] : undefined;
   const setName = Array.isArray(sets) ? sets.find((s) => s.id === (post as Post | null)?.social_set_id)?.name : undefined;
   const byId = new Map(accounts.map((a) => [a.id, a]));
   const shownProblem = local ? null : problem;
@@ -591,17 +688,43 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const mediaCustomFor = (p: Platform) => (selected.length > 1 && selected.includes(p) ? mediaCustom[p] : undefined);
   const mediaFor = (p: Platform) => (mediaCustomFor(p) ? links(mediaCustomFor(p)!) : images);
   const mediaMain = selected.filter((p) => mediaCustomFor(p) === undefined);
-  const parts = thread.map((p) => ({ ...p, media: links(p.media) }));
+  const parts = thread.map((p) => ({ ...p, media: links(p.media), media_alt: altOut(links(p.media), alts, !!postId) }));
+  // The accounts `p` goes to when some are unticked; null for every one, which an edit must send to clear a pick.
+  const accountIdsFor = (p: Platform) => {
+    // Until the accounts are read, the pick stands as loaded, so an early save keeps it.
+    if (!accountsLoaded) return picked[p] ?? null;
+    const all = inSet(p).map((a) => a.id);
+    const on = picked[p]?.filter((id) => all.includes(id));
+    return on && on.length < all.length ? on : null;
+  };
+  const toggleAccount = (p: Platform, id: string) => {
+    const all = inSet(p).map((a) => a.id);
+    const on = picked[p]?.filter((x) => all.includes(x)) ?? all;
+    const next = on.includes(id) ? on.filter((x) => x !== id) : [...on, id];
+    setPicked((old) => ({ ...old, [p]: next }));
+  };
   // One platform's post: its own text if customized, and the thread only where it can post one.
   const entry = (p: Platform) => ({
+    // An edit sends null to clear a pick; a new post leaves it out, which is the same.
+    account_ids: accountIdsFor(p) ?? (postId ? null : undefined),
     body: customFor(p) ?? body,
     media: mediaFor(p),
+    media_alt: altOut(mediaFor(p), alts, !!postId),
     thread: limits[p].thread ? parts : [],
     first_comment: commentText(p).trim() ? commentText(p) : undefined,
     cover: coverFor(p),
     tiktok: p === "tiktok" ? tiktokOut : undefined,
     youtube: p === "youtube" ? { privacy: ytPrivacy } : undefined,
+    pinterest: p === "pinterest" ? pinOut(pinFor) : undefined,
   });
+  // Pinterest: the accounts the pin goes to, and the settings as sent. A board is picked only for one account:
+  // a board belongs to an account, so with several each pin goes to its account's default board.
+  const pinAccounts = (() => {
+    const all = inSet("pinterest");
+    const on = accountIdsFor("pinterest");
+    return on ? all.filter((a) => on.includes(a.id)) : all;
+  })();
+  const pinFor: PinForm = pinAccounts.length === 1 ? pin : { ...pin, board: "" };
   // TikTok: the account's creator info (null while it loads), and the settings as sent. A photo post has no duet or
   // stitch, and an interaction the creator turned off in TikTok stays off.
   const creator = creatorRead?.key === ttKey && ttKey ? creatorRead.value : null;
@@ -650,7 +773,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const mediaProblems: Issue[] = selected.flatMap((p) => {
     const files = mediaFor(p);
     const where = { platform: p, inline: true, ...place(p, mediaCustomFor(p) !== undefined, `media-${p}`, "media-shared") };
-    if ((p === "instagram" || p === "youtube") && files.length === 0) return [{ ...where, text: platformProblem(p, "media_required") }];
+    if ((p === "instagram" || p === "youtube" || p === "tiktok" || p === "pinterest") && files.length === 0) return [{ ...where, text: platformProblem(p, "media_required") }];
     if (files.length > limits[p].media) return [{ ...where, text: platformProblem(p, "too_many_images") }];
     // Hints only: brain reads the files when the post is saved and has the last word.
     const bad = checkMediaTypes(files, p) ?? (coverFor(p) ? coverTypeHint(coverFor(p)!, p) : null);
@@ -675,18 +798,29 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   // TikTok's own blockers, once its account is read (tiktokProblem says the same on save).
   const ttBad = !selected.includes("tiktok") || creator === null ? null : !tt ? "The TikTok account couldn't be read." : !tt.can_post ? `${tt.reason ?? "TikTok does not let this account post right now."} Try again later.` : checkTikTok(tiktokOut) && platformProblem("tiktok", checkTikTok(tiktokOut)!);
   const ttIssues: Issue[] = ttBad ? [{ platform: "tiktok", inline: false, text: ttBad, tab: tabbed ? "tiktok" : "all", field: "tiktok-privacy" }] : [];
-  const issues = [...textProblems, ...mediaProblems, ...tooLong, ...commentLong, ...ttIssues];
+  // Pinterest's own blockers: the title, the link, and a board when neither the pin nor its account names one.
+  const pinWhere = { platform: "pinterest" as const, inline: false, tab: tabbed ? ("pinterest" as const) : ("all" as const) };
+  const pinIssues: Issue[] = !selected.includes("pinterest")
+    ? []
+    : [
+        ...(pinTitleOk(pin.title) ? [] : [{ ...pinWhere, field: "pinterest-title", text: platformProblem("pinterest", "pinterest_title_too_long") }]),
+        ...(pinLinkOk(pin.link) ? [] : [{ ...pinWhere, field: "pinterest-link", text: platformProblem("pinterest", "invalid_pinterest_link") }]),
+        ...(pinAccounts.length > 0 && pinNeedsBoard(pinFor, pinAccounts) ? [{ ...pinWhere, field: pinAccounts.length === 1 ? "pinterest-board" : "pinterest-title", text: platformProblem("pinterest", "pinterest_board_required") }] : []),
+      ];
+  const issues = [...textProblems, ...mediaProblems, ...tooLong, ...commentLong, ...ttIssues, ...pinIssues];
   const shown = active !== "all" ? active : selected[0];
   const others = group.filter((g) => g.id !== postId);
   // The group with this page's own post as it now stands, and the posts still up.
   const members = group.map((g) => (post && g.id === post.id ? post : g));
-  const live = members.filter((g) => g.status === "published");
-  const left = (downs ?? []).filter((d) => d.state === "failed" || d.state === "waiting");
-  const downNames = (downs ?? []).filter((d) => d.state === "down").map((d) => d.platform);
+  const live = members.filter((g) => g.status === "published" && g.platform !== "tiktok");
+  // Another post's TikTok version: this page's own shows the same hint under its Take down.
+  const tiktokUp = members.some((g) => g.id !== postId && g.status === "published" && g.platform === "tiktok");
+  const left = (downs ?? []).filter((d) => d.state === "failed");
+  const downNames = (downs ?? []).filter((d) => d.state === "taken_down").map((d) => d.platform);
 
   const preview = (
     <Preview
-      posts={shown ? [{ body: entry(shown).body, media: entry(shown).media }, ...entry(shown).thread] : [{ body, media: images }]}
+      posts={shown ? [{ body: entry(shown).body, media: entry(shown).media, media_alt: entry(shown).media_alt }, ...entry(shown).thread] : [{ body, media: images, media_alt: altList(images, alts) }]}
       platform={shown ?? "bluesky"}
       account={shown ? inSet(shown)[0] : undefined}
     />
@@ -724,7 +858,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
                   {mark}
                 </span>
               ) : (
-                <Link href={`/posts/${g.id}`} className={`${box} border-ink/10 hover:bg-ink/5`}>
+                <Link href={`/posts/${postRef(g)}`} className={`${box} border-ink/10 hover:bg-ink/5`}>
                   {mark}
                 </Link>
               )}
@@ -755,7 +889,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
         {others.map((g) => (
           <li key={g.id} className="flex flex-wrap items-center gap-3 p-4 text-sm">
             <PlatformMark platform={g.platform} className="size-5" />
-            <Link href={`/posts/${g.id}`} className="min-w-0 flex-1 font-bold hover:underline">
+            <Link href={`/posts/${postRef(g)}`} className="min-w-0 flex-1 font-bold hover:underline">
               {platformName(g.platform)} post
             </Link>
             <StatusBadge status={g.status} />
@@ -777,7 +911,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
               Take {live.length === 1 ? "this post" : `these ${live.length} posts`} down from {names(live.map((g) => g.platform))}? {live.length === 1 ? "It stays" : "They stay"} here as taken down.
             </p>
             <div className="flex flex-wrap gap-2">
-              <button ref={confirmAllRef} type="button" className="btn btn-primary btn-sm" aria-describedby="remove-all-q" disabled={busy !== null} onClick={() => takeDownGroup(live)}>
+              <button ref={confirmAllRef} type="button" className="btn btn-primary btn-sm" aria-describedby="remove-all-q" disabled={busy !== null} onClick={takeDownGroup}>
                 Yes, take {live.length === 1 ? "it" : "them all"} down
               </button>
               <button
@@ -798,6 +932,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
             {busy === "takedown-all" ? "Taking down..." : "Take down all"}
           </button>
         ))}
+      {tiktokUp && <p className="hint">TikTok does not let other apps delete a post. Delete it in the TikTok app.</p>}
       {downs && (
         <div key={downsShown} ref={downsRef} tabIndex={-1} role={left.length ? "alert" : "status"} className="card grid gap-3 p-4">
           <p className="font-bold">
@@ -806,16 +941,14 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
           </p>
           <ul className="grid gap-1 text-sm">
             {downs.map((d) => (
-              <li key={d.id}>
-                <PlatformMark platform={d.platform} named />:{" "}
-                {d.state === "down" ? "taken down" : d.state === "gone" ? "already gone" : d.state === "failed" ? (d.message || problemText(d.failure ?? "error", postMessages)) : "not tried yet"}
+              <li key={d.post_id}>
+                <PlatformMark platform={d.platform} named />: {d.state === "taken_down" ? "taken down" : d.state === "already_gone" ? "already gone" : d.message || "could not be taken down"}
               </li>
             ))}
           </ul>
           {left.length > 0 && (
             <div className="flex flex-wrap items-center gap-3">
-              {left.some((d) => d.state === "waiting") && <p className="min-w-0 flex-1">{postMessages.rate_limited}</p>}
-              <button type="button" className="btn btn-primary btn-sm" disabled={busy !== null} onClick={() => takeDownGroup(left)}>
+              <button type="button" className="btn btn-primary btn-sm" disabled={busy !== null} onClick={takeDownGroup}>
                 {busy === "takedown-all" ? "Taking down..." : `Retry ${names(left.map((d) => d.platform))}`}
               </button>
             </div>
@@ -885,7 +1018,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
 
   // A saved post, read-only or not, starts a new one with its content.
   const duplicate = postId && (
-    <Link href={`/posts/new?from=${encodeURIComponent(postId)}`} className="btn btn-secondary btn-sm justify-self-start">
+    <Link href={`/posts/new?from=${postNumber}`} className="btn btn-secondary btn-sm justify-self-start">
       <Icon name="copy" className="size-4" />
       Duplicate
     </Link>
@@ -893,122 +1026,27 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
 
   if (!editable && post) {
     return (
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_26rem]">
-        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5">
-          {versions}
-          <div className="card grid gap-2 p-5">
-            <div className="flex flex-wrap items-center gap-3">
-              <span aria-hidden="true" className="tone size-3 shrink-0 rounded-full bg-current" data-status={post.status} />
-              <p ref={statusRef} tabIndex={-1} role="status" className="font-bold">
-                {statusName[post.status]}
-                {post.status === "published" && post.published_at ? ` on ${when(post.published_at)}` : ""}
-                {post.status === "queued" ? ". This page updates by itself." : "."}
-              </p>
-            </div>
-            <p className="text-sm text-ink-soft">
-              {setName ? `Set: ${setName}. ` : ""}
-              {post.scheduled_at ? `Planned for ${when(post.scheduled_at)}.` : ""}
-            </p>
-            {pollNote && <p className="text-ink-soft">{pollNote}</p>}
-            {post.error && <p className="waitlist-error">What went wrong: {post.error}</p>}
-          </div>
-          {messages}
-          {post.first_comment && (
-            <section aria-labelledby="comment-heading" className="card grid gap-2 p-5">
-              <h2 id="comment-heading" className="font-display text-lg font-extrabold tracking-tight">
-                First comment
-              </h2>
-              <p className="whitespace-pre-wrap break-words text-sm">{post.first_comment}</p>
-            </section>
-          )}
-          {post.tiktok && (
-            <section aria-labelledby="tiktok-summary-heading" className="card grid gap-2 p-5">
-              <h2 id="tiktok-summary-heading" className="font-display text-lg font-extrabold tracking-tight">
-                TikTok settings
-              </h2>
-              <p className="text-sm">
-                Visible to: {privacyName[post.tiktok.privacy_level ?? ""] ?? "not chosen"}. Allowed: {[post.tiktok.allow_comment && "comments", post.tiktok.allow_duet && "duets", post.tiktok.allow_stitch && "stitches"].filter(Boolean).join(", ") || "no interactions"}.
-                {post.tiktok.commercial_content ? ` Disclosed as ${post.tiktok.branded_content ? "a paid partnership" : "promotional content"}.` : ""}
-                {post.tiktok.ai_generated ? " Marked as AI-generated." : ""}
-              </p>
-            </section>
-          )}
-          {post.platform === "youtube" && (
-            <section aria-labelledby="youtube-summary-heading" className="card grid gap-2 p-5">
-              <h2 id="youtube-summary-heading" className="font-display text-lg font-extrabold tracking-tight">
-                YouTube visibility
-              </h2>
-              <p className="text-sm">{youtubePrivacyName[post.youtube?.privacy ?? "private"]}</p>
-            </section>
-          )}
-          {post.cover && (
-            <section aria-labelledby="cover-heading" className="card grid gap-2 p-5">
-              <h2 id="cover-heading" className="font-display text-lg font-extrabold tracking-tight">
-                Cover image
-              </h2>
-              <p className="break-all text-sm">{post.cover}</p>
-            </section>
-          )}
-          {post.targets.length > 0 && (
-            <section aria-labelledby="targets-heading" className="grid gap-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 id="targets-heading" className="font-display text-lg font-extrabold tracking-tight">
-                  Accounts
-                </h2>
-                {post.status === "published" && hasStats(post.platform) && <RefreshStats post={post} onPost={setPost} />}
-              </div>
-              <ul className="card divide-y divide-ink/10">
-                {post.targets.map((t) => {
-                  const a = t.social_account_id ? byId.get(t.social_account_id) : undefined;
-                  return (
-                    <li key={t.id} className="flex flex-wrap items-center gap-3 p-4 text-sm">
-                      {a && <Avatar connection={a} size="size-8" />}
-                      <span className="min-w-0 flex-1">
-                        <strong>{a ? accountName(a) : "A disconnected account"}</strong>: {t.status}
-                        {t.error ? `. ${t.error}` : ""}
-                      </span>
-                      {t.remote_url && t.status === "published" && (
-                        <a href={t.remote_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm">
-                          View on {platformName(post.platform)}
-                          <Icon name="external" className="size-4" />
-                        </a>
-                      )}
-                      {t.status === "published" && <TargetStats platform={post.platform} metrics={t.metrics} />}
-                      {t.cover_error && (
-                        <span className="basis-full text-ink-soft" data-cover-error>
-                          Cover image: {t.cover_error} It is not tried again: set the cover on the platform yourself.
-                        </span>
-                      )}
-                      {post.first_comment && (
-                        <span className="basis-full text-ink-soft" data-comment-status={t.comment_status ?? "none"}>
-                          First comment: {commentStatus(t)}
-                        </span>
-                      )}
-                      {(post.thread ?? []).length > 0 && (
-                        <span className="basis-full text-ink-soft">
-                          Thread: {(t.parts ?? []).length} of {post.thread.length} follow-up posts out.
-                          {(t.parts ?? []).map((p, i) =>
-                            p.remote_url ? (
-                              <a key={p.remote_id} href={p.remote_url} target="_blank" rel="noopener noreferrer" className="ml-2 font-bold underline" aria-label={`Post ${i + 2} on ${a ? accountName(a) : "a disconnected account"}`}>
-                                Post {i + 2}
-                              </a>
-                            ) : null,
-                          )}
-                        </span>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
-          )}
-          {siblings}
-          <PostPagePanel id={post.id} />
-          {duplicate}
-          {post.status === "published" && confirm}
-        </div>
-        {preview}
-      </div>
+      <PostDetail
+        post={post}
+        members={members.length > 0 ? members : [post]}
+        zone={zone}
+        setName={setName}
+        author={authorName}
+        accounts={accounts}
+        messages={messages}
+        pollNote={pollNote}
+        statusRef={statusRef}
+        busy={busy}
+        downs={downs}
+        downsShown={downsShown}
+        onPost={(p) => {
+          setPost(p);
+          setGroup((g) => g.map((x) => (x.id === p.id ? p : x)));
+        }}
+        onRetry={retry}
+        onTakeDown={takeDownOne}
+        onTakeDownAll={takeDownGroup}
+      />
     );
   }
 
@@ -1155,7 +1193,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
           </ul>
         )}
       </div>
-      <ImageLinks media={media} max={cap(mediaMain)} platforms={mediaMain} onChange={setMedia} />
+      <ImageLinks media={media} alts={alts} onAlts={setAlts} max={cap(mediaMain)} platforms={mediaMain} onChange={setMedia} onUploading={onUploading} />
       {issueList(issues.filter((i) => i.inline && i.tab === "all"))}
       {coverShown && (
         <fieldset className="grid gap-2">
@@ -1235,7 +1273,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
                       aria-describedby={`post-part-${i}-count`}
                     />
                     <Counts id={`post-part-${i}-count`} text={p.body} platforms={threadable} xLong={xLong} />
-                    <ImageLinks media={p.media} max={cap(threadable)} post={i + 2} onChange={(m) => setThread((list) => list.map((v, j) => (j === i ? { ...v, media: m } : v)))} />
+                    <ImageLinks media={p.media} alts={alts} onAlts={setAlts} max={cap(threadable)} post={i + 2} onChange={(m) => setThread((list) => list.map((v, j) => (j === i ? { ...v, media: m } : v)))} onUploading={onUploading} />
                   </li>
                 );
               })}
@@ -1272,6 +1310,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
           </p>
         </div>
       )}
+      {p === "pinterest" && <PinterestPanel accounts={pinAccounts} settings={pin} onChange={setPin} />}
       {p === "tiktok" && <TikTokPanel creator={creator} settings={tiktokOut} onChange={setTikTok} photosOnly={photosOnly} onRetry={() => setCreatorTry((n) => n + 1)} />}
     </>
   );
@@ -1330,7 +1369,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
             <p className="hint">{mediaRule(p)}</p>
           </div>
         ) : (
-          <ImageLinks media={mediaCustom[p]!} max={limits[p].media} own={p} onChange={(m) => setMediaCustom((c) => ({ ...c, [p]: m }))} onClose={() => uncustomizeMedia(p)} />
+          <ImageLinks media={mediaCustom[p]!} alts={alts} onAlts={setAlts} max={limits[p].media} own={p} onChange={(m) => setMediaCustom((c) => ({ ...c, [p]: m }))} onClose={() => uncustomizeMedia(p)} onUploading={onUploading} />
         )}
         {issueList(issues.filter((i) => i.inline && i.platform === p))}
         {limits[p].comment === null ? (
@@ -1385,12 +1424,8 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
             {isFailure(copied) ? <>The post to copy couldn&apos;t be loaded. {problemText(copied, postMessages)}</> : <>Copied from {snippet(copied)}. Pick a time, and on TikTok who can see it, again.</>}
           </p>
         )}
-        {status === "scheduled" && post && (
-          <p className="flex flex-wrap items-center gap-3 font-bold">
-            <StatusBadge status="scheduled" />
-            Scheduled for {when(post.scheduled_at!)}.
-            {post.repeat && <span className="font-normal text-ink-soft">{repeatSummary(post.repeat)}.</span>}
-          </p>
+        {post && (status === "scheduled" || status === "draft") && (
+          <PostSummary post={post} zone={zone} setName={setName} author={authorName} repeat={post.repeat ? repeatSummary(post.repeat) : undefined} />
         )}
         {post && approvalState(post) && (
           <section aria-label="Approval" className="card flex flex-wrap items-center gap-x-3 gap-y-2 p-4">
@@ -1434,6 +1469,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
                   onChange={(e) => {
                     setSetId(e.target.value);
                     setChosen(null);
+                    setPicked({});
                   }}
                   required
                   aria-describedby="post-set-note"
@@ -1446,7 +1482,7 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
                     ))}
                 </select>
                 <p id="post-set-note" className="hint">
-                  {post && together.length < 2 ? `Goes to every ${platformName(post.platform)} account in this set.` : "One post per platform, to every account of it in this set."}
+                  {post && together.length < 2 ? `Goes to the ${platformName(post.platform)} accounts ticked below, all of them in this set by default.` : "One post per platform, to the accounts ticked below, all of them by default."}
                 </p>
               </div>
               <div className="grid content-start gap-1.5">
@@ -1511,8 +1547,32 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
                 )}
               </fieldset>
             )}
+            {editable && selected.some((p) => inSet(p).length > 1) && (
+              <fieldset className="grid gap-2">
+                <legend className="label mb-1.5">Accounts</legend>
+                <p className="hint">Untick an account to leave it out of this post.</p>
+                {selected
+                  .filter((p) => inSet(p).length > 1)
+                  .map((p) => (
+                    <ul key={p} className="flex flex-wrap items-center gap-1.5" aria-label={`${platformName(p)} accounts`}>
+                      <li>
+                        <PlatformMark platform={p} className="size-4" />
+                      </li>
+                      {inSet(p).map((a) => (
+                        <li key={a.id}>
+                          <label className="flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm ring-1 ring-[var(--line)] hover:ring-[var(--edge)] has-checked:bg-ink/[0.04] has-checked:ring-[var(--color-ink)]/40">
+                            <input type="checkbox" className="size-3.5 accent-[var(--color-signal-deep)]" checked={(accountIdsFor(p) ?? [a.id]).includes(a.id)} onChange={() => toggleAccount(p, a.id)} />
+                            {accountName(a)}
+                            <span className="sr-only"> on {platformName(p)}</span>
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  ))}
+              </fieldset>
+            )}
             <ReconnectNotice
-              accounts={needingReconnect(selected.flatMap(inSet))}
+              accounts={needingReconnect(selected.flatMap(inSet).filter((a) => accountIdsFor(a.provider as Platform)?.includes(a.id) ?? true))}
               canManage={manages(user.current_team.role)}
               title="An account needs reconnecting"
               lead="Posts to these accounts fail while their sign-in has ended, and may fail soon if it ends within a week."
@@ -1598,14 +1658,19 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
                 </button>
               )}
               <div className="ml-auto flex gap-2">
-                <button type="submit" name="mode" value="draft" className="btn btn-secondary" disabled={busy !== null}>
+                <button type="submit" name="mode" value="draft" className="btn btn-secondary" disabled={busy !== null || uploading > 0} aria-describedby={uploading > 0 ? "post-upload-note" : undefined}>
                   {busy === "draft" ? "Saving..." : "Save draft"}
                 </button>
-                <button type="submit" name="mode" value="publish" className="btn btn-primary" disabled={busy !== null || needsApproval} aria-describedby={needsApproval ? "post-approval-note" : undefined}>
+                <button type="submit" name="mode" value="publish" className="btn btn-primary" disabled={busy !== null || needsApproval || uploading > 0} aria-describedby={needsApproval ? "post-approval-note" : uploading > 0 ? "post-upload-note" : undefined}>
                   <Icon name="send" className="size-4" />
                   {busy === "publish" ? "Publishing..." : "Publish now"}
                 </button>
               </div>
+              {uploading > 0 && (
+                <p id="post-upload-note" role="status" className="hint basis-full text-xs sm:text-right">
+                  Saving waits for {uploading === 1 ? "the upload" : `${uploading} uploads`} to finish. Cancel {uploading === 1 ? "it" : "them"} to save without.
+                </p>
+              )}
               {needsApproval && (
                 <p id="post-approval-note" className="hint basis-full text-xs sm:text-right">
                   An owner or admin has to approve this post before it goes out. Schedule it to ask for approval.
@@ -1616,14 +1681,23 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
               <label htmlFor="post-at" className="text-xs font-bold whitespace-nowrap">
                 Publish at
               </label>
-              <input id="post-at" type="datetime-local" className="field w-auto min-w-0 max-w-full flex-1 sm:flex-none" value={at} onChange={(e) => setAt(e.target.value)} aria-describedby="post-at-note" />
-              <button type="submit" name="mode" value="schedule" className="btn btn-secondary" disabled={busy !== null}>
+              <input id="post-at" type="datetime-local" className="field w-auto min-w-0 max-w-full flex-1 sm:flex-none" value={zoneKnown ? toZoneInput(at, zone) : ""}
+                disabled={!zoneKnown}
+                onChange={(e) => {
+                  const typed = e.target.value.slice(0, 16);
+                  const iso = fromZoneInput(typed, zone);
+                  setAt(iso ?? "");
+                  setSkipped(iso && toZoneInput(iso, zone) !== typed ? typed.slice(11) : "");
+                }}
+                aria-describedby="post-at-note"
+              />
+              <button type="submit" name="mode" value="schedule" className="btn btn-secondary" disabled={busy !== null || uploading > 0} aria-describedby={uploading > 0 ? "post-upload-note" : undefined}>
                 <Icon name="clock" className="size-4" />
                 {busy === "schedule" ? "Scheduling..." : "Schedule"}
               </button>
               {queueKey && (
                 <>
-                  <button type="submit" name="mode" value="queue" className="btn btn-secondary" disabled={busy !== null || queueEmpty} aria-describedby="post-queue-note">
+                  <button type="submit" name="mode" value="queue" className="btn btn-secondary" disabled={busy !== null || queueEmpty || uploading > 0} aria-describedby={uploading > 0 ? "post-queue-note post-upload-note" : "post-queue-note"}>
                     <Icon name="lists" className="size-4" />
                     {busy === "queue" ? "Adding..." : "Add to queue"}
                   </button>
@@ -1636,13 +1710,14 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
                         </Link>
                       </>
                     ) : (
-                      queueNext && `Next slot: ${when(queueNext)}`
+                      queueNext && `Next slot: ${when(queueNext, zone)}`
                     )}
                   </p>
                 </>
               )}
               <p id="post-at-note" className="hint text-xs sm:ml-auto">
-                In your time zone, {zone}.
+                {!zoneKnown ? "Loading time zone..." : setQueue ? `In this set's time zone, ${zone}.` : `In your time zone, ${zone}.`}
+                {zoneKnown && skipped && at && ` ${skipped} does not exist that day (the clocks go forward), so it is ${toZoneInput(at, zone).slice(11)}.`}
               </p>
               <div className="flex basis-full flex-wrap items-center gap-x-2 gap-y-1">
                 {hasTikTok ? (
@@ -1761,10 +1836,50 @@ const mediaRule = (p: Platform) => `${mediaRules[p] ?? `${platformName(p)} takes
 // The image links of one post. `post` is its number in a thread; the first post leaves it out.
 // `post` is a thread part's number; `own` is the one platform these files go to in place of the shared ones.
 // `rule` is the one platform of a post for one platform, whose media rule the shared hint then says.
-function ImageLinks({ media, max, post, own, platforms, onChange, onClose }: { media: string[]; max: number; post?: number; own?: Platform; platforms?: Platform[]; onChange: (media: string[]) => void; onClose?: () => void }) {
+function ImageLinks({
+  media,
+  alts,
+  onAlts,
+  max,
+  post,
+  own,
+  platforms,
+  onChange,
+  onClose,
+  onUploading,
+}: {
+  media: string[];
+  // The alt texts by link, and how to change them.
+  alts: Record<string, string>;
+  onAlts: (alts: Record<string, string>) => void;
+  max: number;
+  post?: number;
+  own?: Platform;
+  platforms?: Platform[];
+  onChange: (media: string[]) => void;
+  onClose?: () => void;
+  // +1 as a file starts uploading, -1 as it ends, whatever the outcome.
+  onUploading?: (delta: number) => void;
+}) {
   const addRef = useRef<HTMLButtonElement>(null);
   const imageRefs = useRef<(HTMLInputElement | null)[]>([]);
   const [saved, setSaved] = useState<{ text: string; ok: boolean } | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  // Files on their way to brain, each with the share sent so far and its cancel.
+  const [sending, setSending] = useState<{ key: number; name: string; sent: number; ctrl: AbortController }[]>([]);
+  // One line per file that did not go up, and one for files left out.
+  const [upErrors, setUpErrors] = useState<{ key: number; text: ReactNode }[]>([]);
+  // Closing the editor (or this box) cancels what is still uploading.
+  const running = useRef(new Set<AbortController>());
+  useEffect(() => {
+    const all = running.current;
+    return () => all.forEach((c) => c.abort());
+  }, []);
+  // Uploads finish in any order, so each adds its link to the media as it is then.
+  const latest = useRef(media);
+  useEffect(() => {
+    latest.current = media;
+  }, [media]);
   const of = post ? ` of post ${post}` : own ? ` for ${platformName(own)}` : "";
   // Library picks fill the empty link boxes first, then follow the links already there.
   const filled = media.filter((m) => m.trim());
@@ -1774,13 +1889,65 @@ function ImageLinks({ media, max, post, own, platforms, onChange, onClose }: { m
     imageRefs.current[media.length]?.focus();
   }
 
+  async function upload(files: File[]) {
+    const room = max - latest.current.filter((m) => m.trim()).length - sending.length;
+    setUpErrors(files.length > room ? [{ key: -1, text: `Only ${Math.max(room, 0)} more ${room === 1 ? "file fits" : "files fit"}; the rest were left out.` }] : []);
+    await Promise.all(
+      files.slice(0, Math.max(room, 0)).map(async (file) => {
+        const key = Math.random();
+        const ctrl = new AbortController();
+        running.current.add(ctrl);
+        onUploading?.(1);
+        setSending((s) => [...s, { key, name: file.name, sent: 0, ctrl }]);
+        const r = await uploadFile(file, (sent) => setSending((s) => s.map((x) => (x.key === key ? { ...x, sent } : x))), ctrl.signal);
+        running.current.delete(ctrl);
+        onUploading?.(-1);
+        setSending((s) => s.filter((x) => x.key !== key));
+        if (ctrl.signal.aborted) return;
+        if (!isFailure(r)) {
+          latest.current = [...latest.current.filter((m) => m.trim()), r.url].slice(0, max);
+          return onChange(latest.current);
+        }
+        const why =
+          r === "media_too_large"
+            ? "it is too large: up to 100 MB, or a video up to 1 GB."
+            : r === "media_type_not_supported"
+              ? "it is not a JPEG, PNG, WebP, GIF, PDF, MP4 or MOV file."
+              : r === "rate_limited"
+                ? "too many uploads in a minute. Wait a minute, then try again."
+                : problemText(r, postMessages);
+        setUpErrors((list) => [
+          ...list,
+          {
+            key,
+            text: (
+              <>
+                {file.name} was not uploaded: {why}
+              </>
+            ),
+          },
+        ]);
+      }),
+    );
+  }
+
   function removeImage(i: number) {
     flushSync(() => onChange(media.filter((_, j) => j !== i)));
     addRef.current?.focus();
   }
 
   return (
-    <fieldset id={own ? `media-${own}` : post ? undefined : "media-shared"} tabIndex={post ? undefined : -1} className="grid gap-2">
+    <fieldset
+      id={own ? `media-${own}` : post ? undefined : "media-shared"}
+      tabIndex={post ? undefined : -1}
+      className="grid gap-2"
+      onDragOver={(e) => e.dataTransfer.types.includes("Files") && e.preventDefault()}
+      onDrop={(e) => {
+        if (e.dataTransfer.files.length === 0) return;
+        e.preventDefault();
+        void upload([...e.dataTransfer.files]);
+      }}
+    >
       <legend className={post ? "text-sm font-bold" : "label"}>
         {own ? `${platformName(own)} media` : <>Images<span className="sr-only">{of}</span></>}
       </legend>
@@ -1798,8 +1965,9 @@ function ImageLinks({ media, max, post, own, platforms, onChange, onClose }: { m
       {!post && !own && (
         <div className="grid gap-1">
           <p className="hint">
-            Up to {max}. Public https links, or Google Drive or Dropbox share links; nothing is uploaded to SocialReins.
+            Up to {max}. Upload files from your device (or drop them here), or add public https links, Google Drive or Dropbox share links. An upload is kept while a post that names it has yet to go out, a failed one included, so a retry finds it.
           </p>
+          <p className="hint">Add alt text to each image below: {altPlatforms.map(platformName).join(", ")} get it with the post. A pin on Pinterest has one alt text, the first image&apos;s, cut to 500 characters.</p>
           {platforms && platforms.length > 0 && (
             <details className="hint">
               <summary className="cursor-pointer select-none font-bold">What each network takes</summary>
@@ -1816,27 +1984,41 @@ function ImageLinks({ media, max, post, own, platforms, onChange, onClose }: { m
       {media.length > 0 && (
         <ul className="grid gap-2">
           {media.map((m, i) => (
-            <li key={i} className="flex items-end gap-2">
-              <label className="grid flex-1 gap-1 text-sm font-bold">
-                <span>
-                  Image {i + 1} link<span className="sr-only">{of}</span>
-                </span>
-                <input
-                  ref={(el) => {
-                    imageRefs.current[i] = el;
-                  }}
-                  type="url"
-                  inputMode="url"
-                  placeholder="https://"
-                  className="field font-normal"
-                  value={m}
-                  onChange={(e) => onChange(media.map((v, j) => (j === i ? e.target.value : v)))}
-                />
-              </label>
-              <SaveToLibrary url={m} label={`Image ${i + 1}${of}`} onResult={(text, ok) => setSaved({ text, ok })} />
-              <button type="button" className="icon-btn mb-1" aria-label={`Remove image ${i + 1}${of}`} onClick={() => removeImage(i)}>
-                <Icon name="close" className="size-4" />
-              </button>
+            <li key={i} className="grid gap-1">
+              <div className="flex items-end gap-2">
+                <label className="grid flex-1 gap-1 text-sm font-bold">
+                  <span>
+                    Image {i + 1} link<span className="sr-only">{of}</span>
+                  </span>
+                  <input
+                    ref={(el) => {
+                      imageRefs.current[i] = el;
+                    }}
+                    type="url"
+                    inputMode="url"
+                    placeholder="https://"
+                    className="field font-normal"
+                    value={m}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      onChange(media.map((v, j) => (j === i ? next : v)));
+                      // Typing the same link on keeps its description; a pasted or clearly different link is
+                      // most likely another image, so the old description is not carried over to it.
+                      if (m in alts && next !== m) {
+                        const { [m]: moved, ...rest } = alts;
+                        const type = (e.nativeEvent as InputEvent).inputType;
+                        onAlts(next.trim() && !(next in rest) && keepsAlt(m, next, type) ? { ...rest, [next]: moved! } : rest);
+                      }
+                    }}
+                  />
+                </label>
+                {/* An upload is kept only for its posts, so it is no library link. */}
+                {!m.startsWith(`${apiUrl}/media/`) && <SaveToLibrary url={m} label={`Image ${i + 1}${of}`} onResult={(text, ok) => setSaved({ text, ok })} />}
+                <button type="button" className="icon-btn mb-1" aria-label={`Remove image ${i + 1}${of}`} onClick={() => removeImage(i)}>
+                  <Icon name="close" className="size-4" />
+                </button>
+              </div>
+              {m.trim() && isImageLink(m) && <AltText n={i + 1} of={of} value={alts[m] ?? ""} onChange={(v) => onAlts({ ...alts, [m]: v })} />}
             </li>
           ))}
         </ul>
@@ -1846,7 +2028,50 @@ function ImageLinks({ media, max, post, own, platforms, onChange, onClose }: { m
           {saved.text}
         </p>
       )}
+      {sending.length > 0 && (
+        <ul className="grid gap-1" aria-live="polite">
+          {sending.map((f) => (
+            <li key={f.key} className="flex items-center gap-2 text-sm">
+              <span className="truncate">{f.name}</span>
+              <progress className="w-32" value={f.sent} max={1} aria-label={`Uploading ${f.name}`} />
+              <span className="hint tabular-nums">{Math.round(f.sent * 100)}%</span>
+              <button type="button" className="btn btn-quiet btn-sm" onClick={() => f.ctrl.abort()}>
+                Cancel<span className="sr-only"> uploading {f.name}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {upErrors.length > 0 && (
+        <ul role="alert" className="grid gap-1">
+          {upErrors.map((e) => (
+            <li key={e.key} className="waitlist-error">
+              {e.text}
+            </li>
+          ))}
+        </ul>
+      )}
       <div className="flex flex-wrap gap-2">
+        <input
+          ref={fileRef}
+          type="file"
+          multiple
+          accept={UPLOAD_ACCEPT}
+          className="sr-only"
+          tabIndex={-1}
+          aria-label={`Upload files${of}`}
+          onChange={(e) => {
+            const files = [...(e.target.files ?? [])];
+            e.target.value = "";
+            void upload(files);
+          }}
+        />
+        {filled.length + sending.length < max && (
+          <button type="button" className="btn btn-secondary btn-sm justify-self-start" onClick={() => fileRef.current?.click()}>
+            <Icon name="image" className="size-4" />
+            Upload<span className="sr-only">{post ? ` to post ${post}` : of}</span>
+          </button>
+        )}
         {media.length < max && (
           <button ref={addRef} type="button" className="btn btn-secondary btn-sm justify-self-start" onClick={addImage}>
             <Icon name="image" className="size-4" />
@@ -1859,84 +2084,43 @@ function ImageLinks({ media, max, post, own, platforms, onChange, onClose }: { m
   );
 }
 
-// Links, mentions and tags, coloured as Bluesky shows them.
-const rich = /(https?:\/\/\S+|(?<!\w)@[a-z0-9.-]+\.[a-z]{2,}|(?<!\w)#[^\s#.,!?;:]+)/gi;
-const fileName = (url: string) => {
-  try {
-    const u = new URL(url);
-    return u.pathname.split("/").filter(Boolean).pop() || u.host;
-  } catch {
-    return url;
-  }
-};
-
-// Roughly how the post looks on its first platform. Images show as tiles: the CSP only allows Bluesky's own image CDN.
-function Preview({ posts, platform, account }: { posts: ThreadPart[]; platform: Platform; account?: Connection }) {
+// One image's alt text: a button that opens a box with a counter, and a nudge while it is empty (never a block).
+function AltText({ n, of, value, onChange }: { n: number; of: string; value: string; onChange: (text: string) => void }) {
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (open) box.current?.focus();
+  }, [open]);
+  const shown = open || value !== "";
   return (
-    <section aria-labelledby="preview-heading" className="grid gap-3 rounded-lg bg-[var(--line-soft)] p-3 sm:p-4 lg:sticky lg:top-16 lg:max-h-[calc(100dvh-5rem)] lg:overflow-y-auto">
-      <h2 id="preview-heading" className="flex items-baseline justify-between gap-2 font-display text-lg font-extrabold tracking-tight">
-        Preview
-        <span className="text-xs font-normal text-ink-soft">
-          <span className="sr-only">as on </span>
-          <PlatformMark platform={platform} className="size-3.5" named />
-        </span>
-      </h2>
-      {posts.map((p, i) => (
-        <PreviewPost key={i} body={p.body} media={p.media} platform={platform} account={account} />
-      ))}
-    </section>
-  );
-}
-
-function PreviewPost({ body, media, platform, account }: { body: string; media: string[]; platform: Platform; account?: Connection }) {
-  const video = platform === "youtube" ? youtubeText(body) : null;
-  const parts = (video ? video.description : body).split(rich);
-  return (
-      <div className="card flex gap-3 p-4">
-        {account ? (
-          <Avatar connection={account} />
-        ) : (
-          <span aria-hidden="true" className="size-10 shrink-0 rounded-full bg-ink/10" />
-        )}
-        <div className="grid min-w-0 flex-1 gap-1.5">
-          <p className="truncate text-[0.95rem] leading-tight">
-            <strong>{account ? accountName(account) : `Your ${platformName(platform)} account`}</strong>{" "}
-            <span className="text-ink-soft">{account?.handle ? `@${account.handle}` : ""} now</span>
+    <div className="grid gap-1 pl-3">
+      {shown ? (
+        <div className="grid gap-1">
+          <label htmlFor={id} className="text-sm font-bold">
+            Alt text for image {n}
+            <span className="sr-only">{of}</span>
+          </label>
+          <textarea
+            id={id}
+            ref={box}
+            rows={2}
+            className="field font-normal"
+            placeholder="Describe the image for people who cannot see it"
+            aria-describedby={`${id}-count`}
+            value={value}
+            onChange={(e) => onChange(capAlt(e.target.value))}
+          />
+          <p id={`${id}-count`} className="hint tabular-nums">
+            {[...value].length} of {ALT_MAX} characters
           </p>
-          {video?.title && <p className="break-words text-[0.95rem] font-bold leading-snug">{video.title}</p>}
-          {(video ? video.description : body.trim()) ? (
-            <p className="whitespace-pre-wrap break-words text-[0.95rem] leading-snug">
-              {parts.map((part, i) =>
-                i % 2 ? (
-                  <span key={i} className="text-[#1185FE]">
-                    {part}
-                  </span>
-                ) : (
-                  part
-                ),
-              )}
-            </p>
-          ) : (
-            media.length === 0 && !video?.title && <p className="text-[0.95rem] text-ink-soft">Your post shows here as you write.</p>
-          )}
-          {media.length > 0 && (
-            <ul className={`mt-1 grid gap-1 overflow-hidden rounded-xl ${media.length > 1 ? "grid-cols-2" : ""}`}>
-              {media.map((m, i) => (
-                <li
-                  key={i}
-                  className={`grid place-items-center gap-1 bg-ink/5 p-3 text-center text-xs text-ink-soft ${
-                    media.length === 1 ? "aspect-video" : media.length === 3 && i === 0 ? "row-span-2" : "aspect-square"
-                  }`}
-                >
-                  <span className="grid justify-items-center gap-1">
-                    <Icon name="image" className="size-6" />
-                    <span className="max-w-full truncate">{fileName(m)}</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
         </div>
-      </div>
+      ) : (
+        <button type="button" className="btn btn-quiet btn-sm justify-self-start" onClick={() => setOpen(true)}>
+          Add alt text<span className="sr-only"> for image {n}{of}</span>
+        </button>
+      )}
+      {!value.trim() && <p className="hint">Add alt text so screen reader users can follow your post.</p>}
+    </div>
   );
 }

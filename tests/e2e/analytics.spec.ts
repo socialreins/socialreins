@@ -76,7 +76,7 @@ test("analytics shows totals, the chart with its table, networks and top posts",
   await expect(totals).toContainText("Views8.9K");
   await expect.poll(() => asked(queries, "2026-10-12")).toBe(true);
   await expect(page.locator("[data-stats-note]")).toHaveText(
-    "Stats come from Bluesky, Facebook, Instagram and YouTube. Threads, LinkedIn, X and TikTok are not available yet. Numbers refresh about every hour for two days after a post goes out, then twice a day, for 30 days.",
+    "Stats come from Bluesky, Facebook, Instagram and YouTube. Threads, LinkedIn, X, TikTok and Pinterest are not available yet. Numbers refresh about every hour for two days after a post goes out, then twice a day, for 30 days.",
   );
 
   const days = page.getByRole("region", { name: "Engagement by day" });
@@ -180,7 +180,7 @@ test("a published row of the posts list shows its likes and comments", async ({ 
   await brain(page);
   await page.route(/\/v1\/posts(\?.*)?$/, (r) => {
     const q = new URL(r.request().url()).searchParams;
-    if (q.get("status") === "draft" || !q.get("from")?.startsWith("2026-10-31")) return r.fulfill({ json: [] });
+    if (q.get("status") === "draft" || !q.get("from")?.startsWith("2026-10-30")) return r.fulfill({ json: [] });
     return r.fulfill({
       json: [
         post("p-a", { body: "With numbers", group_id: "g1", targets: [target({ metrics: metrics(1200, 4, 1, null) })] }),

@@ -1,5 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  canRetry,
+  failureAdvice,
+  overallStatus,
+  timeline,
+  type Post,
+  type Target,
+  altList,
+  capAlt,
+  keepsAlt,
+  altMap,
+  altOut,
+  isImageLink,
   charCount,
   checkComment,
   checkCover,
@@ -15,6 +27,9 @@ import {
   limits,
   deletePost,
   fromLocalInput,
+  fromZoneInput,
+  moveToZoneDay,
+  inZone,
   getPost,
   getTikTokCreator,
   graphemes,
@@ -29,10 +44,12 @@ import {
   untilUtc,
   monthWeeks,
   publishPost,
-  takeDownAll,
+  takeDownGroup,
   toLocalInput,
+  toZoneInput,
   updatePost,
   utf8Bytes,
+  threadsLength,
   xWeight,
   youtubeText,
 } from "@/lib/posts";
@@ -137,58 +154,23 @@ describe("post requests", () => {
   });
 });
 
-describe("take down all", () => {
-  // Answers each DELETE from `answers` by post id and records the order and any overlap.
-  function brain(answers: Record<string, () => Response>) {
-    const calls: string[] = [];
-    let open = 0;
-    let overlap = false;
-    vi.stubGlobal("fetch", async (url: string) => {
-      const id = url.split("/").at(-1)!;
-      calls.push(id);
-      overlap ||= ++open > 1;
-      await new Promise((r) => setTimeout(r, 1));
-      open--;
-      return answers[id]!();
+describe("take down group", () => {
+  it("posts once to the group's take down and returns each platform's result", async () => {
+    const seen: string[] = [];
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+      seen.push(`${init.method} ${url}`);
+      return Response.json({ group_id: "g 1", posts: [], results: [{ post_id: "a", platform: "bluesky", state: "taken_down", message: null }] });
     });
-    return { calls, overlapped: () => overlap };
-  }
-  const gone = () => Response.json({ id: "x", status: "deleted" });
-
-  it("takes the posts down one after another, in order", async () => {
-    const b = brain({ a: gone, b: gone, c: gone });
-    expect(await takeDownAll(["a", "b", "c"])).toEqual([
-      { id: "a", state: "down" },
-      { id: "b", state: "down" },
-      { id: "c", state: "down" },
-    ]);
-    expect(b.calls).toEqual(["a", "b", "c"]);
-    expect(b.overlapped()).toBe(false);
+    expect(await takeDownGroup("g 1")).toEqual({ group_id: "g 1", posts: [], results: [{ post_id: "a", platform: "bluesky", state: "taken_down", message: null }] });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatch(/^POST .*\/v1\/post-groups\/g%201\/takedown$/);
   });
 
-  it("keeps going after a failure and reports each post", async () => {
-    brain({
-      a: () => Response.json({ error: "takedown_failed", message: "Revoked." }, { status: 422 }),
-      b: () => Response.json({ error: "not_found" }, { status: 404 }),
-      c: () => Response.json({ error: "not_deletable" }, { status: 409 }),
-      d: gone,
-    });
-    expect(await takeDownAll(["a", "b", "c", "d"])).toEqual([
-      { id: "a", state: "failed", message: "Revoked." },
-      { id: "b", state: "gone" },
-      { id: "c", state: "failed", failure: "not_deletable" },
-      { id: "d", state: "down" },
-    ]);
-  });
-
-  it("stops at brain's rate limit and leaves the rest waiting", async () => {
-    const b = brain({ a: gone, b: () => Response.json({ error: "rate_limited" }, { status: 429 }), c: gone });
-    expect(await takeDownAll(["a", "b", "c"])).toEqual([
-      { id: "a", state: "down" },
-      { id: "b", state: "waiting" },
-      { id: "c", state: "waiting" },
-    ]);
-    expect(b.calls).toEqual(["a", "b"]);
+  it("maps brain's rate limit and a missing group to failures", async () => {
+    vi.stubGlobal("fetch", async () => Response.json({ error: "rate_limited" }, { status: 429 }));
+    expect(await takeDownGroup("g")).toBe("rate_limited");
+    vi.stubGlobal("fetch", async () => Response.json({ error: "not_found" }, { status: 404 }));
+    expect(await takeDownGroup("g")).toBe("not_found");
   });
 });
 
@@ -198,6 +180,21 @@ describe("post checks", () => {
     expect(graphemes("👨‍👩‍👧")).toBe(1);
     expect(graphemes("é")).toBe(1);
     expect(utf8Bytes("é")).toBe(2);
+  });
+
+  it("counts a Threads emoji as its UTF-8 bytes, as brain does", () => {
+    expect(threadsLength("abc é©™")).toBe(7);
+    expect(threadsLength("😀")).toBe(4);
+    expect(threadsLength("👩‍👩‍👧")).toBe(18);
+    expect(threadsLength("❤️")).toBe(6);
+    expect(threadsLength("🇧🇩")).toBe(8);
+    expect(threadsLength("1️⃣")).toBe(7);
+    expect(threadsLength("👍🏽")).toBe(8);
+    // Text-style symbols stay 1, and a Bangla conjunct (ra, joiner, virama, ya) is four characters.
+    expect(threadsLength("✓★♥©™")).toBe(5);
+    expect(threadsLength("র\u200D্য")).toBe(4);
+    expect(charCount("threads", "a".repeat(496) + "😀")).toBe(500);
+    expect(charCount("threads", "😀".repeat(126))).toBeGreaterThan(limits.threads.chars);
   });
 
   it("mirrors brain's save rules", () => {
@@ -229,7 +226,18 @@ describe("post checks", () => {
       youtube: { chars: 100, media: 1, thread: false, comment: 10_000, cover: true },
       x: { chars: 280, media: 4, thread: true, comment: null, cover: false },
       tiktok: { chars: 2200, media: 35, thread: false, comment: null, cover: false },
+      pinterest: { chars: 800, media: 5, thread: false, comment: null, cover: false },
     });
+    // A pin: a description of at most 800 characters, 1 to 5 images, and no text-only pin.
+    expect(checkPost("a".repeat(800), img(5), "pinterest")).toBeNull();
+    expect(checkPost("", img(1), "pinterest")).toBeNull();
+    expect(checkPost("a".repeat(801), img(1), "pinterest")).toBe("too_long");
+    expect(checkPost("x", img(6), "pinterest")).toBe("too_many_images");
+    expect(checkPost("a description", [], "pinterest")).toBe("media_required");
+    expect(checkPost(" ", [], "pinterest")).toBe("empty_post");
+    expect(checkMediaTypes(["https://a.example/a.mp4", "https://a.example/b.jpg"], "pinterest")).toBe("mixed_media");
+    expect(checkMediaTypes(["https://a.example/a.gif"], "pinterest")).toBe("media_type_not_supported");
+    expect(checkMediaTypes(["https://a.example/a.webp", "https://a.example/b.png"], "pinterest")).toBeNull();
     expect(checkPost("a".repeat(500), [], "threads")).toBeNull();
     expect(checkPost("a".repeat(501), [], "threads")).toBe("too_long");
     expect(checkPost("x", img(20), "threads")).toBeNull();
@@ -446,6 +454,55 @@ describe("dates", () => {
     expect(toLocalInput(iso)).toBe("2026-11-20T09:30");
     expect(fromLocalInput("")).toBeNull();
     expect(toLocalInput(null)).toBe("");
+  });
+
+  it("converts wall times in a set's zone, across DST", () => {
+    // New York is UTC-4 in summer and UTC-5 in winter.
+    expect(fromZoneInput("2026-07-01T09:30", "America/New_York")).toBe("2026-07-01T13:30:00.000Z");
+    expect(fromZoneInput("2026-12-01T09:30", "America/New_York")).toBe("2026-12-01T14:30:00.000Z");
+    expect(toZoneInput("2026-07-01T13:30:00.000Z", "America/New_York")).toBe("2026-07-01T09:30");
+    expect(toZoneInput("2026-11-20T09:30:00Z", "Asia/Dhaka")).toBe("2026-11-20T15:30");
+    // The day the clocks go forward (8 March 2026), either side of the jump.
+    expect(fromZoneInput("2026-03-08T01:30", "America/New_York")).toBe("2026-03-08T06:30:00.000Z");
+    expect(fromZoneInput("2026-03-08T03:30", "America/New_York")).toBe("2026-03-08T07:30:00.000Z");
+  });
+
+  it("moves a skipped time forward and takes the first of a repeated one, in every zone", () => {
+    // Gaps: New York 8 March 02:00 to 03:00, London 29 March 01:00 to 02:00, Sydney 4 October 02:00 to 03:00.
+    expect(fromZoneInput("2026-03-08T02:30", "America/New_York")).toBe("2026-03-08T07:00:00.000Z");
+    expect(toZoneInput("2026-03-08T07:00:00.000Z", "America/New_York")).toBe("2026-03-08T03:00");
+    expect(fromZoneInput("2026-03-29T01:30", "Europe/London")).toBe("2026-03-29T01:00:00.000Z");
+    expect(toZoneInput("2026-03-29T01:00:00.000Z", "Europe/London")).toBe("2026-03-29T02:00");
+    expect(fromZoneInput("2026-10-04T02:30", "Australia/Sydney")).toBe("2026-10-03T16:00:00.000Z");
+    expect(toZoneInput("2026-10-03T16:00:00.000Z", "Australia/Sydney")).toBe("2026-10-04T03:00");
+    // Overlaps, the first (summer time) occurrence: New York 1 November, London 25 October, Sydney 5 April.
+    expect(fromZoneInput("2026-11-01T01:30", "America/New_York")).toBe("2026-11-01T05:30:00.000Z");
+    expect(fromZoneInput("2026-10-25T01:30", "Europe/London")).toBe("2026-10-25T00:30:00.000Z");
+    expect(fromZoneInput("2026-04-05T02:30", "Australia/Sydney")).toBe("2026-04-04T15:30:00.000Z");
+    // Next to a change, an ordinary time is itself.
+    expect(fromZoneInput("2026-10-04T03:30", "Australia/Sydney")).toBe("2026-10-03T16:30:00.000Z");
+    expect(fromZoneInput("2026-03-29T00:30", "Europe/London")).toBe("2026-03-29T00:30:00.000Z");
+  });
+
+  it("reads a post's day and time in its set's zone, whatever the browser's", () => {
+    // 22:00 UTC on 11 November is 09:00 on the 12th in Sydney.
+    const d = inZone(new Date("2026-11-11T22:00:00Z"), "Australia/Sydney");
+    expect([d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes()]).toEqual([2026, 10, 12, 9, 0]);
+    expect(inZone(new Date("2026-11-11T22:00:00Z"))).toEqual(new Date("2026-11-11T22:00:00Z"));
+  });
+
+  it("moves a post to another day at the same wall time in the set's zone", () => {
+    const now = new Date("2026-01-01T00:00:00Z");
+    // 09:00 in Dhaka (UTC+6) on 10 March, moved to 12 March, stays 09:00 there whatever the browser's zone.
+    const to = moveToZoneDay(new Date("2026-03-10T03:00:00Z"), new Date(2026, 2, 12), "Asia/Dhaka", now);
+    expect(to?.toISOString()).toBe("2026-03-12T03:00:00.000Z");
+    // Across New York's spring change, 09:00 stays 09:00.
+    const ny = moveToZoneDay(new Date("2026-03-06T14:00:00Z"), new Date(2026, 2, 9), "America/New_York", now);
+    expect(ny?.toISOString()).toBe("2026-03-09T13:00:00.000Z");
+    expect(moveToZoneDay(new Date("2026-03-06T14:00:00Z"), new Date(2025, 0, 1), "UTC", now)).toBeNull();
+    expect(fromZoneInput("2026-11-20T09:30", "UTC")).toBe("2026-11-20T09:30:00.000Z");
+    expect(fromZoneInput("", "UTC")).toBeNull();
+    expect(toZoneInput(null, "UTC")).toBe("");
   });
 
   it("builds a month range and Monday-first weeks", () => {
@@ -684,5 +741,101 @@ describe("repeat until", () => {
     for (const day of ["2026-12-05", "2026-12-31", "2027-02-28"]) expect(untilLocal(untilUtc(day))).toBe(day);
     // The local day's last second, as a UTC date.
     expect(untilUtc("2026-12-05")).toBe(new Date(2026, 11, 5, 23, 59, 59).toISOString().slice(0, 10));
+  });
+});
+
+describe("alt text", () => {
+  const a = "https://example.com/a.png";
+  const b = "https://example.com/b.png";
+  it("is collected by link from a post and its thread, the first one winning", () => {
+    const posts = [{ media: [a, b], media_alt: ["A cat", ""], thread: [{ body: "", media: [b, a], media_alt: ["B dog", "other"] }] }];
+    expect(altMap(posts)).toEqual({ [a]: "A cat", [b]: "B dog" });
+    expect(altMap([{ media: [a] }])).toEqual({});
+  });
+
+  it("follows its image when images are added, removed or reordered", () => {
+    const alts = { [a]: " A cat ", [b]: "B dog" };
+    expect(altList([a, b], alts)).toEqual(["A cat", "B dog"]);
+    expect(altList([b, "https://example.com/c.png", a], alts)).toEqual(["B dog", "", "A cat"]);
+    expect(altList([b], alts)).toEqual(["B dog"]);
+  });
+
+  it("is left out of a new post without any, and always sent on an edit", () => {
+    expect(altOut([a], {}, false)).toBeUndefined();
+    expect(altOut([a], { [a]: "x" }, false)).toEqual(["x"]);
+    expect(altOut([a, b], {}, true)).toEqual(["", ""]);
+    expect(altOut([], { [a]: "x" }, true)).toBeUndefined();
+  });
+
+  it("is for images only", () => {
+    expect(isImageLink(a)).toBe(true);
+    expect(isImageLink("https://drive.google.com/file/d/abc/view")).toBe(true);
+    expect(isImageLink("https://example.com/pic.GIF?x=1")).toBe(true);
+    expect(isImageLink("https://example.com/clip.mp4")).toBe(false);
+    expect(isImageLink("https://example.com/doc.pdf")).toBe(false);
+  });
+
+  it("stays with a link only while the same link is typed on", () => {
+    expect(keepsAlt(a, a + "x")).toBe(true);
+    expect(keepsAlt(a, a.slice(0, -1), "deleteContentBackward")).toBe(true);
+    // A pasted link, even one character away, and any big change, is taken for another image.
+    expect(keepsAlt(a, b, "insertFromPaste")).toBe(false);
+    expect(keepsAlt(a, b, "insertFromDrop")).toBe(false);
+    expect(keepsAlt(a, "https://cdn.example.org/photos/other-picture.jpg", "insertText")).toBe(false);
+    expect(keepsAlt(a, "", "deleteContentBackward")).toBe(false);
+  });
+
+  it("is capped by code points as brain counts, so emoji are not cut short", () => {
+    expect([...capAlt("😀".repeat(1000))]).toHaveLength(1000);
+    expect([...capAlt("😀".repeat(1001))]).toHaveLength(1000);
+    expect(capAlt("short")).toBe("short");
+  });
+});
+
+describe("the page of a saved post", () => {
+  const tg = (extra: Partial<Target> = {}): Target => ({ id: "t", social_account_id: "c1", status: "published", remote_id: "r", remote_url: null, error: null, published_at: "2026-11-03T08:00:00Z", parts: [], ...extra });
+  const mk = (extra: Partial<Post> = {}) => ({ id: "p", number: 1, platform: "bluesky", status: "published", thread: [], targets: [tg()], created_at: "2026-11-01T10:00:00Z", updated_at: "2026-11-03T09:00:00Z", scheduled_at: "2026-11-03T08:00:00Z", approval_at: null, ...extra }) as unknown as Post;
+
+  it("gives a post and its versions one status", () => {
+    expect(overallStatus([mk(), mk()])).toBe("published");
+    expect(overallStatus([mk(), mk({ status: "failed", targets: [tg({ status: "failed" })] })])).toBe("partial");
+    expect(overallStatus([mk({ targets: [tg(), tg({ status: "failed" })] })])).toBe("partial");
+    expect(overallStatus([mk({ status: "failed", targets: [tg({ status: "failed" })] })])).toBe("failed");
+    expect(overallStatus([mk({ status: "failed", targets: [tg(), tg({ status: "failed" })] })])).toBe("partial");
+    expect(overallStatus([mk({ status: "deleted", targets: [tg({ status: "deleted" })] })])).toBe("deleted");
+    expect(overallStatus([mk({ status: "queued" }), mk()])).toBe("queued");
+    expect(overallStatus([mk({ status: "draft" })])).toBe("draft");
+    expect(overallStatus([mk({ status: "scheduled" }), mk()])).toBe("scheduled");
+  });
+
+  it("offers Retry only where brain would send the target again", () => {
+    const p = { status: "failed" as const, thread: [{ body: "two", media: [] }] };
+    expect(canRetry(tg({ status: "failed", remote_id: null }), p)).toBe(true);
+    expect(canRetry(tg({ status: "failed", remote_id: "r", parts: [] }), p)).toBe(true);
+    expect(canRetry(tg({ status: "failed", remote_id: "r", parts: [{ remote_id: "a", remote_url: null, published_at: null }] }), p)).toBe(false);
+    expect(canRetry(tg({ status: "published" }), p)).toBe(false);
+    expect(canRetry(tg({ status: "failed", remote_id: null, error: "Timed out, it may have posted." }), p)).toBe(false);
+    // brain only retries the targets of a published or failed post: a taken-down post has nothing to retry.
+    expect(canRetry(tg({ status: "failed", remote_id: null }), { ...p, status: "deleted" })).toBe(false);
+  });
+
+  it("says what to do about a failure", () => {
+    const e = (error: string, extra: object = {}) => ({ error, retry_at: null, retried: false, ...extra });
+    expect(failureAdvice(e("The token expired."), true, "UTC")).toMatchObject({ link: "accounts" });
+    expect(failureAdvice(e("X is rate limiting this account (429)."), true, "UTC").text).toContain("Wait a few minutes");
+    expect(failureAdvice(e("It may have posted."), false, "UTC").text).toContain("Check the account");
+    expect(failureAdvice(e("Image aspect ratio refused."), true, "UTC").text).toContain("Duplicate");
+    expect(failureAdvice(e("429", { retry_at: "2026-11-03T08:05:00Z" }), false, "UTC").text).toContain("sends it again by itself on Nov 3, 8:05 AM");
+    expect(failureAdvice(e("Something odd."), true, "UTC").text).toContain("Retry once");
+    // Content errors never get "wait and retry", and a daily limit says tomorrow.
+    expect(failureAdvice(e("Too many images for this network, try again with fewer."), true, "UTC").text).toContain("Duplicate");
+    expect(failureAdvice(e("YouTube says the daily upload limit was reached. Try again tomorrow."), true, "UTC").text).toContain("tomorrow");
+  });
+
+  it("lists the times it keeps, oldest first", () => {
+    const names = { account: () => "Alice", network: () => "Bluesky" };
+    const out = timeline([mk({ targets: [tg(), tg({ status: "failed", retry_at: "2026-11-04T08:00:00Z", retried: true })] })], names, "Maya");
+    expect(out.map((x) => x.text)).toEqual(["Created by Maya", "Planned for", "Published on Bluesky, Alice", "Failed on Bluesky, Alice after an automatic retry", "Automatic retry on Bluesky, Alice"]);
+    expect(out.map((x) => x.at)).toEqual([...out.map((x) => x.at)].sort());
   });
 });

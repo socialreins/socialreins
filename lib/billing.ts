@@ -7,13 +7,19 @@ export type Plan = {
   trial_ends_at: string | null;
   current_period_end: string | null;
   cancel_at_period_end: boolean;
+  // A free plan an admin gave: nothing to pay or manage. Optional until brain sends it.
+  comped?: boolean;
 };
 // A limit of null is unlimited.
 export type Billing = {
   enabled: boolean;
   plan: Plan | null;
-  limits: { accounts: number | null; members: number | null; automation: boolean; contacts: number | null };
-  usage: { accounts: number; members: number };
+  // ai_monthly: AI replies a month (UTC) on our key before AI credits; null when not metered. Optional until brain sends it.
+  limits: { accounts: number | null; members: number | null; automation: boolean; contacts: number | null; inboxes?: number | null; ai_monthly?: number | null };
+  // ai_replies: this month's AI replies paid from the plan's allowance.
+  usage: { accounts: number; members: number; contacts?: number; inboxes?: number; ai_replies?: number };
+  // Whether checkout starts with the 7-day trial: once for each person, not for each team. Optional until brain sends it.
+  trial_available?: boolean;
 };
 export type Credits = { x: number; ai: number };
 export type Provider = "anthropic" | "openai";
@@ -48,6 +54,9 @@ const toStripe = (r: { url?: unknown } | Failure): { url: string } | Failure => 
 // Owner only, and a sign-in from the last 10 minutes (reauth_required). Both answer {url}, a Stripe page to send the browser to.
 export const startCheckout = async (plan: PlanChoice, interval: Interval = "year") =>
   toStripe(await api<{ url: string }>("/v1/team/billing/checkout", "POST", { plan, interval }));
+// One-time X credit packs (decision 0006): the webhook grants the credits once Stripe reports the payment.
+export type Pack = "x100" | "x500";
+export const buyCredits = async (pack: Pack) => toStripe(await api<{ url: string }>("/v1/team/billing/credits", "POST", { pack }));
 export const openPortal = async () => toStripe(await api<{ url: string }>("/v1/team/billing/portal", "POST", {}));
 // A plan that counts as live: the team has one and can use it.
 export const isLive = (p: Plan | null): p is Plan => !!p && ["trialing", "active", "past_due"].includes(p.status);

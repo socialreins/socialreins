@@ -28,6 +28,7 @@ const providers = [
   { provider: "x", configured: false },
   { provider: "tiktok", configured: false },
   { provider: "youtube", configured: false },
+  { provider: "pinterest", configured: true },
 ];
 
 async function signedIn(page: Page, role: Role, accounts: unknown[] = [alice]) {
@@ -526,12 +527,15 @@ test("a connect that times out reloads the list, since brain may still finish", 
 });
 
 // Team pages (/t/...) show the team's own media links from any https host; avatars there go through safeAvatar.
-test("the CSP allows only Bluesky's image path and Meta's, YouTube's, X's and TikTok's image CDNs for avatars outside team pages", async ({ request }) => {
+test("the CSP allows only Bluesky's image path and Meta's, YouTube's, X's, Pinterest's and TikTok's image CDNs for avatars outside team pages", async ({ request }) => {
   expect((await request.get("/connections")).headers()["content-security-policy"]).toContain("img-src 'self' data: https:;");
   const csp = (await request.get("/profile")).headers()["content-security-policy"];
+  // The landing footer's directory badges come first, then the avatar hosts.
   expect(csp).toContain(
-    "img-src 'self' data: https://cdn.bsky.app/img/ https://*.fbcdn.net https://*.cdninstagram.com https://yt3.ggpht.com https://yt3.googleusercontent.com https://pbs.twimg.com https://*.tiktokcdn.com https://*.tiktokcdn-us.com;",
+    "img-src 'self' data: https://twelve.tools https://startupfa.me https://img.turbo0.com https://cdn.bsky.app/img/ https://*.fbcdn.net https://*.cdninstagram.com https://yt3.ggpht.com https://yt3.googleusercontent.com https://i.ytimg.com https://pbs.twimg.com https://i.pinimg.com https://*.tiktokcdn.com https://*.tiktokcdn-us.com",
   );
+  // Nothing after those hosts but Google Analytics' hits (GA_MEASUREMENT_ID is set for the e2e server).
+  expect(csp).toMatch(/tiktokcdn-us\.com( https:\/\/(\*\.google-analytics\.com|\*\.analytics\.google\.com|www\.googletagmanager\.com))*;/);
 });
 
 const metaChoices = {
@@ -748,4 +752,55 @@ test("every network tab fits at 1440 wide, and on a phone the tabs scroll instea
   await tablist.getByRole("tab", { name: /YouTube/ }).click();
   const last = (await tablist.getByRole("tab", { name: /YouTube/ }).boundingBox())!;
   expect(last.x + last.width).toBeLessThanOrEqual(390);
+});
+
+const pinAccount = { ...alice, id: "p1", provider: "pinterest", external_id: "1001", handle: "annpins", display_name: "Ann Pins", avatar_url: null };
+const boards = [
+  { id: "111", name: "Recipes", privacy: "PUBLIC" },
+  { id: "222", name: "Travel", privacy: "PROTECTED" },
+];
+
+test("an owner sets a Pinterest account's default board from its boards", async ({ page }) => {
+  await signedIn(page, "owner", [pinAccount]);
+  await page.route("**/v1/connections/p1/pinterest/boards", (route) => route.fulfill({ json: { boards } }));
+  const saved: unknown[] = [];
+  await page.route(/\/v1\/connections\/p1\/pinterest$/, (route) => {
+    saved.push(route.request().postDataJSON());
+    return route.fulfill({ json: { default_board_id: "222", default_board_name: "Travel" } });
+  });
+  await page.goto("/connections");
+  await openSettings(page, "Ann Pins");
+  const dialog = page.getByRole("dialog");
+  const select = dialog.getByLabel("Default board");
+  await expect(select.getByRole("option", { name: "Travel" })).toHaveCount(1);
+  await select.selectOption("222");
+  await dialog.getByRole("button", { name: "Save default board" }).click();
+  await expect.poll(() => saved).toEqual([{ default_board_id: "222" }]);
+  await expect(page.getByText("Default board saved for Ann Pins.")).toBeVisible();
+});
+
+test("a member sees a Pinterest account's default board but cannot save one", async ({ page }) => {
+  await signedIn(page, "member", [{ ...pinAccount, default_board_id: "111", default_board_name: "Recipes" }]);
+  await page.route("**/v1/connections/p1/pinterest/boards", (route) => route.fulfill({ json: { boards, default_board_id: "111" } }));
+  await page.goto("/connections");
+  await openSettings(page, "Ann Pins");
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByLabel("Default board")).toHaveValue("111");
+  await expect(dialog.getByLabel("Default board")).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "Save default board" })).toHaveCount(0);
+});
+
+test("back from connecting Pinterest, the settings open on the default board unless one is kept", async ({ page }) => {
+  await page.route("**/v1/connections/p1/pinterest/boards", (route) => route.fulfill({ json: { boards } }));
+  // Connected a moment ago, so it is the account that just arrived.
+  await signedIn(page, "owner", [{ ...pinAccount, created_at: new Date().toISOString() }]);
+  await page.goto("/connections?connected=pinterest");
+  await expect(page.getByRole("dialog").getByText("A pin goes to this board when its post doesn't name another one.")).toBeVisible();
+});
+
+test("back from reconnecting Pinterest with a default board kept, no question opens", async ({ page }) => {
+  await signedIn(page, "owner", [{ ...pinAccount, default_board_id: "111", default_board_name: "Recipes", created_at: new Date().toISOString() }]);
+  await page.goto("/connections?connected=pinterest");
+  await expect(page.getByText("Connected your Pinterest account.")).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 });

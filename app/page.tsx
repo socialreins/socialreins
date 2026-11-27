@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { CookieSettings } from "@/components/cookie-settings";
 import { FeaturedBadges } from "@/components/featured-badges";
 import { GitHubLink } from "@/components/github-link";
 import { LogoMark } from "@/components/logo";
@@ -55,7 +56,7 @@ export default function Home() {
               Every social account, one set of reins.
             </h1>
             <p className="max-w-[34rem] text-lg text-ink-soft">
-              SocialReins is an open-source social media manager. It publishes and schedules your posts to eight
+              SocialReins is an open-source social media manager. It publishes and schedules your posts to nine
               platforms from one place, with a calendar, a queue and an approval step for your team, and pulls a post
               back from all of them when you need to. You can run it on your
               own server today, free. SocialReins Cloud, where we run it for you, is not open yet: join the waitlist
@@ -105,8 +106,8 @@ export default function Home() {
                 </dt>
                 <dd className="mt-2 text-ink-soft">{f.body}</dd>
                 <dd className="mt-3">
-                  <Link href={f.href} aria-label={`${f.title}: learn more`} className={headerLink}>
-                    Learn more
+                  <Link href={f.href} className={headerLink}>
+                    Learn more<span className="sr-only"> about {f.title}</span>
                   </Link>
                 </dd>
               </div>
@@ -167,6 +168,7 @@ export default function Home() {
           <Link href="/terms" className={headerLink}>
             Terms
           </Link>
+          <CookieSettings className={headerLink} />
           <Link href="/docs" className={headerLink}>
             Docs
           </Link>

@@ -5,6 +5,8 @@ export type BroadcastStatus = "draft" | "sending" | "paused" | "sent" | "cancell
 export type Counts = { total: number; sent: number; skipped: number; failed: number; pending: number };
 export type Broadcast = {
   id: string;
+  // The number in its address; the UUID `id` still works in brain's API and in old links.
+  number: number;
   name: string;
   text: string;
   tag: string;
@@ -38,6 +40,7 @@ export type RecipientStatus = "pending" | "sending" | "delivering" | "sent" | "s
 export type Recipient = {
   id: string;
   contact_id: string | null;
+  contact_number: number | null;
   display_name: string | null;
   handle: string | null;
   platform: string | null;

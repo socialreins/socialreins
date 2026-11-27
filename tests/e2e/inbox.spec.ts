@@ -23,18 +23,21 @@ const alice = {
   dm_access: true,
   created_at: "2026-10-20T10:00:00Z",
 };
-const filters = { social_set_id: null, account_ids: [], kinds: [], platforms: [], keywords: [], unanswered: false };
+const xavier = { ...alice, id: "x1", provider: "linkedin", external_id: "x-1", handle: "xavier", display_name: "Xavier" };
+const fbPage = { ...alice, id: "f1", provider: "facebook", external_id: "101", handle: null, display_name: "Acme Page" };
+const filters = { kinds: [], keywords: [], unanswered: false };
 const inbox = (id: string, name: string, extra = {}) => ({
   id,
   name,
   is_all: id === "all",
+  account_ids: id === "all" ? [] : ["c1"],
   filters,
   created_at: "2026-10-20T10:00:00Z",
   updated_at: "2026-10-20T10:00:00Z",
   ...extra,
 });
 const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
-const item = (id: string, kind: "comment" | "mention" | "dm", text: string, extra = {}) => ({
+const item = (id: string, kind: "comment" | "mention" | "dm" | "like" | "repost" | "follow", text: string, extra = {}) => ({
   id,
   social_account_id: "c1",
   platform: "bluesky",
@@ -60,9 +63,9 @@ type Row = ReturnType<typeof item>;
 const thread = (i: Row) => (i.kind === "dm" ? `${i.social_account_id}:${i.author.id}` : i.id);
 const oldestFirst = (a: Row, b: Row) => a.received_at.localeCompare(b.received_at);
 
-async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items?: Row[]; convoPage?: number } = {}) {
+async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items?: Row[]; convoPage?: number; inboxes?: ReturnType<typeof inbox>[] } = {}) {
   const state = {
-    inboxes: [inbox("all", "All"), inbox("i2", "Questions", { filters: { ...filters, keywords: ["price"] } })],
+    inboxes: opts.inboxes ?? [inbox("all", "All"), inbox("i2", "Questions", { filters: { ...filters, keywords: ["price"] } })],
     items: opts.items ?? [
       item("p1", "comment", "What is the price?"),
       item("p2", "mention", "Loving @alice lately", { received_at: ago(90) }),
@@ -76,16 +79,27 @@ async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items
     convos: [] as { id: string; before: string | null }[],
     // Set to a status to make the next PATCHes fail.
     failPatch: 0,
+    // The posts above an item, by item id; an item with none has an empty thread.
+    above: {} as Record<string, unknown[]>,
+    // The account's live state toward the open item, and every action posted (with its body); `refuse` makes the next one fail with that message.
+    viewer: { liked: false, reposted: false, following: false, blocking: false, muted: false, thread_muted: false } as Record<string, boolean>,
+    acted: [] as Record<string, unknown>[],
+    refuse: null as string | null,
+    // A DM's conversation as Bluesky has it (null: not read).
+    convo: null as null | { status: string; muted: boolean; group: boolean; members: number; unread: number },
+    // What each automation did with the open item (`GET /v1/inbox-items/{id}/automations`).
+    verdicts: [] as unknown[],
   };
   const dms = (i: Row) => state.items.filter((x) => x.kind === "dm" && thread(x) === thread(i)).sort(oldestFirst);
   await page.route("**/auth/me", (route) => route.fulfill({ json: me(role) }));
   await page.route("**/v1/connections", (route) => route.fulfill({ json: opts.accounts ?? [alice] }));
   await page.route(/\/v1\/social-sets$/, (route) => route.fulfill({ json: [{ id: "d", name: "All sets", is_default: true, account_ids: ["c1"], account_count: 1, created_at: "", deleted_at: null }] }));
+  await page.route(/\/v1\/inbox-items\/[^/]+\/automations$/, (route) => route.fulfill({ json: { automations: state.verdicts } }));
   await page.route("**/v1/inboxes", (route) => {
     const req = route.request();
     if (req.method() === "POST") {
       state.bodies.push(req.postDataJSON());
-      const made = inbox("i3", req.postDataJSON().name, { filters: req.postDataJSON().filters });
+      const made = inbox("i3", req.postDataJSON().name, { account_ids: req.postDataJSON().account_ids, filters: req.postDataJSON().filters });
       state.inboxes.push(made);
       return route.fulfill({ status: 201, json: made });
     }
@@ -107,7 +121,11 @@ async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items
     const kind = q.get("kind");
     const search = q.get("q")?.toLowerCase();
     state.asked.push(q);
-    const match = (i: Row) => (!kind || i.kind === kind) && (!search || i.text.toLowerCase().includes(search));
+    // Activity (follows, likes, reposts) is listed only when asked for.
+    const quiet = (i: Row) => ["follow", "like", "repost"].includes(i.kind);
+    const match = (i: Row) => (kind === "activity" ? quiet(i) : kind ? i.kind === kind : !quiet(i)) && (!search || i.text.toLowerCase().includes(search));
+    // Activity is listed whatever the state asked for, as brain does.
+    if (kind === "activity") return route.fulfill({ json: { items: state.items.filter(match).map((i) => ({ ...i, conversation: null })), next_cursor: null } });
     // One row per conversation: its latest DM. Open while any of its DMs is open, done once none is.
     const rows = state.items.filter(match).flatMap((i): (Row & { conversation: object | null })[] => {
       if (i.kind !== "dm" || q.get("group") !== "conversations") return i.state === q.get("state") ? [{ ...i, conversation: null }] : [];
@@ -145,6 +163,25 @@ async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items
     const size = opts.convoPage ?? 50;
     return route.fulfill({ json: { items: older.slice(-size), has_more: older.length > size } });
   });
+  await page.route(/\/v1\/inbox-items\/[^/]+\/thread$/, (route) => {
+    const id = itemId(route.request().url());
+    if (state.items.find((i) => i.id === id)?.kind === "dm") return route.fulfill({ status: 422, json: { error: "not_a_thread" } });
+    return route.fulfill({ json: { posts: state.above[id] ?? [], truncated: false } });
+  });
+  await page.route(/\/v1\/inbox-items\/[^/]+\/actions$/, (route) => {
+    if (route.request().method() === "POST") {
+      const body = route.request().postDataJSON();
+      state.acted.push(body);
+      if (state.refuse) return route.fulfill({ status: 422, json: { error: "bluesky_refused", message: state.refuse } });
+      if (body.action === "accept_convo" && state.convo) state.convo.status = "accepted";
+      if (body.action === "mute_convo" && state.convo) state.convo.muted = true;
+      const flips: Record<string, [string, boolean]> = { like: ["liked", true], unlike: ["liked", false], follow: ["following", true], block_author: ["blocking", true] };
+      const flip = flips[body.action as string];
+      if (flip) state.viewer[flip[0]] = flip[1];
+      return route.fulfill({ json: { action: body.action, remote_id: null } });
+    }
+    return route.fulfill({ json: { viewer: state.viewer, viewer_error: null, convo: state.convo, hidden: false, log: [] } });
+  });
   await page.route(/\/v1\/inbox-items\/[^/]+\/reply$/, (route) => {
     const found = state.items.find((i) => i.id === itemId(route.request().url()))!;
     const body = route.request().postDataJSON();
@@ -180,7 +217,7 @@ test("inbox lists items, filters by kind, and opens one by URL", async ({ page }
   await brain(page, "owner");
   await page.goto("/inbox");
   const nav = page.getByRole("navigation", { name: "Inboxes" });
-  await expect(nav.getByRole("link").first()).toHaveText("All");
+  await expect(nav.getByRole("link").first()).toHaveText("All inboxes");
   await expect(nav.getByRole("link", { name: "All" })).toHaveAttribute("aria-current", "page");
   const list = page.getByRole("region", { name: "All" });
   const rows = list.getByRole("list", { name: "Items" }).getByRole("listitem");
@@ -204,6 +241,136 @@ test("inbox lists items, filters by kind, and opens one by URL", async ({ page }
     "https://bsky.app/profile/did:plc:bob/post/p1",
   );
   await expect(page.getByRole("navigation", { name: "Inboxes" }).getByRole("link", { name: "Questions" })).toHaveAttribute("aria-current", "page");
+});
+
+test("an item says which automations ran on it and, when none did, why", async ({ page }) => {
+  const state = await brain(page, "owner");
+  await page.goto("/inbox?item=p1");
+  const detail = page.getByRole("region", { name: "Item" });
+  await expect(detail.getByLabel("Reply publicly")).toBeVisible();
+  // No automation had a say: nothing is shown.
+  await expect(detail.getByRole("region", { name: "Automations" })).toHaveCount(0);
+  state.verdicts = [
+    { automation_id: "a1", name: "Price to DM", outcome: "not_matched", reasons: ["no_keyword", "wrong_post"] },
+    { automation_id: "a2", name: "Thanks", outcome: "skipped", reasons: ["cooldown"] },
+    { automation_id: "a3", name: "Welcome", outcome: "not_matched", reasons: ["wrong_trigger"] },
+  ];
+  await page.goto("/inbox?item=p2");
+  const note = page.getByRole("region", { name: "Item" }).getByRole("region", { name: "Automations" });
+  await expect(note).toContainText("Automations: none ran because");
+  await expect(note).toContainText("Price to DM: The text has none of the keywords; It is not on one of the posts this automation is limited to");
+  await expect(note).toContainText("Welcome: It is for a different kind of item");
+  await expect(note.getByRole("link", { name: "Price to DM" })).toHaveAttribute("href", "/t/acme22/automations/a1");
+  state.verdicts = [
+    { automation_id: "a1", name: "Price to DM", outcome: "ran", reasons: [] },
+    { automation_id: "a3", name: "Welcome", outcome: "not_matched", reasons: ["wrong_trigger"] },
+  ];
+  await page.goto("/inbox?item=p3");
+  const some = page.getByRole("region", { name: "Item" }).getByRole("region", { name: "Automations" });
+  await expect(some).toContainText("Automations: Price to DM ran.");
+  await expect(some).toContainText("Welcome: It is for a different kind of item");
+});
+
+test("likes and reposts are quiet activity behind their own filter, and a reply shows the posts above it", async ({ page }) => {
+  const state = await brain(page, "owner", {
+    items: [
+      item("p1", "comment", "Thanks, that helped", { parent_remote_id: "at://did:plc:alice/app.bsky.feed.post/mid" }),
+      item("l1", "like", "", { state: "done", received_at: ago(10), remote_url: "https://bsky.app/profile/did:plc:alice/post/root" }),
+      item("r1", "repost", "", { state: "done", received_at: ago(20) }),
+    ],
+  });
+  const post = (author: string, text: string) => ({ uri: `at://${author}/p`, url: `https://bsky.app/profile/${author}/post/p`, author: { id: author, handle: `${author}.test`, name: author, avatar_url: null }, text, created_at: ago(300), attachments: [] });
+  state.above.p1 = [post("alice", "Our launch post"), post("carol", "How does it work?")];
+  await page.goto("/inbox");
+  const list = page.getByRole("region", { name: "All" }).getByRole("list", { name: "Items" });
+  await expect(list.getByRole("listitem")).toHaveCount(1);
+  await page.getByRole("combobox", { name: "Kind" }).selectOption({ label: "Activity (likes, reposts, follows)" });
+  await expect(list.getByRole("listitem")).toHaveCount(2);
+  await expect(list).toContainText("Liked your post");
+  await expect(list).toContainText("Reposted your post");
+  // Activity has nothing to answer.
+  await list.getByRole("link", { name: /Liked your post/ }).click();
+  const detail = page.getByRole("region", { name: "Item" });
+  await expect(detail.getByRole("heading", { name: "Bob" })).toBeVisible();
+  await expect(detail.getByLabel("Reply publicly")).toBeHidden();
+  // A reply shows what it answers, oldest first.
+  await page.goto("/inbox?item=p1");
+  const context = detail.locator('[data-row="context"]');
+  await expect(context).toHaveCount(2);
+  await expect(context.first()).toContainText("Our launch post");
+  await expect(context.last()).toContainText("How does it work?");
+  await expect(detail.getByLabel("Reply publicly")).toBeVisible();
+});
+
+test("actions on Bluesky are confirmed first, follow the live state, and the risky ones are for owners and admins", async ({ page }) => {
+  const state = await brain(page, "owner");
+  await page.goto("/inbox?item=p1");
+  const detail = page.getByRole("region", { name: "Item" });
+  await detail.getByText("Actions on Bluesky").click();
+  // Nothing is sent until it is confirmed.
+  await detail.getByRole("button", { name: "Like", exact: true }).click();
+  await expect(detail.getByRole("group", { name: "Confirm" })).toContainText("Like @bob.bsky.social's post");
+  expect(state.acted).toEqual([]);
+  await detail.getByRole("button", { name: "Confirm" }).click();
+  await expect(detail.getByRole("status").filter({ hasText: "Liked." })).toBeVisible();
+  expect(state.acted).toEqual([{ action: "like", confirm: true }]);
+  // The next read shows the state: now it can be undone.
+  await expect(detail.getByRole("button", { name: "Unlike" })).toBeVisible();
+  // Block asks, in words, and a refusal from Bluesky is said.
+  state.refuse = "Bluesky refused it (InvalidRequest).";
+  await detail.getByRole("button", { name: "Block", exact: true }).click();
+  await expect(detail.getByRole("group", { name: "Confirm" })).toContainText("can no longer see this account's posts");
+  await detail.getByRole("button", { name: "Confirm" }).click();
+  await expect(detail.getByRole("alert").filter({ hasText: "Bluesky refused it" })).toBeVisible();
+  // A report takes a reason and says who gets it.
+  state.refuse = null;
+  await detail.getByRole("button", { name: "Report", exact: true }).click();
+  const form = detail.getByRole("form", { name: "Report to Bluesky" });
+  await expect(form).toContainText("moderators");
+  await form.getByLabel("Reason").selectOption("rude");
+  await form.getByLabel("Details (optional)").fill("Insults");
+  await form.getByLabel("Report the account").check();
+  await form.getByRole("button", { name: "Send report" }).click();
+  await expect(detail.getByRole("status").filter({ hasText: "Reported to Bluesky." })).toBeVisible();
+  expect(state.acted.at(-1)).toEqual({ action: "report", reason_type: "rude", reason: "Insults", account: true, confirm: true });
+});
+
+test("a member can like and mute but is not offered block, hide or report", async ({ page }) => {
+  await brain(page, "member");
+  await page.goto("/inbox?item=p1");
+  const detail = page.getByRole("region", { name: "Item" });
+  await detail.getByText("Actions on Bluesky").click();
+  await expect(detail.getByRole("button", { name: "Like", exact: true })).toBeVisible();
+  await expect(detail.getByRole("button", { name: "Mute person" })).toBeVisible();
+  for (const name of ["Block", "Hide reply", "Report"]) await expect(detail.getByRole("button", { name, exact: true })).toHaveCount(0);
+});
+
+test("a message request waits for Accept, a group says who a reply reaches, a conversation can be muted, and a message takes a reaction", async ({ page }) => {
+  const state = await brain(page, "owner");
+  state.convo = { status: "request", muted: false, group: true, members: 3, unread: 1 };
+  await page.goto("/inbox?item=p3");
+  const detail = page.getByRole("region", { name: "Item" });
+  const request = detail.getByRole("group", { name: "Message request" });
+  await expect(request).toContainText("message request");
+  await expect(detail.getByText("A group conversation of 3 or more people: a reply goes to everyone in it.")).toBeVisible();
+  await request.getByRole("button", { name: "Accept" }).click();
+  await expect(detail.getByRole("status").filter({ hasText: "Request accepted." })).toBeVisible();
+  expect(state.acted.at(-1)).toEqual({ action: "accept_convo", confirm: true });
+  await expect(request).toHaveCount(0);
+  await detail.getByRole("button", { name: "Mute conversation" }).click();
+  await expect(detail.getByRole("button", { name: "Unmute conversation" })).toBeVisible();
+  // Declining asks first.
+  state.convo = { status: "request", muted: false, group: false, members: 2, unread: 1 };
+  await page.reload();
+  await page.getByRole("region", { name: "Item" }).getByRole("button", { name: "Decline" }).click();
+  await expect(page.getByText("Decline and leave this conversation?")).toBeVisible();
+  const sent = state.acted.length;
+  expect(state.acted.length).toBe(sent);
+  await page.getByRole("button", { name: "Cancel" }).click();
+  // A reaction is one emoji on one message.
+  await page.getByRole("button", { name: "React 👍" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Reaction sent." })).toBeVisible();
+  expect(state.acted.at(-1)).toEqual({ action: "react", emoji: "👍", confirm: true });
 });
 
 test("reply publicly, then mark done and reopen", async ({ page }) => {
@@ -270,17 +437,20 @@ test("empty states: no accounts, then no items", async ({ page }) => {
 });
 
 test("owners create, edit and delete an inbox; All is not editable", async ({ page }) => {
-  const state = await brain(page, "owner");
+  const state = await brain(page, "owner", { accounts: [alice, xavier] });
   await page.goto("/inbox");
   await expect(page.getByRole("button", { name: "Edit All" })).toHaveCount(0);
   await page.getByRole("button", { name: "New inbox" }).click();
   const dialog = page.getByRole("dialog", { name: "New inbox" });
   await dialog.getByLabel("Name").fill("DMs");
-  await dialog.getByLabel("Pick accounts").check();
+  // Every account with an inbox starts picked; one without (LinkedIn) is not offered.
+  await expect(dialog.getByRole("checkbox", { name: "Alice, Bluesky" })).toBeChecked();
+  await expect(dialog.getByRole("checkbox", { name: /Xavier/ })).toHaveCount(0);
+  await expect(dialog.getByText("Bluesky, Facebook, Instagram, X and YouTube accounts have an inbox.")).toBeVisible();
+  await dialog.getByRole("checkbox", { name: "Alice, Bluesky" }).uncheck();
+  await expect(dialog.getByRole("button", { name: "Create inbox" })).toBeDisabled();
   await dialog.getByRole("checkbox", { name: "Alice, Bluesky" }).check();
   await dialog.getByRole("checkbox", { name: "DMs" }).check();
-  await expect(dialog.getByRole("checkbox", { name: "Bluesky", exact: true })).toBeChecked();
-  await expect(dialog.getByRole("checkbox", { name: "Instagram", exact: true })).toBeDisabled();
   await dialog.getByLabel("Keywords").fill("price, link");
   await dialog.getByLabel("Keywords").press("Enter");
   await expect(dialog.getByRole("button", { name: "Remove price" })).toBeVisible();
@@ -289,7 +459,8 @@ test("owners create, edit and delete an inbox; All is not editable", async ({ pa
   await expect(dialog).toBeHidden();
   expect(state.bodies[0]).toEqual({
     name: "DMs",
-    filters: { social_set_id: null, account_ids: ["c1"], kinds: ["dm"], platforms: [], keywords: ["price", "link"], unanswered: true },
+    account_ids: ["c1"],
+    filters: { kinds: ["dm"], keywords: ["price", "link"], unanswered: true },
   });
   await expect(page.getByRole("navigation", { name: "Inboxes" }).getByRole("link", { name: "DMs" })).toBeVisible();
 
@@ -396,7 +567,8 @@ test("each inbox shows its open count, kept fresh by the poll and by Mark done",
   await expect(questions.getByText("1 open in Questions")).toBeAttached();
 
   state.items.unshift(item("p7", "comment", "Is the price the same?"));
-  await page.clock.runFor(31_000);
+  // The counts refresh after 2.5 minutes.
+  await page.clock.runFor(151_000);
   await expect(all.getByText("4 open in All")).toBeAttached();
   await expect(questions.getByText("2 open in Questions")).toBeAttached();
 
@@ -405,7 +577,7 @@ test("each inbox shows its open count, kept fresh by the poll and by Mark done",
   await expect(questions.getByText("1 open in Questions")).toBeAttached();
   // An inbox with nothing open shows no badge.
   state.items.forEach((i) => (i.state = "done"));
-  await page.clock.runFor(31_000);
+  await page.clock.runFor(151_000);
   await expect(nav.getByText(/open in/)).toHaveCount(0);
 });
 
@@ -915,4 +1087,242 @@ test.describe("conversations", () => {
     await expect(chat(page).getByRole("alert")).toHaveCount(0);
     await expect(chat(page).getByRole("button", { name: "Load earlier" })).toBeVisible();
   });
+});
+
+test("the switcher puts All inboxes first, one custom inbox puts no chips on rows, and [ and ] move between inboxes", async ({ page }) => {
+  await brain(page, "owner", {
+    accounts: [alice, fbPage],
+    items: [item("p1", "comment", "What is the price?", { inbox_ids: ["i2"] }), item("p2", "mention", "Hello", { received_at: ago(90), inbox_ids: [] })],
+  });
+  await page.goto("/inbox");
+  const nav = page.getByRole("navigation", { name: "Inboxes" });
+  const entries = nav.getByRole("listitem");
+  await expect(entries.first()).toContainText("All inboxes");
+  await expect(entries.first().getByText("2 open in All inboxes")).toBeAttached();
+  await expect(entries.nth(1).getByText("1 open in Questions")).toBeAttached();
+  // The inbox shows its accounts' avatars; the Page is in no inbox, and says so.
+  await expect(entries.nth(1).getByRole("link").locator("[aria-hidden=true] > span")).toHaveCount(1);
+  await expect(nav.getByText("1 account is in no inbox, so its messages show only in All inboxes.")).toBeVisible();
+  const rows = page.getByRole("region", { name: "All inboxes" }).getByRole("list", { name: "Items" }).getByRole("listitem");
+  // With one custom inbox every row would carry the same chip, so none does.
+  await expect(rows.first()).toContainText("What is the price?");
+  await expect(rows.first()).not.toContainText("Questions");
+  await page.keyboard.press("]");
+  await expect(page).toHaveURL("/t/acme22/inbox/i2");
+  await expect(page.getByRole("region", { name: "Questions" }).getByRole("listitem").first()).not.toContainText("Questions");
+  await page.keyboard.press("]");
+  await expect(page).toHaveURL("/t/acme22/inbox/all");
+  await expect(page.getByRole("heading", { name: "All inboxes", level: 2 })).toBeVisible();
+  await page.keyboard.press("[");
+  await expect(page).toHaveURL("/t/acme22/inbox/i2");
+  // J still moves through the items.
+  await page.keyboard.press("j");
+  await expect(page).toHaveURL(/item=p1/);
+  await page.keyboard.press("?");
+  await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toContainText("Next inbox");
+  await page.keyboard.press("Escape");
+  // In the reply box [ and ] are text, not inbox moves.
+  const reply = page.getByRole("region", { name: "Item" }).getByLabel("Reply publicly");
+  await reply.click();
+  await page.keyboard.type("[a]");
+  await expect(reply).toHaveValue("[a]");
+  await expect(page).toHaveURL(/\/inbox\/i2\?item=p1/);
+});
+
+test("with two custom inboxes, rows in All inboxes carry the chips of the inboxes that hold them", async ({ page }) => {
+  await brain(page, "owner", {
+    inboxes: [inbox("all", "All"), inbox("i2", "Questions"), inbox("i3", "Sales")],
+    items: [item("p1", "comment", "What is the price?", { inbox_ids: ["i2", "i3"] }), item("p2", "mention", "Hello", { received_at: ago(90), inbox_ids: [] })],
+  });
+  await page.goto("/inbox");
+  const rows = page.getByRole("region", { name: "All inboxes" }).getByRole("list", { name: "Items" }).getByRole("listitem");
+  await expect(rows.first()).toContainText("Questions");
+  await expect(rows.first()).toContainText("Sales");
+  await expect(rows.nth(1)).not.toContainText("Questions");
+  await expect(rows.nth(1)).not.toContainText("Sales");
+  // Inside one inbox there are no chips.
+  await page.goto("/inbox/i2");
+  await expect(page.getByRole("region", { name: "Questions" }).getByRole("list", { name: "Items" }).getByRole("listitem").first()).not.toContainText("Sales");
+});
+
+test("photos and stickers show as thumbnails linking to the original, and a label when there is no text or the link expired", async ({ page }) => {
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+  await page.route("https://scontent.xx.fbcdn.net/**", (route) =>
+    route.request().url().includes("gone") ? route.fulfill({ status: 403, body: "URL signature expired" }) : route.fulfill({ contentType: "image/png", body: png }),
+  );
+  const sticker = { kind: "sticker", url: "https://scontent.xx.fbcdn.net/s.png", preview_url: "https://scontent.xx.fbcdn.net/s.png" };
+  const expired = { kind: "image", url: "https://scontent.xx.fbcdn.net/gone.jpg" };
+  await brain(page, "owner", {
+    items: [
+      item("p1", "comment", "", { attachments: [sticker] }),
+      item("p2", "comment", "Look at this", { received_at: ago(60), attachments: [expired] }),
+      item("p3", "comment", "", { received_at: ago(90) }),
+    ],
+  });
+  await page.goto("/inbox");
+  const rows = page.getByRole("list", { name: "Items" }).getByRole("listitem");
+  await expect(rows.first()).toContainText("Sticker");
+  await expect(rows.first()).not.toContainText("(no text)");
+  await expect(rows.nth(1)).toContainText("Look at this");
+  await expect(rows.nth(2)).toContainText("(no text)");
+
+  await rows.first().getByRole("link").click();
+  const shown = page.getByRole("region", { name: "Item" }).getByRole("list", { name: "Attachments" });
+  const img = shown.getByRole("img", { name: "Sticker" });
+  await expect(img).toBeVisible();
+  await expect(img).toHaveAttribute("loading", "lazy");
+  await expect(img).toHaveAttribute("referrerpolicy", "no-referrer");
+  await expect(shown.getByRole("link")).toHaveAttribute("href", sticker.url);
+  await expect(page.getByRole("region", { name: "Item" }).getByText("(no text)")).toHaveCount(0);
+
+  // An expired Meta link falls back to the kind's label, still linking to it.
+  await rows.nth(1).getByRole("link").click();
+  const link = page.getByRole("region", { name: "Item" }).getByRole("list", { name: "Attachments" }).getByRole("link");
+  await expect(link).toContainText("Photo");
+  await expect(link.getByRole("img")).toHaveCount(0);
+  await expect(link).toHaveAttribute("href", expired.url);
+});
+
+test("a new inbox opened before the accounts load ticks them once they arrive", async ({ page }) => {
+  await brain(page, "owner");
+  let release = () => {};
+  const loaded = new Promise<void>((r) => (release = r));
+  await page.route("**/v1/connections", async (route) => {
+    await loaded;
+    await route.fulfill({ json: [alice] });
+  });
+  await page.goto("/inbox");
+  await page.getByRole("button", { name: "New inbox" }).click();
+  const dialog = page.getByRole("dialog", { name: "New inbox" });
+  await expect(dialog.getByText("No account with an inbox is connected yet.")).toBeVisible();
+  release();
+  await expect(dialog.getByRole("checkbox", { name: "Alice, Bluesky" })).toBeChecked();
+});
+
+test("empty states: no inboxes, an inbox without accounts, and the plan's inbox limit", async ({ page }) => {
+  await brain(page, "owner", { inboxes: [inbox("all", "All")] });
+  await page.goto("/inbox");
+  await expect(page.getByText("No inboxes yet")).toBeVisible();
+  await expect(page.getByRole("button", { name: "New inbox" })).toBeVisible();
+
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await brain(page, "owner", { items: [], inboxes: [inbox("all", "All"), inbox("i2", "Empty", { account_ids: [] })] });
+  await page.route(/\/v1\/team\/billing$/, (route) =>
+    route.fulfill({
+      json: {
+        enabled: true,
+        plan: { id: "scheduler", name: "Scheduler", status: "active", trial_ends_at: null, current_period_end: null, cancel_at_period_end: false },
+        limits: { accounts: 10, members: 3, automation: false, contacts: null, inboxes: 1 },
+        usage: { accounts: 1, members: 1, inboxes: 1 },
+      },
+    }),
+  );
+  await page.goto("/inbox/i2");
+  await expect(page.getByText("This inbox has no accounts. Edit it to add some.")).toBeVisible();
+  await expect(page.getByText("Your plan's inbox limit is reached.")).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Inboxes" }).getByRole("link", { name: "Upgrade" })).toHaveAttribute("href", "/t/acme22/billing");
+  await expect(page.getByRole("button", { name: "New inbox" })).toHaveCount(0);
+});
+
+test("a create past the plan says so with an Upgrade link", async ({ page }) => {
+  await brain(page, "owner");
+  await page.route("**/v1/inboxes", (route) =>
+    route.request().method() === "POST" ? route.fulfill({ status: 402, json: { error: "plan_limit", limit: "inboxes" } }) : route.fallback(),
+  );
+  await page.goto("/inbox");
+  await page.getByRole("button", { name: "New inbox" }).click();
+  const dialog = page.getByRole("dialog", { name: "New inbox" });
+  await dialog.getByLabel("Name").fill("Sales");
+  await dialog.getByRole("button", { name: "Create inbox" }).click();
+  await expect(dialog.getByText("Your plan's inbox limit is reached.")).toBeVisible();
+  await expect(dialog.getByRole("link", { name: "Upgrade" })).toBeVisible();
+});
+
+const igPage = { ...alice, id: "i1", provider: "instagram", external_id: "1784", handle: "acme", display_name: "acme" };
+const can = (...actions: string[]) => ({ hidden: false, liked: false, deleted: false, can: actions });
+
+test("Facebook and Instagram comments are hidden, liked and deleted from the inbox, with Meta's refusals said", async ({ page }) => {
+  const state = await brain(page, "owner", {
+    accounts: [alice, fbPage, igPage],
+    items: [
+      item("p1", "comment", "Love it", { platform: "facebook", social_account_id: "f1", moderation: can("hide", "delete", "like") }),
+      item("p2", "comment", "So nice", { platform: "instagram", social_account_id: "i1", received_at: ago(60), moderation: can("hide", "delete") }),
+    ],
+  });
+  const asked: { id: string; action: string }[] = [];
+  await page.route(/\/v1\/inbox-items\/[^/]+\/moderate$/, (route) => {
+    const id = new URL(route.request().url()).pathname.split("/")[3]!;
+    const { action } = route.request().postDataJSON();
+    asked.push({ id, action });
+    const found = state.items.find((i) => i.id === id) as unknown as { moderation: ReturnType<typeof can>; state: string };
+    // Instagram's token is refused, as Meta does for a dead one.
+    if (id === "p2") return route.fulfill({ status: 422, json: { error: "meta_reconnect_required", message: "Meta refused the Page's token." } });
+    const m = found.moderation;
+    if (action === "hide" || action === "unhide") m.hidden = action === "hide";
+    if (action === "like" || action === "unlike") m.liked = action === "like";
+    if (action === "delete") Object.assign(m, { deleted: true, can: [] }, { state: undefined });
+    else m.can = [m.hidden ? "unhide" : "hide", "delete", m.liked ? "unlike" : "like"];
+    if (action === "delete") found.state = "done";
+    return route.fulfill({ json: found });
+  });
+  await page.goto("/inbox?item=p1");
+  const detail = page.getByRole("region", { name: "Item" });
+  const bar = detail.getByRole("region", { name: "Moderate" });
+  await bar.getByRole("button", { name: "Hide", exact: true }).click();
+  await expect(bar.getByText("Hidden.", { exact: true })).toBeVisible();
+  await expect(bar.getByText("Hidden", { exact: true }).first()).toBeVisible();
+  await expect(bar.getByRole("button", { name: "Show again" })).toBeVisible();
+  await bar.getByRole("button", { name: "Like", exact: true }).click();
+  await expect(bar.getByText("Liked as your Page.")).toBeVisible();
+  await expect(bar.getByRole("button", { name: "Remove like" })).toBeVisible();
+  // Delete asks first, and the comment then takes no reply.
+  await bar.getByRole("button", { name: "Delete", exact: true }).click();
+  expect(asked.map((a) => a.action)).toEqual(["hide", "like"]);
+  await bar.getByRole("button", { name: "Yes, delete" }).click();
+  await expect(bar.getByText("Deleted.", { exact: true })).toBeVisible();
+  expect(asked.map((a) => a.action)).toEqual(["hide", "like", "delete"]);
+  await expect(detail.getByText("This comment was deleted on Facebook, so it takes no reply.")).toBeVisible();
+  await expect(detail.getByLabel("Reply publicly")).toBeHidden();
+
+  // Instagram has no like. Meta refusing the token says what to do.
+  await page.goto("/inbox?item=p2");
+  const ig = detail.getByRole("region", { name: "Moderate" });
+  await expect(ig.getByRole("button", { name: "Like" })).toHaveCount(0);
+  await expect(ig.getByText("Like: not available on Instagram")).toBeVisible();
+  await ig.getByRole("button", { name: "Hide", exact: true }).click();
+  await expect(ig.getByRole("alert")).toContainText("Meta refused this account's sign-in.");
+  await expect(ig.getByRole("alert").getByRole("link", { name: "Reconnect it under Accounts" })).toHaveAttribute("href", "/t/acme22/connections");
+});
+
+test("a member can hide a comment but not delete it", async ({ page }) => {
+  await brain(page, "member", {
+    accounts: [alice, fbPage],
+    items: [item("p1", "comment", "Love it", { platform: "facebook", social_account_id: "f1", moderation: can("hide", "delete", "like") })],
+  });
+  await page.goto("/inbox?item=p1");
+  const bar = page.getByRole("region", { name: "Item" }).getByRole("region", { name: "Moderate" });
+  await expect(bar.getByRole("button", { name: "Hide", exact: true })).toBeVisible();
+  await expect(bar.getByRole("button", { name: "Delete" })).toHaveCount(0);
+  await expect(bar.getByText("Deleting is for owners and admins.")).toBeVisible();
+});
+
+test("a Meta DM says how long it can be answered, and blocks a send Meta would refuse", async ({ page }) => {
+  const hours = (h: number) => new Date(Date.now() + h * 3_600_000).toISOString();
+  const win = (closes: number, agent: number | null) => ({ last_message_at: hours(closes - 24), closes_at: hours(closes), human_agent_until: agent === null ? null : hours(agent), open: closes > 0 });
+  const dm = (id: string, window: object) => item(id, "dm", "Hi there", { platform: "facebook", social_account_id: "f1", reply_window: window });
+  for (const [id, window, note, blocked] of [
+    ["p3", win(3, null), /Meta takes a reply for [23] hours?( \d+ min)? more/, false],
+    ["p4", win(-2, null), /Human Agent permission, which SocialReins has not been granted yet/, true],
+    ["p5", win(-2, 72), /still goes out as a person's reply for 2 days|for 3 days/, false],
+  ] as const) {
+    await brain(page, "owner", { accounts: [alice, fbPage], items: [dm(id, window)] });
+    await page.goto(`/inbox?item=${id}`);
+    const detail = page.getByRole("region", { name: "Item" });
+    await expect(detail.locator("#window-note")).toHaveText(note);
+    await detail.getByLabel("Send DM").fill("Sure");
+    const send = detail.getByRole("button", { name: "Send DM" });
+    if (blocked) await expect(send).toBeDisabled();
+    else await expect(send).toBeEnabled();
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+  }
 });

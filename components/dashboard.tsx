@@ -5,10 +5,11 @@ import { TeamLink as Link } from "@/components/team-link";
 import type { Failure } from "@/lib/auth";
 import { compact, engagement, getAnalytics, postTotals, statWords } from "@/lib/analytics";
 import { listConnections, needingReconnect } from "@/lib/connections";
+import { address } from "@/lib/ref";
 import { manages } from "@/lib/teams";
-import { authorName, kindName, listInboxes, listItems, relativeTime, type Item } from "@/lib/inbox";
-import { approvalState, listPosts, rows, type Post } from "@/lib/posts";
-import { getQueue, type Queue } from "@/lib/queue";
+import { authorName, itemSummary, kindName, listInboxes, listItems, relativeTime, type Item } from "@/lib/inbox";
+import { approvalState, listPosts, postRef, rows, toZoneInput, type Post } from "@/lib/posts";
+import { getQueue, loadZones, zoneFor, zoneTag, type Queue } from "@/lib/queue";
 import { useCurrentSet, useSession } from "@/components/app-shell";
 import { ReconnectNotice } from "@/components/connections";
 import { platformName } from "@/components/platform-icons";
@@ -19,16 +20,20 @@ import { Icon, Skeleton } from "@/components/ui";
 const DAY = 86_400_000;
 // null while loading.
 type Load<T> = T | Failure | null;
+// inboxId is what the inbox's address holds (its number).
 type InboxSummary = { inboxId: string; items: Item[]; open: string };
 
-const clock = (iso: string) => new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-const dayName = (t: number | string) => new Date(t).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
-const shortDay = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-const postTime = (p: Post) => p.published_at ?? p.scheduled_at ?? p.created_at;
-const midnight = (t: number | string) => {
-  const d = new Date(t);
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+// Times and days of a post are those of its set's time zone, tagged with the zone ("GMT+6") when it is not the browser's.
+const clock = (iso: string, zone: string) => {
+  const text = new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", timeZone: zone });
+  const tag = zoneTag(zone, new Date(iso));
+  return tag ? `${text} ${tag}` : text;
 };
+const dayName = (t: number | string, zone: string) => new Date(t).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", timeZone: zone });
+const shortDay = (iso: string, zone: string) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: zone });
+const postTime = (p: Post) => p.published_at ?? p.scheduled_at ?? p.created_at;
+// The calendar day of an instant in `zone`, as a number of days (the same count for the same date anywhere).
+const dayNumber = (t: number | string, zone: string) => Date.parse(`${toZoneInput(new Date(t).toISOString(), zone).slice(0, 10)}T00:00:00Z`) / DAY;
 const plural = (n: number, one: string, many: string) => (n === 1 ? `1 ${one}` : `${n} ${many}`);
 // Map.groupBy, which Safari has only since 17.4.
 function groupBy<T>(items: T[], key: (item: T) => string) {
@@ -63,7 +68,7 @@ async function loadInbox(): Promise<InboxSummary | Failure> {
   if (isFailure(page)) return page;
   // An older brain sends no count: say how many are on the first page instead.
   const open = all.open_count?.toLocaleString() ?? `${page.items.length}${page.next_cursor === null ? "" : "+"}`;
-  return { inboxId: all.id, items: page.items, open };
+  return { inboxId: address(all), items: page.items, open };
 }
 
 // The app's home: a greeting, four numbers, what needs a person (grouped, or one calm line),
@@ -75,10 +80,18 @@ export function Dashboard() {
   const [now] = useState(() => Date.now());
   const canManage = manages(user.current_team.role);
 
-  const [posts, retryPosts] = useLoad(
-    () => listPosts({ social_set_id: setId, from: new Date(now - 30 * DAY).toISOString(), to: new Date(now + 30 * DAY).toISOString() }),
-    `posts ${setId}`,
-  );
+  // Each post's set zone is read with the posts, so no time or day shifts once they show.
+  const [posts, retryPosts] = useLoad(async () => {
+    // A week back is all the numbers and failures need; "Recently published" has its own call.
+    const r = await listPosts({ social_set_id: setId, from: new Date(now - 7 * DAY).toISOString(), to: new Date(now + 30 * DAY).toISOString() });
+    if (Array.isArray(r)) await loadZones(r.map((p) => p.social_set_id));
+    return r;
+  }, `posts ${setId}`);
+  const [recent, retryRecent] = useLoad(async () => {
+    const r = await listPosts({ social_set_id: setId, status: "published", order: "desc", limit: 100 });
+    if (Array.isArray(r)) await loadZones(r.map((p) => p.social_set_id));
+    return r;
+  }, `recent ${setId}`);
   const [stats, retryStats] = useLoad(() => getAnalytics(setId, 7, now), `stats ${setId}`);
   const [queue] = useLoad<Queue>(() => (setId ? getQueue(setId) : Promise.resolve({ time_zone: "UTC", slots: [], next: [] })), `queue ${setId}`);
   const [inbox, retryInbox] = useLoad(loadInbox, "inbox");
@@ -92,7 +105,9 @@ export function Dashboard() {
     (p) => p.scheduled_at!,
   );
   const published = rows(list.filter((p) => p.status === "published").sort(newest), () => "");
-  // Only this week's failures: failed posts cannot be deleted, so older ones would sit here forever.
+  // The latest published posts, however old, from their own call.
+  const latest = rows((Array.isArray(recent) ? recent : []).filter((p) => p.status === "published").sort(newest), () => "");
+  // Only this week's failures: the window above reaches back a week, and older ones can be deleted from the Posts page.
   // The same reason on the same network is one row, however many posts it stopped.
   const failures = [
     ...groupBy(list.filter((p) => p.status === "failed" && Date.parse(postTime(p)) > now - 7 * DAY).sort(newest), (p) => `${p.platform}\n${p.error ?? ""}`).values(),
@@ -101,19 +116,22 @@ export function Dashboard() {
   // Like the posts: only the picked set's accounts. The default set holds them all.
   const reconnect = Array.isArray(accounts) ? needingReconnect(setId ? accounts.filter((c) => c.set_ids.includes(setId)) : accounts) : [];
 
-  // Today (with anything overdue) and tomorrow; when both are empty, the next few posts under their own days.
-  const daysAhead = (r: Post[]) => Math.round((midnight(r[0]!.scheduled_at!) - midnight(now)) / DAY);
+  // Today (with anything overdue) and tomorrow, by the calendar of each post's own set zone; when both are empty,
+  // the next few posts under their own days.
+  const zoneOf = (p: Post) => zoneFor(p.social_set_id);
+  const daysAhead = (r: Post[]) => dayNumber(r[0]!.scheduled_at!, zoneOf(r[0]!)) - dayNumber(now, zoneOf(r[0]!));
   const soon = upcoming.filter((r) => daysAhead(r) <= 1);
-  const days = groupBy(soon.length > 0 ? soon : upcoming.slice(0, 3), (r) => {
+  // Days of different zones can fall in either order of time, so the day groups are put in day order (a stable sort).
+  const days = groupBy([...(soon.length > 0 ? soon : upcoming.slice(0, 3))].sort((x, y) => daysAhead(x) - daysAhead(y)), (r) => {
     const d = daysAhead(r);
-    return d <= 0 ? "Today" : d === 1 ? "Tomorrow" : dayName(r[0]!.scheduled_at!);
+    return d <= 0 ? "Today" : d === 1 ? "Tomorrow" : dayName(r[0]!.scheduled_at!, zoneOf(r[0]!));
   });
 
   const number = (n: number) => (posts === null ? null : isFailure(posts) ? "-" : n.toLocaleString());
   const analytics = stats !== null && !isFailure(stats) ? stats : null;
   const top = analytics?.top_posts?.[0];
   const topNumbers = top && postTotals([top]);
-  const slot = queue !== null && !isFailure(queue) && queue.slots?.length > 0 ? queue.next?.[0] : undefined;
+  const slot = queue !== null && !isFailure(queue) && queue.slots?.length > 0 && queue.next?.[0] ? { at: queue.next[0], zone: queue.time_zone } : undefined;
   const hour = new Date(now).getHours();
   const firstName = user.name.trim().split(/\s+/)[0];
   const calm = Array.isArray(posts) && Array.isArray(accounts) && failures.length === 0 && waiting === 0 && reconnect.length === 0;
@@ -219,8 +237,8 @@ export function Dashboard() {
                 <ul>
                   {group.slice(0, 8).map((r) => (
                     <li key={r[0]!.id}>
-                      <Link href={`/posts/${r[0]!.id}`} className="grid grid-cols-[4.25rem_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2 hover:bg-ink/[0.025]">
-                        <span className="text-sm font-medium tabular-nums">{clock(r[0]!.scheduled_at!)}</span>
+                      <Link href={`/posts/${postRef(r[0]!)}`} className="grid grid-cols-[4.25rem_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2 hover:bg-ink/[0.025]">
+                        <span className="text-sm font-medium tabular-nums">{clock(r[0]!.scheduled_at!, zoneOf(r[0]!))}</span>
                         <span className="min-w-0 truncate">
                           {r.map((v) => (
                             <PlatformMark key={v.id} platform={v.platform} />
@@ -245,24 +263,24 @@ export function Dashboard() {
                 <span>
                   Next queue slot:{" "}
                   <Link href="/queue" className="font-semibold text-ink hover:underline">
-                    {dayName(slot)}, {clock(slot)}
+                    {dayName(slot.at, slot.zone)}, {clock(slot.at, slot.zone)}
                   </Link>
                 </span>
               </p>
             )}
           </Panel>
 
-          <Panel id="recent" title="Recently published" link={{ href: "/posts?status=published", label: "All published" }} load={posts} retry={retryPosts} skeleton={5}>
-            {published.length === 0 ? (
-              <Empty>Nothing published in the last 30 days.</Empty>
+          <Panel id="recent" title="Recently published" link={{ href: "/posts?status=published", label: "All published" }} load={recent} retry={retryRecent} skeleton={5}>
+            {latest.length === 0 ? (
+              <Empty>Nothing published yet.</Empty>
             ) : (
               <ul className="divide-y divide-[var(--line-soft)]">
-                {published.slice(0, 5).map((r) => {
+                {latest.slice(0, 5).map((r) => {
                   const n = postTotals(r);
                   return (
                     <li key={r[0]!.id}>
-                      <Link href={`/posts/${r[0]!.id}`} className="grid grid-cols-[3.25rem_minmax(0,1fr)] items-center gap-x-3 px-4 py-2.5 hover:bg-ink/[0.025] sm:grid-cols-[3.25rem_minmax(0,1fr)_auto]">
-                        <span className="text-sm text-ink-soft tabular-nums">{shortDay(postTime(r[0]!))}</span>
+                      <Link href={`/posts/${postRef(r[0]!)}`} className="grid grid-cols-[3.25rem_minmax(0,1fr)] items-center gap-x-3 px-4 py-2.5 hover:bg-ink/[0.025] sm:grid-cols-[3.25rem_minmax(0,1fr)_auto]">
+                        <span className="text-sm text-ink-soft tabular-nums">{shortDay(postTime(r[0]!), zoneOf(r[0]!))}</span>
                         <span className="min-w-0 truncate">
                           {r.map((v) => (
                             <PlatformMark key={v.id} platform={v.platform} />
@@ -290,7 +308,7 @@ export function Dashboard() {
                 <ul className="divide-y divide-[var(--line-soft)]">
                   {inbox.items.slice(0, 4).map((i) => (
                     <li key={i.id}>
-                      <Link href={`/inbox/${encodeURIComponent(inbox.inboxId)}?item=${encodeURIComponent(i.id)}`} className="grid gap-0.5 px-4 py-2.5 hover:bg-ink/[0.025]">
+                      <Link href={`/inbox/${inbox.inboxId}?item=${address(i)}`} className="grid gap-0.5 px-4 py-2.5 hover:bg-ink/[0.025]">
                         <span className="flex items-center gap-2">
                           <strong className="min-w-0 truncate font-semibold">{authorName(i.author)}</strong>
                           <span className="badge tone" data-kind={i.kind}>
@@ -298,7 +316,7 @@ export function Dashboard() {
                           </span>
                           <span className="ml-auto shrink-0 text-xs text-ink-soft">{relativeTime(i.received_at, now)}</span>
                         </span>
-                        <span className="truncate text-ink-soft">{i.text || "(no text)"}</span>
+                        <span className="truncate text-ink-soft">{itemSummary(i)}</span>
                       </Link>
                     </li>
                   ))}
@@ -309,7 +327,7 @@ export function Dashboard() {
 
           <Panel id="top-post" title="Top post this week" link={{ href: "/analytics?range=7", label: "Open analytics" }} load={stats} retry={retryStats} skeleton={1} tall>
             {top ? (
-              <Link href={`/posts/${top.id}`} className="grid gap-0.5 px-4 py-2.5 hover:bg-ink/[0.025]">
+              <Link href={`/posts/${postRef(top)}`} className="grid gap-0.5 px-4 py-2.5 hover:bg-ink/[0.025]">
                 <span className="truncate">
                   <PlatformMark platform={top.platform} /> {snippet(top)}
                 </span>
@@ -394,9 +412,9 @@ function FailureGroup({ posts }: { posts: Post[] }) {
         <ul className="mt-1 grid gap-0.5">
           {posts.map((p) => (
             <li key={p.id}>
-              <Link href={`/posts/${p.id}`} className="flex gap-3 rounded py-0.5 hover:underline">
+              <Link href={`/posts/${postRef(p)}`} className="flex gap-3 rounded py-0.5 hover:underline">
                 <span className="shrink-0 text-sm text-ink-soft tabular-nums">
-                  {dayName(postTime(p))}, {clock(postTime(p))}
+                  {dayName(postTime(p), zoneFor(p.social_set_id))}, {clock(postTime(p), zoneFor(p.social_set_id))}
                 </span>
                 <span className="min-w-0 truncate">{snippet(p)}</span>
               </Link>

@@ -414,7 +414,7 @@ function FeedForm({
             </div>
           )}
           {err("platforms")}
-          <p className="hint">TikTok and YouTube are left out: they take video only, and a feed item has none. Instagram skips an item without a picture.</p>
+          <p className="hint">TikTok, YouTube and Pinterest are left out: they need a video or an image and a board, and a feed item has none. Instagram skips an item without a picture.</p>
         </fieldset>
         <fieldset className="grid gap-2">
           <legend className="label mb-1">When a new item appears</legend>

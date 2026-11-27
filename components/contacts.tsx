@@ -4,7 +4,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import type { Failure } from "@/lib/auth";
 import { contactName, deleteContact, getContact, listContacts, listContactTags, MAX_NOTES, updateContact, type Contact, type ContactDetail, type TagCount } from "@/lib/contacts";
-import { relativeTime } from "@/lib/inbox";
+import { itemSummary, relativeTime } from "@/lib/inbox";
+import { address, moveParam } from "@/lib/ref";
 import { manages } from "@/lib/teams";
 import { useSession } from "@/components/app-shell";
 import { AuthorAvatar, KindBadge } from "@/components/inbox";
@@ -44,6 +45,8 @@ export function Contacts() {
   const tag = params.get("tag") ?? "";
   const platform = params.get("platform") ?? "";
   const openId = params.get("contact");
+  // The address holds the number; an old one holds the UUID.
+  const open = (c: Contact) => openId === address(c) || openId === c.id;
   const [search, setSearch] = useState(q);
   const [tags, setTags] = useState<TagCount[]>([]);
   // Loaded contacts remember the filters they were loaded for, so new filters show loading, not stale rows.
@@ -187,10 +190,10 @@ export function Contacts() {
               {page.items.map((c) => (
                 <li key={c.id}>
                   <Link
-                    href={href({ contact: c.id })}
+                    href={href({ contact: address(c) })}
                     scroll={false}
-                    aria-current={c.id === openId ? "true" : undefined}
-                    className={`flex items-center gap-3 px-3 py-2.5 focus-visible:outline-offset-[-3px] ${c.id === openId ? "bg-signal/[0.07] shadow-[inset_3px_0_0_var(--color-signal)]" : "hover:bg-ink/[0.03]"}`}
+                    aria-current={open(c) ? "true" : undefined}
+                    className={`flex items-center gap-3 px-3 py-2.5 focus-visible:outline-offset-[-3px] ${open(c) ? "bg-signal/[0.07] shadow-[inset_3px_0_0_var(--color-signal)]" : "hover:bg-ink/[0.03]"}`}
                   >
                     <AuthorAvatar author={avatarOf(c)} size="size-9" />
                     <span className="grid min-w-0 flex-1 gap-0.5">
@@ -235,7 +238,7 @@ export function Contacts() {
           </>
         )}
       </section>
-      {openId && <ContactPanel key={openId} id={openId} suggestions={suggestions} close={href({ contact: null })} onSaved={saved} onDeleted={deleted} />}
+      {openId && <ContactPanel key={(page && !isFailure(page) && page.items.find(open)?.id) || openId} id={openId} suggestions={suggestions} close={href({ contact: null })} onSaved={saved} onDeleted={deleted} />}
     </div>
   );
 }
@@ -252,7 +255,10 @@ function ContactPanel({ id, suggestions, close, onSaved, onDeleted }: { id: stri
   useEffect(() => {
     getContact(id).then((r) => {
       setContact(r);
-      if (!isFailure(r)) setNotes(r.notes ?? "");
+      if (!isFailure(r)) {
+        setNotes(r.notes ?? "");
+        moveParam("contact", id, r);
+      }
     });
   }, [id, tries]);
 
@@ -369,8 +375,8 @@ function ContactPanel({ id, suggestions, close, onSaved, onDeleted }: { id: stri
           <ul aria-label="Recent conversations" className="grid gap-1">
             {c.recent.map((i) => (
               <li key={i.id}>
-                <Link href={`/inbox?item=${enc(i.id)}${i.state === "done" ? "&state=done" : ""}`} className="grid gap-1 rounded-xl px-2 py-1.5 hover:bg-ink/[0.04]">
-                  <span className="line-clamp-2 text-sm">{i.text || "(no text)"}</span>
+                <Link href={`/inbox?item=${address(i)}${i.state === "done" ? "&state=done" : ""}`} className="grid gap-1 rounded-xl px-2 py-1.5 hover:bg-ink/[0.04]">
+                  <span className="line-clamp-2 text-sm">{itemSummary(i)}</span>
                   <span className="flex items-center gap-2 text-xs text-ink-soft">
                     <KindBadge kind={i.kind} />
                     <time dateTime={i.received_at}>{relativeTime(i.received_at)}</time>

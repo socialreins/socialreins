@@ -1,10 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { assignItem, chatRows, dayLabel, getConversation, listItems, maxFor, mergeConversation, mergeFresh, messageCount, relativeTime, replyToItem, sentAlready, setItemState, threadKey, type Item } from "@/lib/inbox";
+import { assignItem, chatRows, moderateItem, windowNote, itemSummary, dayLabel, actionButtons, getConversation, getThread, runAction, hasThread, isActivity, listItems, maxFor, replyLength, mergeConversation, mergeFresh, messageCount, relativeTime, replyToItem, sentAlready, setItemState, threadKey, type Item } from "@/lib/inbox";
 import { apiUrl } from "@/lib/waitlist";
 
 const call = (fetch: ReturnType<typeof vi.fn>) => fetch.mock.calls[0] as unknown as [string, RequestInit];
 
 afterEach(() => vi.unstubAllGlobals());
+
+describe("itemSummary", () => {
+  it("says what an item carries when it has no text, and never (no text) then", () => {
+    const image = { kind: "image" as const, url: "https://scontent.xx.fbcdn.net/a.jpg" };
+    expect(itemSummary({ text: "hi", attachments: [image] })).toBe("hi");
+    expect(itemSummary({ text: "", attachments: [{ kind: "sticker", url: "https://x.fbcdn.net/s.png" }] })).toBe("Sticker");
+    expect(itemSummary({ text: "", attachments: [image, image, { kind: "video", url: "https://x.fbsbx.com/v.mp4" }] })).toBe("Photo and 2 more");
+    expect(itemSummary({ text: "", attachments: [] })).toBe("(no text)");
+    expect(itemSummary({ text: "" })).toBe("(no text)");
+  });
+});
 
 describe("inbox requests", () => {
   it("pages items by state and cursor", async () => {
@@ -196,5 +207,119 @@ describe("reply limits", () => {
     expect(maxFor("dm", "facebook")).toBe(2000);
     expect(maxFor("comment", "instagram")).toBe(2200);
     expect(maxFor("dm", "instagram")).toBe(1000);
+    expect(maxFor("comment", "youtube")).toBe(10000);
+    expect(maxFor("comment", "threads")).toBe(500);
+  });
+
+  it("counts a Threads reply with an emoji as its UTF-8 bytes, any other network by characters", () => {
+    expect(replyLength("threads", "abc")).toBe(3);
+    expect(replyLength("threads", "😀")).toBe(4);
+    expect(replyLength("threads", "😀".repeat(126))).toBe(504);
+    expect(replyLength("bluesky", "😀")).toBe(1);
+    expect(replyLength(undefined, "ab")).toBe(2);
+  });
+});
+
+describe("activity and threads", () => {
+  it("words quiet activity, which has no text", () => {
+    expect(itemSummary({ kind: "like", text: "", attachments: [] })).toBe("Liked your post");
+    expect(itemSummary({ kind: "repost", text: "" })).toBe("Reposted your post");
+    expect(itemSummary({ kind: "follow", text: "" })).toBe("Followed you");
+    expect(itemSummary({ kind: "comment", text: "" })).toBe("(no text)");
+    expect(["follow", "like", "repost", "comment", "dm"].map((k) => isActivity(k as Item["kind"]))).toEqual([true, true, true, false, false]);
+  });
+
+  it("reads a thread only for Bluesky comments, mentions, likes and reposts", () => {
+    const has = (kind: Item["kind"], platform = "bluesky") => hasThread({ kind, platform });
+    expect([has("comment"), has("mention"), has("like"), has("repost")]).toEqual([true, true, true, true]);
+    expect([has("dm"), has("follow"), has("comment", "facebook")]).toEqual([false, false, false]);
+    // Threads has a thread for a reply or mention, and nothing for a like or repost (it has none).
+    expect([has("comment", "threads"), has("mention", "threads"), has("like", "threads")]).toEqual([true, true, false]);
+  });
+
+  it("asks brain for the thread of an item and for activity by kind", async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ posts: [], truncated: false })));
+    vi.stubGlobal("fetch", fetch);
+    await getThread("i 1");
+    expect(call(fetch)[0]).toContain("/v1/inbox-items/i%201/thread");
+    fetch.mockClear();
+    await listItems("in1", "open", null, "activity");
+    expect(call(fetch)[0]).toContain("kind=activity");
+    expect(call(fetch)[0]).not.toContain("state=");
+  });
+});
+
+describe("actions", () => {
+  const bob = { id: "did:plc:bob", handle: "bob.test", name: "Bob", avatar_url: null };
+  const comment = { kind: "comment" as const, platform: "bluesky", author: bob };
+  const none = { liked: false, reposted: false, following: false, blocking: false, muted: false, thread_muted: false };
+  const names = (buttons: { label: string }[]) => buttons.map((b) => b.label);
+
+  it("words each button by the live state and keeps managers' actions apart", () => {
+    expect(names(actionButtons(comment, none, false))).toEqual(["Like", "Repost", "Mute thread", "Follow back", "Mute person"]);
+    expect(names(actionButtons(comment, { ...none, liked: true, following: true, muted: true }, false))).toEqual(["Unlike", "Repost", "Mute thread", "Unfollow", "Unmute person"]);
+    expect(names(actionButtons(comment, none, true))).toEqual(["Like", "Repost", "Mute thread", "Follow back", "Mute person", "Block", "Hide reply"]);
+    // Without a read, the first choice; a like has no post of ours to answer, a DM none either; other networks have no actions.
+    expect(names(actionButtons({ ...comment, kind: "like" }, null, true))).toEqual(["Follow back", "Mute person", "Block"]);
+    expect(actionButtons({ ...comment, platform: "facebook" }, none, true)).toEqual([]);
+    expect(actionButtons(comment, { ...none, blocking: true }, true).find((b) => b.action === "unblock_author")?.danger).toBeUndefined();
+  });
+
+  it("always confirms, and turns brain's reasons into words", async () => {
+    const answers = [new Response(JSON.stringify({ action: "like", remote_id: "at://x" })), new Response(JSON.stringify({ error: "not_applicable", message: "That does not apply to this item." }), { status: 422 }), new Response(JSON.stringify({ error: "already_reported" }), { status: 409 })];
+    const fetch = vi.fn(async () => answers.shift()!);
+    vi.stubGlobal("fetch", fetch);
+    expect(await runAction("i1", { action: "like" })).toMatchObject({ remote_id: "at://x" });
+    expect(JSON.parse((call(fetch)[1] as { body: string }).body)).toEqual({ action: "like", confirm: true });
+    expect(await runAction("i1", { action: "like" })).toEqual({ code: "not_applicable", message: "That does not apply to this item." });
+    expect(await runAction("i1", { action: "report", reason_type: "spam" })).toMatchObject({ code: "already_reported" });
+  });
+});
+
+describe("windowNote", () => {
+  const now = Date.parse("2026-11-25T12:00:00Z");
+  const at = (h: number) => new Date(now + h * 3_600_000).toISOString();
+  const w = (closes: number, agent: number | null = null) => ({ last_message_at: at(closes - 24), closes_at: at(closes), human_agent_until: agent === null ? null : at(agent), open: closes > 0 });
+
+  it("counts the 24 hours down, then says why nothing goes out", () => {
+    expect(windowNote(w(5.5), now)).toEqual({ text: "Meta takes a reply for 5 hours 30 min more, 24 hours after their last message.", blocked: false });
+    expect(windowNote(w(0.25), now).text).toContain("15 minutes more");
+    const closed = windowNote(w(-1), now);
+    expect(closed.blocked).toBe(true);
+    expect(closed.text).toContain("Human Agent permission");
+  });
+
+  it("lets a person reply after 24 hours only while the Human Agent window runs", () => {
+    expect(windowNote(w(-1, 100), now)).toEqual({ text: "The 24 hours are over. A reply still goes out as a person's reply for 4 days more.", blocked: false });
+    expect(windowNote(w(-100, -1), now)).toEqual({ text: "Meta takes no reply now: it is more than 7 days since their last message.", blocked: true });
+  });
+});
+
+describe("moderateItem", () => {
+  it("posts the action and gives back the item, or Meta's reason", async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ id: "i1", moderation: { hidden: true } }), { status: 200 }));
+    vi.stubGlobal("fetch", fetch);
+    expect(await moderateItem("i 1", "hide")).toEqual({ id: "i1", moderation: { hidden: true } });
+    const [url, init] = call(fetch);
+    expect(url).toBe(`${apiUrl}/v1/inbox-items/i%201/moderate`);
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ action: "hide" });
+
+    const refused = new Response(JSON.stringify({ error: "meta_denied", message: "Meta did not allow it." }), { status: 422 });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(refused));
+    expect(await moderateItem("i1", "delete")).toEqual({ code: "meta_denied", message: "Meta did not allow it." });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(new Response("{}", { status: 403 })));
+    expect(await moderateItem("i1", "delete")).toBe("error");
+  });
+
+  it("takes back a YouTube reply with its id, and holds a YouTube comment", async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ id: "i1" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetch);
+    await moderateItem("i1", "delete_reply", "r1");
+    expect(JSON.parse(String(call(fetch)[1].body))).toEqual({ action: "delete_reply", reply_id: "r1" });
+    const hold = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ id: "i1" }), { status: 200 }));
+    vi.stubGlobal("fetch", hold);
+    await moderateItem("i1", "hold");
+    expect(JSON.parse(String(call(hold)[1].body))).toEqual({ action: "hold" });
   });
 });
