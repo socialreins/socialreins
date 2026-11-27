@@ -123,6 +123,12 @@ export type AdminTeam = {
   plan?: string | null;
   plan_status?: string | null;
   plan_provider?: string | null;
+  // Bytes of uploads the team keeps now, and the budget it has: its own, else brain's
+  // TEAM_STORAGE_BYTES. 0 is unlimited.
+  storage_used: number;
+  storage_budget: number;
+  // The budget an admin set for this team alone; null while it uses brain's default.
+  storage_budget_override: number | null;
 };
 export type AdminTeams = { total: number; teams: AdminTeam[] };
 
@@ -173,6 +179,25 @@ export const listTeams = (p: Page) => api<AdminTeams>(`/v1/admin/teams${pageQuer
 // comping answers has_paid_plan over a live paid plan, ending answers not_found when there is no live comp.
 export const compPlan = (team: string, plan: "scheduler" | "automation") => api<"ok">(`/v1/admin/teams/${team}/plan`, "PUT", { plan });
 export const endCompPlan = (team: string) => api<"ok">(`/v1/admin/teams/${team}/plan`, "DELETE");
+
+// The most an admin may give one team: 1 TiB, brain's own limit.
+export const MAX_STORAGE_BYTES = 1024 ** 4;
+
+// What `setStorageBudget` answers: the team's storage after the change.
+export type TeamStorage = { used: number; budget: number };
+// A team's own upload budget in bytes, or null back to brain's default. 0 is unlimited for it.
+export const setStorageBudget = (team: string, bytes: number | null) =>
+  api<TeamStorage>(`/v1/admin/teams/${team}/storage-budget`, "PUT", { bytes });
+
+// The budget box: blank means no override (brain's default), digits are bytes. Anything else is
+// refused before the call, as is a value brain would answer 422 to. `null` clears the override.
+export function parseStorageBytes(text: string): number | null | "invalid" {
+  const t = text.trim();
+  if (!t) return null;
+  if (!/^\d+$/.test(t) || !Number.isSafeInteger(Number(t)) || Number(t) > MAX_STORAGE_BYTES) return "invalid";
+  return Number(t);
+}
+
 
 export type SignupMode = "open" | "closed" | "domains";
 // `source`: "env" while the rules still come from the server's environment, "saved" once saved here.
