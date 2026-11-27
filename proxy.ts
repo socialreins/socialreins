@@ -21,10 +21,10 @@ const csp = (api: string, anyImage: boolean, ga: boolean) =>
     `script-src 'self' 'unsafe-inline' ${turnstile}${ga ? ` ${gaScript}` : ""}${dev ? " 'unsafe-eval'" : ""}`,
     `frame-src ${turnstile}`,
     "style-src 'self' 'unsafe-inline'",
-    // Bluesky, Facebook, Instagram, YouTube, X, Pinterest and TikTok avatars; safeAvatar in lib/connections.ts keeps to the same sources.
+    // The footer badges (components/featured-badges.tsx), then Bluesky, Facebook, Instagram, YouTube, X, Pinterest and TikTok avatars; safeAvatar in lib/connections.ts keeps to the same sources.
     // A public post page (/p/<code>) shows the author's own image links, from any https host, and so do the
     // team pages (the media library and the composer's picker); all of /t/, since the app moves between its pages without a reload.
-    anyImage ? "img-src 'self' data: https:" : "img-src 'self' data: https://cdn.bsky.app/img/ https://*.fbcdn.net https://*.cdninstagram.com https://yt3.ggpht.com https://yt3.googleusercontent.com https://i.ytimg.com https://pbs.twimg.com https://i.pinimg.com https://*.tiktokcdn.com https://*.tiktokcdn-us.com" + (ga ? ` ${gaHits}` : ""),
+    anyImage ? "img-src 'self' data: https:" : "img-src 'self' data: https://twelve.tools https://startupfa.me https://img.turbo0.com https://cdn.bsky.app/img/ https://*.fbcdn.net https://*.cdninstagram.com https://yt3.ggpht.com https://yt3.googleusercontent.com https://i.ytimg.com https://pbs.twimg.com https://i.pinimg.com https://*.tiktokcdn.com https://*.tiktokcdn-us.com" + (ga ? ` ${gaHits}` : ""),
     "font-src 'self'",
     `connect-src 'self' ${api}${ga ? ` ${gaHits}` : ""}${dev ? " ws:" : ""}`,
     "object-src 'none'",

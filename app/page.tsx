@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { CookieSettings } from "@/components/cookie-settings";
+import { FeaturedBadges } from "@/components/featured-badges";
 import { GitHubLink } from "@/components/github-link";
 import { LogoMark } from "@/components/logo";
 import { PlatformIcon, platforms } from "@/components/platform-icons";
@@ -193,6 +194,9 @@ export default function Home() {
             Sponsor
           </a>
         </span>
+        <div className="min-w-0 basis-full">
+          <FeaturedBadges />
+        </div>
       </footer>
     </div>
   );

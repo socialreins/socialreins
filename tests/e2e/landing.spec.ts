@@ -29,6 +29,10 @@ test("landing page renders and the waitlist form joins", async ({ page }) => {
     "href",
     "https://github.com/socialreins/socialreins",
   );
+  // Directory badges: the footer carousel links each listing once for assistive tech, and the CSP lets the images load.
+  const badges = page.getByRole("region", { name: "Featured on directory sites" });
+  await expect(badges.getByRole("link")).toHaveCount(3);
+  await expect(badges.getByRole("link", { name: "Listed on Turbo0" })).toHaveAttribute("href", "https://turbo0.com/item/socialreins");
   await page.getByLabel("Email for the hosted version waitlist").fill("someone@example.com");
   await page.getByRole("button", { name: "Join the waitlist" }).click();
   // Step two asks for a name, optional, and the email is already saved.

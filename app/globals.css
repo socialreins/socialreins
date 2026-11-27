@@ -294,3 +294,22 @@ body { margin: 0; font-family: var(--font-body); font-size: 1.0625rem; line-heig
 :root[data-theme="dark"] .admin-root :is(.waitlist-error, .btn-danger) { color: #ff8a5e; }
 :root[data-theme="dark"] .admin-root .btn-primary:hover:not(:disabled) { background: #c7d2fe; }
 :root[data-theme="dark"] .admin-root :is(.field, input, select, textarea)[aria-invalid] { border-color: #ff8a5e; }
+
+/* Footer badge carousel: a track of two identical groups slides left by half its width, then repeats. */
+.featured-slider {
+  max-width: 28rem; overflow: hidden; padding-block: 4px;
+  mask-image: linear-gradient(90deg, transparent, #000 1.5rem calc(100% - 1.5rem), transparent);
+}
+.featured-track { display: flex; width: max-content; animation: featured-scroll 30s linear infinite; }
+.featured-group { display: flex; flex: none; align-items: center; gap: 1.25rem; padding-right: 1.25rem; }
+.featured-badge { display: block; flex: none; border-radius: 6px; opacity: 0.85; transition: opacity 0.2s; }
+.featured-badge:hover, .featured-badge:focus-visible { opacity: 1; }
+.featured-badge:focus-visible { outline: 2px solid var(--color-signal-deep); outline-offset: 2px; }
+.featured-badge img { display: block; width: auto; max-width: none; height: 40px; }
+.featured-slider:hover .featured-track, .featured-slider:focus-within .featured-track { animation-play-state: paused; }
+@keyframes featured-scroll { to { transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) {
+  .featured-slider { overflow-x: auto; }
+  .featured-track { animation: none; }
+  .featured-group[aria-hidden="true"] { display: none; }
+}
