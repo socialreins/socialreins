@@ -1,0 +1,33 @@
+name: audit
+# Weekly npm audit of production dependencies, and again on any pull request that changes the
+# lockfile. High and critical advisories fail the run; moderate ones are reported as a warning.
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  pull_request:
+    paths: [package-lock.json]
+  push:
+    branches: [main]
+    paths: [package-lock.json]
+  workflow_dispatch:
+
+concurrency:
+  group: audit-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      # Only the manifest and the lockfile are needed: npm audit reads them, nothing is built.
+      # A non-zero exit from npm audit means advisories were found, so keep its JSON either way.
+      - run: npm audit --omit=dev --json > "$RUNNER_TEMP/audit.json" || true
+      - run: node .github/scripts/npm-audit.mjs "$RUNNER_TEMP/audit.json"
