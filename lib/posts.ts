@@ -904,9 +904,24 @@ export function failureAdvice(t: Pick<Target, "error" | "retry_at" | "retried">,
   return { text: retryable ? `Retry once${t.retried ? " more" : ""}. If it fails again, use Duplicate and check the account on the Accounts page.` : "Use Duplicate, then check the account on the Accounts page." };
 }
 
-// One line of a post's history. brain keeps no event log, so these are the times it does store: when the post was made,
-// planned, decided on, published or taken down per account, and when it last changed (a failure).
+// One line of a post's history. When brain has no logged steps for a post (an older one), these are the times it does
+// store: when the post was made, planned, decided on, published or taken down per account, and when it last changed (a failure).
 export type TimelineEvent = { at: string; text: string; tone: "ok" | "bad" | "info" };
+
+// One step the publisher took (GET /v1/posts/{id}/events), newest first: brain's own log.
+export type PostEvent = {
+  id: string;
+  // One of the kinds brain documents, e.g. target_claimed, published or failed.
+  kind: string;
+  // Brain's own words or a code, never post text.
+  detail: string | null;
+  // The account's target, when the event is about one.
+  target_id: string | null;
+  created_at: string;
+};
+export type PostEventPage = { events: PostEvent[]; next_cursor: string | null };
+// A post's timeline: the real steps, newest first, one page of up to 200.
+export const listPostEvents = (id: string) => api<PostEventPage>(`/v1/posts/${enc(id)}/events?limit=200`);
 export function timeline(members: Post[], names: { account: (id: string | null) => string; network: (p: Platform) => string }, author?: string): TimelineEvent[] {
   const first = [...members].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))[0];
   if (!first) return [];

@@ -60,6 +60,43 @@ test("a post made for two networks is one post: status, author, tabs, a failure 
   await expect(timeline.getByRole("listitem").filter({ hasText: "Failed on Instagram, Alice on Instagram" })).toBeVisible();
 });
 
+test("a post's timeline shows the steps brain logged, newest first, with a link to the network", async ({ page }) => {
+  await group(page);
+  const event = (id: string, kind: string, detail: string | null, target: string | null, created: string) => ({ id, kind, detail, target_id: target, created_at: created });
+  await page.route(/\/v1\/posts\/p-b\/events/, (route) =>
+    route.fulfill({
+      json: {
+        events: [
+          event("e1", "published", "at://r1", "tg1", "2026-11-03T08:00:30Z"),
+          event("e2", "attempt_started", "1", "tg1", "2026-11-03T08:00:00Z"),
+          event("e3", "target_claimed", null, "tg1", "2026-11-03T07:59:58Z"),
+        ],
+        next_cursor: null,
+      },
+    }),
+  );
+  await page.route(/\/v1\/posts\/p-i\/events/, (route) =>
+    route.fulfill({
+      json: {
+        events: [
+          event("e4", "failed", "Instagram: too many requests (429).", "tg2", "2026-11-03T08:01:00Z"),
+          event("e5", "retry_scheduled", "2026-11-03T08:06:00Z", "tg2", "2026-11-03T08:01:01Z"),
+        ],
+        next_cursor: null,
+      },
+    }),
+  );
+  await page.goto("/posts/11");
+  const timeline = page.getByRole("region", { name: "Timeline" });
+  const lines = timeline.getByRole("listitem");
+  await expect(lines.first()).toContainText("Automatic retry on Instagram, Alice on Instagram for Nov 3, 2026, 3:06 AM EST");
+  await expect(lines.nth(1)).toContainText("Failed on Instagram, Alice on Instagram: Instagram: too many requests (429).");
+  await expect(lines.nth(2)).toContainText("Published on Bluesky, Alice");
+  await expect(lines.last()).toContainText("Picked up to publish on Bluesky, Alice");
+  await expect(timeline.getByText("Each step brain took, newest first.")).toBeVisible();
+  await expect(timeline.getByRole("link", { name: /View on Bluesky/ })).toHaveAttribute("href", "https://bsky.app/p/1");
+});
+
 test("Retry sends the failed version again and the page says so", async ({ page }) => {
   await group(page);
   let retried = "";
