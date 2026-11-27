@@ -8,12 +8,13 @@ import { platformName } from "@/components/platform-icons";
 import { fileName, Preview } from "@/components/post-preview";
 import { PostPagePanel } from "@/components/post-page-panel";
 import { RefreshStats, TargetStats } from "@/components/post-analytics";
-import { PlatformMark } from "@/components/posts";
+import { PlatformMark, eventText } from "@/components/posts";
+import { isFailure } from "@/components/team-ui";
 import { Icon } from "@/components/ui";
 import { address } from "@/lib/ref";
 import { hasStats } from "@/lib/analytics";
 import type { Connection } from "@/lib/connections";
-import { canRetry, charCount, charLimit, failureAdvice, isImageLink, limits, overallName, overallStatus, postRef, privacyName, timeline, youtubePrivacyName, youtubeText, type Overall, type Post, type Target, type TakedownResult, type ThreadPart } from "@/lib/posts";
+import { canRetry, charCount, charLimit, failureAdvice, isImageLink, limits, listPostEvents, overallName, overallStatus, postRef, privacyName, timeline, youtubePrivacyName, youtubeText, type Overall, type Post, type PostEvent, type PostEventPage, type Target, type TakedownResult, type ThreadPart } from "@/lib/posts";
 
 const names = (list: string[]) => new Intl.ListFormat("en", { type: "conjunction" }).format(list.map(platformName));
 // A moment in the set's zone, with the zone's short name ("Nov 25, 2026, 7:11 PM GMT+6").
@@ -77,6 +78,40 @@ export function PostDetail({ statusRef, ...d }: DetailProps) {
     return a ? accountName(a) : "a disconnected account";
   };
   const events = timeline(members, { account: label, network: platformName as (p: string) => string }, d.author);
+  // What brain actually logged for this post (every version of it), newest first. Until it
+  // answers, and for posts older than the log, the statuses' own lines stand in.
+  const byTarget = new Map<string, { network: string; account: string; url: string | null }>();
+  for (const m of members) {
+    for (const t of m.targets) byTarget.set(t.id, { network: platformName(m.platform), account: label(t.social_account_id), url: t.remote_url });
+  }
+  const [logged, setLogged] = useState<PostEvent[] | null>(null);
+  const memberKey = members.map((m) => `${m.id}:${m.updated_at}`).join(",");
+  useEffect(() => {
+    let live = true;
+    Promise.all(members.map((m) => listPostEvents(m.id))).then((pages) => {
+      if (!live || pages.some(isFailure)) return;
+      setLogged(
+        pages
+          .filter((p): p is PostEventPage => !isFailure(p))
+          .flatMap((p) => p.events)
+          // Every version of the post, one timeline: newest first, as brain returns each page.
+          .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)),
+      );
+    });
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `memberKey` holds every post read and its last change
+  }, [memberKey]);
+  const tone = (kind: string): "ok" | "bad" | "info" => (["published", "comment_posted", "cover_set"].includes(kind) ? "ok" : ["failed", "comment_failed", "cover_failed"].includes(kind) ? "bad" : "info");
+  const lines = logged && logged.length > 0
+    ? logged.map((e) => {
+        const t = e.target_id ? byTarget.get(e.target_id) : undefined;
+        const on = t ? `${t.network}, ${t.account}` : undefined;
+        return { at: e.created_at, text: eventText(e.kind, e.detail, on, (iso) => at(iso, zone)), tone: tone(e.kind), link: e.kind === "published" && t?.url ? { href: t.url, network: t.network } : null };
+      })
+    : [...events].reverse().map((e) => ({ ...e, link: null as null | { href: string; network: string } }));
+  const loggedSteps = logged !== null && logged.length > 0;
   const publishedAt = members.flatMap((m) => m.targets.map((t) => t.published_at)).filter((x): x is string => !!x).sort()[0] ?? post.published_at;
   const title = (() => {
     const text = shown.body.trim().split("\n")[0] ?? "";
@@ -312,14 +347,20 @@ export function PostDetail({ statusRef, ...d }: DetailProps) {
             Timeline
           </h2>
           <ol className="grid gap-0">
-            {events.map((e, i) => {
+            {lines.map((e, i) => {
               const future = new Date(e.at).getTime() > now;
               return (
                 <li key={i} className="relative grid grid-cols-[1rem_minmax(0,1fr)] gap-3 pb-4 last:pb-0">
                   <span aria-hidden="true" className={`relative z-10 mt-1.5 size-2.5 rounded-full ${e.tone === "ok" ? "bg-[#2f9e5b]" : e.tone === "bad" ? "bg-[#d63a2f]" : "bg-ink/30"} ${future ? "ring-2 ring-ink/20 ring-offset-2 ring-offset-paper !bg-transparent" : ""}`} />
-                  {i < events.length - 1 && <span aria-hidden="true" className="absolute bottom-0 left-[0.28rem] top-4 w-px bg-[var(--line)]" />}
+                  {i < lines.length - 1 && <span aria-hidden="true" className="absolute bottom-0 left-[0.28rem] top-4 w-px bg-[var(--line)]" />}
                   <div className="min-w-0 text-sm">
                     <p className="break-words">{e.text}</p>
+                    {e.link && (
+                      <a href={e.link.href} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-ink hover:underline">
+                        View on {e.link.network}
+                        <Icon name="external" className="ml-1 inline size-3 align-[-0.1em]" />
+                      </a>
+                    )}
                     <p className="text-xs text-ink-soft">
                       <time dateTime={e.at}>{at(e.at, zone)}</time>
                       {future && " (upcoming)"}
@@ -329,7 +370,11 @@ export function PostDetail({ statusRef, ...d }: DetailProps) {
               );
             })}
           </ol>
-          <p className="hint text-xs">SocialReins keeps the times above. It does not log each step, so a post being picked up or a retry that failed again has no line of its own.</p>
+          <p className="hint text-xs">
+            {loggedSteps
+              ? "Each step brain took, newest first."
+              : "SocialReins has no step log for this post, so these are the times it keeps."}
+          </p>
         </section>
         <PostPagePanel id={post.id} />
       </aside>

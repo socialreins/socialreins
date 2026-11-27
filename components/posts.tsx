@@ -111,6 +111,55 @@ export const postMessages: Partial<Record<Failure, ReactNode>> = {
   too_many_repeats: "Too many repeating posts. Turn the repeat off on another post first.",
 };
 
+// The words of a post's real timeline (GET /v1/posts/{id}/events), one short label per kind
+// brain logs. A kind brain adds later falls back to "Updated", so an old page still reads.
+export const postEventMessages: Record<string, string> = {
+  target_claimed: "Picked up to publish",
+  attempt_started: "Sending started",
+  published: "Published",
+  failed: "Failed",
+  retry_scheduled: "Automatic retry scheduled",
+  late_to_draft: "More than an hour late, so it went back to draft",
+  taken_down: "Taken down",
+  comment_posted: "First comment posted",
+  comment_failed: "First comment failed",
+  cover_set: "Cover image set",
+  cover_failed: "Cover image not set",
+};
+
+// One line of a post's real timeline: its label, the account it was about (`on`), and the detail
+// that helps (a reason, an attempt's number, a retry's time in the set's zone).
+export function eventText(kind: string, detail: string | null, on?: string, when?: (iso: string) => string): string {
+  const at = on ? ` on ${on}` : "";
+  const why = detail ? `: ${detail}` : "";
+  switch (kind) {
+    case "target_claimed":
+      return `Picked up to publish${at}`;
+    case "attempt_started":
+      return `Sending started${at}${detail ? `, attempt ${detail}` : ""}`;
+    case "published":
+      return `Published${at}`;
+    case "failed":
+      return `Failed${at}${why}`;
+    case "retry_scheduled":
+      return `Automatic retry${at}${detail ? ` for ${when ? when(detail) : detail}` : ""}`;
+    case "late_to_draft":
+      return postEventMessages.late_to_draft!;
+    case "taken_down":
+      return `Taken down from${on ? ` ${on}` : " the network"}`;
+    case "comment_posted":
+      return `First comment posted${at}`;
+    case "comment_failed":
+      return `First comment failed${at}${why}`;
+    case "cover_set":
+      return `Cover image set${at}`;
+    case "cover_failed":
+      return `Cover image not set${at}${why}`;
+    default:
+      return postEventMessages[kind] ?? "Updated";
+  }
+}
+
 export const statusName: Record<PostStatus, string> = {
   draft: "Draft",
   scheduled: "Scheduled",

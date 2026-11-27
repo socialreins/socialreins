@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { eventText, postEventMessages } from "@/components/posts";
 import {
   canRetry,
   failureAdvice,
@@ -837,5 +838,25 @@ describe("the page of a saved post", () => {
     const out = timeline([mk({ targets: [tg(), tg({ status: "failed", retry_at: "2026-11-04T08:00:00Z", retried: true })] })], names, "Maya");
     expect(out.map((x) => x.text)).toEqual(["Created by Maya", "Planned for", "Published on Bluesky, Alice", "Failed on Bluesky, Alice after an automatic retry", "Automatic retry on Bluesky, Alice"]);
     expect(out.map((x) => x.at)).toEqual([...out.map((x) => x.at)].sort());
+  });
+
+  it("words every kind of a post's real timeline", () => {
+    for (const kind of ["target_claimed", "attempt_started", "published", "failed", "retry_scheduled", "late_to_draft", "taken_down", "comment_posted", "comment_failed", "cover_set", "cover_failed"]) {
+      expect(postEventMessages[kind]).toBeTruthy();
+    }
+    const on = "Bluesky, Alice";
+    expect(eventText("target_claimed", null, on)).toBe("Picked up to publish on Bluesky, Alice");
+    expect(eventText("attempt_started", "2", on)).toBe("Sending started on Bluesky, Alice, attempt 2");
+    expect(eventText("published", "at://x", on)).toBe("Published on Bluesky, Alice");
+    expect(eventText("failed", "Bluesky refused it.", on)).toBe("Failed on Bluesky, Alice: Bluesky refused it.");
+    expect(eventText("retry_scheduled", "2026-11-03T08:05:00Z", on, () => "Nov 3, 8:05 AM")).toBe("Automatic retry on Bluesky, Alice for Nov 3, 8:05 AM");
+    expect(eventText("late_to_draft", null)).toBe("More than an hour late, so it went back to draft");
+    expect(eventText("taken_down", null, on)).toBe("Taken down from Bluesky, Alice");
+    expect(eventText("comment_posted", null, on)).toBe("First comment posted on Bluesky, Alice");
+    expect(eventText("comment_failed", "Too long.", on)).toBe("First comment failed on Bluesky, Alice: Too long.");
+    expect(eventText("cover_set", null, "YouTube, Chan")).toBe("Cover image set on YouTube, Chan");
+    expect(eventText("cover_failed", "Nope.", "YouTube, Chan")).toBe("Cover image not set on YouTube, Chan: Nope.");
+    // A kind brain adds later still reads.
+    expect(eventText("something_new", null)).toBe("Updated");
   });
 });
