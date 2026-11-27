@@ -8,6 +8,12 @@ updates:
     groups:
       npm-minor-and-patch:
         update-types: [minor, patch]
+  # Dockerfile and docker-compose.yml base images are pinned by digest; this keeps the digests,
+  # and the tags beside them, moving.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
   - package-ecosystem: github-actions
     directory: /
     schedule:

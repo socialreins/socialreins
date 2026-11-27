@@ -4,7 +4,9 @@
 # Upgrade: docker compose pull && docker compose up -d (brain migrates on start).
 services:
   postgres:
-    image: postgres:17
+    # postgres:17 is PostgreSQL 17.12 on Debian trixie (built 2026-11-24). The digest is the
+    # multi-arch index, so amd64 and arm64 hosts both resolve; Dependabot bumps it with the tag.
+    image: postgres:17@sha256:97fb53376be3e4fb1a8a61421daa69dcc3bf2fa39bda3259f5245f9a455af1a9
     restart: unless-stopped
     environment:
       POSTGRES_USER: socialreins
