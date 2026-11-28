@@ -31,6 +31,13 @@
 - [Connect accounts and publish on SocialReins Cloud](https://socialreins.com/docs/cloud/use): the same guide for the cloud version
 - [Connect an AI assistant to SocialReins Cloud](https://socialreins.com/docs/cloud/ai): MCP server and API tokens
 - [Network apps on SocialReins Cloud](https://socialreins.com/docs/cloud/apps): we register the apps for you
+- [Guides](https://socialreins.com/guides): practical guides to scheduling, approvals, self-hosting, inboxes and posting cadence
+- [How to schedule a post to several social networks at once](https://socialreins.com/guides/schedule-post-to-several-networks): per-network captions and the limits to plan for
+- [Running a social media approval workflow with a small team](https://socialreins.com/guides/social-media-approval-workflow): roles, the approval switch and what a reviewer sees
+- [Self-hosting a social media scheduler: what it takes](https://socialreins.com/guides/self-hosting-a-social-media-scheduler): Docker, Postgres, media storage, network apps, backups
+- [Social inbox and automations: what a small team can automate](https://socialreins.com/guides/social-inbox-automations): triggers, actions and per-network limits
+- [Open source versus hosted social media tools: how to choose](https://socialreins.com/guides/open-source-vs-hosted-social-media-tools): control, cost, maintenance and network apps
+- [A realistic posting cadence for a 1 to 5 person team](https://socialreins.com/guides/posting-cadence-small-team): a starting rhythm, with opinion labelled
 - [Compare SocialReins](https://socialreins.com/compare): SocialReins next to other tools
 - [SocialReins vs PostSyncer](https://socialreins.com/compare/postsyncer)
 - [SocialReins vs Manychat](https://socialreins.com/compare/manychat)
