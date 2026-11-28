@@ -180,8 +180,8 @@ for (const t of templates) {
     await page.getByRole("link", { name: "New automation" }).click();
     await expect(page).toHaveURL("/t/acme22/automations/new");
     await expect(page.getByRole("heading", { name: "Start from a template" })).toBeVisible();
-    // Seven templates and Start from scratch.
-    await expect(page.getByRole("region", { name: "Start from a template" }).getByRole("link")).toHaveCount(8);
+    // Eight templates and Start from scratch.
+    await expect(page.getByRole("region", { name: "Start from a template" }).getByRole("link")).toHaveCount(9);
     await page.getByRole("link", { name: t.title }).click();
     await expect(page.getByLabel("Name", { exact: true })).toHaveValue(t.title);
     await page.getByRole("button", { name: "Create automation" }).click();
@@ -1010,7 +1010,7 @@ test("the gallery groups the templates, marks the popular ones and the networks,
   await expect(page.getByRole("link", { name: "Start from scratch" })).toBeVisible();
 
   await page.goto("/automations/new");
-  const groups = { "Reply to comments": ["Comment to DM"], "Reply to DMs": ["DM keyword reply", "Welcome message"], Grow: ["New follower DM", "Mention reply", "Story reply"], "Follow up": ["Button follow-up"] };
+  const groups = { "Reply to comments": ["AI draft for a comment", "Comment to DM"], "Reply to DMs": ["DM keyword reply", "Welcome message"], Grow: ["New follower DM", "Mention reply", "Story reply"], "Follow up": ["Button follow-up"] };
   await expect(page.getByRole("heading", { level: 3 })).toHaveText([...Object.keys(groups), "Your own"]);
   for (const [group, titles] of Object.entries(groups)) await expect(page.getByRole("region", { name: group }).getByRole("link").locator("strong")).toHaveText(titles);
   await expect(page.getByRole("link").filter({ hasText: "Popular" }).locator("strong")).toHaveText(["Comment to DM", "Welcome message"]);
@@ -1397,4 +1397,23 @@ test("the automation page lists items it did not run on, with why", async ({ pag
   state.misses = [];
   await page.reload();
   await expect(page.getByText("No item it listens for failed to match")).toBeVisible();
+});
+
+test("Automate comments like this lands on a draft rule: the AI reply is held, nothing is sent by itself", async ({ page }) => {
+  const state = await brain(page, "admin");
+  await page.goto("/automations/new?template=comment-ai-draft&set=d&keywords=price");
+  await expect(page.getByLabel("AI reply held for review")).toHaveValue(/Thank them/);
+  await expect(page.getByRole("list", { name: "Contains" })).toContainText("price");
+  await expect(page.getByLabel("DM text")).toHaveValue("");
+  // Both a fixed reply and a draft would answer twice: the form says so instead of saving.
+  await page.getByLabel("Public reply").fill("Thanks!");
+  await expect(page.getByRole("button", { name: "1 problem" })).toHaveAttribute("title", "Use a public reply or an AI draft, not both.");
+  await page.getByLabel("Public reply").fill("");
+  await page.getByRole("button", { name: "Create automation" }).click();
+  await expect(page).toHaveURL("/t/acme22/automations/a2");
+  expect(state.bodies).toHaveLength(1);
+  const body = state.bodies[0] as { actions: { type: string }[]; conditions: unknown; cooldown_minutes: number };
+  expect(body).toMatchObject({ trigger: "comment_received", cooldown_minutes: 10, conditions: { social_set_id: "d", keywords: ["price"] } });
+  expect(body.actions.map((a) => a.type)).toEqual(["ai_draft_reply"]);
+  await expect(page.getByText("AI draft for review").first()).toBeVisible();
 });

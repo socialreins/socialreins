@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { automationHref, commentsHref, inboxFromFilters, listArguments, notInInbox, pickedAccounts, readFilters, sameFilters, narrows } from "@/lib/comments";
+import { automationHref, commentsHref, inboxFromFilters, listArguments, notInInbox, notInRule, pickedAccounts, readFilters, sameFilters, narrows } from "@/lib/comments";
 import { countItems, inboxBadge, listItems } from "@/lib/inbox";
 import { viewForKey, type View } from "@/lib/views";
 import type { Connection } from "@/lib/connections";
@@ -80,8 +80,15 @@ describe("save as inbox and automate", () => {
     expect(inboxFromFilters("All", {}, accounts).account_ids).toEqual(["b1", "b2", "f1", "l1"]);
   });
   it("opens the comment builder with the accounts and the keyword", () => {
-    expect(automationHref({ set: "s1", q: "link" }, accounts)).toBe("/automations/new?template=comment-to-dm&set=s1&keywords=link");
-    expect(automationHref({ network: "bluesky" }, accounts)).toBe("/automations/new?template=comment-to-dm&accounts=b1%2Cb2");
+    expect(automationHref({ set: "s1", q: "link" }, accounts)).toBe("/automations/new?template=comment-ai-draft&set=s1&keywords=link");
+    expect(automationHref({ network: "bluesky" }, accounts)).toBe("/automations/new?template=comment-ai-draft&accounts=b1%2Cb2");
+    // No filters: every account, which is what a rule with no scope does.
+    expect(automationHref({}, accounts)).toBe("/automations/new?template=comment-ai-draft");
+  });
+  it("offers no rule for a pick that reaches no account, and names what a rule cannot carry", () => {
+    // A rule with no scope would answer every account: wider than the filters.
+    expect(automationHref({ network: "x" }, accounts)).toBeNull();
+    expect(notInRule({ post: "p", from: "2026-11-01", hidden: "1", assigned: "me", show: "activity", answer: "unanswered", q: "a" })).toEqual(["one post", "the dates", "hidden or held", "who it is assigned to", "activity"]);
   });
 });
 

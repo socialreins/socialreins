@@ -49,11 +49,14 @@ export const EFFECTS: EffectType[] = ["notify_team", "hide_comment", "like_comme
 // something on the account or in the team.
 export const isActivity = (t: Trigger) => t === "like_received" || t === "repost_received";
 export type AssignAction = { type: "assign"; user_id: string };
-export type Action = { type: "send_dm" | "reply_publicly"; text: string } | AiSend | TagAction | Effect | AssignAction;
+// An AI reply held for review: brain writes it and keeps it on the comment, and a member sends it, edits it or throws it away.
+// Never sent by itself. Actions only (not a flow step), comments and mentions.
+export type AiDraftAction = { type: "ai_draft_reply"; prompt: string };
+export type Action = { type: "send_dm" | "reply_publicly"; text: string } | AiSend | AiDraftAction | TagAction | Effect | AssignAction;
 export const MAX_TAG_ACTIONS = 3;
 export type Button = { label: string; payload: string };
 // One step of a flow. brain leaves `buttons` out when a DM has none.
-export type Step = { type: "send_dm"; text: string; buttons?: Button[] } | { type: "reply_publicly"; text: string } | AiSend | { type: "wait"; minutes: number } | { type: "wait_for_reply"; minutes: number } | TagAction | Effect | AssignAction;
+export type Step = { type: "send_dm"; text: string; buttons?: Button[] } | { type: "reply_publicly"; text: string } | AiSend | { type: "wait"; minutes: number } | { type: "wait_for_reply"; minutes: number } | TagAction | Effect | AssignAction | AiDraftAction;
 // Why runs were skipped or failed, with how many each, most first.
 export type RunReason = { reason: string; count: number };
 export type RunStats = { sent: number; skipped: number; failed: number; running: number; waiting?: number; total: number; count: number; last_at: string | null; reasons?: RunReason[] };
@@ -83,7 +86,7 @@ export type Automation = {
 export type AutomationInput = Pick<Automation, "name" | "trigger" | "conditions" | "active"> & { actions?: Action[]; steps?: Step[]; fallback_public_reply?: string | null; cooldown_minutes?: number | null; daily_cap?: number | null };
 export type RunStatus = "running" | "waiting" | "sent" | "failed" | "skipped";
 export type ActionResult = {
-  type: "send_dm" | "reply_publicly" | AiType | "fallback_public_reply" | "tag_contact" | EffectType | "assign";
+  type: "send_dm" | "reply_publicly" | AiType | "ai_draft_reply" | "fallback_public_reply" | "tag_contact" | EffectType | "assign";
   // A tag is `done` or `skipped`; it is never sent.
   status: Exclude<RunStatus, "running"> | "done";
   reason: string | null;
@@ -356,8 +359,9 @@ function knownStep(s: unknown) {
 }
 
 const knownAction = (a: unknown) => {
-  const x = (a ?? {}) as { type?: unknown; text?: unknown; tag?: unknown };
+  const x = (a ?? {}) as { type?: unknown; text?: unknown; tag?: unknown; prompt?: unknown };
   if (isEffectType(x.type)) return Object.keys(x).length === 1;
+  if (x.type === "ai_draft_reply") return Object.keys(x).length === 2 && isText(x.prompt);
   return x.type === "tag_contact" ? isText(x.tag) : (x.type === "send_dm" || x.type === "reply_publicly") && isText(x.text);
 };
 
@@ -453,6 +457,8 @@ const stepDraft = (s: Step): StepDraft => {
   if (s.type === "tag_contact") return { id, type: s.type, tag: s.tag };
   if (isEffect(s)) return { id, type: s.type };
   if (s.type === "ai_send_dm" || s.type === "ai_reply_publicly") return { id, type: s.type, text: s.prompt };
+  // Only an action list holds a draft, never a flow: the timeline shows it, the flow editor never gets one.
+  if (s.type === "ai_draft_reply") return { id, type: "ai_reply_publicly", text: s.prompt };
   return s.type === "send_dm" ? { id, type: s.type, text: s.text, buttons: (s.buttons ?? []).map((b) => ({ ...b, own: true })) } : { id, type: s.type, text: s.text };
 };
 // The steps as brain takes them. A wait that is not a valid time goes as 0, which `flowProblems` catches first.
@@ -577,7 +583,7 @@ export function toFlow(d: Draft): { steps: StepDraft[]; dropped: string[] } {
       ...d.tags.map((t) => newStep("tag_contact", t)),
       ...EFFECTS.filter((e) => d.also.includes(e)).map((e) => newStep(e)),
     ],
-    dropped: pub && d.fallbackOn && d.dm.trim() && d.fallback.trim() ? ["the fallback reply"] : [],
+    dropped: [...(pub && d.fallbackOn && d.dm.trim() && d.fallback.trim() ? ["the fallback reply"] : []), ...(pub && d.aiDraft.trim() ? ["the AI draft"] : [])],
   };
 }
 // A flow as one reply: its first DM and first public reply stay, and what One reply can't hold is named.
@@ -626,6 +632,8 @@ export type Draft = {
   firstMessage: boolean;
   dm: string;
   publicReply: string;
+  // The prompt of an AI reply held for review ("" for none), comments and mentions only.
+  aiDraft: string;
   fallbackOn: boolean;
   fallback: string;
   // One reply: the tags it puts on the contact, 3 at most.
@@ -673,6 +681,7 @@ const empty: Draft = {
   firstMessage: false,
   dm: "",
   publicReply: "",
+  aiDraft: "",
   fallbackOn: false,
   fallback: "",
   tags: [],
@@ -699,6 +708,13 @@ const empty: Draft = {
 export const TEMPLATE_GROUPS = ["Reply to comments", "Reply to DMs", "Grow", "Follow up"] as const;
 export const BLANK = "blank";
 export const templates: { id: string; title: string; about: string; group: (typeof TEMPLATE_GROUPS)[number]; popular?: boolean; draft: Partial<Draft> }[] = [
+  {
+    id: "comment-ai-draft",
+    group: "Reply to comments",
+    title: "AI draft for a comment",
+    about: "Write a reply to each matching comment with AI and keep it for your team to review. Nothing is sent until a person sends it.",
+    draft: { name: "AI comment drafts", trigger: "comment_received", aiDraft: "Thank them in one friendly sentence and answer what they asked." },
+  },
   {
     id: "comment-to-dm",
     group: "Reply to comments",
@@ -772,6 +788,7 @@ export function draftOf(a?: Automation, templateId?: string | null, payload?: st
     firstMessage: c.first_message ?? false,
     dm: text("send_dm"),
     publicReply: text("reply_publicly"),
+    aiDraft: a.actions.flatMap((x) => (x.type === "ai_draft_reply" ? [x.prompt] : []))[0] ?? "",
     fallbackOn: Boolean(a.fallback_public_reply),
     fallback: a.fallback_public_reply ?? "",
     tags: a.actions.flatMap((x) => (x.type === "tag_contact" ? [x.tag] : [])),
@@ -837,6 +854,7 @@ export function changeTrigger(d: Draft, to: Trigger): { draft: Draft; dropped: s
   drop(!t.keywords && d.languages.length > 0, "languages", { languages: [] });
   drop(!t.firstMessage && d.firstMessage, "first message only", { firstMessage: false });
   drop(!t.publicReply && Boolean(d.publicReply.trim()), "public reply", { publicReply: "" });
+  drop(!t.publicReply && Boolean(d.aiDraft.trim()), "AI draft", { aiDraft: "" });
   drop(!t.publicReply && (d.fallbackOn || Boolean(d.fallback.trim())), "fallback reply", { fallbackOn: false, fallback: "" });
   const unpage = (text: string) => text.replaceAll("{page}", "").replace(/ {2,}/g, " ").trim();
   drop(!t.publicReply && d.dm.includes("{page}"), "{page} in the DM", { dm: unpage(d.dm) });
@@ -919,6 +937,7 @@ export function automationInput(d: Draft, scope: ScopeBody, uris: string[]): Aut
     actions: [
       ...(dm ? [{ type: "send_dm" as const, text: dm }] : []),
       ...(reply ? [{ type: "reply_publicly" as const, text: reply }] : []),
+      ...(t.publicReply && d.aiDraft.trim() ? [{ type: "ai_draft_reply" as const, prompt: d.aiDraft.trim() }] : []),
       ...(isActivity(d.trigger) ? [] : d.tags.slice(0, MAX_TAG_ACTIONS).map((tag) => ({ type: "tag_contact" as const, tag }))),
       ...EFFECTS.filter((e) => d.also.includes(e) && effectFits(e, d.trigger)).map((type) => ({ type })),
     ],
@@ -1124,6 +1143,7 @@ export const actionName: Record<ActionResult["type"], string> = {
   reply_publicly: "Public reply",
   ai_send_dm: "AI DM",
   ai_reply_publicly: "AI public reply",
+  ai_draft_reply: "AI draft for review",
   fallback_public_reply: "Fallback reply",
   tag_contact: "Tag",
   notify_team: "Mail to your team",
@@ -1160,6 +1180,7 @@ export const stepName: Record<Step["type"], string> = {
   reply_publicly: "Reply publicly",
   ai_send_dm: "AI DM",
   ai_reply_publicly: "AI public reply",
+  ai_draft_reply: "AI draft for review",
   wait: "Wait",
   wait_for_reply: "Wait for their reply",
   tag_contact: "Tag the contact",
@@ -1197,6 +1218,7 @@ export function actionsSummary(a: Pick<Automation, "actions" | "fallback_public_
   const tags =
     a.actions.flatMap((x) => (x.type === "tag_contact" ? [`, tag: ${x.tag}`] : [])).join("") +
     a.actions.flatMap((x) => (isEffect(x) || x.type === "assign" ? [`, ${actionName[x.type].toLowerCase()}`] : [])).join("");
+  if (has("ai_draft_reply")) return `${a.actions.some(isSend) ? "Sends a DM and drafts" : "Drafts"} a reply with AI for review${tags}`;
   if (has("ai_send_dm") || has("ai_reply_publicly")) return `${a.actions.filter(isSend).map((x) => actionName[x.type]).join(" and ")}${tags}`;
   if (!a.actions.some(isSend)) return `Acts on the item${tags}`;
   if (!has("send_dm")) return `Replies publicly${tags}`;

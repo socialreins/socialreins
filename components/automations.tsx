@@ -403,6 +403,57 @@ function AutomationCard({ automation: a, canManage, accounts, sets, onChange, on
   );
 }
 
+// One rule of the Comments page: its name (a link), its switch and what it did last.
+function RuleRow({ a, canManage, replace }: { a: Automation; canManage: boolean; replace: (a: Automation) => void }) {
+  const state = useSwitch(a, replace);
+  const runs = a.runs;
+  return (
+    <li className="grid gap-1 rounded-lg border border-ink/10 p-2">
+      <div className="flex items-start justify-between gap-2">
+        <Link href={`/automations/${address(a)}`} className="min-w-0 break-words text-sm font-bold hover:underline">
+          {a.name}
+        </Link>
+        <ActiveSwitch automation={a} canManage={canManage} state={state} />
+      </div>
+      <p className="text-xs text-ink-soft">
+        {runs ? `${runs.sent} done, ${runs.skipped} skipped, ${runs.failed} failed. ` : ""}
+        {runs?.last_at ? `Last run ${relativeTime(runs.last_at) === "now" ? "just now" : relativeTime(runs.last_at)}.` : "No runs yet."}
+      </p>
+      <SwitchStatus state={state} />
+    </li>
+  );
+}
+
+// The rules that act on comments and mentions, for the Comments page: each with its switch and run counts. A rule is an automation
+// of the comment or mention trigger, so the same ones are on the Automations page.
+export function CommentRules({ canManage }: { canManage: boolean }) {
+  const [list, setList] = useState<Automation[] | Failure | null>(null);
+  useEffect(() => {
+    listAutomations().then(setList);
+  }, []);
+  // Switching answers without run counts, so the listed ones stay.
+  const replace = (a: Automation) => setList((l) => (Array.isArray(l) ? l.map((x) => (x.id === a.id ? { ...a, runs: x.runs } : x)) : l));
+  const rules = Array.isArray(list) ? list.filter((a) => a.trigger === "comment_received" || a.trigger === "mention_received") : [];
+  return (
+    <div className="grid gap-2" aria-label="Comment rules" role="region">
+      <h2 className="font-display text-lg font-extrabold tracking-tight">Rules</h2>
+      {list === null ? (
+        <p role="status" className="text-sm text-ink-soft">Loading the rules...</p>
+      ) : isFailure(list) ? (
+        <p role="alert" className="waitlist-error">The rules could not be loaded. {problemText(list)}</p>
+      ) : rules.length === 0 ? (
+        <p className="text-sm text-ink-soft">No rules yet. Filter the comments, then choose Automate comments like this.</p>
+      ) : (
+        <ul className="grid gap-2">
+          {rules.map((a) => (
+            <RuleRow key={a.id} a={a} canManage={canManage} replace={replace} />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function Automations() {
   const { user } = useSession();
   const canManage = manages(user.current_team.role);

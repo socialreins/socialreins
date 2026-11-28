@@ -24,6 +24,7 @@ import {
   WEEKDAYS,
   MAX_COOLDOWN,
   MAX_DAILY_CAP,
+  MAX_PROMPT,
   postIds,
   sample,
   sameSteps,
@@ -206,9 +207,11 @@ export function AutomationForm({
   // A like or repost has nobody to message and no contact to tag.
   const nobody = isActivity(d.trigger);
   const hasDm = Boolean(d.dm.trim());
+  // An AI reply held for review is something done: a person sends it later.
+  const drafting = t.publicReply && Boolean(d.aiDraft.trim());
   // brain refuses tags with nothing sent beside them (422 invalid_actions).
   const acts = d.also.some((e) => e !== "stop_automations");
-  const tagsAlone = !d.flow && (d.tags.length > 0 || d.also.length > 0) && !hasDm && !(t.publicReply && d.publicReply.trim()) && !acts;
+  const tagsAlone = !d.flow && (d.tags.length > 0 || d.also.length > 0) && !hasDm && !(t.publicReply && d.publicReply.trim()) && !drafting && !acts;
   const sam = incoming[d.trigger];
   const picked = scope.mode === "accounts" ? accounts.filter((x) => scope.accountIds.includes(x.id)) : [];
   const providers = picked.map((x) => x.provider);
@@ -228,7 +231,9 @@ export function AutomationForm({
     ...(d.flow
       ? problems.map((p) => ({ text: p.step === null ? p.text : `Step ${p.step + 1}: ${p.text}`, field: p.step === null ? "automation-flow-add" : `step-${d.steps[p.step]!.id}-field` }))
       : [
-          ...(hasDm || (t.publicReply && d.publicReply.trim()) || acts ? [] : [{ text: nobody ? "Tick something to do under Also." : t.publicReply ? "Write a DM text or a public reply." : "Write the DM text.", field: nobody ? "automation-also" : "automation-dm" }]),
+          ...(drafting && d.publicReply.trim() ? [{ text: "Use a public reply or an AI draft, not both.", field: "automation-ai-draft" }] : []),
+          ...(drafting && d.aiDraft.trim().length > MAX_PROMPT ? [{ text: `The AI instructions are too long (${MAX_PROMPT} characters at most).`, field: "automation-ai-draft" }] : []),
+          ...(hasDm || (t.publicReply && d.publicReply.trim()) || drafting || acts ? [] : [{ text: nobody ? "Tick something to do under Also." : t.publicReply ? "Write a DM text or a public reply." : "Write the DM text.", field: nobody ? "automation-also" : "automation-dm" }]),
           ...(templateLength(d.dm) > MAX_DM ? [{ text: "The DM text is too long.", field: "automation-dm" }] : []),
           ...(t.publicReply && limit.size(d.publicReply) > limit.max ? [{ text: "The public reply is too long.", field: "automation-public-reply" }] : []),
           ...(threadsOnly(providers) ? threadsProblems(d.trigger, hasDm).map((text) => ({ text, field: hasDm ? "automation-dm" : "automation-scope" })) : []),
@@ -699,7 +704,7 @@ export function AutomationForm({
                 tokens={tokens}
                 // A comment or mention may get a public reply alone.
                 // With tags the form says what is missing itself, in its own words.
-                required={(!t.publicReply || !d.publicReply.trim()) && !d.tags.length && !d.also.length}
+                required={(!t.publicReply || !d.publicReply.trim()) && !drafting && !d.tags.length && !d.also.length}
                 placeholder="Hi {name}, here is the link you asked for: ..."
                 hint={
                   t.publicReply
@@ -719,6 +724,16 @@ export function AutomationForm({
                     length={limit.size(d.publicReply)}
                     tokens={tokens}
                     placeholder="Sent you a DM, {name}!"
+                  />
+                  <TextField
+                    id="automation-ai-draft"
+                    label={<>AI reply held for review <span className="font-normal text-ink-soft">(optional)</span></>}
+                    value={d.aiDraft}
+                    onChange={(aiDraft) => set({ aiDraft })}
+                    max={MAX_PROMPT}
+                    tokens={[]}
+                    placeholder="Thank them in one friendly sentence and answer what they asked."
+                    hint="AI writes a reply to each matching comment from these instructions and keeps it on the comment. Nothing is sent: a person reads it on Comments, edits it and sends it, or throws it away. It uses your AI key, or our allowance."
                   />
                   <div className="grid gap-2">
                     <label className="flex items-center gap-2">

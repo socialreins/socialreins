@@ -6,9 +6,10 @@ import type { Failure } from "@/lib/auth";
 import { accountName } from "@/components/connections";
 import { platformName } from "@/components/platform-icons";
 import { isFailure, planLimit, problemText } from "@/components/team-ui";
+import { CommentRules } from "@/components/automations";
 import { Icon } from "@/components/ui";
 import type { Connection } from "@/lib/connections";
-import { automationHref, commentCapable, commentsHref, inboxFromFilters, listOf, narrows, notInInbox, pickedAccounts, sameFilters, setLabel, type FilterKey, type Filters } from "@/lib/comments";
+import { automationHref, commentCapable, commentsHref, inboxFromFilters, listOf, narrows, notInInbox, notInRule, pickedAccounts, sameFilters, setLabel, type FilterKey, type Filters } from "@/lib/comments";
 import { createInbox, inboxCapable } from "@/lib/inbox";
 import { getPost } from "@/lib/posts";
 import { address } from "@/lib/ref";
@@ -246,6 +247,7 @@ export function CommentsPanel({
   }
 
   const sticky = canManage && capable.length > 0;
+  const automateTo = automationHref(filters, accounts);
   const liveSets = sets.filter((s) => !s.deleted_at);
   const picked = (key: "set" | "network" | "account") => listOf(filters[key]);
 
@@ -455,15 +457,26 @@ export function CommentsPanel({
               <Icon name="inbox" className="size-4" />
               Save as inbox
             </button>
-            <Link href={automationHref(filters, accounts)} className="btn btn-secondary btn-sm justify-self-start">
-              <Icon name="automations" className="size-4" />
-              Automate comments like this
-            </Link>
+            {automateTo ? (
+              <>
+                <Link href={automateTo} className="btn btn-secondary btn-sm justify-self-start">
+                  <Icon name="automations" className="size-4" />
+                  Automate comments like this
+                </Link>
+                <p className="text-sm text-ink-soft">
+                  Starts a rule that writes an AI reply to each matching new comment and holds it for you to review. Nothing is sent by itself.
+                  {notInRule(filters).length > 0 && ` The rule does not use ${notInRule(filters).join(", ")}.`}
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-ink-soft">These filters reach no account, so there is nothing to automate.</p>
+            )}
           </>
         ) : (
           <p className="text-sm text-ink-soft">{capable.length === 0 ? "Connect an account to make an inbox or an automation from its comments." : "Team owners and admins can make an inbox or an automation from these comments."}</p>
         )}
       </div>
+      <CommentRules canManage={canManage} />
     </div>
   );
 

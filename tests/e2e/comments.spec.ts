@@ -47,6 +47,7 @@ const item = (id: string, accountId: string, platform: string, kind: string, tex
   replies: [] as unknown[],
   assigned_to: null as { id: string; name: string } | null,
   contact_tags: [] as string[],
+  ai_draft: null as string | null,
   ...extra,
 });
 type Row = ReturnType<typeof item>;
@@ -64,13 +65,16 @@ const items = (): Row[] => [
 ];
 
 // A small in-memory brain: the inbox list and count with the filters Comments sends, and saved views.
-async function brain(page: Page, opts: { views?: View[]; accounts?: typeof accounts; role?: string } = {}) {
+async function brain(page: Page, opts: { views?: View[]; accounts?: typeof accounts; role?: string; automations?: Record<string, unknown>[] } = {}) {
   const state = {
     rows: items(),
     views: opts.views ?? ([] as View[]),
     asked: [] as URLSearchParams[],
     inboxBodies: [] as unknown[],
     viewCalls: [] as { method: string; body: unknown }[],
+    automations: (opts.automations ?? []) as Record<string, unknown>[],
+    switched: [] as string[],
+    patches: [] as unknown[],
   };
   const quiet = (i: Row) => ["follow", "like", "repost"].includes(i.kind);
   const matching = (q: URLSearchParams) => {
@@ -120,7 +124,20 @@ async function brain(page: Page, opts: { views?: View[]; accounts?: typeof accou
   await page.route(/\/v1\/inbox-items\/[^/]+$/, (route) => {
     const id = new URL(route.request().url()).pathname.split("/")[3]!;
     const found = state.rows.find((i) => i.id === id || String(i.number) === id);
+    if (found && route.request().method() === "PATCH") {
+      const body = route.request().postDataJSON();
+      state.patches.push(body);
+      if (body.discard_draft) found.ai_draft = null;
+    }
     return found ? route.fulfill({ json: found }) : route.fulfill({ status: 404, json: { error: "not_found" } });
+  });
+  await page.route("**/v1/automations", (route) => route.fulfill({ json: state.automations }));
+  await page.route(/\/v1\/automations\/[^/]+\/(enable|disable)$/, (route) => {
+    const [id, verb] = route.request().url().split("/").slice(-2) as [string, string];
+    state.switched.push(`${id}:${verb}`);
+    const at = state.automations.find((a) => a.id === id)!;
+    at.active = verb === "enable";
+    return route.fulfill({ json: at });
   });
   await page.route(/\/v1\/inbox-items\/[^/]+\/(thread|actions)$/, (route) => route.fulfill({ status: 422, json: { error: "not_a_thread" } }));
   await page.route("**/v1/views?*", (route) => route.fulfill({ json: [...state.views].sort((a, b) => Number(b.is_default) - Number(a.is_default) || a.name.localeCompare(b.name)) }));
@@ -332,11 +349,11 @@ test("Save as inbox makes a comments-only inbox in one click", async ({ page }) 
   await expect(page.getByRole("link", { name: "Open it" })).toHaveAttribute("href", /\/inbox\/9$/);
 });
 
-test("Automate comments like this opens the comment builder with the accounts and the keyword", async ({ page }) => {
+test("Automate comments like this opens the rule builder with the set and the keyword, on the AI draft rule", async ({ page }) => {
   await brain(page);
   await page.goto("/comments?set=sA&q=price");
   await page.getByRole("link", { name: "Automate comments like this" }).click();
-  await expect(page).toHaveURL(/\/automations\/new\?template=comment-to-dm&set=sA&keywords=price/);
+  await expect(page).toHaveURL(/\/automations\/new\?template=comment-ai-draft&set=sA&keywords=price/);
 });
 
 test("a member cannot make inboxes or automations from comments, and the page says why", async ({ page }) => {
@@ -471,4 +488,72 @@ test("a long view name and a long account name never widen the panel past its pa
   // The view's menu is reachable without scrolling the panel sideways.
   await page.getByLabel(`Manage the view ${long}`).click();
   await expect(page.getByRole("button", { name: "Rename" })).toBeVisible();
+});
+
+const rule = (id: string, name: string, extra: Record<string, unknown> = {}) => ({
+  id,
+  number: Number(id.replace(/\D/g, "")) || 1,
+  name,
+  active: true,
+  activated_at: "",
+  trigger: "comment_received",
+  conditions: { social_set_id: null, account_ids: [], post_remote_ids: [], keywords: ["price"], first_per_author: false },
+  actions: [{ type: "ai_draft_reply", prompt: "Be kind" }],
+  fallback_public_reply: null,
+  created_by: "u-me",
+  created_at: "",
+  updated_at: "",
+  runs: { sent: 7, skipped: 2, failed: 0, running: 0, total: 9, count: 9, last_at: new Date(Date.now() - 3 * 3_600_000).toISOString() },
+  ...extra,
+});
+const dmRule = rule("a2", "Welcome DM", { trigger: "dm_received", actions: [{ type: "send_dm", text: "Hi" }] });
+
+test("the Rules panel lists the rules on comments and mentions with their run counts, and a switch turns one off", async ({ page }) => {
+  const b = await brain(page, { automations: [rule("a1", "Price drafts"), rule("a3", "Mention thanks", { trigger: "mention_received", active: false, runs: undefined }), dmRule] });
+  await page.goto("/comments");
+  const rules = page.getByRole("region", { name: "Comment rules" });
+  await expect(rules.getByRole("listitem")).toHaveCount(2);
+  await expect(rules).not.toContainText("Welcome DM");
+  await expect(rules.getByRole("listitem").filter({ hasText: "Price drafts" })).toContainText("7 done, 2 skipped, 0 failed. Last run 3 hours ago.");
+  await expect(rules.getByRole("listitem").filter({ hasText: "Mention thanks" })).toContainText("No runs yet.");
+  await expect(rules.getByRole("link", { name: "Price drafts" })).toHaveAttribute("href", /\/automations\/1$/);
+  await rules.getByRole("switch", { name: "Price drafts" }).click();
+  await expect(rules.getByRole("switch", { name: "Price drafts" })).toHaveAttribute("aria-checked", "false");
+  expect(b.switched).toEqual(["a1:disable"]);
+});
+
+test("the Rules panel says there are none, and a member sees the state but no switch", async ({ page }) => {
+  await brain(page, { automations: [] });
+  await page.goto("/comments");
+  await expect(page.getByRole("region", { name: "Comment rules" })).toContainText("No rules yet");
+  const m = await page.context().newPage();
+  await brain(m, { role: "member", automations: [rule("a1", "Price drafts")] });
+  await m.goto("/comments");
+  const rules = m.getByRole("region", { name: "Comment rules" });
+  await expect(rules.getByRole("listitem")).toContainText("On");
+  await expect(rules.getByRole("switch")).toHaveCount(0);
+});
+
+test("Automate comments like this is not offered for filters that reach no account", async ({ page }) => {
+  await brain(page);
+  // TikTok has no comments here, so a TikTok-only pick reaches nothing: a rule with no scope would answer every account.
+  await page.goto("/comments?network=tiktok");
+  await expect(page.getByRole("link", { name: "Automate comments like this" })).toHaveCount(0);
+  await expect(page.getByText("These filters reach no account, so there is nothing to automate.")).toBeVisible();
+});
+
+test("an AI draft is shown as not sent: use it to fill the reply box, or throw it away", async ({ page }) => {
+  const b = await brain(page);
+  b.rows[1]!.ai_draft = "So sorry about the wait! Your refund is on its way.";
+  await page.goto("/comments?item=c2");
+  const draft = page.getByText("AI draft, not sent.");
+  await expect(draft).toBeVisible();
+  await expect(page.getByLabel("Reply publicly")).toHaveValue("");
+  await page.getByRole("button", { name: "Use this draft" }).click();
+  await expect(page.getByLabel("Reply publicly")).toHaveValue("So sorry about the wait! Your refund is on its way.");
+  await page.getByRole("button", { name: "Throw it away" }).click();
+  await expect(draft).toHaveCount(0);
+  expect(b.patches).toEqual([{ discard_draft: true }]);
+  // Nothing was sent by any of it.
+  await expect(page.getByText("Reply sent.")).toHaveCount(0);
 });
