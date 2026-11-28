@@ -20,8 +20,10 @@ const permissions = permissionsPolicy();
 
 // The CSP is set here, not in next.config headers (fixed at build), because connect-src names brain's origin from BRAIN_URL at run time and script-src needs a fresh nonce per request.
 // 'strict-dynamic' lets the app add Google Analytics and Turnstile after consent without a nonce on those tags; Next.js puts the nonce on its own scripts from the request's CSP header.
-// One image policy for every page: a public page's pictures come from brain (/v1/public/image), never from the author's host.
-const csp = (api: string, ga: boolean, nonce: string) =>
+// A public post page's pictures come from brain (/v1/public/image), never from the author's host. A team path keeps the
+// wider policy: it hosts the signed-in app, where a member's own link previews, library tiles and newsletter logos load
+// from their own host (the newsletter logo spec depends on it).
+const csp = (api: string, anyImage: boolean, ga: boolean, nonce: string) =>
   [
     "default-src 'self'",
     // Cloudflare Turnstile loads its script and runs its check in a frame (components/turnstile.tsx).
@@ -29,8 +31,10 @@ const csp = (api: string, ga: boolean, nonce: string) =>
     `frame-src ${turnstile}`,
     "style-src 'self' 'unsafe-inline'",
     // The footer badges (components/featured-badges.tsx), then Bluesky, Facebook, Instagram, YouTube, X, Pinterest and TikTok avatars; safeAvatar in lib/connections.ts keeps to the same sources.
-    // Brain serves what a post's author linked (a public page's picture, GET /v1/public/image), so the reader only ever loads it from us.
-    `img-src 'self' data: ${api} https://twelve.tools https://startupfa.me https://img.turbo0.com https://cdn.bsky.app/img/ https://*.fbcdn.net https://*.cdninstagram.com https://yt3.ggpht.com https://yt3.googleusercontent.com https://i.ytimg.com https://pbs.twimg.com https://i.pinimg.com https://*.tiktokcdn.com https://*.tiktokcdn-us.com${ga ? ` ${gaHits}` : ""}`,
+    // Brain serves what a post's author linked (a public post page's picture, GET /v1/public/image), so that reader only ever loads it from us.
+    anyImage
+      ? `img-src 'self' data: https:${ga ? ` ${gaHits}` : ""}`
+      : `img-src 'self' data: ${api} https://twelve.tools https://startupfa.me https://img.turbo0.com https://cdn.bsky.app/img/ https://*.fbcdn.net https://*.cdninstagram.com https://yt3.ggpht.com https://yt3.googleusercontent.com https://i.ytimg.com https://pbs.twimg.com https://i.pinimg.com https://*.tiktokcdn.com https://*.tiktokcdn-us.com${ga ? ` ${gaHits}` : ""}`,
     "font-src 'self'",
     `connect-src 'self' ${api}${ga ? ` ${gaHits}` : ""}${dev ? " ws:" : ""}`,
     "object-src 'none'",
@@ -53,7 +57,7 @@ export async function proxy(req: NextRequest) {
   const path = req.nextUrl.pathname;
   // A fresh, unguessable value for each request; base64 keeps it a single CSP token.
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
-  const policy = () => csp(new URL(brainUrl()).origin, gaId() !== null, nonce);
+  const policy = (anyImage: boolean) => csp(new URL(brainUrl()).origin, anyImage, gaId() !== null, nonce);
 
   // /t/<address that a team gave up>/...: a permanent redirect to the team's address now, keeping the path and the query.
   const team = splitTeamPath(path)[0];
@@ -65,7 +69,7 @@ export async function proxy(req: NextRequest) {
       const res = NextResponse.redirect(to, 308);
       // Never kept by a browser: a team that takes its old address back would otherwise send that browser round in a circle.
       res.headers.set("Cache-Control", "no-store");
-      return harden(res, policy());
+      return harden(res, policy(true));
     }
   }
 
@@ -74,11 +78,13 @@ export async function proxy(req: NextRequest) {
   if (legacy) {
     const to = req.nextUrl.clone();
     to.pathname = legacy.to;
-    return harden(NextResponse.redirect(to, legacy.permanent ? 308 : 307), policy());
+    return harden(NextResponse.redirect(to, legacy.permanent ? 308 : 307), policy(false));
   }
 
   const requestHeaders = new Headers(req.headers);
-  const value = policy();
+  // /p/ is the page a stranger opens from a share, so its pictures come from brain; a team path hosts the signed-in app
+  // and the team's own pages, where the wide policy stays (a team's members' links and logos load from their hosts).
+  const value = policy(!path.startsWith("/p/"));
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("Content-Security-Policy", value);
   const res = NextResponse.next({ request: { headers: requestHeaders } });
