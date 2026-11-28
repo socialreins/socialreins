@@ -7,6 +7,7 @@ import { useSearchParams } from "next/navigation";
 import { useTeamRouter as useRouter } from "@/components/team-link";
 import type { Failure } from "@/lib/auth";
 import { listConnections, safeAvatar, type Connection } from "@/lib/connections";
+import { commentCapable, commentsHref, listArguments, narrows, readFilters, type Filters as CommentFilters } from "@/lib/comments";
 import { listContactTags, updateContact } from "@/lib/contacts";
 import {
   accountGroups,
@@ -56,11 +57,13 @@ import {
 } from "@/lib/inbox";
 import { createSnippet, isProblem, libraryText, type Problem } from "@/lib/library";
 import { proxiedImage } from "@/lib/posts";
+import { listSets, type SocialSet } from "@/lib/sets";
 import { address, addressOf, isUuid, moveParam, moveToNumber } from "@/lib/ref";
 import { getBilling, type Billing } from "@/lib/billing";
 import { listMembers, manages } from "@/lib/teams";
 import { useSession } from "@/components/app-shell";
 import { accountName, Avatar } from "@/components/connections";
+import { CommentsPanel, excerpt, usePosts, useViews } from "@/components/comments-panel";
 import { InboxEditor, inboxMessages } from "@/components/inbox-editor";
 import { DeleteReply, DmTools, ItemActionsMenu, MessageTools, useItemActions } from "@/components/inbox-actions";
 import { ModerationBar } from "@/components/inbox-moderation";
@@ -129,6 +132,12 @@ const shortcuts: [string, string][] = [
   ["?", "Show these shortcuts"],
   ["Ctrl or Cmd + Enter", "Send the reply"],
 ];
+// The Comments page has no inboxes to step through, and has its saved views.
+const commentShortcuts: [string, string][] = [
+  ...shortcuts.filter(([k]) => k !== "[" && k !== "]").map(([k, w]): [string, string] => [k, w.replace("this inbox", "the comments")]),
+  ["1 to 9", "Apply the saved view with that number"],
+  ["0 or Esc", "Clear every filter"],
+];
 
 // How long Mark done offers Undo.
 const UNDO_MS = 5_000;
@@ -192,7 +201,7 @@ function AccountMenu({ value, groups, onChange }: { value: string; groups: Accou
   );
 }
 
-function ShortcutsDialog({ onClose }: { onClose: () => void }) {
+function ShortcutsDialog({ onClose, comments }: { onClose: () => void; comments: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     ref.current?.showModal();
@@ -209,7 +218,7 @@ function ShortcutsDialog({ onClose }: { onClose: () => void }) {
           </button>
         </div>
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 gap-y-2 text-sm">
-          {shortcuts.map(([keys, what]) => (
+          {(comments ? commentShortcuts : shortcuts).map(([keys, what]) => (
             <div key={keys} className="contents">
               <dt>
                 <kbd className="rounded-md border border-ink/20 bg-canvas px-1.5 py-0.5 font-mono text-xs font-bold">{keys}</kbd>
@@ -250,7 +259,9 @@ export function KindBadge({ kind }: { kind: Item["kind"] }) {
   );
 }
 
-export function Inbox({ inboxId }: { inboxId?: string }) {
+export function Inbox({ inboxId, mode = "inbox" }: { inboxId?: string; mode?: "inbox" | "comments" }) {
+  // Comments is this same page over the team's comments and mentions of every account, its filters in the address.
+  const comments = mode === "comments";
   const { user } = useSession();
   const canManage = manages(user.current_team.role);
   const router = useRouter();
@@ -265,12 +276,14 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   const account = params.get("account") ?? "";
   const network = params.get("network") ?? "";
   const chosen = account || (network ? `${NETWORK_PREFIX}${network}` : "");
+  const cf: CommentFilters = comments ? readFilters(params) : {};
   const [search, setSearch] = useState(q);
   const [members, setMembers] = useState<Person[]>([]);
   const [tagOptions, setTagOptions] = useState<string[]>([]);
 
   const [inboxes, setInboxes] = useState<InboxT[] | Failure | null>(null);
   const [accounts, setAccounts] = useState<Connection[] | Failure | null>(null);
+  const [sets, setSets] = useState<SocialSet[]>([]);
   const [billing, setBilling] = useState<Billing | null>(null);
   // Loaded data remembers what it was loaded for, so a new inbox, tab or item shows loading, not stale rows.
   const [loaded, setLoaded] = useState<{ key: string; page: Page | Failure } | null>(null);
@@ -285,7 +298,6 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   // Threads with a state PATCH on its way: a second Mark done for one waits its turn by not happening.
   const patching = useRef(new Set<string>());
   const [help, setHelp] = useState(false);
-  const rowsRef = useRef<HTMLUListElement>(null);
   // The item a key press just went to, until the address has it: J pressed twice fast moves two rows.
   const heading = useRef<string | null>(null);
 
@@ -295,15 +307,19 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
     getBilling().then((r) => !isFailure(r) && setBilling(r));
     listMembers().then((r) => Array.isArray(r) && setMembers(r));
     listContactTags().then((r) => Array.isArray(r) && setTagOptions(r.map((t) => t.tag)));
+    if (comments) listSets().then((r) => Array.isArray(r) && setSets(r));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once; the page is Inbox or Comments for as long as it lives
   }, []);
 
   const list = Array.isArray(inboxes) ? inboxes : [];
   // The address holds the inbox's number; an old one holds its UUID, and a number waits for the list to say which inbox it is.
-  const current = inboxId ? list.find((i) => i.id === inboxId || String(i.number) === inboxId) : list[0];
+  const current = comments ? list.find((i) => i.is_all) : inboxId ? list.find((i) => i.id === inboxId || String(i.number) === inboxId) : list[0];
   // A number the list does not know goes to brain as it is, which answers not found; only a list still loading waits.
   const currentId = current?.id ?? (inboxId && (isUuid(inboxId) || inboxes !== null) ? inboxId : undefined);
   const base = inboxId ? `/inbox/${current ? address(current) : encodeURIComponent(inboxId)}` : "/inbox";
   const href = (to: { item?: string | null; state?: ItemState; assigned?: string; tag?: string; account?: string; network?: string }) => {
+    // Comments keeps its filters in the address, the typed keyword included.
+    if (comments) return commentsHref({ ...cf, ...(search.trim() ? { q: search.trim() } : {}) }, { item: to.item, state: to.state ?? state });
     const s = new URLSearchParams();
     if ((to.state ?? state) === "done") s.set("state", "done");
     if (to.item) s.set("item", to.item);
@@ -315,21 +331,28 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
     return s.size ? `${base}?${s}` : base;
   };
 
-  const kindQ = kind === "all" ? null : kind;
-  const key = JSON.stringify([currentId, state, kind, q, assigned, tag, account, network]);
+  // Comments waits for the accounts, which its set, network and account picks turn into account ids.
+  const spec = comments && accounts !== null ? listArguments(cf, Array.isArray(accounts) ? accounts : []) : null;
+  // "All inboxes" holds DMs only: comments and mentions are on the Comments page. A custom inbox holds what it was made to hold.
+  const kindQ = comments ? (spec?.kind ?? null) : current?.is_all ? "dm" : kind === "all" ? null : kind;
+  const key = JSON.stringify([currentId, state, kindQ, q, assigned, tag, account, network, comments ? cf : null, spec !== null]);
   // Every list call, the poll and Load more included, carries the same filters.
-  const fetchItems = (id: string, cursor?: string | null) => listItems(id, state, cursor, kindQ, q, { assigned, tag, account, network, conversations: true });
+  const fetchItems = (id: string, cursor?: string | null) =>
+    spec ? listItems(id, state, cursor, spec.kind, spec.search, spec.more) : listItems(id, state, cursor, kindQ, q, { assigned, tag, account, network, conversations: true });
+  const ready = Boolean(currentId) && (!comments || spec !== null);
   // The view is narrowed past the inbox's own open list (the Done tab, a kind, a search, an
   // assignee, a tag, an account or a network), so the badge of the inbox being viewed follows
   // the filters instead of resting on the open total.
   const narrowed = state === "done" || kindQ !== null || q !== "" || Boolean(assigned || tag || account || network);
+  // Comments badges its list under every filter; a custom inbox badges itself when narrowed; "All" never asks.
+  const wantsCount = comments ? Boolean(current) : Boolean(current && !current.is_all && narrowed);
   // The current inbox's own count under the filters on screen, keyed like the loaded page so a
   // late answer for another view is ignored. Null until it comes back; "All" never asks, its
   // badge being the team's open total.
   const [counted, setCounted] = useState<{ key: string; n: number } | null>(null);
   const ownCount = counted?.key === key ? counted.n : null;
   const fetchCount = (id: string) =>
-    countItems(id, state, kindQ, q, { assigned, tag, account, network }).then((r) => {
+    countItems(id, state, kindQ, q, spec ? spec.more : { assigned, tag, account, network }).then((r) => {
       if (!isFailure(r)) setCounted({ key, n: r.count });
     });
   const page = loaded?.key === key ? loaded.page : null;
@@ -341,18 +364,34 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
       return next ? { key, page: next } : l;
     });
   const items = page && !isFailure(page) ? page.items : [];
+  // By post: the loaded comments of one post (ours, a video, or the thread's own post), in the order they came.
+  const groupKey = (i: Item) => (i.post_id ? `post:${i.post_id}` : i.video ? `video:${i.video.id}` : i.root_remote_id ? `${i.platform}:${i.root_remote_id}` : `other:${i.platform}`);
+  const postGroups = comments && cf.by === "post" ? [...Map.groupBy(items, groupKey).entries()] : [];
+  // J and K walk the rows in the order they are drawn, which By post changes.
+  const ordered = postGroups.length ? postGroups.flatMap(([, rows]) => rows) : items;
   // Until the item itself answers, its list row stands in, so a row opens at once.
   const detail = !asked ? null : shown && (shown.asked === asked || (!isFailure(shown.item) && isItem(shown.item, asked))) ? shown.item : (items.find((i) => isItem(i, asked)) ?? null);
   // The rest of this page goes by the item's id.
   const itemId = detail && !isFailure(detail) ? detail.id : asked && isUuid(asked) ? asked : null;
   // What is open, as the list knows it: a conversation matches its row whichever of its DMs the address names.
   const openKey = detail && !isFailure(detail) ? threadKey(detail) : itemId;
+  const views = useViews(comments, params, (to) => router.replace(to, { scroll: false }));
+  // The posts of ours the comments hang off, for the line under a comment and the By post cards.
+  const posts = usePosts(comments ? [...items.map((i) => i.post_id), cf.post] : []);
+  // An old link keeps working across the split: a comment or mention opened in "All inboxes" moves to Comments, and a DM opened in Comments to the Inbox.
+  useEffect(() => {
+    if (!detail || isFailure(detail)) return;
+    const at = address(detail);
+    if (!comments && current?.is_all && detail.kind !== "dm") router.replace(commentsHref(isActivity(detail.kind) ? { show: "activity" } : {}, { item: at, state: detail.state === "done" ? "done" : "open" }), { scroll: false });
+    else if (comments && detail.kind === "dm") router.replace(`/inbox?item=${at}${detail.state === "done" ? "&state=done" : ""}`, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per item opened
+  }, [detail && !isFailure(detail) ? detail.id : null, current?.id]);
   // When the counts were last asked for by the refresh below; kept across filter changes, which restart that effect.
   const countsAt = useRef(0);
   // The open totals move when an item is marked done or reopened; so does the narrowed count.
   const refreshCounts = () => {
     listInboxes().then((l) => Array.isArray(l) && setInboxes(l));
-    if (current && !current.is_all && narrowed) fetchCount(current.id);
+    if (current && wantsCount) fetchCount(current.id);
   };
   const go = (item: { id: string; number?: number } | null, how: "push" | "replace" = "replace") => {
     if (item) setOpened(item.id);
@@ -369,7 +408,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   }
 
   useEffect(() => {
-    if (!currentId) return;
+    if (!ready || !currentId) return;
     let live = true;
     fetchItems(currentId).then((r) => live && setLoaded({ key, page: isFailure(r) ? r : { items: r.items, next: r.next_cursor } }));
     return () => {
@@ -381,7 +420,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   // The narrowed count of the inbox being viewed, asked with the list and after a reload. The
   // poll below and the item changes above keep it fresh; this covers a filter change.
   useEffect(() => {
-    if (!currentId || !current || current.is_all || !narrowed) return;
+    if (!ready || !currentId || !wantsCount) return;
     fetchCount(currentId);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` holds every filter fetchCount reads
   }, [currentId, key, reloads, current?.is_all]);
@@ -390,7 +429,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
 
   // While the tab shows, fold the newest page into the list (and now and then refresh the open counts); a failed check waits for the next.
   useEffect(() => {
-    if (!currentId) return;
+    if (!ready || !currentId) return;
     let live = true;
     if (countsAt.current === 0) countsAt.current = Date.now();
     const check = async (counts = false) => {
@@ -400,7 +439,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
         listInboxes().then((l) => live && Array.isArray(l) && setInboxes(l));
       }
       // The narrowed count rides the same path as the list, so the badge keeps up with the poll.
-      if (current && !current.is_all && narrowed) fetchCount(current.id);
+      if (current && wantsCount) fetchCount(current.id);
       const r = await fetchItems(currentId);
       if (!live || isFailure(r)) return;
       setLoaded((l) => (l?.key === key && !isFailure(l.page) ? { key, page: mergeFresh(l.page, r) } : l));
@@ -477,8 +516,8 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
     const k = threadKey(i);
     if (patching.current.has(k)) return;
     patching.current.add(k);
-    const at = items.findIndex((x) => threadKey(x) === k);
-    const row = state === "open" && at >= 0 ? items[at]! : null;
+    const at = ordered.findIndex((x) => threadKey(x) === k);
+    const row = state === "open" && at >= 0 ? ordered[at]! : null;
     const saved = setItemState(i.id, "done", i.kind === "dm");
     // Bluesky is told the conversation was read, as its own app would; best effort.
     if (i.kind === "dm" && i.platform === "bluesky") void runAction(i.id, { action: "mark_read" });
@@ -488,7 +527,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
     setTimeout(() => setUndos((l) => l.filter((x) => x.id !== u.id || x.problem)), UNDO_MS);
     if (row) {
       setPage((p) => (p && !isFailure(p) ? { ...p, items: p.items.filter((x) => x.id !== row.id) } : p));
-      go(items[at + 1] ?? items[at - 1] ?? null);
+      go(ordered[at + 1] ?? ordered[at - 1] ?? null);
     }
     saved.then((r) => {
       patching.current.delete(k);
@@ -522,14 +561,16 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
     const onKey = (e: KeyboardEvent) => {
       const s = shortcutFor(e);
       if (!s || document.querySelector("dialog[open]")) return;
+      // Saved views and Clear are the Comments page's keys.
+      if (!comments && (s === "clear" || s.startsWith("view"))) return;
       e.preventDefault();
       if (s === "next" || s === "previous") {
         const from = heading.current;
-        const at = items.findIndex((x) => (from ? x.id === from : threadKey(x) === openKey || x.id === itemId));
+        const at = ordered.findIndex((x) => (from ? x.id === from : threadKey(x) === openKey || x.id === itemId));
         const n = at < 0 ? 0 : at + (s === "next" ? 1 : -1);
-        if (!items[n]) return;
-        go(items[n], "push");
-        rowsRef.current?.children[n]?.scrollIntoView({ block: "nearest" });
+        if (!ordered[n]) return;
+        go(ordered[n], "push");
+        document.getElementById(`row-${ordered[n]!.id}`)?.scrollIntoView({ block: "nearest" });
       } else if (s === "done") {
         // A held key marks one item, not the whole list.
         if (!e.repeat) document.getElementById("mark-done")?.click();
@@ -538,9 +579,14 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
       else if (s === "reply") document.getElementById("reply-text")?.focus();
       else if (s === "search") document.getElementById("inbox-search")?.focus();
       else if (s === "nextInbox" || s === "previousInbox") {
-        const next = stepInbox(list, current?.id, s === "nextInbox" ? 1 : -1);
+        const next = comments ? null : stepInbox(list, current?.id, s === "nextInbox" ? 1 : -1);
         if (next) router.push(`/inbox/${address(next)}`);
-      } else setHelp(true);
+      } else if (s === "help") setHelp(true);
+      else if (s === "clear") views.clear();
+      else {
+        const v = views.byKey(s.slice(4));
+        if (v) views.apply(v);
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -571,7 +617,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   // A filter on an account or network the new inbox does not hold goes as the inbox changes.
   useEffect(() => {
     // Both lists must be in: until the accounts load, no inbox holds any.
-    if (!current || !Array.isArray(accounts)) return;
+    if (comments || !current || !Array.isArray(accounts)) return;
     // One choice at a time: a crafted address with both keeps the account.
     if (account && network) return router.replace(href({ network: "" }), { scroll: false });
     if (account && !heldAccounts.some((a) => a.id === account)) router.replace(href({ account: "", network: "" }), { scroll: false });
@@ -586,16 +632,114 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   const nameOf = new Map(list.map((i) => [i.id, i.name]));
   // On small screens one pane shows at a time: inboxes, then items, then the item.
   const show = (pane: "inboxes" | "items" | "detail") =>
-    (pane === "detail" ? asked : pane === "items" ? inboxId && !asked : !inboxId && !asked) ? "block" : "hidden";
+    (pane === "detail" ? asked : pane === "items" ? (comments ? !asked : inboxId && !asked) : !inboxId && !asked) ? "block" : "hidden";
   // What the badge of the inbox being viewed counts: the view's own items, said plainly. Open
   // work on the Open tab, done work on the Done tab, and for activity (stored done, counted
   // whatever the tab) no word at all.
   const ownWord = state === "done" ? "done" : kindQ === "activity" ? "" : "open";
   const own = current && !current.is_all && ownCount !== null ? { n: ownCount, word: ownWord } : null;
 
+  const emptyComments =
+    state === "done"
+      ? "Nothing marked done yet."
+      : cf.show === "activity"
+        ? "No follows, likes or reposts yet."
+        : narrows(cf) || search.trim()
+          ? "No comments match these filters."
+          : commentCapable(accountList).length === 0
+            ? "None of your accounts has comments to read yet. Connect Bluesky, Facebook, Instagram, Threads, X or YouTube under Accounts."
+            : "No comments yet. New comments and mentions show up here within a minute.";
+  // What a comment is on: the text of our post, or the video's title on YouTube.
+  const postLine = (i: Item) => excerpt(i.post_id ? posts.get(i.post_id)?.text : undefined) || i.video?.title || "";
+  const rowKeys = (e: React.KeyboardEvent<HTMLElement>) => {
+    const step = e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0;
+    if (!step) return;
+    const links = [...e.currentTarget.querySelectorAll("a")];
+    const next = links[links.indexOf(document.activeElement as HTMLAnchorElement) + step];
+    if (!next) return;
+    e.preventDefault();
+    next.focus();
+  };
+  // One row of the list; Comments adds the network, the account and the post the comment is on.
+  const renderRow = (i: Item) => {
+    const selected = i.id === itemId || threadKey(i) === openKey;
+    // A conversation row: its latest DM, with the count and whether anything in it is still open.
+    const c = i.conversation;
+    const dot = c ? (c.open_count > 0 ? "Unread" : null) : i.replied_at ? null : "Unanswered";
+    return (
+      <li key={i.id} id={`row-${i.id}`} className="relative">
+        <Link
+          href={href({ item: address(i) })}
+          scroll={false}
+          onClick={() => setOpened(i.id)}
+          aria-current={selected ? "true" : undefined}
+          className={`flex gap-2.5 px-3 py-2.5 focus-visible:outline-offset-[-3px] ${selected ? "bg-signal/[0.07] shadow-[inset_3px_0_0_var(--color-signal)]" : "hover:bg-ink/[0.03]"}`}
+        >
+          <AuthorAvatar author={i.author} size="size-9" />
+          <span className="grid min-w-0 flex-1 gap-0.5">
+            <span className="flex min-w-0 items-center gap-2">
+              {dot && (
+                <>
+                  <span aria-hidden="true" className="size-2 shrink-0 rounded-full bg-signal" title={dot} />
+                  <span className="sr-only">{dot}:</span>
+                </>
+              )}
+              <strong className="min-w-0 truncate">{authorName(i.author)}</strong>
+              {/* The handle gives way first when the row is narrow. */}
+              {i.author.handle && i.author.name && <span className="min-w-0 shrink-[4] truncate text-sm text-ink-soft">@{i.author.handle}</span>}
+              <time dateTime={c?.last_at ?? i.received_at} className="ml-auto shrink-0 text-xs text-ink-soft">
+                {relativeTime(c?.last_at ?? i.received_at)}
+              </time>
+            </span>
+            <span className="line-clamp-2 text-sm text-ink-soft">{itemSummary(i)}</span>
+            {comments && postLine(i) && <span className="truncate text-xs text-ink-soft">On: {postLine(i)}</span>}
+            <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+              <KindBadge kind={i.kind} />
+              {comments && (
+                <span className="badge max-w-48 truncate">
+                  {platformName(i.platform)}
+                  {accountById.get(i.social_account_id) ? `: ${accountName(accountById.get(i.social_account_id)!)}` : ""}
+                </span>
+              )}
+              {c && <span className="text-xs text-ink-soft">{messageCount(c.count)}</span>}
+              {/* With one custom inbox every row would carry the same chip. */}
+              {current?.is_all &&
+                custom.length > 1 &&
+                i.inbox_ids?.flatMap((id) => {
+                  const n = nameOf.get(id);
+                  return n ? [<span key={id} className="badge max-w-32 truncate">{n}</span>] : [];
+                })}
+              {i.assigned_to && (
+                <span className="ml-auto grid size-5 place-items-center rounded-full bg-ink text-[0.65rem] font-bold text-paper" title={`Assigned to ${i.assigned_to.name}`}>
+                  <span aria-hidden="true">{i.assigned_to.name.charAt(0).toUpperCase()}</span>
+                  <span className="sr-only">Assigned to {i.assigned_to.name}</span>
+                </span>
+              )}
+            </span>
+          </span>
+        </Link>
+      </li>
+    );
+  };
+
   return (
     // From lg up the inbox fills the window under the top bar (3rem) and main's padding (2rem twice); each pane scrolls on its own.
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:h-[calc(100dvh-7rem)] lg:grid-cols-[11rem_minmax(0,1fr)_minmax(0,1.25fr)] lg:grid-rows-[minmax(0,1fr)] lg:gap-4 xl:grid-cols-[12rem_minmax(0,1fr)_minmax(0,1.25fr)] xl:gap-6">
+    <div className={`grid grid-cols-[minmax(0,1fr)] gap-6 lg:h-[calc(100dvh-7rem)] lg:grid-rows-[minmax(0,1fr)] lg:gap-4 xl:gap-6 ${comments ? "lg:grid-cols-[15rem_minmax(0,1fr)_minmax(0,1.25fr)] xl:grid-cols-[16rem_minmax(0,1fr)_minmax(0,1.25fr)]" : "lg:grid-cols-[11rem_minmax(0,1fr)_minmax(0,1.25fr)] xl:grid-cols-[12rem_minmax(0,1fr)_minmax(0,1.25fr)]"}`}>
+      {comments ? (
+        <aside aria-label="Views and filters" className={`${asked ? "hidden" : "block"} lg:block lg:overflow-y-auto lg:overscroll-contain lg:p-px`}>
+          <CommentsPanel
+            filters={cf}
+            accounts={Array.isArray(accounts) ? accounts : []}
+            sets={sets}
+            members={members}
+            views={views}
+            canManage={canManage}
+            search={search}
+            go={(to) => router.replace(to, { scroll: false })}
+            posts={posts}
+          />
+        </aside>
+      ) : (
       <nav aria-labelledby="inboxes-heading" className={`${show("inboxes")} grid content-start gap-3 lg:block lg:overflow-y-auto lg:overscroll-contain`}>
         <div className="flex items-center justify-between gap-2 lg:mb-3">
           <h2 id="inboxes-heading" className="font-display text-lg font-extrabold tracking-tight">
@@ -684,19 +828,28 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
             </button>
           ))}
       </nav>
+      )}
 
       <section aria-labelledby="items-heading" className={`${show("items")} grid content-start gap-3 lg:flex lg:flex-col lg:gap-0`}>
-        <Link href="/inbox" className="flex items-center gap-1 text-sm font-bold text-ink-soft hover:text-ink lg:hidden">
-          <Icon name="left" className="size-4" />
-          Inboxes
-        </Link>
-        <h2 id="items-heading" className="font-display text-lg font-extrabold tracking-tight lg:mb-3">
-          {current ? inboxName(current) : "Inbox"}
+        {!comments && (
+          <Link href="/inbox" className="flex items-center gap-1 text-sm font-bold text-ink-soft hover:text-ink lg:hidden">
+            <Icon name="left" className="size-4" />
+            Inboxes
+          </Link>
+        )}
+        <h2 id="items-heading" className="flex items-center gap-2 font-display text-lg font-extrabold tracking-tight lg:mb-3">
+          {comments ? "Comments" : current ? inboxName(current) : "Inbox"}
+          {comments && ownCount !== null && (
+            <span className="badge tone tabular-nums" data-testid="comments-count">
+              {ownCount.toLocaleString()}
+              <span className="sr-only"> {kindQ === "activity" ? "activity items" : state === "done" ? "done" : "open"} under these filters</span>
+            </span>
+          )}
         </h2>
         <div className="grid gap-2 lg:mb-3">
           <div className="flex items-center gap-2">
             <label className="relative block min-w-0 flex-1">
-              <span className="sr-only">Search {current ? inboxName(current) : "this inbox"}</span>
+              <span className="sr-only">Search {comments ? "comments" : current ? inboxName(current) : "this inbox"}</span>
               <Icon name="search" className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-soft" />
               <input id="inbox-search" type="search" maxLength={100} className="field w-full py-1.5 pl-9" placeholder="Search text or author" value={search} onChange={(e) => setSearch(e.target.value)} />
             </label>
@@ -713,8 +866,9 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
               ))}
             </nav>
           </div>
+          {!comments && (
           <div className="flex flex-wrap items-center gap-1.5">
-            <FilterMenu label="Kind" value={kind} options={kindOptions} onChange={setKind} />
+            {!current?.is_all && <FilterMenu label="Kind" value={kind} options={kindOptions} onChange={setKind} />}
             <AccountMenu
               value={chosen}
               groups={groups}
@@ -729,7 +883,8 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
             />
             <FilterMenu label="Assigned" value={assigned} options={assignedOptions} onChange={(v) => router.replace(href({ assigned: v, item: asked }), { scroll: false })} />
           </div>
-          {(kind !== "all" || assigned || tag || account || network) && (
+          )}
+          {!comments && (kind !== "all" || assigned || tag || account || network) && (
             <ul aria-label="Active filters" className="flex flex-wrap items-center gap-1.5">
               {account && (
                 <li className={chip}>
@@ -797,7 +952,11 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
             <div className="card grid gap-3 p-5">
               <p>
                 <strong className="block">No accounts connected</strong>
-                <span className="text-ink-soft">Connect a Bluesky, Facebook, Instagram, Threads or X account and its comments, mentions and DMs land here. Threads has replies and mentions, no DMs.</span>
+                <span className="text-ink-soft">
+                  {comments
+                    ? "Connect a Bluesky, Facebook, Instagram, Threads, X or YouTube account and the comments and mentions on it land here. LinkedIn comments need LinkedIn's approval."
+                    : "Connect a Bluesky, Facebook, Instagram or X account and its DMs land here. Comments and mentions are on the Comments page."}
+                </span>
               </p>
               <Link href="/connections" className="btn btn-primary justify-self-start">
                 Connect an account
@@ -814,7 +973,9 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
           ) : items.length === 0 ? (
             <>
             <p className="card p-5 text-ink-soft">
-              {account
+              {comments ? (
+                emptyComments
+              ) : account
                 ? `Nothing from ${accountLabels.get(account) ?? "this account"} here.`
                 : network
                 ? `Nothing from ${platformName(network)} here.`
@@ -828,85 +989,71 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
                   ? "No items of this kind here."
                   : current && !current.is_all && current.account_ids.length === 0
                   ? "This inbox has no accounts. Edit it to add some."
+                  : current?.is_all
+                  ? "No DMs yet. New DMs show up here within a minute. Comments and mentions are on the Comments page."
                   : "Nothing here yet. New comments, mentions and DMs show up here within a minute."}
             </p>
-            {(account || network || kind !== "all" || assigned || tag) && (
+            {comments && (narrows(cf) || search.trim()) && (
+              <button type="button" className="btn btn-secondary btn-sm justify-self-start" onClick={views.clear}>
+                Clear filters
+              </button>
+            )}
+            {!comments && (account || network || kind !== "all" || assigned || tag) && (
               <button type="button" className="btn btn-secondary btn-sm justify-self-start" onClick={clearFilters}>
                 Clear filters
               </button>
             )}
             {loadMoreButton}
             </>
-          ) : (
+          ) : comments && cf.by === "post" ? (
             <>
-              <ul
-                ref={rowsRef}
-                aria-label="Items"
-                className="card divide-y divide-ink/10 overflow-hidden"
-                // Up and Down move between rows; Enter opens one, as any link.
-                onKeyDown={(e) => {
-                  const step = e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0;
-                  if (!step) return;
-                  const links = [...e.currentTarget.querySelectorAll("a")];
-                  const next = links[links.indexOf(document.activeElement as HTMLAnchorElement) + step];
-                  if (!next) return;
-                  e.preventDefault();
-                  next.focus();
-                }}
-              >
-                {items.map((i) => {
-                  const selected = i.id === itemId || threadKey(i) === openKey;
-                  // A conversation row: its latest DM, with the count and whether anything in it is still open.
-                  const c = i.conversation;
-                  const dot = c ? (c.open_count > 0 ? "Unread" : null) : i.replied_at ? null : "Unanswered";
+              <p className="text-sm text-ink-soft">One card per post. Counts are of the comments loaded so far{page?.next ? ": Load more for the rest" : ""}.</p>
+              {/* A card per post, the comments of every network under it. Up and Down move between rows, across cards. */}
+              <div className="grid gap-3" onKeyDown={rowKeys}>
+                {postGroups.map(([k, rows]) => {
+                  const first = rows[0]!;
+                  const ours = first.post_id ? posts.get(first.post_id) : undefined;
+                  const unanswered = rows.filter((r) => !r.replied_at).length;
+                  const networks = [...new Set(rows.map((r) => platformName(r.platform)))].join(", ");
                   return (
-                    <li key={i.id} className="relative">
-                      <Link
-                        href={href({ item: address(i) })}
-                        scroll={false}
-                        onClick={() => setOpened(i.id)}
-                        aria-current={selected ? "true" : undefined}
-                        className={`flex gap-2.5 px-3 py-2.5 focus-visible:outline-offset-[-3px] ${selected ? "bg-signal/[0.07] shadow-[inset_3px_0_0_var(--color-signal)]" : "hover:bg-ink/[0.03]"}`}
-                      >
-                        <AuthorAvatar author={i.author} size="size-9" />
-                        <span className="grid min-w-0 flex-1 gap-0.5">
-                          <span className="flex min-w-0 items-center gap-2">
-                            {dot && (
-                              <>
-                                <span aria-hidden="true" className="size-2 shrink-0 rounded-full bg-signal" title={dot} />
-                                <span className="sr-only">{dot}:</span>
-                              </>
-                            )}
-                            <strong className="min-w-0 truncate">{authorName(i.author)}</strong>
-                            {/* The handle gives way first when the row is narrow. */}
-                            {i.author.handle && i.author.name && <span className="min-w-0 shrink-[4] truncate text-sm text-ink-soft">@{i.author.handle}</span>}
-                            <time dateTime={c?.last_at ?? i.received_at} className="ml-auto shrink-0 text-xs text-ink-soft">
-                              {relativeTime(c?.last_at ?? i.received_at)}
-                            </time>
+                    <section key={k} aria-label={`Comments on ${postLine(first) || "a post"}`} className="card overflow-hidden">
+                      <header className="grid gap-1 border-b border-ink/10 bg-ink/[0.03] px-3 py-2">
+                        <strong className="line-clamp-2">{postLine(first) || (first.post_id ? "A post of yours" : `A ${platformName(first.platform)} post not published here`)}</strong>
+                        <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-soft">
+                          <span>{networks}</span>
+                          <span>
+                            {rows.length} {rows.length === 1 ? "comment" : "comments"}, {unanswered} unanswered
                           </span>
-                          <span className="line-clamp-2 text-sm text-ink-soft">{itemSummary(i)}</span>
-                          <span className="mt-0.5 flex items-center gap-2">
-                            <KindBadge kind={i.kind} />
-                            {c && <span className="text-xs text-ink-soft">{messageCount(c.count)}</span>}
-                            {/* With one custom inbox every row would carry the same chip. */}
-                            {current?.is_all &&
-                              custom.length > 1 &&
-                              i.inbox_ids?.flatMap((id) => {
-                                const n = nameOf.get(id);
-                                return n ? [<span key={id} className="badge max-w-32 truncate">{n}</span>] : [];
-                              })}
-                            {i.assigned_to && (
-                              <span className="ml-auto grid size-5 place-items-center rounded-full bg-ink text-[0.65rem] font-bold text-paper" title={`Assigned to ${i.assigned_to.name}`}>
-                                <span aria-hidden="true">{i.assigned_to.name.charAt(0).toUpperCase()}</span>
-                                <span className="sr-only">Assigned to {i.assigned_to.name}</span>
-                              </span>
-                            )}
-                          </span>
+                          {ours && (
+                            <Link href={`/posts/${ours.number}`} className="font-bold underline decoration-signal decoration-2 underline-offset-4">
+                              Open the post
+                            </Link>
+                          )}
+                          {first.video && (
+                            <a href={first.video.url} target="_blank" rel="noreferrer" className="font-bold underline decoration-signal decoration-2 underline-offset-4">
+                              Watch the video<span className="sr-only"> (opens a new tab)</span>
+                            </a>
+                          )}
+                          {first.post_id && cf.post !== first.post_id && (
+                            <Link href={commentsHref({ ...cf, post: first.post_id, by: "" })} scroll={false} className="font-bold underline decoration-signal decoration-2 underline-offset-4">
+                              Only this post
+                            </Link>
+                          )}
                         </span>
-                      </Link>
-                    </li>
+                      </header>
+                      <ul aria-label="Comments" className="divide-y divide-ink/10">
+                        {rows.map(renderRow)}
+                      </ul>
+                    </section>
                   );
                 })}
+              </div>
+              {loadMoreButton}
+            </>
+          ) : (
+            <>
+              <ul aria-label="Items" className="card divide-y divide-ink/10 overflow-hidden" onKeyDown={rowKeys}>
+                {items.map(renderRow)}
               </ul>
               {loadMoreButton}
             </>
@@ -917,7 +1064,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
       <section aria-label="Item" className={`${show("detail")} lg:block lg:overflow-y-auto lg:overscroll-contain lg:p-px`}>
         <Link href={href({ item: null })} scroll={false} className="mb-3 flex items-center gap-1 text-sm font-bold text-ink-soft hover:text-ink lg:hidden">
           <Icon name="left" className="size-4" />
-          Back to {current ? inboxName(current) : "the inbox"}
+          Back to {comments ? "Comments" : current ? inboxName(current) : "the inbox"}
         </Link>
         {!asked ? (
           <div className="hidden h-full place-content-center justify-items-center gap-3 p-8 text-center text-sm text-ink-soft lg:grid">
@@ -981,7 +1128,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
           ))}
         </div>
       )}
-      {help && <ShortcutsDialog onClose={() => setHelp(false)} />}
+      {help && <ShortcutsDialog comments={comments} onClose={() => setHelp(false)} />}
 
       {editing && (
         <InboxEditor

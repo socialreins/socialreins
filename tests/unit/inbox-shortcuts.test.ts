@@ -24,6 +24,12 @@ it("maps each key, in either case", () => {
   expect(press(document.body, "J")).toBe("next");
   expect(press(document.body, "?", { shiftKey: true })).toBe("help");
   expect(press(add("<a href='#' data-t>row</a>"), "e")).toBe("done");
+  // Saved views and Clear: 1 to 9, 0 and Escape.
+  for (const n of "123456789") expect(press(document.body, n)).toBe(`view${n}`);
+  expect(press(document.body, "0")).toBe("clear");
+  expect(press(document.body, "Escape")).toBe("clear");
+  expect(press(add("<input data-t>"), "1")).toBeNull();
+  expect(press(add("<input data-t>"), "Escape")).toBeNull();
   expect(press(document.body, "x")).toBeNull();
   expect(press(document.body, "Enter")).toBeNull();
 });

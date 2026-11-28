@@ -8,7 +8,8 @@ export const KINDS: Kind[] = ["comment", "mention", "dm"];
 export type ActivityKind = "follow" | "like" | "repost";
 export const isActivity = (kind: Item["kind"]): kind is ActivityKind => kind === "follow" || kind === "like" || kind === "repost";
 // What the item list can be narrowed to: a kind, or all the quiet activity.
-export type ListKind = Kind | "activity";
+// "comments" is comments and mentions together, what the Comments page lists.
+export type ListKind = Kind | "comments" | "activity";
 export type ItemState = "open" | "done";
 
 // What narrows an inbox beyond its accounts. Empty lists mean any.
@@ -16,7 +17,7 @@ export type Filters = { kinds: Kind[]; keywords: string[]; unanswered: boolean }
 // A custom inbox holds the items of its accounts; "All" (`is_all`) holds every item and no `account_ids`.
 // `open_count` (open items, follows left out) comes with the list only; a narrowed view asks
 // `countItems` for what it shows.
-export type Inbox = { id: string; number: number; name: string; is_all: boolean; account_ids: string[]; filters: Filters; open_count?: number; created_at: string; updated_at: string };
+export type Inbox = { id: string; number: number; name: string; is_all: boolean; account_ids: string[]; filters: Filters; open_count?: number; open_dm_count?: number; open_comment_count?: number; created_at: string; updated_at: string };
 
 // Platforms whose accounts have an inbox.
 export const INBOX_PLATFORMS = ["bluesky", "facebook", "instagram", "threads", "x", "youtube"];
@@ -55,6 +56,8 @@ export type Item = {
   remote_id: string;
   remote_url: string | null;
   convo_id: string | null;
+  // The thread's first post, as the network names it; By post groups comments by it when no post of ours is known.
+  root_remote_id?: string | null;
   post_id: string | null;
   author: Author;
   text: string;
@@ -131,20 +134,47 @@ export const createInbox = (input: InboxInput) => api<Inbox>("/v1/inboxes", "POS
 export const updateInbox = (id: string, input: InboxInput) => api<Inbox>(`/v1/inboxes/${enc(id)}`, "PUT", input);
 export const deleteInbox = (id: string) => api(`/v1/inboxes/${enc(id)}`, "DELETE");
 
-// `search` looks in the text and the author's name and handle; brain takes 1 to 100 characters.
-// `assigned` is "me", "none" or a user id; `tag` is a contact tag; `account` one account's id and
-// `network` one platform, both within the inbox's own accounts.
-// `conversations` asks for DMs as one row per person and account; comments and mentions come as they are.
-export function listItems(inboxId: string, state: ItemState, cursor?: string | null, kind?: ListKind | null, search?: string, more: { assigned?: string; tag?: string; account?: string; network?: string; conversations?: boolean } = {}) {
-  // Activity is stored done and never open work: it is listed whatever the Open / Done choice is.
-  const q = new URLSearchParams(more.conversations ? { state, group: "conversations" } : { state });
-  if (kind === "activity") q.delete("state");
+// What narrows a list or a count beyond the kind and the search. `assigned` is "me", "none" or a user
+// id; `tag` is a contact tag; `account` one account's id and `network` one platform, both within the
+// inbox's own accounts. Comments sends lists: `accountIds` (at most 100) and `networks`, one `post` of
+// ours, `from` (at or after) and `to` (before) as ISO times, `hidden` (hidden or held) and
+// `unanswered` (true: no reply yet, false: has a reply).
+export type Narrowing = {
+  assigned?: string;
+  tag?: string;
+  account?: string;
+  network?: string;
+  accountIds?: string[];
+  networks?: string[];
+  post?: string;
+  from?: string;
+  to?: string;
+  hidden?: boolean;
+  unanswered?: boolean;
+};
+function narrow(q: URLSearchParams, kind: ListKind | null | undefined, search: string | undefined, more: Narrowing) {
   if (kind) q.set("kind", kind);
   if (search) q.set("q", search);
   if (more.assigned) q.set("assigned", more.assigned);
   if (more.tag) q.set("tag", more.tag);
   if (more.account) q.set("account_id", more.account);
   if (more.network) q.set("platform", more.network);
+  if (more.accountIds?.length) q.set("account_ids", more.accountIds.join(","));
+  if (more.networks?.length) q.set("platforms", more.networks.join(","));
+  if (more.post) q.set("post_id", more.post);
+  if (more.from) q.set("from", more.from);
+  if (more.to) q.set("to", more.to);
+  if (more.hidden) q.set("hidden", "true");
+  if (more.unanswered !== undefined) q.set("unanswered", String(more.unanswered));
+}
+
+// `search` looks in the text and the author's name and handle; brain takes 1 to 100 characters.
+// `conversations` asks for DMs as one row per person and account; comments and mentions come as they are.
+export function listItems(inboxId: string, state: ItemState, cursor?: string | null, kind?: ListKind | null, search?: string, more: Narrowing & { conversations?: boolean } = {}) {
+  // Activity is stored done and never open work: it is listed whatever the Open / Done choice is.
+  const q = new URLSearchParams(more.conversations ? { state, group: "conversations" } : { state });
+  if (kind === "activity") q.delete("state");
+  narrow(q, kind, search, more);
   if (cursor) q.set("cursor", cursor);
   return api<ItemPage>(`/v1/inboxes/${enc(inboxId)}/items?${q}`);
 }
@@ -152,16 +182,11 @@ export type Page = { items: Item[]; next: string | null };
 
 // The count of what the list would show under the same filters, one number instead of a page:
 // the badge of the inbox being viewed. "All" keeps its own `open_count` total, so it never asks.
-export function countItems(inboxId: string, state: ItemState, kind?: ListKind | null, search?: string, more: { assigned?: string; tag?: string; account?: string; network?: string } = {}) {
+export function countItems(inboxId: string, state: ItemState, kind?: ListKind | null, search?: string, more: Narrowing = {}) {
   const q = new URLSearchParams();
   // Activity is stored done and never open work: it is counted whatever the Open / Done choice is.
   if (kind !== "activity") q.set("state", state);
-  if (kind) q.set("kind", kind);
-  if (search) q.set("q", search);
-  if (more.assigned) q.set("assigned", more.assigned);
-  if (more.tag) q.set("tag", more.tag);
-  if (more.account) q.set("account_id", more.account);
-  if (more.network) q.set("platform", more.network);
+  narrow(q, kind, search, more);
   const query = q.toString();
   return api<{ count: number }>(`/v1/inboxes/${enc(inboxId)}/count${query ? `?${query}` : ""}`);
 }
@@ -169,9 +194,11 @@ export function countItems(inboxId: string, state: ItemState, kind?: ListKind | 
 // What the sidebar badge for `i` shows: `own` when `i` is the inbox being viewed and its
 // narrowed count has come back (never "All", whose badge stays the team's open total), else the
 // inbox's own open count. `word` says what the number is, for the badge's screen-reader text.
-export function inboxBadge(i: Pick<Inbox, "id" | "is_all" | "open_count">, currentId: string | undefined, own: { n: number; word: string } | null) {
+export function inboxBadge(i: Pick<Inbox, "id" | "is_all" | "open_count" | "open_dm_count">, currentId: string | undefined, own: { n: number; word: string } | null) {
   const narrowed = own !== null && i.id === currentId && !i.is_all ? own : null;
-  return narrowed ? { n: narrowed.n, word: narrowed.word } : { n: i.open_count ?? 0, word: "open" };
+  // "All inboxes" lists DMs only, so its badge counts open DMs; a custom inbox holds what it holds.
+  const open = i.is_all ? (i.open_dm_count ?? i.open_count ?? 0) : (i.open_count ?? 0);
+  return narrowed ? { n: narrowed.n, word: narrowed.word } : { n: open, word: "open" };
 }
 
 // What the account menu offers: the inbox's own accounts, grouped by network, a network row above
@@ -346,7 +373,11 @@ export function chatRows(items: Item[], now = Date.now()): ChatRow[] {
 }
 
 // The inbox's one-key shortcuts. Never while typing, with a modifier key, or inside a dialog.
-const SHORTCUTS = { j: "next", k: "previous", e: "done", r: "reply", a: "assign", "/": "search", "?": "help", "[": "previousInbox", "]": "nextInbox" } as const;
+// 1 to 9 apply the saved view of that place, 0 and Escape clear every filter: the Comments page's.
+const SHORTCUTS = {
+  j: "next", k: "previous", e: "done", r: "reply", a: "assign", "/": "search", "?": "help", "[": "previousInbox", "]": "nextInbox",
+  "1": "view1", "2": "view2", "3": "view3", "4": "view4", "5": "view5", "6": "view6", "7": "view7", "8": "view8", "9": "view9", "0": "clear", escape: "clear",
+} as const;
 export type Shortcut = (typeof SHORTCUTS)[keyof typeof SHORTCUTS];
 type KeyLike = { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; target: EventTarget | null };
 export function shortcutFor(e: KeyLike): Shortcut | null {

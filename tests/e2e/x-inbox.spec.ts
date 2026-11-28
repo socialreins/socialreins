@@ -142,7 +142,7 @@ test("an X comment can be liked, reposted and hidden, a mention not hidden", asy
     calls.push(`${route.request().url().split("/").at(-2)} ${route.request().postDataJSON().action}`);
     return route.fulfill({ status: 204 });
   });
-  await page.goto("/inbox?item=i1");
+  await page.goto("/comments?item=i1");
   await page.getByRole("button", { name: "Like", exact: true }).click();
   await expect(page.getByText("Liked.")).toBeVisible();
   await page.getByRole("button", { name: "Repost" }).click();
@@ -150,7 +150,7 @@ test("an X comment can be liked, reposted and hidden, a mention not hidden", asy
   await page.getByRole("button", { name: "Hide reply" }).click();
   await expect(page.getByText("Reply hidden.")).toBeVisible();
   expect(calls).toEqual(["i1 like", "i1 repost", "i1 hide"]);
-  await page.goto("/inbox?item=i2");
+  await page.goto("/comments?item=i2");
   await expect(page.getByRole("button", { name: "Like", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Hide reply" })).toHaveCount(0);
 });

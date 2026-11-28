@@ -134,6 +134,7 @@ export function AutomationForm({
   copyOf,
   template,
   payload,
+  keyword,
   startScope,
   accounts,
   ready,
@@ -148,6 +149,8 @@ export function AutomationForm({
   template?: string | null;
   // From a button's follow-up link, for a new automation: the payload to listen for and the flow's scope.
   payload?: string | null;
+  // A word to start the keywords with (from Comments' filter).
+  keyword?: string | null;
   startScope?: ScopeBody;
   accounts: Connection[];
   // The accounts have loaded, so post links by handle can be resolved.
@@ -156,7 +159,7 @@ export function AutomationForm({
   onSaved: (a: Automation) => void;
   onCancel?: () => void;
 }) {
-  const [d, setD] = useState<Draft>(() => (copyOf ? duplicateDraft(copyOf) : draftOf(a, template, payload)));
+  const [d, setD] = useState<Draft>(() => (copyOf ? duplicateDraft(copyOf) : draftOf(a, template, payload, keyword)));
   const [scope, setScope] = useState(scopeOf((a ?? copyOf)?.conditions ?? startScope ?? { account_ids: [] }));
   // A LinkedIn account runs automations only when brain says it is ready; until it answers, every one counts as waiting for approval.
   const hasLinkedin = accounts.some((x) => x.provider === "linkedin");

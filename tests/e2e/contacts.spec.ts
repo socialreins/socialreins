@@ -102,7 +102,13 @@ async function brain(page: Page, role = "owner") {
     return route.fulfill({ json: { ...found, recent: state.items.filter((i) => i.contact_id === found.id) } });
   });
   await page.route("**/v1/inboxes", (route) =>
-    route.fulfill({ json: [{ id: "all", name: "All", is_all: true, filters: { account_ids: [], kinds: [], platforms: [], keywords: [], unanswered: false }, open_count: state.items.length, created_at: "", updated_at: "" }] }),
+    route.fulfill({
+      json: [
+        { id: "all", name: "All", is_all: true, filters: { account_ids: [], kinds: [], platforms: [], keywords: [], unanswered: false }, open_count: state.items.length, created_at: "", updated_at: "" },
+        // A custom inbox holds every kind, as before the Inbox became DMs only; the tests of comments, tags and assignment read it.
+        { id: "i2", name: "Everything", is_all: false, account_ids: ["c1"], filters: { kinds: [], keywords: [], unanswered: false }, open_count: state.items.length, created_at: "", updated_at: "" },
+      ],
+    }),
   );
   await page.route(/\/v1\/inboxes\/[^/]+\/items/, (route) => {
     const q = new URL(route.request().url()).searchParams;
@@ -213,14 +219,15 @@ test("a contact opens in a panel where tags and notes are edited and its convers
   // A tag leads to the inbox items of everyone who has it, a conversation to its item.
   await expect(panel(page).getByRole("link", { name: "big spender" })).toHaveAttribute("href", "/t/acme22/inbox?tag=big%20spender");
   await panel(page).getByRole("list", { name: "Recent conversations" }).getByRole("link", { name: /What is the price/ }).click();
-  await expect.poll(() => new URL(page.url()).pathname).toBe("/t/acme22/inbox");
+  // The conversation is a comment, which lives on the Comments page now: the old address moves there.
+  await expect.poll(() => new URL(page.url()).pathname).toBe("/t/acme22/comments");
   expect(query(page).get("item")).toBe("p1");
   await expect(reader(page).getByRole("heading", { name: "Bob" })).toBeVisible();
 });
 
 test("the inbox reader shows the contact's tags, adds one and opens the contact", async ({ page }) => {
   const state = await brain(page);
-  await page.goto("/inbox?item=p1");
+  await page.goto("/inbox/i2?item=p1");
   await expect(reader(page).getByRole("list", { name: "Tags" }).getByRole("listitem")).toHaveText(["vip"]);
   await reader(page).getByLabel("New tag").fill("Lead");
   await reader(page).getByRole("button", { name: "Add tag" }).click();
@@ -237,7 +244,7 @@ test("the inbox reader shows the contact's tags, adds one and opens the contact"
 
 test("an item is assigned to a member, to me and to nobody, and its row shows the initial", async ({ page }) => {
   const state = await brain(page);
-  await page.goto("/inbox?item=p1");
+  await page.goto("/inbox/i2?item=p1");
   const assign = reader(page).getByLabel("Assign");
   const row = page.getByRole("list", { name: "Items" }).getByRole("link", { name: /What is the price/ });
   await expect(assign).toHaveValue("");
@@ -265,7 +272,7 @@ test("an item is assigned to a member, to me and to nobody, and its row shows th
 test("the Assigned menu and a tag from a contact filter the list through brain and stay in the address", async ({ page }) => {
   const state = await brain(page);
   state.items[1]!.assigned_to = { id: "u-me", name: "Mira" };
-  await page.goto("/inbox");
+  await page.goto("/inbox/i2");
   const rows = page.getByRole("list", { name: "Items" }).getByRole("listitem");
   const chips = page.getByRole("list", { name: "Active filters" });
   const menu = page.getByRole("combobox", { name: "Assigned" });
@@ -289,7 +296,7 @@ test("the Assigned menu and a tag from a contact filter the list through brain a
 
   // From a contact's tag: the list asks for the tag, shows it, and drops it on Clear.
   state.itemQueries.length = 0;
-  await page.goto("/inbox?tag=vip&assigned=none");
+  await page.goto("/inbox/i2?tag=vip&assigned=none");
   await expect(rows).toHaveCount(1);
   expect(state.itemQueries.every((q) => q.get("tag") === "vip" && q.get("assigned") === "none")).toBe(true);
   await expect(chips.getByText("Tag: vip")).toBeVisible();
@@ -301,7 +308,7 @@ test("the Assigned menu and a tag from a contact filter the list through brain a
 
 test("a saved reply goes in at the cursor, the typed text is saved as one, and the Library lists them", async ({ page }) => {
   const state = await brain(page);
-  await page.goto("/inbox?item=p1");
+  await page.goto("/inbox/i2?item=p1");
   const box = reader(page).getByLabel("Reply publicly", { exact: true });
   await box.fill("Hi Bob!");
   await reader(page).getByRole("button", { name: "Insert saved reply into the reply" }).click();
