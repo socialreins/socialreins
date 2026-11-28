@@ -193,8 +193,10 @@ export function PublicPostView({ code }: { code: string }) {
   if (post === "loading") return <p className="text-ink-soft">Loading the post...</p>;
   if (post === "error")
     return (
-      <div role="alert" className="grid justify-items-start gap-2">
-        <p className="waitlist-error">The post couldn&apos;t be loaded. Try again in a moment.</p>
+      <div className="grid justify-items-start gap-2">
+        <p role="alert" className="waitlist-error">
+          The post couldn&apos;t be loaded. Try again in a moment.
+        </p>
         <button type="button" className="btn btn-secondary btn-sm" onClick={retry}>
           Retry
         </button>
