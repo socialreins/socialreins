@@ -43,7 +43,7 @@ test("the install guide has the commands, and a docs page fits a phone", async (
 });
 
 test("the use guide has a how-to for each part of the app, in both versions", async ({ page }) => {
-  const parts = { queue: "Set up the queue", csv: "Upload posts from a CSV file", recurring: "Repeat a post", feeds: "Post from an RSS or Atom feed", approvals: "Approve posts before they go out", library: "Keep media and text in the library", inbox: "Answer comments and DMs in the inbox", automations: "Build an automation or a flow", broadcasts: "Send a broadcast", newsletters: "Send a newsletter", analytics: "Read your analytics", "team-address": "Give your team its own address", "install-app": "Install the app" };
+  const parts = { queue: "Set up the queue", csv: "Upload posts from a CSV file", recurring: "Repeat a post", feeds: "Post from an RSS or Atom feed", approvals: "Approve posts before they go out", library: "Keep media and text in the library", inbox: "Answer DMs in the inbox and comments on the Comments page", automations: "Build an automation or a flow", broadcasts: "Send a broadcast", newsletters: "Send a newsletter", analytics: "Read your analytics", "team-address": "Give your team its own address", "install-app": "Install the app" };
   for (const mode of ["self-hosted", "cloud"]) {
     await page.goto(`/docs/${mode}/use`);
     await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);

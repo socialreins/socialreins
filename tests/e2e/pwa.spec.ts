@@ -10,7 +10,7 @@ test("the manifest and its icons are served and make the app installable", async
   const m = await res.json();
   expect(m).toMatchObject({ id: "/", name: "SocialReins", short_name: "SocialReins", start_url: "/home", scope: "/", display: "standalone" });
   expect(m.icons.map((i: { sizes: string; purpose: string }) => `${i.sizes} ${i.purpose}`)).toEqual(["192x192 any", "512x512 any", "512x512 maskable"]);
-  expect(m.shortcuts.map((s: { name: string }) => s.name)).toEqual(["Compose", "Calendar", "Inbox"]);
+  expect(m.shortcuts.map((s: { name: string }) => s.name)).toEqual(["Compose", "Calendar", "Inbox", "Comments"]);
   for (const src of [...m.icons, ...m.shortcuts.flatMap((s: { icons: unknown[] }) => s.icons)].map((i: { src: string }) => i.src)) {
     const icon = await request.get(src);
     expect(icon.status(), src).toBe(200);
