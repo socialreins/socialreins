@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { addTag, MAX_TAG } from "@/lib/contacts";
+import { addTag, MAX_TAG, MAX_TAGS } from "@/lib/contacts";
 import { TeamLink as Link } from "@/components/team-link";
 import { Icon } from "@/components/ui";
 
@@ -23,7 +23,10 @@ export function TagEditor({
   href?: (tag: string) => string;
 }) {
   const [draft, setDraft] = useState("");
+  // At the limit, typing a tag would look accepted and quietly add nothing: say why instead.
+  const full = tags.length >= MAX_TAGS;
   const add = () => {
+    if (full) return;
     const next = addTag(tags, draft);
     setDraft("");
     if (next !== tags) onChange(next);
@@ -55,7 +58,8 @@ export function TagEditor({
           placeholder="Add tag"
           list={`${id}-list`}
           maxLength={MAX_TAG}
-          disabled={disabled}
+          disabled={disabled || full}
+          aria-describedby={full ? `${id}-full` : undefined}
           className="field w-28 px-2 py-1 text-sm"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -65,10 +69,15 @@ export function TagEditor({
             add();
           }}
         />
-        <button type="button" className="btn btn-quiet btn-sm px-2" aria-label="Add tag" title="Add tag" disabled={disabled || !draft.trim()} onClick={add}>
+        <button type="button" className="btn btn-quiet btn-sm px-2" aria-label="Add tag" title="Add tag" disabled={disabled || full || !draft.trim()} onClick={add}>
           <Icon name="plus" className="size-4" />
         </button>
       </span>
+      {full && (
+        <p id={`${id}-full`} className="hint basis-full text-xs">
+          {MAX_TAGS} tags is the most a contact can have. Remove one to add another.
+        </p>
+      )}
       <datalist id={`${id}-list`}>
         {suggestions
           .filter((s) => !tags.includes(s))

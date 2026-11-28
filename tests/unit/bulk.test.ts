@@ -117,6 +117,10 @@ describe("parseTime", () => {
   it("takes a space or T and refuses dates that don't exist", () => {
     expect(parseTime("2026-11-25 09:30")?.getHours()).toBe(9);
     expect(parseTime("2026-11-25T09:30")?.getMinutes()).toBe(30);
+    // A spreadsheet saved as CSV keeps the seconds, which must not make the time unreadable.
+    expect(parseTime("2026-11-25 09:30:00")?.getSeconds()).toBe(0);
+    expect(parseTime("2026-11-25T09:30:15")?.getSeconds()).toBe(15);
+    expect(parseTime("2026-11-25 09:30:60")).toBeNull();
     expect(parseTime("2026-13-01 09:30")).toBeNull();
     expect(parseTime("2026-11-25 24:00")).toBeNull();
     expect(parseTime("25/11/2026 09:30")).toBeNull();

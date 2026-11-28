@@ -14,6 +14,7 @@ import {
   listWaitlist,
   MAX_INVITES,
   previewInvites,
+  previewNote,
   type InvitePreview,
   parseVerified,
   removeSignup,
@@ -252,6 +253,11 @@ export function Admin() {
                   </button>
                 </div>
               </div>
+            )}
+            {preview && preview.selected.length === 0 && (
+              <p role="status" className="text-sm text-ink-soft">
+                {previewNote(preview)}
+              </p>
             )}
           </section>
           <div className="flex flex-wrap items-center justify-between gap-3">

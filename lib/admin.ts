@@ -47,6 +47,13 @@ export const MAX_INVITES = 50;
 // Who a batch of `count` would reach: the oldest verified signups not yet invited, oldest first.
 export type InvitePreview = { eligible: number; left_today: number; selected: Signup[] };
 export const previewInvites = (count: number) => api<InvitePreview>(`/v1/admin/waitlist-invites?count=${count}`);
+// Why a preview names nobody to invite, in words; null when it does. Without it the Preview button
+// looks dead when the list has nobody waiting or the day's mail is used up.
+export function previewNote({ eligible, left_today }: InvitePreview): string | null {
+  if (eligible === 0) return "No verified signups are waiting to be invited. An invite needs a confirmed email.";
+  if (left_today === 0) return "No invite emails are left today. Try again tomorrow.";
+  return null;
+}
 // Needs a sign-in from the last 10 minutes. Nobody is mailed twice: `skipped` were invited already (or not verified), `capped` waited for the daily cap, `failed` had no mail sent; none of the last two is approved. `unsure`: the mail provider timed out, so the mail may have gone out; they stay approved and are not mailed again.
 export type Invited = { sent: number; failed: number; capped: number; skipped: number; unsure: number };
 export const inviteSignups = (ids: string[]) => api<Invited>("/v1/admin/waitlist-invites", "POST", { ids }, INVITE_TIMEOUT_MS);

@@ -48,6 +48,7 @@ import {
   publishPost,
   noRepeat,
   repeatForm,
+  repeatProblem,
   repeatRule,
   repeatSummary,
   saveRepeat,
@@ -415,6 +416,11 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
       if (problem) return setLocal(problem);
     }
     if (mode === "schedule" && !at) return setLocal("Pick a date and time to schedule the post.");
+    // A new post's repeat ends on a day in the set's zone; a day already gone would save a rule that never copies.
+    if (!postId && (mode === "schedule" || mode === "queue") && !hasTikTok) {
+      const endProblem = repeatProblem(repeat, toZoneInput(new Date().toISOString(), zone).slice(0, 10));
+      if (endProblem) return setLocal(endProblem);
+    }
     const shared = {
       social_set_id: setId,
       // brain picks the time for a queued post and refuses one sent with scheduled_at.
@@ -542,6 +548,12 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   async function changeRepeat(f: RepeatForm) {
     if (!post || isFailure(post)) return;
     flushSync(() => setLocal(null));
+    // An end date already gone would save a rule that quietly makes no copy; put the control back and say why.
+    const endProblem = repeatProblem(f, toZoneInput(new Date().toISOString(), zone).slice(0, 10));
+    if (endProblem) {
+      setRepeat(repeatForm(post.repeat));
+      return setLocal(endProblem);
+    }
     const rule = repeatRule(f);
     // Leaving a box unchanged saves nothing.
     if (same(rule, post.repeat ?? null)) return;
@@ -1724,9 +1736,16 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
                   <p className="hint text-xs">A post that goes to TikTok can&apos;t repeat: TikTok needs a person to confirm each post.</p>
                 ) : (
                   <>
-                    <RepeatControl value={repeat} disabled={status === "draft"} onChange={setRepeat} onCommit={status === "scheduled" ? changeRepeat : undefined} />
+                    <RepeatControl
+                      value={repeat}
+                      disabled={status === "draft"}
+                      onChange={setRepeat}
+                      onCommit={status === "scheduled" ? changeRepeat : undefined}
+                      min={toZoneInput(new Date().toISOString(), zone).slice(0, 10)}
+                    />
                     <p id="post-repeat-note" className="hint basis-full text-xs">
                       {status === "scheduled" ? "Each time it goes out, the next one is scheduled." : "For a scheduled or queued post, not a draft or Publish now."}
+                      {repeat.every !== "none" && ` An end date is a day in ${setQueue ? "this set's" : "your"} time zone, ${zone}.`}
                     </p>
                   </>
                 )}

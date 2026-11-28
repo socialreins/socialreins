@@ -165,20 +165,12 @@ export type Post = {
 // brain's repeat rule: every `interval` (1 to 12) days, weeks or months, until a date (YYYY-MM-DD), for
 // `remaining` (1 to 100) more posts, or for good when both are null. When the post goes out brain schedules
 // the next copy and moves the rule to it.
-// brain reads `until` as a UTC date; the form's date is local. The last local day's end falls on this UTC date.
-const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-export function untilUtc(local: string) {
-  const [y, m, d] = local.split("-").map(Number);
-  return new Date(y!, m! - 1, d!, 23, 59, 59).toISOString().slice(0, 10);
-}
-export function untilLocal(utc: string) {
-  const [y, m, d] = utc.split("-").map(Number);
-  for (const shift of [0, -1, 1]) {
-    const local = ymd(new Date(y!, m! - 1, d! + shift));
-    if (untilUtc(local) === utc) return local;
-  }
-  return utc;
-}
+// brain reads `until` as a date in the set's queue time zone (UTC without one), and the Repeat control's date
+// box is that same date, so the picked day goes to brain as it is. Converting through the browser's zone used
+// to move it a day later for anyone west of UTC, so their series ran one copy too long.
+// The two names stay, since a caller and old saved data speak of one end date.
+export const untilUtc = (local: string) => local;
+export const untilLocal = (utc: string) => utc;
 
 export type Repeat = { every: "day" | "week" | "month"; interval: number; until: string | null; remaining: number | null };
 // The Repeat control as the form holds it: number boxes keep their text.
@@ -194,6 +186,13 @@ export function repeatRule(f: RepeatForm): Repeat | null {
     until: f.ends === "date" && f.until ? untilUtc(f.until) : null,
     remaining: f.ends === "count" ? within(f.count, 100) : null,
   };
+}
+// Why an end date cannot be saved as it stands, in words; null when it can. `today` is today in the set's
+// queue zone, the zone the picked date means. A series that ends before its next copy never repeats, so an
+// end date already gone would save a rule that quietly does nothing.
+export function repeatProblem(f: RepeatForm, today: string): string | null {
+  if (f.every === "none" || f.ends !== "date" || !f.until) return null;
+  return f.until < today ? "Pick an end date of today or later, or choose Does not repeat." : null;
 }
 export function repeatForm(r: Repeat | null | undefined): RepeatForm {
   if (!r) return noRepeat;

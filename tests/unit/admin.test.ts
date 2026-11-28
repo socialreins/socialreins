@@ -7,6 +7,7 @@ import {
   inviteSignups,
   invitedText,
   previewInvites,
+  previewNote,
   listUsers,
   listWaitlist,
   nextPage,
@@ -85,6 +86,12 @@ describe("admin waitlist invites", () => {
   it("maps a stale sign-in to the failure the page explains", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ error: "reauth_required" }, { status: 403 })));
     expect(await inviteSignups(["a"])).toBe("reauth_required");
+  });
+
+  it("says why a preview has nobody to invite, so Preview does not look dead", () => {
+    expect(previewNote({ eligible: 0, left_today: 100, selected: [] })).toMatch(/No verified signups are waiting/);
+    expect(previewNote({ eligible: 3, left_today: 0, selected: [] })).toMatch(/No invite emails are left today/);
+    expect(previewNote({ eligible: 3, left_today: 10, selected: [] })).toBeNull();
   });
 
   it("says what happened to each kind of signup, and only what happened", () => {
