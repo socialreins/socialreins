@@ -22,6 +22,6 @@ test("public pages preload only resources the page uses", async ({ page }) => {
       .evaluateAll((els) => els.map((e) => e.getAttribute("href")).filter((h): h is string => h !== null));
     expect(preloads.length).toBeGreaterThan(0);
     const fetched = await page.evaluate(() => performance.getEntriesByType("resource").map((e) => new URL(e.name).pathname));
-    for (const href of preloads) expect(fetched).toContain(new URL(href, "http://localhost:3000").pathname);
+    for (const href of preloads) expect(fetched).toContain(new URL(href, page.url()).pathname);
   }
 });
