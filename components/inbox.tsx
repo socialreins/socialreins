@@ -72,6 +72,7 @@ import { ItemAutomations } from "@/components/item-automations";
 import { SnippetMenu } from "@/components/library";
 import { platformName } from "@/components/platform-icons";
 import { TagEditor } from "@/components/tag-editor";
+import { AddAsTestimonial } from "@/components/testimonials";
 import { isFailure, linkButton, planLimit, problemText, Status, useAction, useSearchInUrl } from "@/components/team-ui";
 import { Icon } from "@/components/ui";
 import { ThreadsActions } from "@/components/threads-actions";
@@ -1469,6 +1470,7 @@ function Detail({
         <Status problem={meta.problem} done={meta.done} overrides={metaMessages} />
         {acts.wanted && dm && <DmTools itemId={item.id} canManage={canManage} state={acts.actions} reload={acts.reload} />}
         {acts.wanted && <ItemActionsMenu item={item} canManage={canManage} state={acts.actions} loading={acts.loading} failed={acts.failed} reload={acts.reload} />}
+        <AddAsTestimonial itemId={item.id} kind={item.kind} />
       </header>
 
       {/* A conversation scrolls in its own box on every screen, so it can open at the newest message. */}
