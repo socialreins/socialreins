@@ -11,8 +11,11 @@ import { organizationSchema, softwareApplicationSchema, websiteSchema } from "@/
 import { Bricolage_Grotesque, Geist } from "next/font/google";
 import "./globals.css";
 
-const display = Bricolage_Grotesque({ subsets: ["latin"], variable: "--font-bricolage" });
-const body = Geist({ subsets: ["latin"], variable: "--font-geist" });
+// preload: false on both fonts: this app injects the font preloads after hydration (the root layout reads
+// headers(), so every page streams), by which time the render-blocking stylesheet's @font-face rules have
+// already started the font loads, and the late preloads only drew "unused preload" warnings in production.
+const display = Bricolage_Grotesque({ subsets: ["latin"], variable: "--font-bricolage", preload: false });
+const body = Geist({ subsets: ["latin"], variable: "--font-geist", preload: false });
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://socialreins.com"),
