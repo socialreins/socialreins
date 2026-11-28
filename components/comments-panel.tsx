@@ -8,7 +8,7 @@ import { platformName } from "@/components/platform-icons";
 import { isFailure, planLimit, problemText } from "@/components/team-ui";
 import { Icon } from "@/components/ui";
 import type { Connection } from "@/lib/connections";
-import { automationHref, commentCapable, commentsHref, hasFilters, inboxFromFilters, listOf, narrows, notInInbox, sameFilters, setLabel, type FilterKey, type Filters } from "@/lib/comments";
+import { automationHref, commentCapable, commentsHref, inboxFromFilters, listOf, narrows, notInInbox, pickedAccounts, sameFilters, setLabel, type FilterKey, type Filters } from "@/lib/comments";
 import { createInbox, inboxCapable } from "@/lib/inbox";
 import { getPost } from "@/lib/posts";
 import { address } from "@/lib/ref";
@@ -47,20 +47,32 @@ export function useViews(enabled: boolean, params: URLSearchParams, go: (href: s
   // No filters at all in the address (the Done tab aside): the person just opened Comments, so their default view applies.
   // Clear puts `view=none` in the address, so it is not a bare one and the default stays off until the next visit.
   const bare = enabled && [...params.keys()].every((k) => k === "state");
-  const filterless = !fallback || Object.keys(fallback.filters).length === 0;
+  const loaded = Array.isArray(views);
+  // The page's own moves (a filter ticked, a view applied, Clear) never bring the default back, even when they leave the address bare;
+  // only a visit from outside does (the sidebar, a bookmark). `ownMove` is when the last own move was made.
+  const ownMove = useRef(0);
+  const move = (to: string) => {
+    ownMove.current = Date.now();
+    go(to);
+  };
+  const state = params.get("state");
+  const key = params.toString();
   useEffect(() => {
-    if (!bare || filterless || !fallback) return;
-    go(commentsHref(fallback.filters, { state: params.get("state") === "done" ? "done" : "open" }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- when the page opens bare or the default arrives
-  }, [bare, fallback?.id]);
+    const mine = Date.now() - ownMove.current < 2000;
+    ownMove.current = 0;
+    if (mine || !bare || !fallback || Object.keys(fallback.filters).length === 0) return;
+    go(commentsHref(fallback.filters, { state: state === "done" ? "done" : "open" }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- a new address, or the views arriving; not the default being changed
+  }, [key, loaded]);
   return {
     views,
     setViews,
     list,
     fallback,
-    apply: (v: View) => go(commentsHref(v.filters)),
+    move,
+    apply: (v: View) => move(commentsHref(v.filters)),
     // Every filter off, and the default view left alone until the next visit.
-    clear: () => go(commentsHref({}, { view: "none" })),
+    clear: () => move(commentsHref({}, { view: "none" })),
     byKey: (key: string) => viewForKey(key, list),
   };
 }
@@ -289,7 +301,7 @@ export function CommentsPanel({
                     {v.is_default && <span className="badge ml-auto shrink-0">Default</span>}
                     {n < 9 && <span className="sr-only"> (key {n + 1})</span>}
                   </button>
-                  <details className="relative">
+                  <details data-menu="" className="relative" onKeyDown={(e) => e.key === "Escape" && (e.stopPropagation(), e.currentTarget.removeAttribute("open"))}>
                     <summary className="grid size-8 cursor-pointer list-none place-items-center rounded-lg text-ink-soft hover:bg-ink/5 hover:text-ink focus-visible:outline-offset-[-3px]" aria-label={`Manage the view ${v.name}`}>
                       <Icon name="edit" className="size-4" />
                     </summary>
@@ -326,7 +338,7 @@ export function CommentsPanel({
         ) : null}
       </p>
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className="btn btn-secondary btn-sm" onClick={views.clear} disabled={!active && !hasFilters(filters)} aria-keyshortcuts="0 Escape">
+        <button type="button" className="btn btn-secondary btn-sm" onClick={views.clear} aria-keyshortcuts="0 Escape">
           <Icon name="close" className="size-4" />
           Clear filters <kbd aria-hidden="true" className="ml-1 rounded border border-ink/20 px-1 font-mono text-[0.7rem]">0</kbd>
         </button>
@@ -345,6 +357,7 @@ export function CommentsPanel({
           <button type="submit" className="btn btn-primary btn-sm justify-self-start" disabled={busy || !name.trim() || list.length >= MAX_VIEWS}>
             Save view
           </button>
+          {list.length >= MAX_VIEWS && <p className="text-sm text-ink-soft">You have {MAX_VIEWS} views, the most you can keep. Delete one to save another.</p>}
         </form>
       )}
       {note && (
@@ -381,12 +394,14 @@ export function CommentsPanel({
           ))}
         </Group>
         <Group title="Replies" open={Boolean(filters.answer)} count={filters.answer ? 1 : 0}>
-          {(["", "unanswered", "answered"] as const).map((v) => (
-            <label key={v} className="flex cursor-pointer items-center gap-2 rounded-lg px-1 py-1 text-sm hover:bg-ink/[0.04]">
-              <input type="radio" name="comments-answer" checked={(filters.answer ?? "") === v} onChange={() => change({ answer: v })} />
-              {v === "" ? "Any" : v === "unanswered" ? "Unanswered" : "Answered"}
-            </label>
-          ))}
+          <div role="radiogroup" aria-label="Replies" className="grid gap-1">
+            {(["", "unanswered", "answered"] as const).map((v) => (
+              <label key={v} className="flex cursor-pointer items-center gap-2 rounded-lg px-1 py-1 text-sm hover:bg-ink/[0.04]">
+                <input type="radio" name="comments-answer" checked={(filters.answer ?? "") === v} onChange={() => change({ answer: v })} />
+                {v === "" ? "Any" : v === "unanswered" ? "Unanswered" : "Answered"}
+              </label>
+            ))}
+          </div>
         </Group>
         <Group title="Assigned" open={Boolean(filters.assigned)} count={filters.assigned ? 1 : 0}>
           <label className="px-1 text-sm">
@@ -418,6 +433,7 @@ export function CommentsPanel({
           <Check label="Activity instead of comments" hint="Follows, likes and reposts." checked={filters.show === "activity"} onChange={(on) => change({ show: on ? "activity" : "" })} />
         </Group>
       </div>
+      {(pickedAccounts(filters, accounts)?.length ?? 0) > 100 && <p className="text-sm text-ink-soft">These filters reach more than 100 accounts, so only the first 100 are listed. Narrow them to see the rest.</p>}
       {filters.post && (
         <p className="badge tone gap-1 pr-1 text-ink">
           Post: {excerpt(posts.get(filters.post)?.text) || "one post"}

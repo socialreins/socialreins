@@ -67,11 +67,13 @@ async function loadInbox(): Promise<InboxSummary | Failure> {
   if (!all) return { inboxId: "", items: [], open: "0", comments: [], openComments: "0" };
   const [page, comments] = await Promise.all([listItems(all.id, "open", null, "dm"), listItems(all.id, "open", null, "comments")]);
   if (isFailure(page)) return page;
-  if (isFailure(comments)) return comments;
   // An older brain sends no count: say how many are on the first page instead.
   const few = (p: { items: Item[]; next_cursor: string | null }) => `${p.items.length}${p.next_cursor === null ? "" : "+"}`;
   const open = (all.open_dm_count ?? all.open_count)?.toLocaleString() ?? few(page);
-  return { inboxId: address(all), items: page.items, open, comments: comments.items, openComments: all.open_comment_count?.toLocaleString() ?? few(comments) };
+  return { inboxId: address(all), items: page.items, open, // The Comments card must not take the Inbox down with it (an older brain does not know `kind=comments`).
+    comments: isFailure(comments) ? [] : comments.items,
+    openComments: isFailure(comments) ? "-" : (all.open_comment_count?.toLocaleString() ?? few(comments)),
+  };
 }
 
 // The app's home: a greeting, four numbers, what needs a person (grouped, or one calm line),

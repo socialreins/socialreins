@@ -149,7 +149,7 @@ async function brain(page: Page, opts: { views?: View[]; accounts?: typeof accou
   return state;
 }
 
-const list = (page: Page) => page.locator('ul[aria-label="Items"] > li, ul[aria-label="Comments"] > li');
+const list = (page: Page) => page.locator('ul[aria-label="Items"] > li:visible, ul[aria-label="Comments"] > li:visible');
 const panel = (page: Page) => page.getByRole("complementary", { name: "Views and filters" });
 const texts = async (page: Page) => (await list(page).allInnerTexts()).map((t) => t.replace(/\s+/g, " "));
 
@@ -377,4 +377,83 @@ test("the shortcut help lists the view keys, and not the inbox stepping keys", a
   await expect(dialog).toContainText("Apply the saved view with that number");
   await expect(dialog).toContainText("Clear every filter");
   await expect(dialog).not.toContainText("Next inbox");
+});
+
+test("Clear and a view also reset the keyword box, and keep the Done tab and the open item", async ({ page }) => {
+  await brain(page, { views: [view("v1", "Unanswered", { answer: "unanswered" })] });
+  await page.goto("/comments?view=none");
+  const box = page.getByRole("searchbox", { name: "Search comments" });
+  await box.fill("refund");
+  await expect(page).toHaveURL(/q=refund/);
+  await expect(list(page)).toHaveCount(1);
+  await page.getByRole("button", { name: /Clear filters/ }).click();
+  await expect(box).toHaveValue("");
+  await page.waitForTimeout(600);
+  await expect(page).not.toHaveURL(/q=/);
+  await expect(list(page)).toHaveCount(5);
+  // Applying a view that has no keyword empties the box too.
+  await box.fill("shop");
+  await expect(list(page)).toHaveCount(1);
+  await page.getByRole("button", { name: /Unanswered/ }).click();
+  await expect(box).toHaveValue("");
+  await page.waitForTimeout(600);
+  await expect(page).toHaveURL(/answer=unanswered/);
+  await expect(page).not.toHaveURL(/q=/);
+});
+
+test("the Done tab and the open item survive a filter, Clear and a view", async ({ page }) => {
+  const b = await brain(page, { views: [view("v1", "Bluesky", { network: "bluesky" })] });
+  b.rows.find((i) => i.id === "c2")!.state = "done";
+  await page.goto("/comments?state=done&item=c2&view=none");
+  await expect(list(page)).toHaveCount(1);
+  await panel(page).getByText("Networks", { exact: true }).click();
+  await page.getByRole("checkbox", { name: "Bluesky" }).click();
+  await expect(page).toHaveURL(/state=done/);
+  // The address says the item by its number once it has loaded.
+  await expect(page).toHaveURL(/item=(c2|2)/);
+  await page.keyboard.press("0");
+  await expect(page).toHaveURL(/view=none/);
+  await expect(page).toHaveURL(/state=done/);
+  await expect(page).toHaveURL(/item=(c2|2)/);
+  await page.getByRole("button", { name: /Bluesky/ }).click();
+  await expect(page).toHaveURL(/state=done/);
+  // The tabs keep Clear's "no default" too.
+  await page.getByRole("button", { name: /Clear filters/ }).click();
+  await page.getByRole("link", { name: "Open", exact: true }).click();
+  await expect(page).toHaveURL(/view=none/);
+});
+
+test("the default view does not come back when its last filter is unticked, or after Clear and a tab", async ({ page }) => {
+  await brain(page, { views: [view("v1", "Facebook", { network: "facebook" }, true)] });
+  await page.goto("/comments");
+  await expect(page).toHaveURL(/network=facebook/);
+  // The group is open by itself, as a filter is picked in it.
+  await page.getByRole("checkbox", { name: "Facebook" }).click();
+  await expect(page).not.toHaveURL(/network=/);
+  await expect(list(page)).toHaveCount(5);
+  await page.waitForTimeout(500);
+  await expect(page).not.toHaveURL(/network=/);
+  // A visit from the sidebar is a new visit: the default applies again.
+  await page.getByRole("navigation", { name: "App" }).getByRole("link", { name: "Inbox" }).click();
+  await expect(page).toHaveURL(/\/inbox$/);
+  await page.getByRole("navigation", { name: "App" }).getByRole("link", { name: "Comments" }).click();
+  await expect(page).toHaveURL(/network=facebook/);
+  // Making a view the default while unfiltered does not jump to it.
+  await page.getByRole("button", { name: /Clear filters/ }).click();
+  await expect(page).toHaveURL(/view=none/);
+  await expect(list(page)).toHaveCount(5);
+  await page.getByRole("link", { name: "Done", exact: true }).click();
+  await page.waitForTimeout(500);
+  await expect(page).toHaveURL(/view=none/);
+  await expect(page).not.toHaveURL(/network=/);
+});
+
+test("Esc closes a view's menu first and leaves the filters alone", async ({ page }) => {
+  await brain(page, { views: [view("v1", "Bluesky", { network: "bluesky" })] });
+  await page.goto("/comments?network=bluesky");
+  await page.getByLabel("Manage the view Bluesky").click();
+  await expect(page.getByRole("button", { name: "Rename" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Rename" })).toBeHidden();
+  await expect(page).toHaveURL(/network=bluesky/);
 });

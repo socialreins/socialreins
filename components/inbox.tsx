@@ -319,7 +319,7 @@ export function Inbox({ inboxId, mode = "inbox" }: { inboxId?: string; mode?: "i
   const base = inboxId ? `/inbox/${current ? address(current) : encodeURIComponent(inboxId)}` : "/inbox";
   const href = (to: { item?: string | null; state?: ItemState; assigned?: string; tag?: string; account?: string; network?: string }) => {
     // Comments keeps its filters in the address, the typed keyword included.
-    if (comments) return commentsHref({ ...cf, ...(search.trim() ? { q: search.trim() } : {}) }, { item: to.item, state: to.state ?? state });
+    if (comments) return commentsHref({ ...cf, ...(search.trim() ? { q: search.trim() } : {}) }, { item: to.item, state: to.state ?? state, view: params.get("view") === "none" ? "none" : undefined });
     const s = new URLSearchParams();
     if ((to.state ?? state) === "done") s.set("state", "done");
     if (to.item) s.set("item", to.item);
@@ -349,11 +349,12 @@ export function Inbox({ inboxId, mode = "inbox" }: { inboxId?: string; mode?: "i
   // The current inbox's own count under the filters on screen, keyed like the loaded page so a
   // late answer for another view is ignored. Null until it comes back; "All" never asks, its
   // badge being the team's open total.
-  const [counted, setCounted] = useState<{ key: string; n: number } | null>(null);
-  const ownCount = counted?.key === key ? counted.n : null;
+  const [counted, setCounted] = useState<Record<string, number>>({});
+  const ownCount = counted[key] ?? null;
   const fetchCount = (id: string) =>
     countItems(id, state, kindQ, q, spec ? spec.more : { assigned, tag, account, network }).then((r) => {
-      if (!isFailure(r)) setCounted({ key, n: r.count });
+      // Kept by the view it answers, so a late answer for another view never takes this one's place.
+      if (!isFailure(r)) setCounted((c) => ({ ...Object.fromEntries(Object.entries(c).slice(-7)), [key]: r.count }));
     });
   const page = loaded?.key === key ? loaded.page : null;
   const setPage = (f: (p: Page | Failure | null) => Page | Failure | null) =>
@@ -366,7 +367,12 @@ export function Inbox({ inboxId, mode = "inbox" }: { inboxId?: string; mode?: "i
   const items = page && !isFailure(page) ? page.items : [];
   // By post: the loaded comments of one post (ours, a video, or the thread's own post), in the order they came.
   const groupKey = (i: Item) => (i.post_id ? `post:${i.post_id}` : i.video ? `video:${i.video.id}` : i.root_remote_id ? `${i.platform}:${i.root_remote_id}` : `other:${i.platform}`);
-  const postGroups = comments && cf.by === "post" ? [...Map.groupBy(items, groupKey).entries()] : [];
+  const postGroups = comments && cf.by === "post" ? items.reduce<[string, Item[]][]>((all, i) => {
+    const at = all.find(([k]) => k === groupKey(i));
+    if (at) at[1].push(i);
+    else all.push([groupKey(i), [i]]);
+    return all;
+  }, []) : [];
   // J and K walk the rows in the order they are drawn, which By post changes.
   const ordered = postGroups.length ? postGroups.flatMap(([, rows]) => rows) : items;
   // Until the item itself answers, its list row stands in, so a row opens at once.
@@ -375,7 +381,15 @@ export function Inbox({ inboxId, mode = "inbox" }: { inboxId?: string; mode?: "i
   const itemId = detail && !isFailure(detail) ? detail.id : asked && isUuid(asked) ? asked : null;
   // What is open, as the list knows it: a conversation matches its row whichever of its DMs the address names.
   const openKey = detail && !isFailure(detail) ? threadKey(detail) : itemId;
-  const views = useViews(comments, params, (to) => router.replace(to, { scroll: false }));
+  // A move of the Comments filters (a tick, a view, Clear) keeps the Done tab and the open item, and the keyword box follows the address.
+  const goFilters = (to: string) => {
+    const next = new URLSearchParams(to.split("?")[1] ?? "");
+    if (state === "done" && !next.has("state")) next.set("state", "done");
+    if (asked && !next.has("item")) next.set("item", asked);
+    setSearch(next.get("q") ?? "");
+    router.replace(next.size ? `/comments?${next}` : "/comments", { scroll: false });
+  };
+  const views = useViews(comments, params, goFilters);
   // The posts of ours the comments hang off, for the line under a comment and the By post cards.
   const posts = usePosts(comments ? [...items.map((i) => i.post_id), cf.post] : []);
   // An old link keeps working across the split: a comment or mention opened in "All inboxes" moves to Comments, and a DM opened in Comments to the Inbox.
@@ -563,6 +577,8 @@ export function Inbox({ inboxId, mode = "inbox" }: { inboxId?: string; mode?: "i
       if (!s || document.querySelector("dialog[open]")) return;
       // Saved views and Clear are the Comments page's keys.
       if (!comments && (s === "clear" || s.startsWith("view"))) return;
+      // Esc belongs to an open menu first.
+      if (e.key === "Escape" && (e.defaultPrevented || document.querySelector('[role="menu"], [role="listbox"], details[data-menu][open], [popover]:popover-open'))) return;
       e.preventDefault();
       if (s === "next" || s === "previous") {
         const from = heading.current;
@@ -735,7 +751,7 @@ export function Inbox({ inboxId, mode = "inbox" }: { inboxId?: string; mode?: "i
             views={views}
             canManage={canManage}
             search={search}
-            go={(to) => router.replace(to, { scroll: false })}
+            go={views.move}
             posts={posts}
           />
         </aside>

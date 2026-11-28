@@ -362,7 +362,7 @@ test("an account filter that hides everything names it and offers Clear filters"
 
 test("an item says which automations ran on it and, when none did, why", async ({ page }) => {
   const state = await brain(page, "owner");
-  await page.goto("/inbox?item=p1");
+  await page.goto("/inbox/i2?item=p1");
   const detail = page.getByRole("region", { name: "Item" });
   await expect(detail.getByLabel("Reply publicly")).toBeVisible();
   // No automation had a say: nothing is shown.
@@ -372,7 +372,7 @@ test("an item says which automations ran on it and, when none did, why", async (
     { automation_id: "a2", name: "Thanks", outcome: "skipped", reasons: ["cooldown"] },
     { automation_id: "a3", name: "Welcome", outcome: "not_matched", reasons: ["wrong_trigger"] },
   ];
-  await page.goto("/inbox?item=p2");
+  await page.goto("/inbox/i2?item=p2");
   const note = page.getByRole("region", { name: "Item" }).getByRole("region", { name: "Automations" });
   await expect(note).toContainText("Automations: none ran because");
   await expect(note).toContainText("Price to DM: The text has none of the keywords; It is not on one of the posts this automation is limited to");
@@ -454,7 +454,7 @@ test("actions on Bluesky are confirmed first, follow the live state, and the ris
 
 test("a member can like and mute but is not offered block, hide or report", async ({ page }) => {
   await brain(page, "member");
-  await page.goto("/inbox?item=p1");
+  await page.goto("/inbox/i2?item=p1");
   const detail = page.getByRole("region", { name: "Item" });
   await detail.getByText("Actions on Bluesky").click();
   await expect(detail.getByRole("button", { name: "Like", exact: true })).toBeVisible();
@@ -905,7 +905,7 @@ test.describe("conversations", () => {
   test("the Undo line goes after five seconds", async ({ page }) => {
     await page.clock.install({ time: new Date(NOW) });
     await brain(page, "owner", { items: mixed() });
-    await page.goto("/inbox?item=m1");
+    await page.goto("/inbox/i2?item=m1");
     await reader(page).getByRole("button", { name: "Mark done" }).click();
     const line = page.getByRole("status").filter({ hasText: "Marked done." });
     await expect(line).toBeVisible();
@@ -1409,7 +1409,7 @@ test("Facebook and Instagram comments are hidden, liked and deleted from the inb
   await expect(detail.getByLabel("Reply publicly")).toBeHidden();
 
   // Instagram has no like. Meta refusing the token says what to do.
-  await page.goto("/inbox?item=p2");
+  await page.goto("/inbox/i2?item=p2");
   const ig = detail.getByRole("region", { name: "Moderate" });
   await expect(ig.getByRole("button", { name: "Like" })).toHaveCount(0);
   await expect(ig.getByText("Like: not available on Instagram")).toBeVisible();
@@ -1423,7 +1423,7 @@ test("a member can hide a comment but not delete it", async ({ page }) => {
     accounts: [alice, fbPage],
     items: [item("p1", "comment", "Love it", { platform: "facebook", social_account_id: "f1", moderation: can("hide", "delete", "like") })],
   });
-  await page.goto("/inbox?item=p1");
+  await page.goto("/inbox/i2?item=p1");
   const bar = page.getByRole("region", { name: "Item" }).getByRole("region", { name: "Moderate" });
   await expect(bar.getByRole("button", { name: "Hide", exact: true })).toBeVisible();
   await expect(bar.getByRole("button", { name: "Delete" })).toHaveCount(0);

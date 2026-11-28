@@ -59,7 +59,11 @@ const MAX_ACCOUNTS = 100;
 const startOfDay = (day: string) => new Date(`${day}T00:00:00`);
 const validDay = (day?: string) => Boolean(day && /^\d{4}-\d{2}-\d{2}$/.test(day) && !Number.isNaN(startOfDay(day).getTime()));
 // `to` is the end of its day: brain takes the first moment after it.
-const afterDay = (day: string) => new Date(startOfDay(day).getTime() + 86_400_000);
+// By the calendar, not by 24 hours: a day with a clock change is 23 or 25 hours long.
+const afterDay = (day: string) => {
+  const d = startOfDay(day);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+};
 
 // What listItems and countItems take for these filters: the kind and the narrowing.
 export function listArguments(f: Filters, accounts: Connection[]): { kind: "comments" | "activity"; search: string; more: Narrowing } {
