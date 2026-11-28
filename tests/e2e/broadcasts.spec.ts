@@ -67,9 +67,11 @@ const paused = broadcast("b-paused", "Weekend sale", { status: "paused", pause_r
 const sent = broadcast("b-sent", "Thank you note", { status: "sent", counts: counts(30, 3, 0, 0), started_at: ago(600), finished_at: ago(580) });
 
 // A small in-memory brain for broadcasts, and the contacts beside them.
-async function brain(page: Page, role = "owner", list = [draft, sending, paused, sent]) {
+async function brain(page: Page, role = "owner", list = [draft, sending, paused, sent], total?: number) {
   const state = {
     broadcasts: list.map((b) => ({ ...b })),
+    // The list's `x-total-count` header: undefined means an older brain that sends none.
+    total,
     preview: preview() as ReturnType<typeof preview> | typeof nobody,
     // What /send answers with next: a new preview makes it 409 audience_changed.
     changedTo: null as ReturnType<typeof preview> | null,
@@ -111,7 +113,16 @@ async function brain(page: Page, role = "owner", list = [draft, sending, paused,
   });
   await page.route(/\/v1\/broadcasts$/, (route) => {
     const req = route.request();
-    if (req.method() !== "POST") return route.fulfill({ json: state.broadcasts });
+    if (req.method() !== "POST")
+      return route.fulfill({
+        json: state.broadcasts,
+        // The expose header mirrors brain's CORS layer, without which the browser hides
+        // `x-total-count` from the app's cross-origin fetch.
+        headers:
+          state.total === undefined
+            ? {}
+            : { "x-total-count": String(state.total), "access-control-expose-headers": "x-total-count" },
+      });
     state.created.push(req.postDataJSON());
     const made = broadcast("b-new", "", req.postDataJSON());
     state.broadcasts.unshift(made);
@@ -195,6 +206,22 @@ test("an empty list says what a broadcast is and the rules", async ({ page }) =>
   await expect(rules).toContainText("3 broadcasts a day, each to at most 1000 people");
   await page.getByRole("link", { name: "Write your first broadcast" }).click();
   await expect(page).toHaveURL(/\/broadcasts\/new$/);
+});
+
+// A list capped by brain says the true total and what is not shown, from the `x-total-count`
+// header. Without the header (an older brain) the page says nothing, as before.
+test("a capped list says how many broadcasts are not shown", async ({ page }) => {
+  const many = Array.from({ length: 3 }, (_, i) => broadcast(`b-cap-${i}`, `Old offer ${i + 1}`));
+  await brain(page, "owner", many, 230);
+  await page.goto("/broadcasts");
+  await expect(cards(page)).toHaveCount(3);
+  await expect(page.getByText("Showing the 3 newest of 230 broadcasts. 227 older broadcasts are not shown.")).toBeVisible();
+
+  // An older brain sends no header: the rows shown stand in, and the line stays away.
+  await brain(page, "owner", many);
+  await page.goto("/broadcasts");
+  await expect(cards(page)).toHaveCount(3);
+  await expect(page.getByText(/older broadcasts are not shown/)).toHaveCount(0);
 });
 
 test("the list shows each broadcast with its status and progress", async ({ page }) => {

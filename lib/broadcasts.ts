@@ -66,8 +66,16 @@ async function call<T>(path: string, method: string, body: unknown): Promise<T |
 const enc = encodeURIComponent;
 const one = (id: string) => `/v1/broadcasts/${enc(id)}`;
 
-// Newest first, the latest 200.
-export const listBroadcasts = () => api<Broadcast[]>("/v1/broadcasts");
+// Newest first, the latest 200. `total` is every broadcast of the team, from the
+// `x-total-count` header; an older brain sends no header and the rows shown stand in for it.
+export type Broadcasts = { broadcasts: Broadcast[]; total: number };
+export async function listBroadcasts(): Promise<Broadcasts | Failure> {
+  const res = await request("/v1/broadcasts");
+  if (typeof res === "string") return res;
+  if (!res.ok) return await failure(res);
+  const broadcasts = (await res.json()) as Broadcast[];
+  return { broadcasts, total: Number(res.headers.get("x-total-count") ?? broadcasts.length) };
+}
 export const getBroadcast = (id: string) => api<Broadcast>(one(id));
 export const createBroadcast = (b: BroadcastInput) => call<Broadcast>("/v1/broadcasts", "POST", b);
 // Drafts only: 409 already_started for anything else.

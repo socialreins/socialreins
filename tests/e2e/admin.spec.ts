@@ -86,7 +86,7 @@ async function brain(page: Page, isAdmin = true) {
     // Stands in for brain's 30 day rule: w2 is the stale unverified entry.
     const hideStale = params.get("hide_stale") === "true";
     const rows = state.signups.filter((s) => !(hideStale && s.id === "w2")).filter((s) => (verified === null || (verified === "true") === (s.verified_at !== null)) && s.email.includes(q));
-    return route.fulfill({ json: { total: 1200, verified: 700, signups: rows } });
+    return route.fulfill({ json: { total: 1200, verified: 700, matched: rows.length, signups: rows } });
   });
   await page.route(/\/v1\/admin\/waitlist\/[^/]+(\/approve)?$/, (route) => {
     const req = route.request();
@@ -381,6 +381,8 @@ test("the waitlist shows totals and signups, filtered in ?verified= and searched
   await expect(rows(page).nth(1)).toContainText("Ann Lee");
   await expect(rows(page).nth(2)).toContainText("Verified Oct 21, 2026");
   await expect(rows(page).nth(2)).toContainText("Approved Oct 22, 2026");
+  // The table is brain's newest 1000; the line under it says what is shown of what matches.
+  await expect(main(page).getByText("Showing 1 to 3 of 3")).toBeVisible();
   // An approved entry has nothing left to approve.
   await expect(rows(page).nth(2).getByRole("button")).toHaveText(["Remove"]);
 

@@ -34,6 +34,7 @@ import {
   testNewsletter,
   updateNewsletter,
   type Newsletter,
+  type Newsletters,
   type Problem,
 } from "@/lib/newsletter";
 import { proxiedImage } from "@/lib/posts";
@@ -42,7 +43,7 @@ import { useSession } from "@/components/app-shell";
 import { Confirm, Progress, StatusBadge } from "@/components/broadcasts";
 import { TeamLink as Link, useTeamRouter as useRouter } from "@/components/team-link";
 import { isFailure, linkButton, problemText } from "@/components/team-ui";
-import { EmptyState, Icon, LoadFailed, Skeleton } from "@/components/ui";
+import { cappedLine, EmptyState, Icon, LoadFailed, Skeleton } from "@/components/ui";
 
 const say = (code: Failure, field?: string): ReactNode => newsletterText(code, field) ?? problemText(code);
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
@@ -60,15 +61,22 @@ const Sent = ({ n }: { n: Newsletter }) => <Progress counts={{ ...n.counts, skip
 function useAudience() {
   const [count, setCount] = useState<number | Failure | null>(null);
   const [tries, setTries] = useState(0);
-  // brain lists at most the newest 5000 sign-ups and has no count: at that many the count here is a lower bound,
-  // and brain's own number arrives with its answer to a send (`audience_changed`).
+  // brain lists at most the newest 5000 sign-ups. Past that the count here is a lower bound
+  // ("at least"), and brain's own number arrives with its answer to a send (`audience_changed`);
+  // `hidden` says how many sign-ups the cap leaves out, from the `total` brain now sends.
   const [capped, setCapped] = useState(false);
+  const [hidden, setHidden] = useState(0);
   useEffect(() => {
     let live = true;
     listSubscribers().then((r) => {
       if (!live) return;
-      setCapped(!isFailure(r) && r.subscribers.length >= 5000);
-      setCount(isFailure(r) ? r : r.subscribers.filter(reachable).length);
+      if (isFailure(r)) return setCount(r);
+      const shown = r.subscribers.length;
+      // An older brain sends no `total`: a full page means capped, and how many are missing stays unknown.
+      const total = r.total ?? shown;
+      setCapped(r.total !== undefined ? total > shown : shown >= 5000);
+      setHidden(Math.max(0, total - shown));
+      setCount(r.subscribers.filter(reachable).length);
     });
     return () => {
       live = false;
@@ -77,6 +85,7 @@ function useAudience() {
   return {
     count,
     capped,
+    hidden,
     again: () => {
       setCount(null);
       setTries((n) => n + 1);
@@ -241,7 +250,7 @@ function SenderCard() {
 }
 
 // Who gets a newsletter, and where to switch the sign-up on when it is off.
-function Audience({ count, capped, again }: ReturnType<typeof useAudience>) {
+function Audience({ count, capped, hidden, again }: ReturnType<typeof useAudience>) {
   const team = useTeam();
   if (isFailure(count))
     return (
@@ -251,7 +260,19 @@ function Audience({ count, capped, again }: ReturnType<typeof useAudience>) {
     );
   return (
     <p data-testid="audience" className="text-sm text-ink-soft">
-      {count === null ? "Counting subscribers..." : <strong className="text-ink">{subscribers(count, capped)}.</strong>}{" "}
+      {count === null ? (
+        "Counting subscribers..."
+      ) : (
+        <>
+          <strong className="text-ink">{subscribers(count, capped)}.</strong>
+          {hidden > 0 && (
+            <>
+              {" "}
+              {hidden.toLocaleString()} older {hidden === 1 ? "sign-up" : "sign-ups"} {hidden === 1 ? "is" : "are"} not shown.
+            </>
+          )}
+        </>
+      )}{" "}
       {team.public_pages && team.newsletter ? (
         "People sign up on your public pages and confirm their email."
       ) : (
@@ -275,7 +296,7 @@ export function Newsletters() {
 
 function List() {
   const audience = useAudience();
-  const [list, setList] = useState<Newsletter[] | Failure | null>(null);
+  const [list, setList] = useState<Newsletters | Failure | null>(null);
   const [tries, setTries] = useState(0);
   useEffect(() => {
     let live = true;
@@ -309,7 +330,7 @@ function List() {
         >
           Newsletters couldn&apos;t be loaded. {say(list)}
         </LoadFailed>
-      ) : list.length === 0 ? (
+      ) : list.newsletters.length === 0 ? (
         <EmptyState
           title="No newsletters yet."
           action={
@@ -326,8 +347,11 @@ function List() {
             <Icon name="plus" className="size-4" />
             New newsletter
           </Link>
+          {cappedLine(list.newsletters.length, list.total, "newsletters") && (
+            <p className="text-sm text-ink-soft">{cappedLine(list.newsletters.length, list.total, "newsletters")}</p>
+          )}
           <ul aria-label="Newsletters" className="grid gap-3">
-            {list.map((n) => (
+            {list.newsletters.map((n) => (
               <li key={n.id}>
                 <Link href={`/newsletters/${address(n)}`} className="card grid gap-3 p-4 hover:shadow-[0_0_0_1px_var(--edge)]">
                   <span className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">

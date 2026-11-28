@@ -124,7 +124,16 @@ async function call<T>(path: string, method: string, body: unknown): Promise<T |
 
 const one = (id: string) => `/v1/newsletters/${enc(id)}`;
 export const setSender = (sender: Sender) => call<Team>("/v1/team", "PATCH", { newsletter_sender: sender });
-export const listNewsletters = () => api<Newsletter[]>("/v1/newsletters");
+// Newest first, the latest 200. `total` is every newsletter of the team, from the
+// `x-total-count` header; an older brain sends no header and the rows shown stand in for it.
+export type Newsletters = { newsletters: Newsletter[]; total: number };
+export async function listNewsletters(): Promise<Newsletters | Failure> {
+  const res = await request("/v1/newsletters");
+  if (typeof res === "string") return res;
+  if (!res.ok) return await failure(res);
+  const newsletters = (await res.json()) as Newsletter[];
+  return { newsletters, total: Number(res.headers.get("x-total-count") ?? newsletters.length) };
+}
 export const getNewsletter = (id: string) => api<Newsletter>(one(id));
 export const createNewsletter = (n: NewsletterInput) => call<Newsletter>("/v1/newsletters", "POST", n);
 // Drafts only. An edit clears `tested_at`.
