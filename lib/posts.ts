@@ -763,6 +763,8 @@ export type PublicPost = {
   team: string;
   body: string;
   media: string[];
+  // The alt text of each media link, in the same order; absent before brain sends it.
+  media_alt?: string[];
   thread: ThreadPart[];
   details: string;
   // The team offers a newsletter sign-up on its pages.
@@ -771,11 +773,15 @@ export type PublicPost = {
   links: { platform: string; url: string }[];
 };
 
+// A page's code as brain knows it: ten characters of the team alphabet, in lower case. A link that picked up a
+// capital letter or a space on the way still opens the page.
+export const publicPageCode = (raw: string) => raw.trim().toLowerCase();
+
 // null: there is no such page (or it is not public now); "error": brain could not be asked.
 // `base` is brain's URL: the browser's apiUrl, or brainUrl() on the server.
 export async function getPublicPost(code: string, base = apiUrl, timeoutMs = 10_000): Promise<PublicPost | null | "error"> {
   try {
-    const res = await fetch(`${base}/v1/public/pages/${enc(code)}`, { signal: AbortSignal.timeout(timeoutMs) });
+    const res = await fetch(`${base}/v1/public/pages/${enc(publicPageCode(code))}`, { signal: AbortSignal.timeout(timeoutMs) });
     if (res.status === 404) return null;
     return res.ok ? ((await res.json()) as PublicPost) : "error";
   } catch {
@@ -807,8 +813,9 @@ export function linked(text: string): string[] {
 // link button for what a browser can't show inline (a video, a PDF, an unknown share). Non-https links are dropped.
 // A picture's src goes through brain (GET /v1/public/image), so the author's host never sees the visitor;
 // `original` keeps the author's own address, for a link preview a crawler fetches itself. A href is always the
-// author's link.
-export type PageMedia = { kind: "image"; src: string; href?: string } | { kind: "link"; href: string; label: string };
+// author's link. `alts` is the post's alt text for its media, in the same order, so a picture on the page
+// carries the words the author wrote for it.
+export type PageMedia = { kind: "image"; src: string; href?: string; alt?: string } | { kind: "link"; href: string; label: string };
 const IMAGE_NAME = /\.(jpe?g|png|gif|webp)$/i;
 const VIDEO_NAME = /\.(mp4|mov|webm)$/i;
 const driveId = (u: URL) => {
@@ -816,10 +823,15 @@ const driveId = (u: URL) => {
   return id && /^[\w-]+$/.test(id) ? id : null;
 };
 export const proxiedImage = (url: string) => `${apiUrl}/v1/public/image?url=${encodeURIComponent(url)}`;
-export function pageMedia(media: string[], original = false): PageMedia[] {
+export function pageMedia(media: string[], original = false, alts: string[] = []): PageMedia[] {
   // A picture a visitor's browser loads: fetched by brain, unless this is the crawler's preview.
-  const image = (src: string, href?: string): PageMedia => ({ kind: "image", src: original ? src : proxiedImage(src), ...(href ? { href } : {}) });
-  return media.flatMap((m): PageMedia[] => {
+  const image = (src: string, at: number, href?: string): PageMedia => ({
+    kind: "image",
+    src: original ? src : proxiedImage(src),
+    ...(href ? { href } : {}),
+    ...(alts[at]?.trim() ? { alt: alts[at]!.trim() } : {}),
+  });
+  return media.flatMap((m, at): PageMedia[] => {
     let u: URL;
     try {
       u = new URL(m);
@@ -835,15 +847,15 @@ export function pageMedia(media: string[], original = false): PageMedia[] {
       const src = new URL("https://drive.google.com/thumbnail");
       src.searchParams.set("id", id);
       src.searchParams.set("sz", "w1600");
-      return [image(src.href, href)];
+      return [image(src.href, at, href)];
     }
     if (dropbox && /^\/(s|scl\/fi)\//.test(u.pathname) && IMAGE_NAME.test(u.pathname)) {
       const src = new URL(href);
       src.searchParams.delete("dl");
       src.searchParams.set("raw", "1");
-      return [image(src.href, href)];
+      return [image(src.href, at, href)];
     }
-    if (!drive && !dropbox && IMAGE_NAME.test(u.pathname)) return [image(href)];
+    if (!drive && !dropbox && IMAGE_NAME.test(u.pathname)) return [image(href, at)];
     return [{ kind: "link", href, label: VIDEO_NAME.test(u.pathname) ? "Open the video" : "Open the file" }];
   });
 }

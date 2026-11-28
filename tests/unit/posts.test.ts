@@ -607,6 +607,18 @@ describe("public page text", () => {
     expect(pageMedia(["https://drive.google.com/file/d/d1/view"], true)).toEqual([{ kind: "image", src: "https://drive.google.com/thumbnail?id=d1&sz=w1600", href: "https://drive.google.com/file/d/d1/view" }]);
   });
 
+  it("gives each picture the author's alt text, in step with the media", async () => {
+    const { pageMedia } = await import("@/lib/posts");
+    const { apiUrl } = await import("@/lib/waitlist");
+    const via = (url: string) => `${apiUrl}/v1/public/image?url=${encodeURIComponent(url)}`;
+    expect(pageMedia(["https://e.test/a.png", "https://e.test/doc.pdf"], false, ["A cat on a wall", "too late"])).toEqual([
+      { kind: "image", src: via("https://e.test/a.png"), alt: "A cat on a wall" },
+      { kind: "link", href: "https://e.test/doc.pdf", label: "Open the file" },
+    ]);
+    // A blank alt is no alt: the picture stays out of a screen reader's way.
+    expect(pageMedia(["https://e.test/a.png"], false, ["  "])).toEqual([{ kind: "image", src: via("https://e.test/a.png") }]);
+  });
+
   it("drops hostile and non-https media and never builds a thumbnail without a clean Drive id", async () => {
     const { pageMedia } = await import("@/lib/posts");
     expect(pageMedia(["javascript:alert(1)//.png", "data:image/png;base64,AA.png", "http://e.test/a.png", "not a url", ""])).toEqual([]);
@@ -621,6 +633,15 @@ describe("public page text", () => {
       { kind: "link", href: "https://drive.google.com.evil.test/file/d/x/view", label: "Open the file" },
       { kind: "link", href: "https://www.dropbox.com/home/a.png", label: "Open the file" },
     ]);
+  });
+
+  it("reads a public page whose code picked up a capital or a space on the way", async () => {
+    const { getPublicPost, publicPageCode } = await import("@/lib/posts");
+    expect(publicPageCode(" Abcd234567 ")).toBe("abcd234567");
+    const fetch = reply(404);
+    vi.stubGlobal("fetch", fetch);
+    expect(await getPublicPost(" Abcd234567 ")).toBeNull();
+    expect(call(fetch)[0]).toBe(`${apiUrl}/v1/public/pages/abcd234567`);
   });
 
   it("builds a public page's link preview", async () => {
