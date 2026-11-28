@@ -103,7 +103,7 @@ async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items
     const account = q.get("account_id");
     const platform = q.get("platform");
     return (i: Row) =>
-      (kind === "activity" ? quiet(i) : kind ? i.kind === kind : !quiet(i)) &&
+      (kind === "activity" ? quiet(i) : kind === "comments" ? ["comment", "mention"].includes(i.kind) : kind ? i.kind === kind : !quiet(i)) &&
       (!search || i.text.toLowerCase().includes(search)) &&
       (!account || i.social_account_id === account) &&
       (!platform || i.platform === platform);
@@ -122,7 +122,9 @@ async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items
     }
     // brain counts each inbox's open items; "Questions" holds the ones about the price.
     const open = (id: string) => state.items.filter((i) => i.state === "open" && (id !== "i2" || i.text.includes("price"))).length;
-    return route.fulfill({ json: state.inboxes.map((i) => ({ ...i, open_count: open(i.id) })) });
+    // "All" lists DMs only, so brain also counts the DMs and the comments and mentions apart.
+    const kindOpen = (dm: boolean) => state.items.filter((i) => i.state === "open" && !quiet(i) && (i.kind === "dm") === dm).length;
+    return route.fulfill({ json: state.inboxes.map((i) => ({ ...i, open_count: open(i.id), open_dm_count: kindOpen(true), open_comment_count: kindOpen(false) })) });
   });
   await page.route(/\/v1\/inboxes\/i2$/, (route) => {
     const req = route.request();
@@ -222,7 +224,7 @@ async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items
   return state;
 }
 
-test("sidebar lists Home, Posts, Calendar, Queue, Lists, Library, Feeds and Analytics, then Inbox, Contacts, Broadcasts, Newsletters and Automations", async ({ page }) => {
+test("sidebar lists Home, Posts, Calendar, Queue, Lists, Library, Feeds and Analytics, then Inbox, Comments, Contacts, Broadcasts, Newsletters and Automations", async ({ page }) => {
   await brain(page, "owner");
   await page.goto("/posts");
   const links = page.getByRole("navigation", { name: "App" }).getByRole("link");
@@ -235,32 +237,41 @@ test("sidebar lists Home, Posts, Calendar, Queue, Lists, Library, Feeds and Anal
   await expect(links.nth(6)).toHaveText("Feeds");
   await expect(links.nth(7)).toHaveText("Analytics");
   await expect(links.nth(8)).toHaveText("Inbox");
-  await expect(links.nth(9)).toHaveText("Contacts");
-  await expect(links.nth(10)).toHaveText("Broadcasts");
-  await expect(links.nth(11)).toHaveText("Newsletters");
-  await expect(links.nth(12)).toHaveText("Automations");
+  await expect(links.nth(9)).toHaveText("Comments");
+  await expect(links.nth(10)).toHaveText("Contacts");
+  await expect(links.nth(11)).toHaveText("Broadcasts");
+  await expect(links.nth(12)).toHaveText("Newsletters");
+  await expect(links.nth(13)).toHaveText("Automations");
 });
 
-test("inbox lists items, filters by kind, and opens one by URL", async ({ page }) => {
-  await brain(page, "owner");
+test("All inboxes lists DMs only, a custom inbox lists what it holds and filters by kind, and either opens an item by URL", async ({ page }) => {
+  const state = await brain(page, "owner");
   await page.goto("/inbox");
   const nav = page.getByRole("navigation", { name: "Inboxes" });
   await expect(nav.getByRole("link").first()).toHaveText("All inboxes");
   await expect(nav.getByRole("link", { name: "All" })).toHaveAttribute("aria-current", "page");
   const list = page.getByRole("region", { name: "All" });
   const rows = list.getByRole("list", { name: "Items" }).getByRole("listitem");
-  await expect(rows).toHaveCount(3);
-  await expect(rows.first()).toContainText("Unanswered:");
-  await expect(rows.first()).toContainText("5 minutes ago");
-  await page.getByRole("combobox", { name: "Kind" }).selectOption({ label: "DMs" });
-  await expect(page.getByRole("combobox", { name: "Kind" })).toHaveValue("dm");
+  // The comment and the mention are on the Comments page: only the DM is here, and there is no Kind menu to bring them back.
   await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText("Hi, can we talk?");
+  await expect(page.getByRole("combobox", { name: "Kind" })).toHaveCount(0);
+  expect(state.asked.every((q) => q.get("kind") === "dm")).toBe(true);
   await list.getByRole("link", { name: /Hi, can we talk/ }).click();
   await expect(page).toHaveURL("/t/acme22/inbox?item=p3");
   const detail = page.getByRole("region", { name: "Item" });
   await expect(detail.getByRole("heading", { name: "Bob" })).toBeFocused();
   await expect(detail.getByLabel("Send DM")).toBeVisible();
   await expect(detail.getByRole("link", { name: "View on Bluesky" })).toHaveCount(0);
+  // A custom inbox keeps all three kinds and its Kind menu.
+  await page.goto("/inbox/i2");
+  const custom = page.getByRole("region", { name: "Questions" }).getByRole("list", { name: "Items" }).getByRole("listitem");
+  await expect(custom).toHaveCount(3);
+  await expect(custom.first()).toContainText("Unanswered:");
+  await expect(custom.first()).toContainText("5 minutes ago");
+  await page.getByRole("combobox", { name: "Kind" }).selectOption({ label: "DMs" });
+  await expect(page.getByRole("combobox", { name: "Kind" })).toHaveValue("dm");
+  await expect(custom).toHaveCount(1);
   // A shared link opens the same item.
   await page.goto("/inbox/i2?item=p1");
   await expect(page.getByRole("region", { name: "Item" }).getByLabel("Reply publicly")).toBeVisible();
@@ -269,6 +280,22 @@ test("inbox lists items, filters by kind, and opens one by URL", async ({ page }
     "https://bsky.app/profile/did:plc:bob/post/p1",
   );
   await expect(page.getByRole("navigation", { name: "Inboxes" }).getByRole("link", { name: "Questions" })).toHaveAttribute("aria-current", "page");
+});
+
+test("an old link to a comment or a mention in All inboxes moves to Comments, and a custom inbox link stays", async ({ page }) => {
+  await brain(page, "owner");
+  await page.goto("/inbox?item=p1");
+  await expect(page).toHaveURL("/t/acme22/comments?item=p1");
+  await expect(page.getByRole("region", { name: "Item" }).getByLabel("Reply publicly")).toBeVisible();
+  // The address with the All inbox's own number, a mention, and a done one keep their state.
+  await page.goto("/inbox/all?item=p2");
+  await expect(page).toHaveURL("/t/acme22/comments?item=p2");
+  await expect(page.getByRole("region", { name: "Item" })).toContainText("Loving @alice lately");
+  await page.goto("/inbox/i2?item=p1");
+  await expect(page).toHaveURL("/t/acme22/inbox/i2?item=p1");
+  // A DM stays in the Inbox.
+  await page.goto("/inbox?item=p3");
+  await expect(page).toHaveURL("/t/acme22/inbox?item=p3");
 });
 
 test("the account menu narrows an inbox of two accounts on one network, and the address keeps it", async ({ page }) => {
@@ -296,9 +323,9 @@ test("the account menu narrows an inbox of two accounts on one network, and the 
   await expect(rows).toHaveCount(1);
   await expect(list.getByRole("link", { name: /Alice gets this one/ })).toBeVisible();
   await expect(list.getByRole("link", { name: /Blair gets this one/ })).toHaveCount(0);
-  // The badge of the inbox being viewed follows the account filter; All inboxes keeps the total.
+  // The badge of the inbox being viewed follows the account filter; All inboxes badges DMs, and these are comments.
   await expect(questions.getByText("1 open in Questions")).toBeAttached();
-  await expect(nav.getByRole("listitem").filter({ hasText: "All" }).getByText("2 open in All")).toBeAttached();
+  await expect(nav.getByRole("listitem").filter({ hasText: "All" }).getByText(/open in All/)).toHaveCount(0);
   // A reload keeps the filter, its rows and the badge.
   await page.reload();
   await expect(menu).toHaveValue("c1");
@@ -335,7 +362,7 @@ test("an account filter that hides everything names it and offers Clear filters"
 
 test("an item says which automations ran on it and, when none did, why", async ({ page }) => {
   const state = await brain(page, "owner");
-  await page.goto("/inbox?item=p1");
+  await page.goto("/inbox/i2?item=p1");
   const detail = page.getByRole("region", { name: "Item" });
   await expect(detail.getByLabel("Reply publicly")).toBeVisible();
   // No automation had a say: nothing is shown.
@@ -345,7 +372,7 @@ test("an item says which automations ran on it and, when none did, why", async (
     { automation_id: "a2", name: "Thanks", outcome: "skipped", reasons: ["cooldown"] },
     { automation_id: "a3", name: "Welcome", outcome: "not_matched", reasons: ["wrong_trigger"] },
   ];
-  await page.goto("/inbox?item=p2");
+  await page.goto("/inbox/i2?item=p2");
   const note = page.getByRole("region", { name: "Item" }).getByRole("region", { name: "Automations" });
   await expect(note).toContainText("Automations: none ran because");
   await expect(note).toContainText("Price to DM: The text has none of the keywords; It is not on one of the posts this automation is limited to");
@@ -371,8 +398,8 @@ test("likes and reposts are quiet activity behind their own filter, and a reply 
   });
   const post = (author: string, text: string) => ({ uri: `at://${author}/p`, url: `https://bsky.app/profile/${author}/post/p`, author: { id: author, handle: `${author}.test`, name: author, avatar_url: null }, text, created_at: ago(300), attachments: [] });
   state.above.p1 = [post("alice", "Our launch post"), post("carol", "How does it work?")];
-  await page.goto("/inbox");
-  const list = page.getByRole("region", { name: "All" }).getByRole("list", { name: "Items" });
+  await page.goto("/inbox/i2");
+  const list = page.getByRole("region", { name: "Questions" }).getByRole("list", { name: "Items" });
   await expect(list.getByRole("listitem")).toHaveCount(1);
   await page.getByRole("combobox", { name: "Kind" }).selectOption({ label: "Activity (likes, reposts, follows)" });
   await expect(list.getByRole("listitem")).toHaveCount(2);
@@ -384,7 +411,7 @@ test("likes and reposts are quiet activity behind their own filter, and a reply 
   await expect(detail.getByRole("heading", { name: "Bob" })).toBeVisible();
   await expect(detail.getByLabel("Reply publicly")).toBeHidden();
   // A reply shows what it answers, oldest first.
-  await page.goto("/inbox?item=p1");
+  await page.goto("/inbox/i2?item=p1");
   const context = detail.locator('[data-row="context"]');
   await expect(context).toHaveCount(2);
   await expect(context.first()).toContainText("Our launch post");
@@ -394,7 +421,7 @@ test("likes and reposts are quiet activity behind their own filter, and a reply 
 
 test("actions on Bluesky are confirmed first, follow the live state, and the risky ones are for owners and admins", async ({ page }) => {
   const state = await brain(page, "owner");
-  await page.goto("/inbox?item=p1");
+  await page.goto("/inbox/i2?item=p1");
   const detail = page.getByRole("region", { name: "Item" });
   await detail.getByText("Actions on Bluesky").click();
   // Nothing is sent until it is confirmed.
@@ -427,7 +454,7 @@ test("actions on Bluesky are confirmed first, follow the live state, and the ris
 
 test("a member can like and mute but is not offered block, hide or report", async ({ page }) => {
   await brain(page, "member");
-  await page.goto("/inbox?item=p1");
+  await page.goto("/inbox/i2?item=p1");
   const detail = page.getByRole("region", { name: "Item" });
   await detail.getByText("Actions on Bluesky").click();
   await expect(detail.getByRole("button", { name: "Like", exact: true })).toBeVisible();
@@ -473,7 +500,7 @@ test("reply publicly, then mark done and reopen", async ({ page }) => {
     p1.replies = [{ id: "r1", kind: "public", text: sent && (sent as { text: string }).text, remote_id: null, remote_url: null, sent_by: "u-me", automation_id: null, created_at: p1.replied_at }];
     return route.fulfill({ status: 201, json: p1 });
   });
-  await page.goto("/inbox?item=p1");
+  await page.goto("/inbox/i2?item=p1");
   // Members read and answer but don't manage inboxes.
   await expect(page.getByRole("button", { name: "New inbox" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Edit Questions" })).toHaveCount(0);
@@ -488,13 +515,13 @@ test("reply publicly, then mark done and reopen", async ({ page }) => {
   await detail.getByRole("button", { name: "Mark done" }).click();
   // The row goes at once and the next item opens.
   await expect(page.getByRole("status").filter({ hasText: "Marked done." })).toBeVisible();
-  await expect(page.getByRole("region", { name: "All" }).getByRole("link", { name: /What is the price/ })).toHaveCount(0);
-  await expect(page).toHaveURL("/t/acme22/inbox?item=p2");
+  await expect(page.getByRole("region", { name: "Questions" }).getByRole("link", { name: /What is the price/ })).toHaveCount(0);
+  await expect(page).toHaveURL("/t/acme22/inbox/i2?item=p2");
   // A comment is one item: no word of a conversation.
   expect(state.patches).toEqual([{ id: "p1", body: { state: "done" } }]);
   await page.getByRole("link", { name: "Done", exact: true }).click();
-  await page.getByRole("region", { name: "All" }).getByRole("link", { name: /What is the price/ }).click();
-  await expect(page).toHaveURL("/t/acme22/inbox?state=done&item=p1");
+  await page.getByRole("region", { name: "Questions" }).getByRole("link", { name: /What is the price/ }).click();
+  await expect(page).toHaveURL("/t/acme22/inbox/i2?state=done&item=p1");
   await detail.getByRole("button", { name: "Reopen" }).click();
   await expect(detail.getByText("Reopened.")).toBeFocused();
 });
@@ -523,6 +550,8 @@ test("empty states: no accounts, then no items", async ({ page }) => {
   await page.unrouteAll({ behavior: "ignoreErrors" });
   await brain(page, "owner", { items: [] });
   await page.goto("/inbox");
+  await expect(page.getByText("No DMs yet. New DMs show up here within a minute. Comments and mentions are on the Comments page.")).toBeVisible();
+  await page.goto("/inbox/i2");
   await expect(page.getByText("New comments, mentions and DMs show up here within a minute")).toBeVisible();
 });
 
@@ -585,7 +614,7 @@ test.describe("on a phone", () => {
 test("a kind filter asks brain for that kind, and load more keeps it", async ({ page }) => {
   await brain(page, "owner", { items: [item("p1", "comment", "First page")] });
   const asked: URLSearchParams[] = [];
-  await page.route(/\/v1\/inboxes\/all\/items/, (route) => {
+  await page.route(/\/v1\/inboxes\/i2\/items/, (route) => {
     const q = new URL(route.request().url()).searchParams;
     asked.push(q);
     if (q.get("kind") !== "dm") return route.fulfill({ json: { items: [item("p1", "comment", "First page")], next_cursor: null } });
@@ -595,7 +624,7 @@ test("a kind filter asks brain for that kind, and load more keeps it", async ({ 
         : { items: [item("p8", "dm", "Newer DM")], next_cursor: "p8" },
     });
   });
-  await page.goto("/inbox");
+  await page.goto("/inbox/i2");
   await page.getByRole("combobox", { name: "Kind" }).selectOption({ label: "DMs" });
   await expect(page.getByRole("link", { name: /Newer DM/ })).toBeVisible();
   await expect(page.getByRole("link", { name: /First page/ })).toHaveCount(0);
@@ -608,7 +637,7 @@ test("a kind filter asks brain for that kind, and load more keeps it", async ({ 
 test("the open list picks up new items without a reload", async ({ page }) => {
   await page.clock.install();
   const state = await brain(page, "owner", { items: [item("p1", "comment", "Older comment")] });
-  await page.goto("/inbox");
+  await page.goto("/inbox/i2");
   await expect(page.getByRole("link", { name: /Older comment/ })).toBeVisible();
   state.items.unshift(item("p7", "comment", "Brand new comment"));
   await page.clock.runFor(31_000);
@@ -619,14 +648,14 @@ test("the open list picks up new items without a reload", async ({ page }) => {
 
 test("search asks brain with q, keeps it in the address and on reload", async ({ page }) => {
   const state = await brain(page, "owner");
-  await page.goto("/inbox");
+  await page.goto("/inbox/i2");
   const items = page.getByRole("list", { name: "Items" }).getByRole("listitem");
   await expect(items).toHaveCount(3);
-  const box = page.getByRole("searchbox", { name: "Search All" });
+  const box = page.getByRole("searchbox", { name: "Search Questions" });
   await box.fill("PRICE");
   await expect(items).toHaveCount(1);
   await expect(items.first()).toContainText("What is the price?");
-  await expect(page).toHaveURL("/t/acme22/inbox?q=PRICE");
+  await expect(page).toHaveURL("/t/acme22/inbox/i2?q=PRICE");
   expect(state.asked.at(-1)?.get("q")).toBe("PRICE");
   // Typing is debounced: one request for the whole word, not one per letter.
   expect(state.asked.filter((q) => q.has("q"))).toHaveLength(1);
@@ -636,34 +665,35 @@ test("search asks brain with q, keeps it in the address and on reload", async ({
   await expect(items).toHaveCount(1);
   // Opening an item and switching to Done keep the search.
   await items.first().getByRole("link").click();
-  await expect(page).toHaveURL("/t/acme22/inbox?item=p1&q=PRICE");
+  await expect(page).toHaveURL("/t/acme22/inbox/i2?item=p1&q=PRICE");
   await page.getByRole("link", { name: "Done", exact: true }).click();
   await expect(page.getByText('Nothing matches "PRICE".')).toBeVisible();
   expect(state.asked.at(-1)?.get("q")).toBe("PRICE");
   expect(state.asked.at(-1)?.get("state")).toBe("done");
 
   await box.fill("");
-  await expect(page).toHaveURL("/t/acme22/inbox?state=done&item=p1");
+  await expect(page).toHaveURL("/t/acme22/inbox/i2?state=done&item=p1");
 });
 
 test("each inbox shows its open count, kept fresh by the poll and by Mark done", async ({ page }) => {
   await page.clock.install();
   const state = await brain(page, "owner");
-  await page.goto("/inbox?item=p1");
+  await page.goto("/inbox/i2?item=p1");
   const nav = page.getByRole("navigation", { name: "Inboxes" });
   const all = nav.getByRole("listitem").filter({ hasText: "All" });
   const questions = nav.getByRole("listitem").filter({ hasText: "Questions" });
-  await expect(all.getByText("3 open in All")).toBeAttached();
+  // All inboxes badges its DMs only (one of the three items); a custom inbox badges what it holds.
+  await expect(all.getByText("1 open in All")).toBeAttached();
   await expect(questions.getByText("1 open in Questions")).toBeAttached();
 
   state.items.unshift(item("p7", "comment", "Is the price the same?"));
-  // The counts refresh after 2.5 minutes.
+  // The counts refresh after 2.5 minutes. A new comment is not a DM, so All inboxes stays at 1.
   await page.clock.runFor(151_000);
-  await expect(all.getByText("4 open in All")).toBeAttached();
+  await expect(all.getByText("1 open in All")).toBeAttached();
   await expect(questions.getByText("2 open in Questions")).toBeAttached();
 
   await page.getByRole("region", { name: "Item" }).getByRole("button", { name: "Mark done" }).click();
-  await expect(all.getByText("3 open in All")).toBeAttached();
+  await expect(all.getByText("1 open in All")).toBeAttached();
   await expect(questions.getByText("1 open in Questions")).toBeAttached();
   // An inbox with nothing open shows no badge.
   state.items.forEach((i) => (i.state = "done"));
@@ -676,7 +706,7 @@ test.describe("on a wide screen", () => {
   test("the panes scroll on their own, not the page, and the reply box stays in view", async ({ page }) => {
     const kinds = ["comment", "mention"] as const;
     await brain(page, "owner", { items: Array.from({ length: 40 }, (_, n) => item(`q${n}`, kinds[n % 2], `Message number ${n}`, { received_at: ago(n * 7) })) });
-    await page.goto("/inbox");
+    await page.goto("/inbox/i2");
     const items = page.getByRole("list", { name: "Items" });
     await expect(items.getByRole("listitem")).toHaveCount(40);
     const sizes = await items.evaluate((ul) => {
@@ -692,7 +722,7 @@ test.describe("on a wide screen", () => {
     const before = await items.evaluate((ul) => ul.parentElement!.scrollTop);
     expect(before).toBeGreaterThan(0);
     await last.click();
-    await expect(page).toHaveURL("/t/acme22/inbox?item=q39");
+    await expect(page).toHaveURL("/t/acme22/inbox/i2?item=q39");
     const detail = page.getByRole("region", { name: "Item" });
     await expect(detail.getByRole("heading", { name: "Bob" })).toBeFocused();
     await expect(detail.getByLabel("Reply publicly")).toBeInViewport();
@@ -702,7 +732,7 @@ test.describe("on a wide screen", () => {
 
   test("Up and Down move between items, Enter opens one", async ({ page }) => {
     await brain(page, "owner");
-    await page.goto("/inbox");
+    await page.goto("/inbox/i2");
     const items = page.getByRole("list", { name: "Items" });
     await items.getByRole("link", { name: /What is the price/ }).focus();
     await page.keyboard.press("ArrowDown");
@@ -712,7 +742,7 @@ test.describe("on a wide screen", () => {
     await expect(items.getByRole("link", { name: /Hi, can we talk/ })).toBeFocused();
     await page.keyboard.press("ArrowUp");
     await page.keyboard.press("Enter");
-    await expect(page).toHaveURL("/t/acme22/inbox?item=p2");
+    await expect(page).toHaveURL("/t/acme22/inbox/i2?item=p2");
     await expect(page.getByRole("region", { name: "Item" }).getByRole("heading", { name: "Bob" })).toBeFocused();
   });
 });
@@ -745,7 +775,7 @@ test.describe("conversations", () => {
 
   test("the list asks brain for conversations and shows one row for each, with its count", async ({ page }) => {
     const state = await brain(page, "owner", { items: mixed() });
-    await page.goto("/inbox");
+    await page.goto("/inbox/i2");
     // Newest first: the comment, Bob's conversation, Cara's, then the older comments.
     await expect(rows(page)).toHaveText([/What is the price/, /I would like two of them/, /For 50 euros/, /Great post/, /Where is the shop/]);
     expect(state.asked.length).toBeGreaterThan(0);
@@ -768,7 +798,7 @@ test.describe("conversations", () => {
 
   test("a conversation opens as a chat at its newest message, and Load earlier brings the rest", async ({ page }) => {
     const state = await brain(page, "owner", { items: mixed(), convoPage: 2 });
-    await page.goto("/inbox");
+    await page.goto("/inbox/i2");
     await rows(page).nth(1).getByRole("link").click();
     await expect.poll(() => query(page).get("item")).toBe("b4");
     await expect(reader(page).getByRole("heading", { name: "Bob" })).toBeFocused();
@@ -840,7 +870,7 @@ test.describe("conversations", () => {
 
   test("Mark done closes the whole conversation at once, Undo brings it back, and a refusal says so", async ({ page }) => {
     const state = await brain(page, "owner", { items: mixed() });
-    await page.goto("/inbox?item=b4");
+    await page.goto("/inbox/i2?item=b4");
     await expect(bubbles(page).last()).toContainText("I would like two of them.");
     await reader(page).getByRole("button", { name: "Mark done" }).click();
     await expect(rows(page)).toHaveText([/What is the price/, /For 50 euros/, /Great post/, /Where is the shop/]);
@@ -875,7 +905,7 @@ test.describe("conversations", () => {
   test("the Undo line goes after five seconds", async ({ page }) => {
     await page.clock.install({ time: new Date(NOW) });
     await brain(page, "owner", { items: mixed() });
-    await page.goto("/inbox?item=m1");
+    await page.goto("/inbox/i2?item=m1");
     await reader(page).getByRole("button", { name: "Mark done" }).click();
     const line = page.getByRole("status").filter({ hasText: "Marked done." });
     await expect(line).toBeVisible();
@@ -887,7 +917,7 @@ test.describe("conversations", () => {
 
   test("J, K, E, R, A, / and ? work, and never while typing", async ({ page }) => {
     const state = await brain(page, "owner", { items: mixed() });
-    await page.goto("/inbox");
+    await page.goto("/inbox/i2");
     await expect(rows(page)).toHaveCount(5);
     await expect(reader(page)).toContainText("move between items");
     const item = () => query(page).get("item");
@@ -924,7 +954,7 @@ test.describe("conversations", () => {
     // / goes to the search box, the same there.
     await reader(page).getByRole("heading", { name: "Bob" }).focus();
     await page.keyboard.press("/");
-    const search = page.getByRole("searchbox", { name: "Search All" });
+    const search = page.getByRole("searchbox", { name: "Search Questions" });
     await expect(search).toBeFocused();
     await expect(search).toHaveValue("");
     await page.keyboard.type("e?");
@@ -954,7 +984,7 @@ test.describe("conversations", () => {
 
   test("the filter menus keep the address, and set filters show as chips to remove", async ({ page }) => {
     const state = await brain(page, "owner", { items: mixed() });
-    await page.goto("/inbox?q=price&tag=vip&item=m1");
+    await page.goto("/inbox/i2?q=price&tag=vip&item=m1");
     const chips = page.getByRole("list", { name: "Active filters" });
     await expect(chips.getByRole("listitem")).toHaveText(["Tag: vip"]);
     await page.getByRole("combobox", { name: "Assigned" }).selectOption({ label: "Me" });
@@ -986,7 +1016,7 @@ test.describe("conversations", () => {
 
   test("a comment still opens in the thread reader and answers for itself", async ({ page }) => {
     const state = await brain(page, "owner", { items: mixed() });
-    await page.goto("/inbox");
+    await page.goto("/inbox/i2");
     await rows(page).first().getByRole("link").click();
     const thread = reader(page).getByRole("list", { name: "Thread" });
     await expect(thread.getByRole("listitem")).toHaveText([/What is the price\?/]);
@@ -1112,7 +1142,7 @@ test.describe("conversations", () => {
   test("a held E marks one item done, and each done keeps its own Undo", async ({ page }) => {
     const state = await brain(page, "owner", { items: mixed() });
     const done = () => state.patches.filter((p) => p.body.state === "done").map((p) => p.id);
-    await page.goto("/inbox?item=b4");
+    await page.goto("/inbox/i2?item=b4");
     await expect(bubbles(page).last()).toContainText("I would like two of them.");
     await reader(page).getByRole("heading", { name: "Bob" }).focus();
     // The key held down: one press and its repeats.
@@ -1145,7 +1175,7 @@ test.describe("conversations", () => {
 
   test("Undo never doubles a conversation that a newer DM already brought back", async ({ page }) => {
     const state = await brain(page, "owner", { items: mixed() });
-    await page.goto("/inbox?item=b4");
+    await page.goto("/inbox/i2?item=b4");
     await expect(bubbles(page).last()).toContainText("I would like two of them.");
     await reader(page).getByRole("button", { name: "Mark done" }).click();
     await expect(rows(page)).toHaveCount(4);
@@ -1182,7 +1212,7 @@ test.describe("conversations", () => {
 test("the switcher puts All inboxes first, one custom inbox puts no chips on rows, and [ and ] move between inboxes", async ({ page }) => {
   await brain(page, "owner", {
     accounts: [alice, fbPage],
-    items: [item("p1", "comment", "What is the price?", { inbox_ids: ["i2"] }), item("p2", "mention", "Hello", { received_at: ago(90), inbox_ids: [] })],
+    items: [item("p1", "dm", "What is the price?", { inbox_ids: ["i2"] }), item("p2", "dm", "Hello", { received_at: ago(90), inbox_ids: [], author: { id: "did:plc:cara", handle: "cara.bsky.social", name: "Cara", avatar_url: null } })],
   });
   await page.goto("/inbox");
   const nav = page.getByRole("navigation", { name: "Inboxes" });
@@ -1212,7 +1242,7 @@ test("the switcher puts All inboxes first, one custom inbox puts no chips on row
   await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toContainText("Next inbox");
   await page.keyboard.press("Escape");
   // In the reply box [ and ] are text, not inbox moves.
-  const reply = page.getByRole("region", { name: "Item" }).getByLabel("Reply publicly");
+  const reply = page.getByRole("region", { name: "Item" }).getByLabel("Send DM");
   await reply.click();
   await page.keyboard.type("[a]");
   await expect(reply).toHaveValue("[a]");
@@ -1222,7 +1252,7 @@ test("the switcher puts All inboxes first, one custom inbox puts no chips on row
 test("with two custom inboxes, rows in All inboxes carry the chips of the inboxes that hold them", async ({ page }) => {
   await brain(page, "owner", {
     inboxes: [inbox("all", "All"), inbox("i2", "Questions"), inbox("i3", "Sales")],
-    items: [item("p1", "comment", "What is the price?", { inbox_ids: ["i2", "i3"] }), item("p2", "mention", "Hello", { received_at: ago(90), inbox_ids: [] })],
+    items: [item("p1", "dm", "What is the price?", { inbox_ids: ["i2", "i3"] }), item("p2", "dm", "Hello", { received_at: ago(90), inbox_ids: [], author: { id: "did:plc:cara", handle: "cara.bsky.social", name: "Cara", avatar_url: null } })],
   });
   await page.goto("/inbox");
   const rows = page.getByRole("region", { name: "All inboxes" }).getByRole("list", { name: "Items" }).getByRole("listitem");
@@ -1252,7 +1282,7 @@ test("photos and stickers show as thumbnails linking to the original, and a labe
       item("p3", "comment", "", { received_at: ago(90) }),
     ],
   });
-  await page.goto("/inbox");
+  await page.goto("/inbox/i2");
   const rows = page.getByRole("list", { name: "Items" }).getByRole("listitem");
   await expect(rows.first()).toContainText("Sticker");
   await expect(rows.first()).not.toContainText("(no text)");
@@ -1359,7 +1389,7 @@ test("Facebook and Instagram comments are hidden, liked and deleted from the inb
     if (action === "delete") found.state = "done";
     return route.fulfill({ json: found });
   });
-  await page.goto("/inbox?item=p1");
+  await page.goto("/comments?item=p1");
   const detail = page.getByRole("region", { name: "Item" });
   const bar = detail.getByRole("region", { name: "Moderate" });
   await bar.getByRole("button", { name: "Hide", exact: true }).click();
@@ -1379,7 +1409,7 @@ test("Facebook and Instagram comments are hidden, liked and deleted from the inb
   await expect(detail.getByLabel("Reply publicly")).toBeHidden();
 
   // Instagram has no like. Meta refusing the token says what to do.
-  await page.goto("/inbox?item=p2");
+  await page.goto("/inbox/i2?item=p2");
   const ig = detail.getByRole("region", { name: "Moderate" });
   await expect(ig.getByRole("button", { name: "Like" })).toHaveCount(0);
   await expect(ig.getByText("Like: not available on Instagram")).toBeVisible();
@@ -1393,7 +1423,7 @@ test("a member can hide a comment but not delete it", async ({ page }) => {
     accounts: [alice, fbPage],
     items: [item("p1", "comment", "Love it", { platform: "facebook", social_account_id: "f1", moderation: can("hide", "delete", "like") })],
   });
-  await page.goto("/inbox?item=p1");
+  await page.goto("/inbox/i2?item=p1");
   const bar = page.getByRole("region", { name: "Item" }).getByRole("region", { name: "Moderate" });
   await expect(bar.getByRole("button", { name: "Hide", exact: true })).toBeVisible();
   await expect(bar.getByRole("button", { name: "Delete" })).toHaveCount(0);

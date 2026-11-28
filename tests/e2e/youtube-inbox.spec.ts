@@ -123,10 +123,10 @@ test("a YouTube comment shows its video and, for a reply, the comment it answers
   await page.route("**/v1/inboxes", (route) => route.fulfill({ json: [{ ...all, open_count: 2 }] }));
   await page.route(/\/v1\/inboxes\/[^/]+\/items/, (route) => route.fulfill({ json: { items, next_cursor: null } }));
   await page.route(/\/v1\/inbox-items\/(i1|i2)$/, (route) => route.fulfill({ json: items.find((i) => route.request().url().endsWith(i.id)) }));
-  await page.goto("/inbox?item=i1");
-  await expect(page.getByRole("link", { name: /Ten tips for the road/ })).toHaveAttribute("href", "https://www.youtube.com/watch?v=vid_12345A");
+  await page.goto("/comments?item=i1");
+  await expect(page.getByRole("region", { name: "Item" }).getByRole("link", { name: /Ten tips for the road/ })).toHaveAttribute("href", "https://www.youtube.com/watch?v=vid_12345A");
   await expect(page.getByText("In reply to")).toHaveCount(0);
-  await page.goto("/inbox?item=i2");
+  await page.goto("/comments?item=i2");
   await expect(page.getByText("In reply to Ann")).toBeVisible();
   await expect(page.getByText("Great video").first()).toBeVisible();
 });
@@ -166,7 +166,7 @@ test("a YouTube comment can be held, published again, rejected for good, and our
     if (body.action === "delete_reply") item = { ...item, replies: [], replied_at: null as never };
     return route.fulfill({ json: item });
   });
-  await page.goto("/inbox?item=i1");
+  await page.goto("/comments?item=i1");
   await expect(page.getByText("Like: not available on YouTube")).toBeVisible();
   await page.getByRole("button", { name: "Hold for review" }).click();
   await expect(page.getByText("Held for review. It is hidden on YouTube until you publish it.")).toBeVisible();

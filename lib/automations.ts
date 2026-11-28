@@ -753,10 +753,12 @@ export const templates: { id: string; title: string; about: string; group: (type
 ];
 
 // The builder's start: a saved automation, a template (with the button payload a follow-up link carried), or nothing.
-export function draftOf(a?: Automation, templateId?: string | null, payload?: string | null): Draft {
+// `keyword` starts the keyword list with one word, for a trigger that reads keywords (from Comments' "Automate comments like this").
+export function draftOf(a?: Automation, templateId?: string | null, payload?: string | null, keyword?: string | null): Draft {
   if (!a) {
     const d = { ...empty, ...templates.find((t) => t.id === templateId)?.draft };
-    return triggers[d.trigger].payloads && payload && payloadOk(payload) ? { ...d, payloads: [payload] } : d;
+    const keyed = triggers[d.trigger].keywords && keyword?.trim() ? { ...d, keywords: [keyword.trim().slice(0, 100)] } : d;
+    return triggers[keyed.trigger].payloads && payload && payloadOk(payload) ? { ...keyed, payloads: [payload] } : keyed;
   }
   const c = a.conditions;
   const text = (type: "send_dm" | "reply_publicly") => a.actions.flatMap((x) => (x.type === type ? [x.text] : []))[0] ?? "";

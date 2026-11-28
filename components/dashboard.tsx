@@ -21,7 +21,8 @@ const DAY = 86_400_000;
 // null while loading.
 type Load<T> = T | Failure | null;
 // inboxId is what the inbox's address holds (its number).
-type InboxSummary = { inboxId: string; items: Item[]; open: string };
+// "All inboxes" holds DMs; the comments and mentions are on their own page.
+type InboxSummary = { inboxId: string; items: Item[]; open: string; comments: Item[]; openComments: string };
 
 // Times and days of a post are those of its set's time zone, tagged with the zone ("GMT+6") when it is not the browser's.
 const clock = (iso: string, zone: string) => {
@@ -63,12 +64,16 @@ async function loadInbox(): Promise<InboxSummary | Failure> {
   const r = await listInboxes();
   if (isFailure(r)) return r;
   const all = r.find((i) => i.is_all) ?? r[0];
-  if (!all) return { inboxId: "", items: [], open: "0" };
-  const page = await listItems(all.id, "open");
+  if (!all) return { inboxId: "", items: [], open: "0", comments: [], openComments: "0" };
+  const [page, comments] = await Promise.all([listItems(all.id, "open", null, "dm"), listItems(all.id, "open", null, "comments")]);
   if (isFailure(page)) return page;
   // An older brain sends no count: say how many are on the first page instead.
-  const open = all.open_count?.toLocaleString() ?? `${page.items.length}${page.next_cursor === null ? "" : "+"}`;
-  return { inboxId: address(all), items: page.items, open };
+  const few = (p: { items: Item[]; next_cursor: string | null }) => `${p.items.length}${p.next_cursor === null ? "" : "+"}`;
+  const open = (all.open_dm_count ?? all.open_count)?.toLocaleString() ?? few(page);
+  return { inboxId: address(all), items: page.items, open, // The Comments card must not take the Inbox down with it (an older brain does not know `kind=comments`).
+    comments: isFailure(comments) ? [] : comments.items,
+    openComments: isFailure(comments) ? "-" : (all.open_comment_count?.toLocaleString() ?? few(comments)),
+  };
 }
 
 // The app's home: a greeting, four numbers, what needs a person (grouped, or one calm line),
@@ -301,7 +306,7 @@ export function Dashboard() {
         <div className="grid min-w-0 gap-6">
           <Panel id="inbox" title="Inbox" note={inbox && !isFailure(inbox) ? `${inbox.open} open` : undefined} link={{ href: "/inbox", label: "Open inbox" }} load={inbox} retry={retryInbox} skeleton={4} tall>
             {inbox && !isFailure(inbox) && inbox.items.length === 0 ? (
-              <Empty>No open comments, mentions or DMs.</Empty>
+              <Empty>No open DMs.</Empty>
             ) : (
               inbox &&
               !isFailure(inbox) && (
@@ -309,6 +314,32 @@ export function Dashboard() {
                   {inbox.items.slice(0, 4).map((i) => (
                     <li key={i.id}>
                       <Link href={`/inbox/${inbox.inboxId}?item=${address(i)}`} className="grid gap-0.5 px-4 py-2.5 hover:bg-ink/[0.025]">
+                        <span className="flex items-center gap-2">
+                          <strong className="min-w-0 truncate font-semibold">{authorName(i.author)}</strong>
+                          <span className="badge tone" data-kind={i.kind}>
+                            {kindName[i.kind]}
+                          </span>
+                          <span className="ml-auto shrink-0 text-xs text-ink-soft">{relativeTime(i.received_at, now)}</span>
+                        </span>
+                        <span className="truncate text-ink-soft">{itemSummary(i)}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )
+            )}
+          </Panel>
+
+          <Panel id="comments" title="Comments" note={inbox && !isFailure(inbox) ? `${inbox.openComments} open` : undefined} link={{ href: "/comments", label: "Open comments" }} load={inbox} retry={retryInbox} skeleton={4} tall>
+            {inbox && !isFailure(inbox) && inbox.comments.length === 0 ? (
+              <Empty>No open comments or mentions.</Empty>
+            ) : (
+              inbox &&
+              !isFailure(inbox) && (
+                <ul className="divide-y divide-[var(--line-soft)]">
+                  {inbox.comments.slice(0, 4).map((i) => (
+                    <li key={i.id}>
+                      <Link href={`/comments?item=${address(i)}`} className="grid gap-0.5 px-4 py-2.5 hover:bg-ink/[0.025]">
                         <span className="flex items-center gap-2">
                           <strong className="min-w-0 truncate font-semibold">{authorName(i.author)}</strong>
                           <span className="badge tone" data-kind={i.kind}>

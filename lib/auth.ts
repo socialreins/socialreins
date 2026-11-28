@@ -108,6 +108,8 @@ export const codes = [
   "invalid_storage_budget",
   "too_many_sets",
   "name_taken",
+  "invalid_view",
+  "too_many_views",
   "default_set",
   "invalid_sets",
   "default_set_required",

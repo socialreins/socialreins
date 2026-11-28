@@ -89,7 +89,7 @@ async function brain(page: Page, role: Role, opts: { account?: object; refuse?: 
 
 test("a Threads reply shows the post above it, counts an emoji by its bytes and sends a public reply", async ({ page }) => {
   const state = await brain(page, "owner");
-  await page.goto("/inbox/all?item=t1");
+  await page.goto("/comments?item=t1");
   const detail = page.getByRole("region", { name: "Item" });
   await expect(detail.getByRole("heading", { name: "@ann" })).toBeVisible();
   await expect(detail.getByText("Our free plan launch post")).toBeVisible();
@@ -112,7 +112,7 @@ test("a Threads reply shows the post above it, counts an emoji by its bytes and 
 
 test("hiding a Threads reply is confirmed, logged, and can be undone; only hiding is offered", async ({ page }) => {
   const state = await brain(page, "owner");
-  await page.goto("/inbox/all?item=t1");
+  await page.goto("/comments?item=t1");
   const detail = page.getByRole("region", { name: "Item" });
   const actions = detail.getByRole("region", { name: "Actions on Threads" });
   await expect(actions.getByText("no like, repost, follow or block")).toBeVisible();
@@ -133,7 +133,7 @@ test("hiding a Threads reply is confirmed, logged, and can be undone; only hidin
 
 test("a refused hide says what Threads said", async ({ page }) => {
   await brain(page, "owner", { refuse: { error: "threads_nested", message: "Threads can only hide a reply directly under a post of this account, not one deeper in the thread." } });
-  await page.goto("/inbox/all?item=t1");
+  await page.goto("/comments?item=t1");
   const actions = page.getByRole("region", { name: "Item" }).getByRole("region", { name: "Actions on Threads" });
   await actions.getByRole("button", { name: "Hide reply" }).click();
   await actions.getByRole("button", { name: "Confirm" }).click();
@@ -142,7 +142,7 @@ test("a refused hide says what Threads said", async ({ page }) => {
 
 test("a member sees that only owners and admins hide replies", async ({ page }) => {
   await brain(page, "member");
-  await page.goto("/inbox/all?item=t1");
+  await page.goto("/comments?item=t1");
   const actions = page.getByRole("region", { name: "Item" }).getByRole("region", { name: "Actions on Threads" });
   await expect(actions.getByText("Owners and admins can hide replies.")).toBeVisible();
   await expect(actions.getByRole("button")).toHaveCount(0);
@@ -150,7 +150,7 @@ test("a member sees that only owners and admins hide replies", async ({ page }) 
 
 test("an account connected before replies is asked to reconnect, in the inbox and under Accounts", async ({ page }) => {
   await brain(page, "owner", { account: { replies_denied: true } });
-  await page.goto("/inbox/all");
+  await page.goto("/comments");
   await expect(page.getByText("Reconnect to enable replies").first()).toBeVisible();
   await expect(page.getByRole("link", { name: "Reconnect it under Accounts" })).toBeVisible();
   await page.goto("/connections");

@@ -46,6 +46,7 @@ const nav: NavGroup[] = [
     label: "Engage",
     items: [
       { href: "/inbox", label: "Inbox", icon: "inbox" },
+      { href: "/comments", label: "Comments", icon: "comment" },
       { href: "/contacts", label: "Contacts", icon: "user" },
       { href: "/broadcasts", label: "Broadcasts", icon: "send" },
       { href: "/newsletters", label: "Newsletters", icon: "mention", manage: true },

@@ -978,6 +978,7 @@ export function NewAutomation() {
         key={template}
         template={template}
         payload={params.get("payload")}
+        keyword={params.get("keywords")}
         startScope={{ social_set_id: params.get("set"), account_ids: params.get("accounts")?.split(",").filter(Boolean) ?? [] }}
         {...form}
       />

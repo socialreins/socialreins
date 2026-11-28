@@ -89,7 +89,7 @@ test("a broadcast and a newsletter have numbers in their addresses too", async (
 
 test("the inbox, its items and their contacts go by number; old addresses move to it", async ({ page }) => {
   await brain(page);
-  const box = { id: UUID(5), number: 3, name: "All", is_all: true, account_ids: [], filters: { account_ids: [], kinds: [], platforms: [], keywords: [], unanswered: false }, open_count: 1, ...when };
+  const box = { id: UUID(5), number: 3, name: "Questions", is_all: false, account_ids: ["c1"], filters: { account_ids: [], kinds: [], platforms: [], keywords: [], unanswered: false }, open_count: 1, ...when };
   const contact = { id: UUID(6), number: 33, platform: "bluesky", external_id: "did:plc:bob", handle: "bob.bsky.social", display_name: "Bob", avatar_url: null, tags: [], notes: null, opted_out: false, first_seen_at: "2026-10-01T10:00:00Z", last_seen_at: ago(30), items_count: 1 };
   const item = {
     id: UUID(7),

@@ -49,10 +49,12 @@ test("home greets, and shows what failed, what is next, recent posts, the inbox 
     });
   });
   await page.route("**/v1/inboxes", (r) => r.fulfill({ json: [{ id: "all", name: "All", is_all: true, filters: { account_ids: [], kinds: [], platforms: [], keywords: [], unanswered: false }, created_at: "", updated_at: "" }] }));
+  // The Inbox card asks for DMs and the Comments card for comments and mentions, each with its own first page.
+  const row = (id: string, kind: string, text: string) => ({ id, social_account_id: "c1", platform: "bluesky", kind, remote_id: "x", remote_url: null, convo_id: null, post_id: null, author: { id: "a", handle: "bob.bsky.social", name: "Bob", avatar_url: null }, text, received_at: "2026-11-10T11:00:00Z", state: "open", replied_at: null, replies: [] });
   await page.route(/\/v1\/inboxes\/all\/items/, (r) =>
     r.fulfill({
       json: {
-        items: [{ id: "i1", social_account_id: "c1", platform: "bluesky", kind: "comment", remote_id: "x", remote_url: null, convo_id: null, post_id: null, author: { id: "a", handle: "bob.bsky.social", name: "Bob", avatar_url: null }, text: "Where is the guide?", received_at: "2026-11-10T11:00:00Z", state: "open", replied_at: null, replies: [] }],
+        items: new URL(r.request().url()).searchParams.get("kind") === "dm" ? [row("d1", "dm", "Can you call me?")] : [row("i1", "comment", "Where is the guide?")],
         next_cursor: "more",
       },
     }),
@@ -83,9 +85,15 @@ test("home greets, and shows what failed, what is next, recent posts, the inbox 
   await expect(page.getByRole("region", { name: "Needs attention" })).not.toContainText("An old failure");
   await expect(page.getByRole("region", { name: "Recently published" }).getByRole("link", { name: /Hello/ })).toBeVisible();
   const inbox = page.getByRole("region", { name: "Inbox" });
-  await expect(inbox.getByRole("link", { name: /Bob/ })).toHaveAttribute("href", "/t/acme22/inbox/all?item=i1");
+  await expect(inbox.getByRole("link", { name: /Bob/ })).toHaveAttribute("href", "/t/acme22/inbox/all?item=d1");
+  await expect(inbox).toContainText("Can you call me?");
   // This brain sends no open_count, so Home counts the first page.
   await expect(inbox).toContainText("1+ open");
+  // Comments and mentions have their own card, linking to the Comments page.
+  const comments = page.getByRole("region", { name: "Comments" });
+  await expect(comments.getByRole("link", { name: /Bob/ })).toHaveAttribute("href", "/t/acme22/comments?item=i1");
+  await expect(comments).toContainText("Where is the guide?");
+  await expect(comments).toContainText("1+ open");
   await expect(strip(page, "Open")).toContainText("1+");
   // The calmer home leaves automations and the account list to their own pages.
   await expect(page.getByRole("region", { name: "Automations" })).toHaveCount(0);
@@ -113,7 +121,7 @@ test("a section that fails to load says so with Retry while the others render", 
   await expect(page.getByText("All clear.")).toHaveCount(0);
   await expect(strip(page, "Scheduled")).toContainText("-");
   // The inbox and the stats have their own calls and are fine.
-  await expect(page.getByRole("region", { name: "Inbox" })).toContainText("No open comments, mentions or DMs.");
+  await expect(page.getByRole("region", { name: "Inbox" })).toContainText("No open DMs.");
   await expect(strip(page, "Open")).toContainText("0");
   await expect(page.getByRole("region", { name: "Top post this week" })).toContainText("No stats yet.");
 
@@ -178,7 +186,7 @@ test("the strip shows the week's numbers, each linking to its page", async ({ pa
       },
     });
   });
-  await page.route("**/v1/inboxes", (r) => r.fulfill({ json: [{ id: "all", name: "All", is_all: true, open_count: 12, filters: { account_ids: [], kinds: [], platforms: [], keywords: [], unanswered: false }, created_at: "", updated_at: "" }] }));
+  await page.route("**/v1/inboxes", (r) => r.fulfill({ json: [{ id: "all", name: "All", is_all: true, open_count: 12, open_dm_count: 5, open_comment_count: 7, filters: { account_ids: [], kinds: [], platforms: [], keywords: [], unanswered: false }, created_at: "", updated_at: "" }] }));
   await page.route(/\/v1\/inboxes\/all\/items/, (r) => r.fulfill({ json: { items: [], next_cursor: null } }));
   await page.goto("/home");
 
@@ -191,7 +199,8 @@ test("the strip shows the week's numbers, each linking to its page", async ({ pa
   await expect(engagement).toHaveAttribute("href", "/t/acme22/analytics?range=7");
   await expect(engagement).toHaveAttribute("title", "Stats cover Bluesky, Facebook, Instagram and YouTube");
   await expect(engagement.locator("svg polyline")).toHaveCount(1);
-  await expect(strip(page, "Open")).toContainText("12");
+  // The strip counts the Inbox, which lists DMs: 5 of the 12 open items.
+  await expect(strip(page, "Open")).toContainText("5");
   await expect(strip(page, "Open")).toHaveAttribute("href", "/t/acme22/inbox");
   expect(asked.some((q) => q.get("from") === "2026-11-04" && q.get("to") === "2026-11-10" && q.get("social_set_id") === "d")).toBe(true);
 
