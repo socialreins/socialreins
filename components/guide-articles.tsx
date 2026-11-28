@@ -190,7 +190,11 @@ export function ApprovalWorkflow() {
       <p>
         From then on, a member&apos;s scheduled post is held for a decision, and posts by owners and admins continue to
         go out as before. A draft that a member saves is still a draft: approvals are about a post that is ready to go
-        out, not about saving work in progress.
+        out, not about saving work in progress. The{" "}
+        <Link href="/docs/self-hosted/use#approvals" className={link}>
+          Use guide
+        </Link>{" "}
+        covers the same switch in the app.
       </p>
 
       <h2>What the author sees</h2>
