@@ -1,14 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { docModes, docPath, docTitle, guides } from "@/components/docs";
+import { JsonLd } from "@/components/json-ld";
 import { SiteHeader, sitePage } from "@/components/site-header";
-import { publicPage } from "@/lib/seo";
+import { breadcrumbSchema, pageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Docs: SocialReins",
-  description: "SocialReins docs: install it on your own server, connect accounts and publish, and connect an AI assistant. For self-hosted and cloud.",
-  ...publicPage("/docs"),
-};
+export const metadata: Metadata = pageMetadata("/docs");
 
 const about = {
   "self-hosted": { name: "Self-hosted", tag: "Works today", note: "Run SocialReins on your own server, free, with every feature." },
@@ -19,6 +16,7 @@ export default function Docs() {
   return (
     <main className={sitePage}>
       <SiteHeader />
+      <JsonLd data={breadcrumbSchema([{ name: "Home", path: "/" }, { name: "Docs", path: "/docs" }])} />
       <div className="grid gap-8">
         <div className="grid max-w-2xl gap-2">
           <h1 className="font-display text-4xl font-extrabold tracking-tight">Docs</h1>

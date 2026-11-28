@@ -1,13 +1,9 @@
 import type { Metadata } from "next";
 import { ContactForm } from "@/components/contact-form";
 import { SiteHeader, sitePage } from "@/components/site-header";
-import { publicPage } from "@/lib/seo";
+import { pageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Contact: SocialReins",
-  description: "Send the SocialReins team a message with a question or feedback about the open-source social media manager. We reply by email.",
-  ...publicPage("/contact"),
-};
+export const metadata: Metadata = pageMetadata("/contact");
 
 export default function Contact() {
   return (

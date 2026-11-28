@@ -1,18 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { JsonLd } from "@/components/json-ld";
 import { SiteHeader, sitePage } from "@/components/site-header";
 import { feature } from "@/lib/features";
 import { beyondPosting, network, networks } from "@/lib/networks";
-import { publicPage } from "@/lib/seo";
+import { breadcrumbSchema, pageMetadata } from "@/lib/seo";
 
 // One public page per network: app/<slug>/page.tsx is two lines that call these with its slug.
 export function networkMetadata(slug: string): Metadata {
   const n = network(slug)!;
-  return {
-    title: `What you can post to ${n.name}: SocialReins`,
-    description: n.description,
-    ...publicPage(`/${n.slug}`),
-  };
+  return pageMetadata(`/${n.slug}`);
 }
 
 const link = "font-bold underline decoration-signal decoration-2 underline-offset-4 hover:text-signal-deep";
@@ -26,6 +23,13 @@ export function NetworkPage({ slug }: { slug: string }) {
   return (
     <main className={sitePage}>
       <SiteHeader />
+      <JsonLd
+        data={breadcrumbSchema([
+          { name: "Home", path: "/" },
+          { name: "Social media", path: "/socials" },
+          { name: n.name, path: `/${n.slug}` },
+        ])}
+      />
       <div className="grid w-full gap-8">
       <div className="grid gap-2">
         <h1 className="font-display text-4xl font-extrabold tracking-tight">What you can post to {n.name}</h1>

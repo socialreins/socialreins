@@ -1,29 +1,19 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { JsonLd } from "@/components/json-ld";
 import { SiteHeader, sitePage } from "@/components/site-header";
-import { author, guide, guides, longDate, site, type Guide } from "@/lib/guides";
-import { publicPage } from "@/lib/seo";
+import { author, guide, guides, longDate, type Guide } from "@/lib/guides";
+import { SITE_URL, breadcrumbSchema, faqSchema, pageMetadata } from "@/lib/seo";
 
 const link = "font-bold underline decoration-signal decoration-2 underline-offset-4 hover:text-signal-deep";
 
 export function guidesMetadata(): Metadata {
-  return {
-    title: "Guides: SocialReins",
-    description:
-      "Practical guides to scheduling, approvals, self-hosting, inboxes and automations for small teams, from the team that builds SocialReins.",
-    keywords: ["social media guides", "social media scheduling", "social media approvals", "self-hosted social media"],
-    ...publicPage("/guides"),
-  };
+  return pageMetadata("/guides");
 }
 
 export function guideMetadata(g: Guide): Metadata {
-  return {
-    title: `${g.title}: SocialReins`,
-    description: g.description,
-    keywords: g.keywords,
-    ...publicPage(`/guides/${g.slug}`),
-  };
+  return pageMetadata(`/guides/${g.slug}`);
 }
 
 // The index: every guide, newest first is not useful because they are all current, so the order is the
@@ -32,6 +22,7 @@ export function GuidesIndex() {
   return (
     <main className={sitePage}>
       <SiteHeader />
+      <JsonLd data={breadcrumbSchema([{ name: "Home", path: "/" }, { name: "Guides", path: "/guides" }])} />
       <div className="grid w-full max-w-4xl gap-8">
         <div className="grid max-w-2xl gap-2">
           <h1 className="font-display text-4xl font-extrabold tracking-tight">Guides</h1>
@@ -73,20 +64,18 @@ export function GuidesIndex() {
 export function GuideArticle({ slug, children }: { slug: string; children: ReactNode }) {
   const g = guide(slug);
   if (!g) throw new Error(`unknown guide: ${slug}`);
-  const faq = JSON.stringify({
-    "@context": "https://schema.org",
-    "@type": "FAQPage",
-    url: `${site}/guides/${g.slug}`,
-    mainEntity: g.faq.map((f) => ({
-      "@type": "Question",
-      name: f.question,
-      acceptedAnswer: { "@type": "Answer", text: f.answer },
-    })),
-  });
   const others = g.related.map((s) => guide(s)).filter((x): x is Guide => !!x);
   return (
     <main className={sitePage}>
       <SiteHeader />
+      <JsonLd
+        data={breadcrumbSchema([
+          { name: "Home", path: "/" },
+          { name: "Guides", path: "/guides" },
+          { name: g.title, path: `/guides/${g.slug}` },
+        ])}
+      />
+      <JsonLd data={faqSchema(g.faq.map((f): [string, string] => [f.question, f.answer]), `${SITE_URL}/guides/${g.slug}`)} />
       <article className="grid w-full max-w-3xl gap-6">
         <nav aria-label="Guides" className="text-sm">
           <Link href="/guides" className={link}>
@@ -133,7 +122,6 @@ export function GuideArticle({ slug, children }: { slug: string; children: React
           </ul>
         </nav>
       </article>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: faq }} />
     </main>
   );
 }

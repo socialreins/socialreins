@@ -2,13 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { SiteHeader, sitePage } from "@/components/site-header";
 import { groups } from "@/lib/features";
-import { publicPage } from "@/lib/seo";
+import { pageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Features: SocialReins",
-  description: "Everything SocialReins does today: publishing to nine networks, scheduling, teams, post analytics, an API and an MCP server, with an inbox live on Bluesky.",
-  ...publicPage("/features"),
-};
+export const metadata: Metadata = pageMetadata("/features");
 
 const link = "font-bold underline decoration-signal decoration-2 underline-offset-4 hover:text-signal-deep";
 

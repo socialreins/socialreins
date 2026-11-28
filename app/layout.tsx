@@ -5,7 +5,9 @@ import Script from "next/script";
 import { Suspense } from "react";
 import { Analytics } from "@/components/analytics";
 import { ConsentBanner } from "@/components/consent-banner";
+import { JsonLd } from "@/components/json-ld";
 import { Pwa } from "@/components/pwa";
+import { organizationSchema, softwareApplicationSchema, websiteSchema } from "@/lib/seo";
 import { Bricolage_Grotesque, Geist } from "next/font/google";
 import "./globals.css";
 
@@ -50,6 +52,10 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body>
+        {/* One block per type, the same on every page: the organization, the site, and the product with its plans. */}
+        <JsonLd data={organizationSchema} />
+        <JsonLd data={websiteSchema} />
+        <JsonLd data={softwareApplicationSchema} />
         <Script src="/config.js" strategy="beforeInteractive" nonce={nonce} />
         {children}
         <Suspense fallback={null}>

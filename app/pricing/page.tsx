@@ -1,77 +1,19 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { JsonLd } from "@/components/json-ld";
 import { SiteHeader, sitePage } from "@/components/site-header";
-import { publicPage } from "@/lib/seo";
+import { plans, questions } from "@/lib/pricing";
+import { faqSchema, pageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Pricing: SocialReins",
-  description: "SocialReins Cloud: Scheduler $190 a year or $19 a month, with Automation $490 or $49. A 7-day free trial on a first plan. Self-hosting is free.",
-  ...publicPage("/pricing"),
-};
+export const metadata: Metadata = pageMetadata("/pricing");
 
 const link = "font-bold underline decoration-signal decoration-2 underline-offset-4 hover:text-signal-deep";
-
-// Decision 0006: USD, yearly (two months free) shown first. Cloud is invitation-only until open sign-up, so the button is still the waitlist.
-const plans = [
-  {
-    name: "Scheduler",
-    tag: "Cloud, not open yet",
-    price: "$190 a year",
-    note: "Or $19 a month. A team's first plan starts with a 7-day free trial.",
-    points: [
-      "10 connected accounts.",
-      "3 team members.",
-      "Scheduling, the calendar, queues, approvals and analytics.",
-      "Nothing to install: we run it and register the apps with each network.",
-      "1 inbox, to read and answer comments and DMs.",
-      "No automations.",
-    ],
-    cta: { label: "Join the waitlist", href: "/#waitlist", external: false },
-  },
-  {
-    name: "Scheduler and Automation",
-    tag: "Cloud, not open yet",
-    price: "$490 a year",
-    note: "Or $49 a month. A team's first plan starts with a 7-day free trial.",
-    points: [
-      "25 connected accounts.",
-      "Unlimited team members.",
-      "Everything in Scheduler.",
-      "10 inboxes.",
-      "Automations, broadcasts and newsletters, with 2,500 contacts.",
-    ],
-    cta: { label: "Join the waitlist", href: "/#waitlist", external: false },
-  },
-  {
-    name: "Self-hosted",
-    tag: "Works today",
-    price: "Free",
-    note: "Open source, on your own server, free for good.",
-    points: [
-      "Every feature. There is no paid tier in the code.",
-      "All nine networks, and you turn on only the ones you want.",
-      "Your data stays on your own server, in your own Postgres database.",
-      "One Docker Compose command to start, one line to update.",
-      "You register your own developer app with each network you use, except Bluesky, which needs none.",
-      "Report problems and ask questions on GitHub.",
-    ],
-    cta: { label: "Read the install guide", href: "/docs/self-hosted", external: false },
-  },
-];
-
-const questions: [string, string][] = [
-  ["Is the self-hosted version limited?", "No. There are no plan limits: it is the same code that runs the cloud version, under the AGPL-3.0 license, and nothing is held back for paying customers."],
-  ["What does the cloud version cost?", "Scheduler is $190 a year or $19 a month. Scheduler and Automation is $490 a year or $49 a month. Yearly is two months free. Prices are in US dollars, and a team's first plan starts with a 7-day free trial."],
-  ["Why do posts to X cost extra?", "X charges us for every post sent through its API, so posting to X on the cloud version uses prepaid credits: 100 posts for $5 or 500 for $20. Each part of a thread counts as one post. Credits never expire. The other networks do not charge for posting."],
-  ["Can I cancel or get a refund?", "You can cancel at any time, and your plan keeps working until the end of the period you paid for. A period already started and credit packs are not refunded, except for a duplicate charge or our mistake; the free trial is the time to try it."],
-  ["Does self-hosting cost anything at all?", "SocialReins itself is free. You pay for your own server, and X charges for its API. The other networks do not charge for posting."],
-  ["Can I try the cloud version now?", "Not yet. SocialReins Cloud is open by invitation while we finish it. Join the waitlist and we email you when it opens. You can self-host today."],
-];
 
 export default function Pricing() {
   return (
     <main className={sitePage}>
       <SiteHeader />
+      <JsonLd data={faqSchema(questions)} />
       <div className="grid w-full gap-10">
       <div className="grid max-w-2xl gap-2">
         <h1 className="font-display text-4xl font-extrabold tracking-tight">Pricing</h1>

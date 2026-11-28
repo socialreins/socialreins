@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
-import { publicPage } from "@/lib/seo";
+import { pageMetadata } from "@/lib/seo";
 import Link from "next/link";
 import { ContactLink, LegalPage } from "@/components/legal-page";
 import { CookieSettings } from "@/components/cookie-settings";
 
 const link = "font-bold underline decoration-signal decoration-2 underline-offset-4 hover:text-signal-deep";
 
-export const metadata: Metadata = { title: "Privacy Policy: SocialReins", ...publicPage("/privacy") };
+export const metadata: Metadata = pageMetadata("/privacy");
 
 export default function Privacy() {
   return (

@@ -35,7 +35,8 @@ test("every guide renders its own page, date, author and FAQ markup", async ({ p
     const description = (await page.locator('meta[name="description"]').getAttribute("content")) ?? "";
     expect(description.length, g.slug).toBeGreaterThanOrEqual(110);
     expect(description.length, g.slug).toBeLessThanOrEqual(160);
-    const ld = JSON.parse((await page.locator('script[type="application/ld+json"]').textContent()) ?? "{}");
+    const blocks = (await page.locator('script[type="application/ld+json"]').allTextContents()).map((text) => JSON.parse(text) as Record<string, unknown>);
+    const ld = blocks.find((block) => block["@type"] === "FAQPage") as { url: string; mainEntity: Record<string, unknown>[] };
     expect(ld, g.slug).toMatchObject({ "@type": "FAQPage", url });
     expect(ld.mainEntity, g.slug).toHaveLength(3);
     expect(ld.mainEntity[0]).toMatchObject({ "@type": "Question" });

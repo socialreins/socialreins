@@ -2,13 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { SiteHeader, sitePage } from "@/components/site-header";
 import { rivals } from "@/lib/compare";
-import { publicPage } from "@/lib/seo";
+import { pageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Compare SocialReins with other tools: SocialReins",
-  description: "SocialReins next to Buffer, Postiz, PostSyncer, Post Bridge, Manychat and more: what each one does, what it costs and where it fits.",
-  ...publicPage("/compare"),
-};
+export const metadata: Metadata = pageMetadata("/compare");
 
 export default function Compare() {
   return (

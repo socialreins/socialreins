@@ -12,6 +12,8 @@ export type Feature = {
   intro: string;
   // Network slug (lib/networks.ts) to its state; a network not listed is "Not yet".
   support: Record<string, Support>;
+  // Questions the page already answers, word for word, for FAQPage structured data.
+  faq?: [string, string][];
   sections: { heading: string; text?: string; bullets?: string[] }[];
 };
 
@@ -27,6 +29,24 @@ export const features: Feature[] = [
     description: "Automations in SocialReins: triggers for comments, DMs, mentions and more, flows of steps with waits and buttons, and contact tags. See which networks work.",
     intro: "An automation watches for something and then acts on it for you. For example, comment to DM: someone comments a keyword on your post, and SocialReins sends them a DM.",
     support,
+    faq: [
+      [
+        "What can trigger an automation?",
+        "A comment keyword, a DM keyword, a first message, a new follower, a like or a repost of your post, a mention, a story reply, a story mention and a button tap. A like or repost trigger can be limited to the posts you name.",
+      ],
+      [
+        "How does comment to DM work?",
+        "Someone comments a keyword on your post and SocialReins sends them a DM. Pick the accounts or the set it runs on, set keywords, write the DM and add a public reply if you want one.",
+      ],
+      [
+        "Which networks support automations?",
+        "Bluesky is live. Facebook Pages, Instagram, Threads, X and YouTube are in testing. LinkedIn and Pinterest are not available yet.",
+      ],
+      [
+        "What are the limits?",
+        "A comment is acted on once and never tried again. On YouTube only the comment trigger exists and the answer is a public reply. A team's automations can answer 500 comments a day, and each automation can have its own daily limit and a cool-down.",
+      ],
+    ],
     sections: [
       {
         heading: "Triggers and flows",
@@ -104,6 +124,24 @@ export const features: Feature[] = [
     description: "Inboxes in SocialReins: comments, mentions and DMs in one place, DMs as conversations, with search, assigning and saved replies. See which networks work.",
     intro: "Comments, mentions and DMs from your connected accounts arrive in one place, and you answer them there. Make custom inboxes, each showing only what you choose: 1 on Scheduler, 10 on Scheduler and Automation, as many as you like when you self-host.",
     support,
+    faq: [
+      [
+        "Which networks have an inbox?",
+        "Bluesky is live. Facebook Pages, Instagram and Threads are in testing. X and YouTube are in testing too, and off until a team turns them on. The other networks are not supported yet.",
+      ],
+      [
+        "Can I reply to comments and DMs in SocialReins?",
+        "Yes. Reply under a comment or mention, and answer a DM in its conversation, without leaving SocialReins. DMs with one person are grouped into one conversation, shown as a chat.",
+      ],
+      [
+        "Can my team share an inbox?",
+        "Yes. Everyone on the team sees the same inboxes, and an item can be assigned to a teammate or to yourself.",
+      ],
+      [
+        "How often do new items arrive?",
+        "New items are fetched about once a minute, and an open inbox refreshes by itself.",
+      ],
+    ],
     sections: [
       {
         heading: "Custom inboxes",

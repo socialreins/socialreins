@@ -1,8 +1,8 @@
-import { rivals } from "@/lib/compare";
-import { guides } from "@/lib/guides";
-import { networks } from "@/lib/networks";
 import type { MetadataRoute } from "next";
+import { sitemapEntries } from "@/lib/seo";
 
+// The public pages of lib/seo.ts, with the priorities and dates that table holds. Private pages
+// (/app, /t, /p, /admin, /login, /invitations) are not listed; app/robots.ts keeps crawlers out too.
 export default function sitemap(): MetadataRoute.Sitemap {
-  return ["", "/contact", "/privacy", "/terms", "/data-deletion", "/post-types", "/socials", "/features", "/features/automations", "/features/inboxes", "/pricing", "/docs", "/docs/self-hosted", "/docs/self-hosted/use", "/docs/self-hosted/ai", "/docs/self-hosted/apps", "/docs/cloud", "/docs/cloud/use", "/docs/cloud/ai", "/docs/cloud/apps", "/guides", ...guides.map((g) => `/guides/${g.slug}`), ...networks.map((n) => `/${n.slug}`), "/compare", ...rivals.map((r) => `/compare/${r.slug}`)].map((path) => ({ url: `https://socialreins.com${path}` }));
+  return sitemapEntries();
 }
