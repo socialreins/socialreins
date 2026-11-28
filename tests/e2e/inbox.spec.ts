@@ -224,7 +224,7 @@ async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items
   return state;
 }
 
-test("sidebar lists Home, Posts, Calendar, Queue, Lists, Library, Feeds and Analytics, then Inbox, Comments, Contacts, Broadcasts, Newsletters and Automations", async ({ page }) => {
+test("sidebar lists Home, Posts, Calendar, Queue, Lists, Library, Feeds and Analytics, then Inbox, Comments, Testimonials, Contacts, Broadcasts, Newsletters and Automations", async ({ page }) => {
   await brain(page, "owner");
   await page.goto("/posts");
   const links = page.getByRole("navigation", { name: "App" }).getByRole("link");
@@ -238,10 +238,11 @@ test("sidebar lists Home, Posts, Calendar, Queue, Lists, Library, Feeds and Anal
   await expect(links.nth(7)).toHaveText("Analytics");
   await expect(links.nth(8)).toHaveText("Inbox");
   await expect(links.nth(9)).toHaveText("Comments");
-  await expect(links.nth(10)).toHaveText("Contacts");
-  await expect(links.nth(11)).toHaveText("Broadcasts");
-  await expect(links.nth(12)).toHaveText("Newsletters");
-  await expect(links.nth(13)).toHaveText("Automations");
+  await expect(links.nth(10)).toHaveText("Testimonials");
+  await expect(links.nth(11)).toHaveText("Contacts");
+  await expect(links.nth(12)).toHaveText("Broadcasts");
+  await expect(links.nth(13)).toHaveText("Newsletters");
+  await expect(links.nth(14)).toHaveText("Automations");
 });
 
 test("All inboxes lists DMs only, a custom inbox lists what it holds and filters by kind, and either opens an item by URL", async ({ page }) => {

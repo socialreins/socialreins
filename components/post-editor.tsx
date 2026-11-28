@@ -92,6 +92,7 @@ import { listMembers, manages } from "@/lib/teams";
 import { Icon } from "@/components/ui";
 import { RepeatControl } from "@/components/repeat";
 import { LibraryPicker, SaveToLibrary, SnippetMenu } from "@/components/library";
+import { takePostText } from "@/lib/testimonials";
 
 const POLL_MS = 2000;
 const POLL_FOR_MS = 60_000;
@@ -130,8 +131,9 @@ function platformProblem(platform: Platform, failure: Failure, xLong = false): R
   return postMessages[failure] ?? failure;
 }
 
-// `id` opens a saved post; `from` starts a new one as a copy of that post (Duplicate).
-export function PostEditor({ id, from }: { id?: string; from?: string }) {
+// `id` opens a saved post; `from` starts a new one as a copy of that post (Duplicate);
+// `testimonial` starts a new one from a quote kept on Testimonials (Post it).
+export function PostEditor({ id, from, testimonial }: { id?: string; from?: string; testimonial?: string }) {
   const { user } = useSession();
   const router = useRouter();
   const to = useTeamPath();
@@ -142,7 +144,8 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
   const [setId, setSetId] = useState("");
   // Read once: the set picked in the top bar when the editor opened.
   const startSet = useRef(useCurrentSet()[0]);
-  const [body, setBody] = useState("");
+  // A post started from a testimonial (Post it) opens with its quote; startPost left it on the way here.
+  const [body, setBody] = useState(() => (testimonial ? (takePostText() ?? "") : ""));
   const [media, setMedia] = useState<string[]>([]);
   // The alt text of each image, by its link: the same link has the same description wherever it is used.
   const [alts, setAlts] = useState<Record<string, string>>({});
