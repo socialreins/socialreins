@@ -29,12 +29,13 @@ import {
   setSlug,
   type Invitation,
   type Member,
+  type Subscribers,
 } from "@/lib/teams";
-import { reachable, subscribersCsv, type Subscriber } from "@/lib/newsletter";
+import { reachable, subscribersCsv } from "@/lib/newsletter";
 import { TeamLink as Link } from "@/components/team-link";
 import { SlugField, slugOk, useSlugCheck } from "@/components/slug-field";
 import { isFailure, linkButton, problemText, roleName, Status, useAction } from "@/components/team-ui";
-import { LoadFailed, SkeletonRows } from "@/components/ui";
+import { cappedLine, LoadFailed, SkeletonRows } from "@/components/ui";
 
 const date = (iso: string) => new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
 
@@ -308,20 +309,21 @@ function PauseAutomations({ team, onChanged }: { team: Team; onChanged: (t: Team
 }
 
 function Newsletter({ team, onChanged }: { team: Team; onChanged: (t: Team) => void }) {
-  const [list, setList] = useState<Subscriber[] | Failure | null>(null);
+  const [list, setList] = useState<Subscribers | Failure | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
   const { busy, problem, done, run } = useAction();
 
   useEffect(() => {
-    listSubscribers().then((r) => setList(isFailure(r) ? r : r.subscribers));
+    listSubscribers().then(setList);
   }, []);
 
-  const confirmed = Array.isArray(list) ? list.filter(reachable).length : 0;
-  const unsubscribed = Array.isArray(list) ? list.filter((s) => s.unsubscribed_at).length : 0;
+  const rows = list !== null && !isFailure(list) ? list.subscribers : null;
+  const confirmed = rows ? rows.filter(reachable).length : 0;
+  const unsubscribed = rows ? rows.filter((s) => s.unsubscribed_at).length : 0;
 
   function download() {
-    if (!Array.isArray(list)) return;
-    const url = URL.createObjectURL(new Blob([subscribersCsv(list)], { type: "text/csv" }));
+    if (!rows) return;
+    const url = URL.createObjectURL(new Blob([subscribersCsv(rows)], { type: "text/csv" }));
     const a = Object.assign(document.createElement("a"), { href: url, download: "subscribers.csv" });
     a.click();
     URL.revokeObjectURL(url);
@@ -362,25 +364,28 @@ function Newsletter({ team, onChanged }: { team: Team; onChanged: (t: Team) => v
           what="subscribers"
           retry={() => {
             setList(null);
-            listSubscribers().then((r) => setList(isFailure(r) ? r : r.subscribers));
+            listSubscribers().then(setList);
           }}
         >
           Subscribers couldn&apos;t be loaded. {problemText(list)}
         </LoadFailed>
-      ) : list.length === 0 ? (
+      ) : list.subscribers.length === 0 ? (
         <p className="hint">No subscribers yet.</p>
       ) : (
         <>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p>
-              {confirmed} confirmed, {list.filter((s) => !s.confirmed && !s.unsubscribed_at).length} waiting for the email link{unsubscribed > 0 && `, ${unsubscribed} unsubscribed`}.
+              {confirmed} confirmed, {list.subscribers.filter((s) => !s.confirmed && !s.unsubscribed_at).length} waiting for the email link{unsubscribed > 0 && `, ${unsubscribed} unsubscribed`}.
             </p>
             <button type="button" className="btn btn-secondary btn-sm" disabled={confirmed === 0} onClick={download}>
               Download the confirmed ones (CSV)
             </button>
           </div>
+          {cappedLine(list.subscribers.length, list.total ?? list.subscribers.length, "subscribers") && (
+            <p className="text-sm text-ink-soft">{cappedLine(list.subscribers.length, list.total ?? list.subscribers.length, "subscribers")}</p>
+          )}
           <ul className="divide-y divide-[var(--line)]">
-            {list.map((s) => (
+            {list.subscribers.map((s) => (
               <li key={s.id} className={row}>
                 <div className="min-w-0 flex-[1_1_12rem]">
                   <p className="truncate font-medium">{s.email}</p>
@@ -406,7 +411,15 @@ function Newsletter({ team, onChanged }: { team: Team; onChanged: (t: Team) => v
                       onClick={() =>
                         run(`remove:${s.id}`, () => removeSubscriber(s.id), () => {
                           setConfirming(null);
-                          setList((l) => (Array.isArray(l) ? l.filter((x) => x.id !== s.id) : l));
+                          setList((l) =>
+                            l && !isFailure(l)
+                              ? {
+                                  ...l,
+                                  subscribers: l.subscribers.filter((x) => x.id !== s.id),
+                                  total: l.total === undefined ? undefined : l.total - 1,
+                                }
+                              : l,
+                          );
                           return `${s.email} was removed.`;
                         })
                       }

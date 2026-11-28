@@ -108,6 +108,16 @@ export function EmptyState({ title, children, action, className = "card p-5" }: 
   );
 }
 
+// What a capped list says when brain's cap leaves rows out: the rows shown are the newest, so
+// what is missing is older. `""` while everything fits, so the page stays as it was.
+export function cappedLine(shown: number, total: number, noun: string): string {
+  if (total <= shown) return "";
+  const n = (x: number) => x.toLocaleString();
+  const hidden = total - shown;
+  const one = hidden === 1;
+  return `Showing the ${n(shown)} newest of ${n(total)} ${noun}. ${n(hidden)} older ${one ? noun.slice(0, -1) : noun} ${one ? "is" : "are"} not shown.`;
+}
+
 // A page's title, shown in the top bar (`PageTitle`), with its main action on the right of the page.
 // `back` is the page one level up: a crumb in the top bar, and a link on the page on phones, where the bar has no room for it.
 export function PageHeader({ title, back, children }: { title: string; back?: { href: string; label: string }; children?: ReactNode }) {

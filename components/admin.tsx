@@ -19,6 +19,7 @@ import {
   parseVerified,
   removeSignup,
   waitlistQuery,
+  waitlistShown,
   type Signup,
   type Verified,
   type Waitlist,
@@ -121,7 +122,7 @@ export function Admin() {
   // The entry is gone, removed here or by another admin: the row and the totals follow.
   const drop = (s: Signup) => {
     setRemoving(null);
-    change((w) => ({ total: w.total - 1, verified: w.verified - (s.verified_at ? 1 : 0), signups: w.signups.filter((x) => x.id !== s.id) }));
+    change((w) => ({ total: w.total - 1, verified: w.verified - (s.verified_at ? 1 : 0), matched: w.matched - 1, signups: w.signups.filter((x) => x.id !== s.id) }));
     if (s.approved_at) bump(-1);
   };
   const orGone = <T,>(s: Signup, r: T | Failure) => {
@@ -374,6 +375,9 @@ export function Admin() {
                 </tbody>
               </table>
             </div>
+          )}
+          {data && data.signups.length > 0 && (
+            <p className="text-sm text-ink-soft">{waitlistShown(data.matched, data.signups.length)}</p>
           )}
         </>
       )}

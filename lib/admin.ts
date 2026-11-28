@@ -13,7 +13,7 @@ export type Signup = {
   // Set when an admin approved the email: it may sign up whatever the sign-up rules say.
   approved_at: string | null;
 };
-export type Waitlist = { total: number; verified: number; signups: Signup[] };
+export type Waitlist = { total: number; verified: number; matched: number; signups: Signup[] };
 // null lists everyone; true or false only confirmed or unconfirmed signups.
 export type Verified = boolean | null;
 
@@ -30,9 +30,20 @@ export function waitlistQuery(verified: Verified, q = "", hideStale = false) {
   return p.size ? `?${p}` : "";
 }
 
-// Newest first, at most 1000; the totals ignore the filter and the search.
+// Newest first, at most 1000. `matched` counts what the filters and the search find, shown or
+// not; `total` and `verified` stay overall, whatever the filter.
 export const listWaitlist = (verified: Verified, q = "", hideStale = false) =>
   api<Waitlist>(`/v1/admin/waitlist${waitlistQuery(verified, q, hideStale)}`);
+
+// The waitlist table's one page, of everything the filters and the search match. When the cap
+// of 1000 leaves matches out (the oldest), it says so plainly.
+export function waitlistShown(matched: number, shown: number) {
+  const line = showing(0, shown, matched);
+  if (matched <= shown) return line;
+  const hidden = matched - shown;
+  const one = hidden === 1;
+  return `${line}. ${hidden.toLocaleString()} older ${one ? "signup" : "signups"} ${one ? "is" : "are"} not shown.`;
+}
 
 // `mail` says what happened to the "you can sign up now" email; the approval holds either way.
 export type Approval = { signup: Signup; mail: "sent" | "failed" | "already_approved" };

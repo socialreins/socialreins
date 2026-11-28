@@ -19,6 +19,7 @@ import {
   saveSignupSettings,
   showing,
   waitlistQuery,
+  waitlistShown,
 } from "@/lib/admin";
 import { apiUrl } from "@/lib/waitlist";
 
@@ -144,6 +145,15 @@ describe("admin list pages", () => {
     expect(showing(50, 3, 53)).toBe("Showing 51 to 53 of 53");
     expect(showing(0, 0, 0)).toBe("Showing 0 of 0");
     expect(showing(100, 0, 53)).toBe("Showing 0 of 53");
+  });
+
+  it("says what the waitlist table leaves out", () => {
+    // Everything fits: just the count.
+    expect(waitlistShown(53, 53)).toBe("Showing 1 to 53 of 53");
+    expect(waitlistShown(1000, 1000)).toBe("Showing 1 to 1,000 of 1,000");
+    // Past the cap of 1000 the true total shows, and so does what is missing.
+    expect(waitlistShown(2300, 1000)).toBe("Showing 1 to 1,000 of 2,300. 1,300 older signups are not shown.");
+    expect(waitlistShown(1001, 1000)).toBe("Showing 1 to 1,000 of 1,001. 1 older signup is not shown.");
   });
 
   it("asks brain for the page", async () => {
