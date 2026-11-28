@@ -109,12 +109,16 @@ test("the sidebar links to the library", async ({ page }) => {
 
 test("media is added, found, renamed and deleted; a duplicate says so", async ({ page }) => {
   const state = await brain(page, { items: [media(1), media(2, { url: "https://drive.google.com/file/d/abc123/view", name: "" }), media(3, { url: "https://cdn.example.com/clip.mp4", name: "Clip" })] });
+  // Every picture is asked for through brain; a 1x1 PNG keeps the tiles whole in the test.
+  const pixel = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+  await page.route(/\/v1\/public\/image\?url=/, (route) => route.fulfill({ contentType: "image/png", body: pixel }));
   await page.goto("/library");
   const grid = page.getByRole("region", { name: "Media", exact: true }).getByRole("listitem");
   await expect(grid).toHaveCount(3);
-  // An image link and a Drive share show their picture; a video a file tile with the host.
-  await expect(grid.nth(0).locator("img")).toHaveAttribute("src", "https://cdn.example.com/photo-1.png");
-  await expect(grid.nth(1).locator("img")).toHaveAttribute("src", /drive\.google\.com\/thumbnail\?id=abc123/);
+  // An image link and a Drive share show their picture, fetched through brain; a video a file tile with the host.
+  const via = (url: string) => `http://localhost:8080/v1/public/image?url=${encodeURIComponent(url)}`;
+  await expect(grid.nth(0).locator("img")).toHaveAttribute("src", via("https://cdn.example.com/photo-1.png"));
+  await expect(grid.nth(1).locator("img")).toHaveAttribute("src", /\/v1\/public\/image\?url=https%3A%2F%2Fdrive\.google\.com%2Fthumbnail%3Fid%3Dabc123/);
   await expect(grid.nth(2)).toContainText("cdn.example.com");
 
   await page.getByLabel("Link", { exact: true }).fill("https://cdn.example.com/new.jpg");

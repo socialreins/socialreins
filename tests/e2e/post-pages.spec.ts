@@ -89,8 +89,11 @@ test("the public page shows the post, its details and where it is live, without 
     });
   });
   const res = await page.goto("/p/abcdefghjk");
-  // Only this page may load images from any https host.
-  expect(res!.headers()["content-security-policy"]).toContain("img-src 'self' data: https:;");
+  // One image policy for every page: only brain's origin serves the author's pictures (see post-pages.spec.ts).
+  const imgSrc = (csp: string) => csp.split("; ").find((directive) => directive.startsWith("img-src"))!;
+  const pageImg = imgSrc(res!.headers()["content-security-policy"]);
+  expect(pageImg).toContain("http://localhost:8080");
+  expect(pageImg.split(" ")).not.toContain("https:");
   await expect(page.getByText("Posted by Acme")).toBeVisible();
   expect(asked).toMatch(/\/v1\/public\/pages\/abcdefghjk$/);
   // A link's closing full stop is not part of it.
@@ -98,8 +101,9 @@ test("the public page shows the post, its details and where it is live, without 
   await expect(page.getByText("Part two")).toBeVisible();
   // The plain image shows as it is, a Drive share link as its thumbnail linked to the share, and a video as a link.
   await expect(page.locator("article img")).toHaveCount(2);
-  await expect(page.locator("article img").first()).toHaveAttribute("src", "https://example.com/a.jpg");
-  await expect(page.getByRole("link", { name: "Open the picture" }).locator("img")).toHaveAttribute("src", "https://drive.google.com/thumbnail?id=1&sz=w1600");
+  const via = (url: string) => `http://localhost:8080/v1/public/image?url=${encodeURIComponent(url)}`;
+  await expect(page.locator("article img").first()).toHaveAttribute("src", via("https://example.com/a.jpg"));
+  await expect(page.getByRole("link", { name: "Open the picture" }).locator("img")).toHaveAttribute("src", via("https://drive.google.com/thumbnail?id=1&sz=w1600"));
   await expect(page.getByRole("link", { name: "Open the picture" })).toHaveAttribute("href", "https://drive.google.com/file/d/1/view");
   const video = page.getByRole("link", { name: "Open the video" });
   await expect(video).toHaveAttribute("href", "https://example.com/clip.mp4");
@@ -112,5 +116,7 @@ test("the public page shows the post, its details and where it is live, without 
   await page.goto("/p/gone");
   await expect(page.getByText("This page is not available.")).toBeVisible();
   const home = await page.goto("/");
-  expect(home!.headers()["content-security-policy"]).not.toContain("img-src 'self' data: https:;");
+  // The same policy everywhere now that a public page's pictures come from brain, and no bare https:.
+  const homeImg = imgSrc(home!.headers()["content-security-policy"]);
+  expect(homeImg).toBe(pageImg);
 });

@@ -805,6 +805,9 @@ export function linked(text: string): string[] {
 }
 // How a public page shows each media link: a picture (linked to the share page for Drive and Dropbox) or a
 // link button for what a browser can't show inline (a video, a PDF, an unknown share). Non-https links are dropped.
+// A picture's src goes through brain (GET /v1/public/image), so the author's host never sees the visitor;
+// `original` keeps the author's own address, for a link preview a crawler fetches itself. A href is always the
+// author's link.
 export type PageMedia = { kind: "image"; src: string; href?: string } | { kind: "link"; href: string; label: string };
 const IMAGE_NAME = /\.(jpe?g|png|gif|webp)$/i;
 const VIDEO_NAME = /\.(mp4|mov|webm)$/i;
@@ -812,7 +815,10 @@ const driveId = (u: URL) => {
   const id = /^\/file\/d\/([^/]+)/.exec(u.pathname)?.[1] ?? (u.pathname === "/open" || u.pathname === "/uc" ? u.searchParams.get("id") : null);
   return id && /^[\w-]+$/.test(id) ? id : null;
 };
-export function pageMedia(media: string[]): PageMedia[] {
+export const proxiedImage = (url: string) => `${apiUrl}/v1/public/image?url=${encodeURIComponent(url)}`;
+export function pageMedia(media: string[], original = false): PageMedia[] {
+  // A picture a visitor's browser loads: fetched by brain, unless this is the crawler's preview.
+  const image = (src: string, href?: string): PageMedia => ({ kind: "image", src: original ? src : proxiedImage(src), ...(href ? { href } : {}) });
   return media.flatMap((m): PageMedia[] => {
     let u: URL;
     try {
@@ -829,15 +835,15 @@ export function pageMedia(media: string[]): PageMedia[] {
       const src = new URL("https://drive.google.com/thumbnail");
       src.searchParams.set("id", id);
       src.searchParams.set("sz", "w1600");
-      return [{ kind: "image", src: src.href, href }];
+      return [image(src.href, href)];
     }
     if (dropbox && /^\/(s|scl\/fi)\//.test(u.pathname) && IMAGE_NAME.test(u.pathname)) {
       const src = new URL(href);
       src.searchParams.delete("dl");
       src.searchParams.set("raw", "1");
-      return [{ kind: "image", src: src.href, href }];
+      return [image(src.href, href)];
     }
-    if (!drive && !dropbox && IMAGE_NAME.test(u.pathname)) return [{ kind: "image", src: href }];
+    if (!drive && !dropbox && IMAGE_NAME.test(u.pathname)) return [image(href)];
     return [{ kind: "link", href, label: VIDEO_NAME.test(u.pathname) ? "Open the video" : "Open the file" }];
   });
 }
@@ -852,7 +858,7 @@ export function pageMeta(post: PublicPost): Metadata {
   const { title: first, description: rest } = youtubeText(post.body);
   const title = first ? cut(first, 70) : `A post by ${post.team}`;
   const description = cut(rest || post.details, 200) || undefined;
-  const image = pageMedia([post.media, ...post.thread.map((t) => t.media)].flat()).find((m) => m.kind === "image")?.src;
+  const image = pageMedia([post.media, ...post.thread.map((t) => t.media)].flat(), true).find((m) => m.kind === "image")?.src;
   return {
     title,
     description,

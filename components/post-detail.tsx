@@ -14,7 +14,7 @@ import { Icon } from "@/components/ui";
 import { address } from "@/lib/ref";
 import { hasStats } from "@/lib/analytics";
 import type { Connection } from "@/lib/connections";
-import { canRetry, charCount, charLimit, failureAdvice, isImageLink, limits, listPostEvents, overallName, overallStatus, postRef, privacyName, timeline, youtubePrivacyName, youtubeText, type Overall, type Post, type PostEvent, type PostEventPage, type Target, type TakedownResult, type ThreadPart } from "@/lib/posts";
+import { canRetry, charCount, charLimit, failureAdvice, isImageLink, limits, listPostEvents, overallName, overallStatus, postRef, privacyName, proxiedImage, timeline, youtubePrivacyName, youtubeText, type Overall, type Post, type PostEvent, type PostEventPage, type Target, type TakedownResult, type ThreadPart } from "@/lib/posts";
 
 const names = (list: string[]) => new Intl.ListFormat("en", { type: "conjunction" }).format(list.map(platformName));
 // A moment in the set's zone, with the zone's short name ("Nov 25, 2026, 7:11 PM GMT+6").
@@ -625,7 +625,7 @@ function Tile({ url, alt }: { url: string; alt: string }) {
     <a href={url} target="_blank" rel="noopener noreferrer" className="group relative grid aspect-square place-items-center overflow-hidden rounded-lg bg-ink/[0.06] text-center text-xs text-ink-soft" aria-label={`Open ${fileName(url)} in a new tab`}>
       {image && !broken ? (
         // eslint-disable-next-line @next/next/no-img-element -- links of any host; the CSP allows https images on team pages
-        <img src={url} alt={alt} loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(true)} className="size-full object-cover" />
+        <img src={proxiedImage(url)} alt={alt} loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(true)} className="size-full object-cover" />
       ) : (
         <span className="grid justify-items-center gap-1 p-2">
           <Icon name={image ? "image" : "monitor"} className="size-6" />

@@ -1147,9 +1147,12 @@ test("with two custom inboxes, rows in All inboxes carry the chips of the inboxe
 
 test("photos and stickers show as thumbnails linking to the original, and a label when there is no text or the link expired", async ({ page }) => {
   const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
-  await page.route("https://scontent.xx.fbcdn.net/**", (route) =>
-    route.request().url().includes("gone") ? route.fulfill({ status: 403, body: "URL signature expired" }) : route.fulfill({ contentType: "image/png", body: png }),
-  );
+  // Every picture goes through brain's proxy now, so the mock answers that endpoint, not the platform's host.
+  const via = (url: string) => `http://localhost:8080/v1/public/image?url=${encodeURIComponent(url)}`;
+  await page.route("**/v1/public/image?**", (route) => {
+    const url = new URL(route.request().url()).searchParams.get("url") ?? "";
+    return url.includes("gone") ? route.fulfill({ status: 403, body: "URL signature expired" }) : route.fulfill({ contentType: "image/png", body: png });
+  });
   const sticker = { kind: "sticker", url: "https://scontent.xx.fbcdn.net/s.png", preview_url: "https://scontent.xx.fbcdn.net/s.png" };
   const expired = { kind: "image", url: "https://scontent.xx.fbcdn.net/gone.jpg" };
   await brain(page, "owner", {
@@ -1170,6 +1173,7 @@ test("photos and stickers show as thumbnails linking to the original, and a labe
   const shown = page.getByRole("region", { name: "Item" }).getByRole("list", { name: "Attachments" });
   const img = shown.getByRole("img", { name: "Sticker" });
   await expect(img).toBeVisible();
+  await expect(img).toHaveAttribute("src", via(sticker.url));
   await expect(img).toHaveAttribute("loading", "lazy");
   await expect(img).toHaveAttribute("referrerpolicy", "no-referrer");
   await expect(shown.getByRole("link")).toHaveAttribute("href", sticker.url);

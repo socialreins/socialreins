@@ -36,6 +36,7 @@ import {
   type Newsletter,
   type Problem,
 } from "@/lib/newsletter";
+import { proxiedImage } from "@/lib/posts";
 import { listSubscribers, manages } from "@/lib/teams";
 import { useSession } from "@/components/app-shell";
 import { Confirm, Progress, StatusBadge } from "@/components/broadcasts";
@@ -88,7 +89,7 @@ function SenderLogo({ src, alt, className, children = null }: { src?: string | n
   const [broken, setBroken] = useState<string | null>(null);
   if (!src?.startsWith("https://") || broken === src) return children;
   // eslint-disable-next-line @next/next/no-img-element -- any https host, which next/image would need listed
-  return <img src={src} alt={alt} referrerPolicy="no-referrer" onError={() => setBroken(src)} className={className} />;
+  return <img src={proxiedImage(src)} alt={alt} referrerPolicy="no-referrer" onError={() => setBroken(src)} className={className} />;
 }
 
 // The email as its reader sees it, laid out as brain's `compose` does: the logo (else the sender's name), a card

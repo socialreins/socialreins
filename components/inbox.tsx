@@ -49,6 +49,7 @@ import {
   type ThreadContext,
 } from "@/lib/inbox";
 import { createSnippet, isProblem, libraryText, type Problem } from "@/lib/library";
+import { proxiedImage } from "@/lib/posts";
 import { address, addressOf, isUuid, moveParam, moveToNumber } from "@/lib/ref";
 import { getBilling, type Billing } from "@/lib/billing";
 import { listMembers, manages } from "@/lib/teams";
@@ -884,7 +885,7 @@ function AttachmentLink({ a }: { a: Attachment }) {
     <a href={a.url} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer" className="group relative block rounded-xl hover:opacity-90">
       {still && !broken ? (
         // eslint-disable-next-line @next/next/no-img-element -- a platform link that expires, not ours to optimize
-        <img src={still} alt={name} loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(true)} className="size-28 rounded-xl border border-ink/10 bg-canvas object-cover" />
+        <img src={proxiedImage(still)} alt={name} loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(true)} className="size-28 rounded-xl border border-ink/10 bg-canvas object-cover" />
       ) : (
         <span className="badge tone gap-1">
           {name}

@@ -526,16 +526,21 @@ test("a connect that times out reloads the list, since brain may still finish", 
   expect(loads.list).toBe(2);
 });
 
-// Team pages (/t/...) show the team's own media links from any https host; avatars there go through safeAvatar.
-test("the CSP allows only Bluesky's image path and Meta's, YouTube's, X's, Pinterest's and TikTok's image CDNs for avatars outside team pages", async ({ request }) => {
-  expect((await request.get("/connections")).headers()["content-security-policy"]).toContain("img-src 'self' data: https:;");
+// Every page uses one image policy: the footer badges, the avatar CDNs and brain's origin (which serves a
+// public page's author pictures), never a bare https: that would let any host see a visitor.
+test("the image policy is the same everywhere: badges, avatar CDNs and brain, and no https: wildcard", async ({ request }) => {
+  const imgSrc = (csp: string) => csp.split("; ").find((directive) => directive.startsWith("img-src"))!;
+  const connections = imgSrc((await request.get("/connections")).headers()["content-security-policy"]);
   const csp = (await request.get("/profile")).headers()["content-security-policy"];
-  // The landing footer's directory badges come first, then the avatar hosts.
-  expect(csp).toContain(
-    "img-src 'self' data: https://twelve.tools https://startupfa.me https://img.turbo0.com https://cdn.bsky.app/img/ https://*.fbcdn.net https://*.cdninstagram.com https://yt3.ggpht.com https://yt3.googleusercontent.com https://i.ytimg.com https://pbs.twimg.com https://i.pinimg.com https://*.tiktokcdn.com https://*.tiktokcdn-us.com",
+  // A team page and a personal page answer the same directive.
+  expect(connections).toBe(imgSrc(csp));
+  expect(connections).toContain(
+    "img-src 'self' data: http://localhost:8080 https://twelve.tools https://startupfa.me https://img.turbo0.com https://cdn.bsky.app/img/ https://*.fbcdn.net https://*.cdninstagram.com https://yt3.ggpht.com https://yt3.googleusercontent.com https://i.ytimg.com https://pbs.twimg.com https://i.pinimg.com https://*.tiktokcdn.com https://*.tiktokcdn-us.com",
   );
+  // No source is a bare https:, so no other host can be loaded.
+  expect(connections.split(" ")).not.toContain("https:");
   // Nothing after those hosts but Google Analytics' hits (GA_MEASUREMENT_ID is set for the e2e server).
-  expect(csp).toMatch(/tiktokcdn-us\.com( https:\/\/(\*\.google-analytics\.com|\*\.analytics\.google\.com|www\.googletagmanager\.com))*;/);
+  expect(connections).toMatch(/tiktokcdn-us\.com( https:\/\/(\*\.google-analytics\.com|\*\.analytics\.google\.com|www\.googletagmanager\.com))*;?$/);
 });
 
 const metaChoices = {
