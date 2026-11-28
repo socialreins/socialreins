@@ -1,6 +1,7 @@
 import { api, failure, request, type Failure } from "@/lib/auth";
 import { CONNECT_TIMEOUT_MS } from "@/lib/connections";
 import { graphemes, threadsLength } from "@/lib/posts";
+import { platformName } from "@/components/platform-icons";
 
 export type Kind = "comment" | "mention" | "dm";
 export const KINDS: Kind[] = ["comment", "mention", "dm"];
@@ -130,9 +131,10 @@ export const updateInbox = (id: string, input: InboxInput) => api<Inbox>(`/v1/in
 export const deleteInbox = (id: string) => api(`/v1/inboxes/${enc(id)}`, "DELETE");
 
 // `search` looks in the text and the author's name and handle; brain takes 1 to 100 characters.
-// `assigned` is "me", "none" or a user id; `tag` is a contact tag.
+// `assigned` is "me", "none" or a user id; `tag` is a contact tag; `account` one account's id and
+// `network` one platform, both within the inbox's own accounts.
 // `conversations` asks for DMs as one row per person and account; comments and mentions come as they are.
-export function listItems(inboxId: string, state: ItemState, cursor?: string | null, kind?: ListKind | null, search?: string, more: { assigned?: string; tag?: string; conversations?: boolean } = {}) {
+export function listItems(inboxId: string, state: ItemState, cursor?: string | null, kind?: ListKind | null, search?: string, more: { assigned?: string; tag?: string; account?: string; network?: string; conversations?: boolean } = {}) {
   // Activity is stored done and never open work: it is listed whatever the Open / Done choice is.
   const q = new URLSearchParams(more.conversations ? { state, group: "conversations" } : { state });
   if (kind === "activity") q.delete("state");
@@ -140,10 +142,44 @@ export function listItems(inboxId: string, state: ItemState, cursor?: string | n
   if (search) q.set("q", search);
   if (more.assigned) q.set("assigned", more.assigned);
   if (more.tag) q.set("tag", more.tag);
+  if (more.account) q.set("account_id", more.account);
+  if (more.network) q.set("platform", more.network);
   if (cursor) q.set("cursor", cursor);
   return api<ItemPage>(`/v1/inboxes/${enc(inboxId)}/items?${q}`);
 }
 export type Page = { items: Item[]; next: string | null };
+
+// What the account menu offers: the inbox's own accounts, grouped by network, a network row above
+// its accounts. Networks follow the app's order, and accounts go by their label.
+export type FilterAccount = { id: string; provider: string; handle?: string | null; display_name?: string | null; external_id?: string | null };
+export type AccountGroup = { network: string; label: string; accounts: { value: string; label: string }[] };
+// The value of a network row in the menu; the account rows hold the account's id.
+export const NETWORK_PREFIX = "network:";
+const accountLabel = (a: FilterAccount) => {
+  const handle = a.handle ? `@${a.handle}` : "";
+  if (a.display_name && handle) return `${a.display_name} (${handle})`;
+  return a.display_name || handle || a.external_id || a.id;
+};
+export function accountGroups(accountIds: string[], accounts: FilterAccount[]): AccountGroup[] {
+  const held = new Set(accountIds);
+  const groups = new Map<string, AccountGroup["accounts"]>();
+  for (const a of accounts) {
+    if (!held.has(a.id)) continue;
+    groups.set(a.provider, [...(groups.get(a.provider) ?? []), { value: a.id, label: accountLabel(a) }]);
+  }
+  const rank = (network: string) => {
+    const at = INBOX_PLATFORMS.indexOf(network);
+    return at < 0 ? INBOX_PLATFORMS.length : at;
+  };
+  return [...groups.entries()]
+    .sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
+    .map(([network, list]) => ({
+      network,
+      label: platformName(network),
+      // By name, not by the @ that a handle-only label starts with.
+      accounts: list.sort((a, b) => a.label.replace(/^@/, "").localeCompare(b.label.replace(/^@/, ""))),
+    }));
+}
 
 // The newest page, fetched again, over the loaded pages. A complete fresh page, or one sharing
 // nothing with the list, replaces it. Otherwise items newer than the list go on top, known ones

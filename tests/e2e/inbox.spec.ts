@@ -120,10 +120,16 @@ async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items
     const q = new URL(route.request().url()).searchParams;
     const kind = q.get("kind");
     const search = q.get("q")?.toLowerCase();
+    const account = q.get("account_id");
+    const platform = q.get("platform");
     state.asked.push(q);
     // Activity (follows, likes, reposts) is listed only when asked for.
     const quiet = (i: Row) => ["follow", "like", "repost"].includes(i.kind);
-    const match = (i: Row) => (kind === "activity" ? quiet(i) : kind ? i.kind === kind : !quiet(i)) && (!search || i.text.toLowerCase().includes(search));
+    const match = (i: Row) =>
+      (kind === "activity" ? quiet(i) : kind ? i.kind === kind : !quiet(i)) &&
+      (!search || i.text.toLowerCase().includes(search)) &&
+      (!account || i.social_account_id === account) &&
+      (!platform || i.platform === platform);
     // Activity is listed whatever the state asked for, as brain does.
     if (kind === "activity") return route.fulfill({ json: { items: state.items.filter(match).map((i) => ({ ...i, conversation: null })), next_cursor: null } });
     // One row per conversation: its latest DM. Open while any of its DMs is open, done once none is.
@@ -241,6 +247,58 @@ test("inbox lists items, filters by kind, and opens one by URL", async ({ page }
     "https://bsky.app/profile/did:plc:bob/post/p1",
   );
   await expect(page.getByRole("navigation", { name: "Inboxes" }).getByRole("link", { name: "Questions" })).toHaveAttribute("aria-current", "page");
+});
+
+test("the account menu narrows an inbox of two accounts on one network, and the address keeps it", async ({ page }) => {
+  const blair = { ...alice, id: "c2", external_id: "did:plc:blair", handle: "blair.bsky.social", display_name: "Blair" };
+  const carol = { ...alice, id: "c3", external_id: "did:plc:carol", handle: "carol.bsky.social", display_name: "Carol" };
+  await brain(page, "owner", {
+    accounts: [alice, blair, carol],
+    inboxes: [inbox("all", "All", { account_ids: [] }), inbox("i2", "Questions", { account_ids: ["c1", "c2"] })],
+    items: [item("p1", "comment", "Alice gets this one"), item("p2", "comment", "Blair gets this one", { social_account_id: "c2" })],
+  });
+  await page.goto("/inbox/i2");
+  const list = page.getByRole("region", { name: "Questions" });
+  const rows = list.getByRole("list", { name: "Items" }).getByRole("listitem");
+  await expect(rows).toHaveCount(2);
+  // Both accounts sit under their one network, and the inbox's accounts only.
+  const menu = page.getByRole("combobox", { name: "Account" });
+  await expect(menu.locator("optgroup")).toHaveAttribute("label", "Bluesky");
+  await expect(menu.locator("optgroup option")).toHaveCount(3);
+  await menu.selectOption("c1");
+  await expect(page).toHaveURL(/\/inbox\/i2\?account=c1$/);
+  await expect(rows).toHaveCount(1);
+  await expect(list.getByRole("link", { name: /Alice gets this one/ })).toBeVisible();
+  await expect(list.getByRole("link", { name: /Blair gets this one/ })).toHaveCount(0);
+  // A reload keeps the filter and its rows.
+  await page.reload();
+  await expect(menu).toHaveValue("c1");
+  await expect(rows).toHaveCount(1);
+  // Choosing the other account switches, in the address too.
+  await menu.selectOption("c2");
+  await expect(page).toHaveURL(/\/inbox\/i2\?account=c2$/);
+  await expect(list.getByRole("link", { name: /Blair gets this one/ })).toBeVisible();
+  await expect(list.getByRole("link", { name: /Alice gets this one/ })).toHaveCount(0);
+  // The network row takes in every account of the inbox again.
+  await menu.selectOption("network:bluesky");
+  await expect(page).toHaveURL(/\/inbox\/i2\?network=bluesky$/);
+  await expect(rows).toHaveCount(2);
+});
+
+test("an account filter that hides everything names it and offers Clear filters", async ({ page }) => {
+  const blair = { ...alice, id: "c2", external_id: "did:plc:blair", handle: "blair.bsky.social", display_name: "Blair" };
+  const carol = { ...alice, id: "c3", external_id: "did:plc:carol", handle: "carol.bsky.social", display_name: "Carol" };
+  await brain(page, "owner", {
+    accounts: [alice, blair, carol],
+    inboxes: [inbox("all", "All", { account_ids: [] }), inbox("i2", "Questions", { account_ids: ["c1", "c2", "c3"] })],
+    items: [item("p1", "comment", "Alice gets this one"), item("p2", "comment", "Blair gets this one", { social_account_id: "c2" })],
+  });
+  await page.goto("/inbox/i2?account=c3");
+  const list = page.getByRole("region", { name: "Questions" });
+  await expect(list).toContainText("Nothing from Carol (@carol.bsky.social) here.");
+  await list.getByRole("button", { name: "Clear filters" }).click();
+  await expect(page).toHaveURL(/\/inbox\/i2$/);
+  await expect(list.getByRole("list", { name: "Items" }).getByRole("listitem")).toHaveCount(2);
 });
 
 test("an item says which automations ran on it and, when none did, why", async ({ page }) => {
