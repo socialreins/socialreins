@@ -37,6 +37,7 @@ import {
   triggers,
   effectFits,
   isActivity,
+  isSend,
   whyNot,
   linkedinAutomation,
   blockText,
@@ -44,6 +45,7 @@ import {
   type Run,
   type Draft,
   type StepDraft,
+  type Step,
   costText,
   limitOf,
   timeProblems,
@@ -75,6 +77,26 @@ describe("post links", () => {
 
   it("links an at:// URI back to bsky.app", () => {
     expect(postLink("at://did:plc:bob/app.bsky.feed.post/3abc")).toBe("https://bsky.app/profile/did:plc:bob/post/3abc");
+  });
+
+  it("reads an X or YouTube link as the post id, and refuses another account's", () => {
+    const x = [{ provider: "x", handle: "ann_lee", external_id: "9" }];
+    expect(postUri("https://x.com/ann_lee/status/1234567890", x)).toBe("1234567890");
+    expect(postUri("https://twitter.com/Ann_Lee/status/42?s=20", x)).toBe("42");
+    expect(postUri("https://x.com/someone_else/status/42", x)).toBeNull();
+    expect(postUri("https://www.youtube.com/watch?v=dQw4w9WgXcQ", accounts)).toBe("dQw4w9WgXcQ");
+    expect(postUri("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=4s", accounts)).toBe("dQw4w9WgXcQ");
+    expect(postUri("https://youtu.be/dQw4w9WgXcQ?t=1", accounts)).toBe("dQw4w9WgXcQ");
+    expect(postUri("https://www.youtube.com/shorts/abcDEF12345", accounts)).toBe("abcDEF12345");
+    // A link whose code is not the id brain matches is not read as one.
+    expect(postUri("https://www.instagram.com/p/Cabc123/", accounts)).toBeNull();
+    expect(postUri("https://www.threads.net/@ann/post/Cabc123", accounts)).toBeNull();
+    expect(postUri("https://www.linkedin.com/feed/update/urn:li:activity:7", accounts)).toBeNull();
+  });
+
+  it("keeps an id the post picker offered", () => {
+    expect(postIds(["123_456"], [], accounts, false, ["123_456"])).toEqual(["123_456"]);
+    expect(postIds(["urn:li:share:7"], [], accounts)).toEqual([null]);
   });
 });
 
@@ -150,6 +172,7 @@ const full: Draft = {
   keywords: ["price"],
   specific: true,
   posts: "at://did:plc:bob/app.bsky.feed.post/3abc",
+  networks: [],
   firstPerAuthor: true,
   firstMessage: true,
   dm: "Hi {name}, see {page}",
@@ -450,16 +473,17 @@ describe("flows", () => {
       { type: "send_dm", text: "Hi {name}, see {page}" },
       { type: "reply_publicly", text: "Sent you a DM" },
     ]);
-    expect(toSimple(flow.steps)).toEqual({ dm: "Hi {name}, see {page}", publicReply: "Sent you a DM", tags: [], also: [], dropped: [] });
+    expect(toSimple(flow.steps)).toEqual({ dm: "Hi {name}, see {page}", publicReply: "Sent you a DM", aiDraft: "", tags: [], also: [], dropped: [] });
     // The fallback has no place in a flow, a public reply none under a DM trigger, and an empty reply starts with one DM.
     expect(toFlow(full).dropped).toEqual(["the fallback reply"]);
     expect(stepsBody(toFlow({ ...one, trigger: "dm_received" }).steps)).toEqual([{ type: "send_dm", text: "Hi {name}, see {page}" }]);
     expect(stepsBody(toFlow({ ...one, dm: "", publicReply: "" }).steps)).toEqual([{ type: "send_dm", text: "" }]);
-    expect(toSimple([newStep("reply_publicly", "Thanks!")])).toEqual({ dm: "", publicReply: "Thanks!", tags: [], also: [], dropped: [] });
+    expect(toSimple([newStep("reply_publicly", "Thanks!")])).toEqual({ dm: "", publicReply: "Thanks!", aiDraft: "", tags: [], also: [], dropped: [] });
     // What one reply can't hold is named, and the first DM and public reply stay.
     expect(toSimple([dm("First", "Yes", "No"), wait("1", "days"), dm("Second"), wait("5"), dm("Third", "Ok"), newStep("reply_publicly", "A"), newStep("reply_publicly", "B")])).toEqual({
       dm: "First",
       publicReply: "A",
+      aiDraft: "",
       tags: [],
       also: [],
       dropped: ["2 waits", "3 buttons", "2 more DMs", "1 more public reply"],
@@ -889,6 +913,7 @@ describe("like, repost and follow back", () => {
 
   it("words why an automation did not run", () => {
     expect(whyNot("wrong_post")).toContain("posts this automation is limited to");
+    expect(whyNot("wrong_network")).toBe("It came from a network this automation is not limited to");
     expect(whyNot("stopped_by_other")).toContain("stops the newer ones");
     expect(whyNot("a_new_one")).toBe("a new one");
   });
@@ -941,9 +966,63 @@ describe("an AI reply held for review", () => {
     expect(actionsSummary(saved)).toBe("Drafts a reply with AI for review");
     expect(actionsSummary({ ...saved, actions: [{ type: "send_dm", text: "hi" }, ...saved.actions, { type: "tag_contact", tag: "lead" }] })).toBe("Sends a DM and drafts a reply with AI for review, tag: lead");
   });
-  it("is dropped by a trigger that has nothing to reply under and by a flow", () => {
+  it("is dropped by a trigger that has nothing to reply under, and becomes a flow step", () => {
     expect(changeTrigger(base, "dm_received")).toMatchObject({ draft: { aiDraft: "" }, dropped: ["AI draft"] });
     expect(automationInput({ ...base, trigger: "dm_received" }, scope, []).actions).toEqual([]);
-    expect(toFlow(base).dropped).toContain("the AI draft");
+    const flow = toFlow(base);
+    expect(flow.dropped).toEqual([]);
+    expect(stepsBody(flow.steps)).toEqual([{ type: "ai_draft_reply", prompt: base.aiDraft }]);
+    expect(toSimple(flow.steps).aiDraft).toBe(base.aiDraft);
+  });
+});
+
+describe("a flow's AI draft step", () => {
+  const draft = (text: string): StepDraft => newStep("ai_draft_reply", text) as StepDraft;
+  it("is a step of its own, never a send, and rides in the flow", () => {
+    const s = draft("Say thanks");
+    expect(stepsBody([s])).toEqual([{ type: "ai_draft_reply", prompt: "Say thanks" }]);
+    expect(isSend(s)).toBe(false);
+    expect(flowOutline(stepsBody([s]) as Step[])).toBe("ai draft for review");
+    expect(sameSteps(stepsBody([s]) as Step[], [{ type: "ai_draft_reply", prompt: "Say thanks" }])).toBe(true);
+    expect(sameSteps(stepsBody([s]) as Step[], [{ type: "ai_draft_reply", prompt: "Other" }])).toBe(false);
+  });
+  it("is checked as brain checks it", () => {
+    const texts = (steps: StepDraft[], trigger: Draft["trigger"] = "comment_received") => flowProblems(steps, trigger).map((p) => p.text);
+    expect(texts([draft("Say thanks")])).toEqual([]);
+    expect(texts([draft(" ")], "comment_received")).toContain("Write the prompt.");
+    expect(texts([draft("x")], "dm_received")).toContain("This trigger has nothing to reply under. Remove the AI draft.");
+    expect(texts([newStep("reply_publicly", "Thanks"), draft("x")])).toContain("Use a public reply or an AI draft, not both.");
+    expect(texts([draft("a"), draft("b")])).toContain("AI draft for review can be in a flow once.");
+  });
+  it("reads a saved flow back as a draft step", () => {
+    const saved = {
+      name: "Draft flow",
+      active: true,
+      trigger: "comment_received",
+      conditions: { social_set_id: null, account_ids: [], post_remote_ids: [] },
+      actions: [],
+      steps: [{ type: "ai_draft_reply", prompt: "Say thanks" }],
+      fallback_public_reply: null,
+    } as unknown as Automation;
+    expect(canEdit(saved)).toBe(true);
+    const d = draftOf(saved);
+    expect(d.flow).toBe(true);
+    expect(stepsBody(d.steps)).toEqual([{ type: "ai_draft_reply", prompt: "Say thanks" }]);
+    expect(toSimple(d.steps).aiDraft).toBe("Say thanks");
+  });
+});
+
+describe("a comment rule for some networks", () => {
+  it("saves the networks only for a comment or a mention", () => {
+    expect(automationInput({ ...full, posts: "", networks: ["instagram"] }, scope, []).conditions).toMatchObject({ networks: ["instagram"] });
+    expect(automationInput({ ...full, networks: [] }, scope, []).conditions).not.toHaveProperty("networks");
+    expect(automationInput({ ...full, trigger: "dm_received", networks: ["instagram"] }, scope, []).conditions).not.toHaveProperty("networks");
+    expect(automationInput({ ...full, trigger: "mention_received", networks: ["x"] }, scope, []).conditions).toMatchObject({ networks: ["x"] });
+  });
+  it("reads it back, says it, and drops it with a trigger that has no networks rule", () => {
+    expect(draftOf({ ...(automationInput({ ...full, networks: ["bluesky", "instagram"] }, scope, []) as Automation), id: "a1", number: 1, activated_at: "", created_by: null, created_at: "", updated_at: "" }).networks).toEqual(["bluesky", "instagram"]);
+    expect(conditionNotes({ account_ids: [], networks: ["bluesky", "instagram"] })).toEqual(["On Bluesky and Instagram"]);
+    expect(changeTrigger({ ...full, networks: ["instagram"] }, "dm_received")).toMatchObject({ draft: { networks: [] } });
+    expect(changeTrigger({ ...full, networks: ["instagram"] }, "dm_received").dropped).toContain("the networks");
   });
 });

@@ -50,7 +50,7 @@ test("a Threads account's automation picks its post from the posts made here and
   await page.getByLabel("Pick accounts").check();
   await page.getByLabel("The Nomadic Dev, Threads").check();
   await page.getByLabel("Specific posts").check();
-  const picker = page.getByLabel("Add a Threads post");
+  const picker = page.getByLabel("Add one of your posts");
   await expect(picker).toBeVisible();
   const add = page.getByRole("button", { name: "Add", exact: true });
   await expect(add).toBeDisabled();

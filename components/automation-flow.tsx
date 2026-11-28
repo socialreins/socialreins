@@ -9,6 +9,7 @@ import {
   MAX_PROMPT,
   WAIT_UNITS,
   isAi,
+  isDraft,
   EFFECTS,
   effectFits,
   isActivity,
@@ -270,7 +271,7 @@ export function FlowEditor({
   // A like or repost has nobody to message or tag, nobody to wait for: only what is done on the account or in the team.
   const types = isActivity(trigger)
     ? (["wait", ...effects] as const)
-    : (["send_dm", ...(t.publicReply ? (["reply_publicly"] as const) : []), "ai_send_dm", ...(t.publicReply ? (["ai_reply_publicly"] as const) : []), "wait", "wait_for_reply", "tag_contact", "notify_team", ...effects.filter((e) => e !== "notify_team")] as const);
+    : (["send_dm", ...(t.publicReply ? (["reply_publicly"] as const) : []), "ai_send_dm", ...(t.publicReply ? (["ai_reply_publicly", "ai_draft_reply"] as const) : []), "wait", "wait_for_reply", "tag_contact", "notify_team", ...effects.filter((e) => e !== "notify_team")] as const);
   const whole = problems.filter((p) => p.step === null);
   const inSteps = problems.filter((p) => p.step !== null && steps[p.step]);
   return (
@@ -346,17 +347,17 @@ export function FlowEditor({
                             Put on the contact when the flow gets here. Saved in lower case. It sends nothing.
                           </p>
                         </div>
-                      ) : isAi(s.type) ? (
+                      ) : isAi(s.type) || isDraft(s) ? (
                         <TextField
                           id={field}
-                          label="Prompt for the AI"
+                          label={isDraft(s) ? "Prompt for the draft" : "Prompt for the AI"}
                           value={s.text}
                           onChange={(text) => patch(i, { text })}
                           max={MAX_PROMPT}
                           tokens={[]}
                           placeholder="Thank them for the comment and point them to our guide at https://..."
                           length={[...s.text].length}
-                          hint={AI_HINT}
+                          hint={isDraft(s) ? `${AI_HINT} Nothing is sent: the draft waits in the Comments reader for a member to send.` : AI_HINT}
                         />
                       ) : (
                         <TextField
@@ -558,6 +559,13 @@ export function FlowPreview({ steps }: { steps: StepDraft[] }) {
             <div key={s.id} className="grid justify-items-end gap-1">
               <span className="text-xs font-bold text-ink-soft">{s.type === "ai_send_dm" ? "AI DM to Sam" : "AI public reply"}</span>
               <p className="rounded-2xl rounded-br-md border border-dashed border-ink/30 px-3.5 py-2.5 text-[0.95rem] leading-snug text-ink-soft">Written by AI from your prompt and Sam&apos;s message</p>
+            </div>
+          );
+        if (isDraft(s))
+          return (
+            <div key={s.id} className="grid justify-items-end gap-1">
+              <span className="text-xs font-bold text-ink-soft">AI draft for your team</span>
+              <p className="rounded-2xl rounded-br-md border border-dashed border-ink/30 px-3.5 py-2.5 text-[0.95rem] leading-snug text-ink-soft">Written by AI, sent by nobody until a member does</p>
             </div>
           );
         return (

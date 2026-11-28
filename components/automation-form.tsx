@@ -55,7 +55,8 @@ import { effectHint, FlowEditor, FlowPreview, TagLine, TextField } from "@/compo
 import { AutomationTest } from "@/components/automation-test";
 import { KeywordsField, ScopeField, scopeBody, scopeOf } from "@/components/scope-fields";
 import { isFailure, Status, useAction } from "@/components/team-ui";
-import { ThreadsPostPicker } from "@/components/threads-post-picker";
+import { PostPicker } from "@/components/post-picker";
+import { platformName } from "@/components/platform-icons";
 import { Icon, type IconName } from "@/components/ui";
 
 // Networks whose inbox can fire an automation; brain refuses an account on any other (unsupported_account).
@@ -299,7 +300,7 @@ export function AutomationForm({
       dropped = next.dropped;
     } else {
       const next = toSimple(d.steps);
-      Object.assign(patch, { dm: next.dm, publicReply: next.publicReply, tags: next.tags, also: next.also });
+      Object.assign(patch, { dm: next.dm, publicReply: next.publicReply, aiDraft: next.aiDraft, tags: next.tags, also: next.also });
       dropped = next.dropped;
     }
     if (dropped.length) setPending({ patch, dropped });
@@ -330,7 +331,18 @@ export function AutomationForm({
   // The accounts the scope reaches, for what the post lines may be: a set or all accounts reach every account in them.
   const reached = scope.mode === "accounts" ? picked : scope.mode === "set" ? accounts.filter((x) => x.set_ids.includes(scope.setId)) : accounts;
   const numbered = reached.some((x) => ["threads", "facebook", "instagram"].includes(x.provider));
-  const uris = specific ? postIds(lines, (a ?? copyOf)?.conditions.post_remote_ids ?? [], accounts, numbered) : [];
+  // The ids of the team's published posts the picker offers, so a picked line is kept as it is.
+  const [postChoices, setPostChoices] = useState<string[]>([]);
+  const uris = specific ? postIds(lines, (a ?? copyOf)?.conditions.post_remote_ids ?? [], accounts, numbered, postChoices) : [];
+  // The networks the accounts in scope are on, for the network rule of a comment or a mention.
+  const netOptions = [...new Set(reached.filter((x) => AUTOMATED.includes(x.provider)).map((x) => x.provider))];
+  const network = (p: string) => !d.networks.length || d.networks.includes(p);
+  // Every ticked network, or none, is any: an empty list is what brain keeps for "any".
+  const toggleNetwork = (p: string) => {
+    const now = netOptions.filter(network);
+    const next = now.includes(p) ? now.filter((x) => x !== p) : [...now, p];
+    set({ networks: next.length === 0 || next.length === netOptions.length ? [] : next });
+  };
   const testable = !specific || (lines.length > 0 && uris.every(Boolean));
   // What a run costs on X, asked of brain while the form changes, and only when an X account can be in
   // scope (the team has one, and a scope by name names one).
@@ -478,6 +490,20 @@ export function AutomationForm({
               )}
             </div>
           )}
+          {t.networkFilter && netOptions.length > 0 && (
+            <fieldset className="grid gap-1.5">
+              <legend className="label mb-1">Networks</legend>
+              <div role="group" aria-label="Networks" className="flex flex-wrap gap-x-4 gap-y-1">
+                {netOptions.map((p) => (
+                  <label key={p} className="flex items-center gap-2">
+                    <input type="checkbox" checked={network(p)} onChange={() => toggleNetwork(p)} />
+                    {platformName(p)}
+                  </label>
+                ))}
+              </div>
+              <p className="hint">Only comments and mentions from the ticked networks run this. Every one ticked, or none, is any of them.</p>
+            </fieldset>
+          )}
           {t.posts && (
             <fieldset className="grid gap-2">
               <legend className="label mb-1">On</legend>
@@ -508,17 +534,16 @@ export function AutomationForm({
                     aria-invalid={badLinks.length > 0 || undefined}
                   />
                   <p id="automation-posts-hint" className="hint">
-                    One Bluesky post link per line, from a connected account, or a post&apos;s number (for Threads, pick the post below). Posts already listed here stay as they are.
+                    One post link per line for Bluesky, X or YouTube, from a connected account, or pick one of your published posts below. An Instagram, Threads, Facebook or LinkedIn link holds a code, not the post id, so pick those. Posts already listed here stay as they are.
                   </p>
-                  {reached.some((x) => x.provider === "threads") && (
-                    <ThreadsPostPicker
-                      accountIds={reached.filter((x) => x.provider === "threads").map((x) => x.id)}
-                      onPick={(id) => set({ posts: d.posts.split("\n").some((l) => l.trim() === id) ? d.posts : `${d.posts.trimEnd()}${d.posts.trim() ? "\n" : ""}${id}` })}
-                    />
-                  )}
+                  <PostPicker
+                    accounts={reached}
+                    onPick={(id) => set({ posts: d.posts.split("\n").some((l) => l.trim() === id) ? d.posts : `${d.posts.trimEnd()}${d.posts.trim() ? "\n" : ""}${id}` })}
+                    onLoad={setPostChoices}
+                  />
                   {badLinks.length > 0 && (
                     <p id="automation-posts-error" role="alert" className="waitlist-error">
-                      {badLinks.length === 1 ? "This link isn't" : "These links aren't"} a post of a connected Bluesky account or a post number: {badLinks.join(", ")}
+                      {badLinks.length === 1 ? "This link isn't" : "These links aren't"} a post of a connected account, a post you picked, or a post id: {badLinks.join(", ")}
                     </p>
                   )}
                 </div>
