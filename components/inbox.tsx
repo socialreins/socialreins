@@ -742,7 +742,7 @@ export function Inbox({ inboxId, mode = "inbox" }: { inboxId?: string; mode?: "i
     // From lg up the inbox fills the window under the top bar (3rem) and main's padding (2rem twice); each pane scrolls on its own.
     <div className={`grid grid-cols-[minmax(0,1fr)] gap-6 lg:h-[calc(100dvh-7rem)] lg:grid-rows-[minmax(0,1fr)] lg:gap-4 xl:gap-6 ${comments ? "lg:grid-cols-[15rem_minmax(0,1fr)_minmax(0,1.25fr)] xl:grid-cols-[16rem_minmax(0,1fr)_minmax(0,1.25fr)]" : "lg:grid-cols-[11rem_minmax(0,1fr)_minmax(0,1.25fr)] xl:grid-cols-[12rem_minmax(0,1fr)_minmax(0,1.25fr)]"}`}>
       {comments ? (
-        <aside aria-label="Views and filters" className={`${asked ? "hidden" : "block"} lg:block lg:overflow-y-auto lg:overscroll-contain lg:p-px`}>
+        <aside aria-label="Views and filters" className={`${asked ? "hidden" : "block"} lg:block lg:overflow-y-auto lg:overflow-x-hidden lg:overscroll-contain lg:p-px`}>
           <CommentsPanel
             filters={cf}
             accounts={Array.isArray(accounts) ? accounts : []}

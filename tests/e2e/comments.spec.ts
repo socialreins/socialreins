@@ -457,3 +457,18 @@ test("Esc closes a view's menu first and leaves the filters alone", async ({ pag
   await expect(page.getByRole("button", { name: "Rename" })).toBeHidden();
   await expect(page).toHaveURL(/network=bluesky/);
 });
+
+test("a long view name and a long account name never widen the panel past its pane", async ({ page }) => {
+  const long = "A view with a name that goes on and on to sixty characters or so";
+  const wide = [...accounts.slice(0, 3), account("fb2", "facebook", "Harun R. Rayhan - Solutions Architect (DevOps and AI) - a very long Page name", ["sA"])];
+  await brain(page, { views: [view("v1", long, { network: "bluesky" }, true)], accounts: wide });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/comments?view=none");
+  await expect(list(page).first()).toBeVisible();
+  await panel(page).getByText("Accounts", { exact: true }).click();
+  const sizes = await panel(page).evaluate((el) => ({ scroll: el.scrollWidth, client: el.clientWidth }));
+  expect(sizes.scroll).toBeLessThanOrEqual(sizes.client);
+  // The view's menu is reachable without scrolling the panel sideways.
+  await page.getByLabel(`Manage the view ${long}`).click();
+  await expect(page.getByRole("button", { name: "Rename" })).toBeVisible();
+});
