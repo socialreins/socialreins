@@ -28,11 +28,11 @@ function Text({ text, className = "" }: { text: string; className?: string }) {
   );
 }
 
-function Part({ body, media }: { body: string; media: string[] }) {
+function Part({ body, media, alt }: { body: string; media: string[]; alt?: string[] }) {
   return (
     <div className="grid gap-3">
       {body.trim() && <Text text={body} className="text-lg" />}
-      {pageMedia(media).map((m, i) => {
+      {pageMedia(media, false, alt).map((m, i) => {
         if (m.kind === "link")
           return (
             <a key={i} href={m.href} target="_blank" rel="nofollow ugc noopener noreferrer" className="btn btn-secondary btn-sm justify-self-start">
@@ -40,10 +40,11 @@ function Part({ body, media }: { body: string; media: string[] }) {
               <Icon name="external" className="size-4" />
             </a>
           );
+        // The author's alt text, when brain sends it; an image without one stays out of a screen reader's way.
         // eslint-disable-next-line @next/next/no-img-element -- fetched by brain, never from the author's host
-        const img = <img src={m.src} alt="" loading="lazy" referrerPolicy="no-referrer" className="max-h-[32rem] w-full rounded-2xl object-contain" />;
+        const img = <img src={m.src} alt={m.alt ?? ""} loading="lazy" referrerPolicy="no-referrer" className="max-h-[32rem] w-full rounded-2xl object-contain" />;
         return m.href ? (
-          <a key={i} href={m.href} target="_blank" rel="nofollow ugc noopener noreferrer" aria-label="Open the picture">
+          <a key={i} href={m.href} target="_blank" rel="nofollow ugc noopener noreferrer" aria-label={m.alt ? `Open the picture: ${m.alt}` : "Open the picture"}>
             {img}
           </a>
         ) : (
@@ -160,7 +161,7 @@ function Report({ code }: { code: string }) {
         <label htmlFor="report-message">More detail (optional)</label>
         <textarea id="report-message" maxLength={1000} rows={3} value={message} onChange={(e) => setMessage(e.target.value)} />
         <label htmlFor="report-email">Email for an answer (optional)</label>
-        <input id="report-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <input id="report-email" type="email" autoComplete="email" maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} />
         {turnstile.widget}
         <button type="submit" disabled={status === "sending" || siteKey === undefined || turnstile.missing}>
           {status === "sending" ? "Sending..." : "Send the report"}
@@ -175,16 +176,31 @@ function Report({ code }: { code: string }) {
 
 export function PublicPostView({ code }: { code: string }) {
   const [post, setPost] = useState<PublicPost | null | "error" | "loading">("loading");
+  // A failed read used to be a dead end: the only way on was reloading the whole page.
+  const [tries, setTries] = useState(0);
   useEffect(() => {
-    getPublicPost(code).then(setPost);
-  }, [code]);
+    let live = true;
+    getPublicPost(code).then((p) => live && setPost(p));
+    return () => {
+      live = false;
+    };
+  }, [code, tries]);
+  const retry = () => {
+    setPost("loading");
+    setTries((n) => n + 1);
+  };
 
   if (post === "loading") return <p className="text-ink-soft">Loading the post...</p>;
   if (post === "error")
     return (
-      <p role="alert" className="waitlist-error">
-        The post couldn&apos;t be loaded. Try again in a moment.
-      </p>
+      <div className="grid justify-items-start gap-2">
+        <p role="alert" className="waitlist-error">
+          The post couldn&apos;t be loaded. Try again in a moment.
+        </p>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={retry}>
+          Retry
+        </button>
+      </div>
     );
   if (post === null) return <p>This page is not available. The post may not be published yet, or its page was switched off.</p>;
   return (
@@ -192,9 +208,9 @@ export function PublicPostView({ code }: { code: string }) {
       <p className="text-sm text-ink-soft">
         Posted by <strong className="text-ink">{post.team}</strong> on {new Date(post.published_at).toLocaleDateString(undefined, { dateStyle: "long" })}
       </p>
-      <Part body={post.body} media={post.media} />
+      <Part body={post.body} media={post.media} alt={post.media_alt} />
       {post.thread.map((t, i) => (
-        <Part key={i} body={t.body} media={t.media} />
+        <Part key={i} body={t.body} media={t.media} alt={t.media_alt} />
       ))}
       {post.details.trim() && (
         <section aria-labelledby="details-heading" className="card grid gap-2 p-5">

@@ -26,10 +26,21 @@ export function NewsletterUnsubscribe({ token }: { token: string }) {
   }, [status]);
 
   async function confirm() {
+    // A link that lost its code has nothing to unsubscribe: calling would answer "ok" for an empty token.
+    if (!token.trim()) return;
     // Commit the empty message first so a repeated identical error is announced again.
     flushSync(() => setStatus("sending"));
     setStatus(await unsubscribe(token));
   }
+
+  // A mail client can cut the token off the link. Saying "You are unsubscribed" then would be a lie.
+  if (!token.trim())
+    return (
+      <div className="grid gap-3">
+        <h1 className={title}>That link is incomplete</h1>
+        <p className="text-ink-soft">It is missing the code this page needs. Open the Unsubscribe link at the foot of the newsletter email again.</p>
+      </div>
+    );
 
   // The same words for every token: the page never says whether a link was real.
   if (status === "ok")

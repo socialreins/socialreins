@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { cacheLife } from "next/cache";
 import { Suspense } from "react";
 import { brainUrl } from "@/lib/brain-url";
-import { getPublicPost, pageMeta } from "@/lib/posts";
+import { getPublicPost, pageMeta, publicPageCode } from "@/lib/posts";
 import { PublicPostView } from "@/components/public-post";
 import { LogoMark } from "@/components/logo";
 
@@ -29,7 +29,7 @@ const pageCode = /^[2-9a-hjkmnp-z]{10}$/;
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   try {
-    const code = (await params).code;
+    const code = publicPageCode((await params).code);
     if (!pageCode.test(code)) return fallback;
     const post = await previewPost(code);
     return post ? pageMeta(post) : fallback;
@@ -57,5 +57,5 @@ export default function PublicPostPage({ params }: Params) {
 }
 
 async function Code({ params }: Params) {
-  return <PublicPostView code={(await params).code} />;
+  return <PublicPostView code={publicPageCode((await params).code)} />;
 }
