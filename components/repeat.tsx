@@ -6,7 +6,7 @@ const units: Repeat["every"][] = ["day", "week", "month"];
 
 // The Repeat control of the editor's schedule row: how often, and when it ends. `onCommit` fires once a
 // choice is complete (a select changed, a number or date box left), for a saved post that saves each change.
-export function RepeatControl({ value, disabled, onChange, onCommit, min }: { value: RepeatForm; disabled?: boolean; onChange: (f: RepeatForm) => void; onCommit?: (f: RepeatForm) => void; min?: string }) {
+export function RepeatControl({ value, disabled, onChange, onCommit }: { value: RepeatForm; disabled?: boolean; onChange: (f: RepeatForm) => void; onCommit?: (f: RepeatForm) => void }) {
   // "On a date" waits for its date before it is saved.
   const commit = (f: RepeatForm) => !(f.ends === "date" && !f.until) && onCommit?.(f);
   const pick = (patch: Partial<RepeatForm>) => {
@@ -60,7 +60,7 @@ export function RepeatControl({ value, disabled, onChange, onCommit, min }: { va
             </>
           )}
           {value.ends === "date" && (
-            <input type="date" aria-label="Repeat until" className={small} disabled={disabled} min={min} value={value.until} onChange={(e) => type({ until: e.target.value })} onBlur={() => commit(value)} />
+            <input type="date" aria-label="Repeat until" className={small} disabled={disabled} value={value.until} onChange={(e) => type({ until: e.target.value })} onBlur={() => commit(value)} />
           )}
         </>
       )}

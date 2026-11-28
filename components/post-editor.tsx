@@ -1741,7 +1741,6 @@ export function PostEditor({ id, from }: { id?: string; from?: string }) {
                       disabled={status === "draft"}
                       onChange={setRepeat}
                       onCommit={status === "scheduled" ? changeRepeat : undefined}
-                      min={toZoneInput(new Date().toISOString(), zone).slice(0, 10)}
                     />
                     <p id="post-repeat-note" className="hint basis-full text-xs">
                       {status === "scheduled" ? "Each time it goes out, the next one is scheduled." : "For a scheduled or queued post, not a draft or Publish now."}
