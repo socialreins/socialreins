@@ -22,6 +22,8 @@ import {
   hasThread,
   inboxBadge,
   inboxCapable,
+  inboxFilters,
+  inboxFiltersHref,
   inboxName,
   isActivity,
   itemSummary,
@@ -38,6 +40,7 @@ import {
   replyToItem,
   discardDraft,
   runAction,
+  sameInboxFilters,
   sentAlready,
   setItemState,
   shortcutFor,
@@ -64,7 +67,8 @@ import { getBilling, type Billing } from "@/lib/billing";
 import { listMembers, manages } from "@/lib/teams";
 import { useSession } from "@/components/app-shell";
 import { accountName, Avatar } from "@/components/connections";
-import { CommentsPanel, excerpt, usePosts, useViews } from "@/components/comments-panel";
+import { CommentsPanel, excerpt, usePosts } from "@/components/comments-panel";
+import { SavedViews, useViews } from "@/components/saved-views";
 import { InboxEditor, inboxMessages } from "@/components/inbox-editor";
 import { DeleteReply, DmTools, ItemActionsMenu, MessageTools, useItemActions } from "@/components/inbox-actions";
 import { ModerationBar } from "@/components/inbox-moderation";
@@ -133,13 +137,13 @@ const shortcuts: [string, string][] = [
   ["]", "Next inbox"],
   ["?", "Show these shortcuts"],
   ["Ctrl or Cmd + Enter", "Send the reply"],
-];
-// The Comments page has no inboxes to step through, and has its saved views.
-const commentShortcuts: [string, string][] = [
-  ...shortcuts.filter(([k]) => k !== "[" && k !== "]").map(([k, w]): [string, string] => [k, w.replace("this inbox", "the comments")]),
   ["1 to 9", "Apply the saved view with that number"],
   ["0 or Esc", "Clear every filter"],
 ];
+// The Comments page has no inboxes to step through, and has its saved views.
+const commentShortcuts: [string, string][] = shortcuts
+  .filter(([k]) => k !== "[" && k !== "]")
+  .map(([k, w]): [string, string] => [k, w.replace("this inbox", "the comments")]);
 
 // How long Mark done offers Undo.
 const UNDO_MS = 5_000;
@@ -278,6 +282,9 @@ export function Inbox({ inboxId, mode = "inbox" }: { inboxId?: string; mode?: "i
   const account = params.get("account") ?? "";
   const network = params.get("network") ?? "";
   const chosen = account || (network ? `${NETWORK_PREFIX}${network}` : "");
+  // The kind is in the address too, so a reload and a shared link keep it (and a saved view can hold it).
+  const rawKind = params.get("kind");
+  const kind: ListKind | "all" = rawKind === "comment" || rawKind === "mention" || rawKind === "dm" || rawKind === "activity" ? rawKind : "all";
   const cf: CommentFilters = comments ? readFilters(params) : {};
   const [search, setSearch] = useState(q);
   const [members, setMembers] = useState<Person[]>([]);
@@ -290,7 +297,6 @@ export function Inbox({ inboxId, mode = "inbox" }: { inboxId?: string; mode?: "i
   // Loaded data remembers what it was loaded for, so a new inbox, tab or item shows loading, not stale rows.
   const [loaded, setLoaded] = useState<{ key: string; page: Page | Failure } | null>(null);
   const [more, setMore] = useState<Failure | "loading" | null>(null);
-  const [kind, setKind] = useState<ListKind | "all">("all");
   const [shown, setShown] = useState<{ asked: string; item: Item | Failure } | null>(null);
   const [editing, setEditing] = useState<InboxT | "new" | null>(null);
   const [opened, setOpened] = useState<string | null>(null);
@@ -319,17 +325,21 @@ export function Inbox({ inboxId, mode = "inbox" }: { inboxId?: string; mode?: "i
   // A number the list does not know goes to brain as it is, which answers not found; only a list still loading waits.
   const currentId = current?.id ?? (inboxId && (isUuid(inboxId) || inboxes !== null) ? inboxId : undefined);
   const base = inboxId ? `/inbox/${current ? address(current) : encodeURIComponent(inboxId)}` : "/inbox";
-  const href = (to: { item?: string | null; state?: ItemState; assigned?: string; tag?: string; account?: string; network?: string }) => {
+  const href = (to: { item?: string | null; state?: ItemState; kind?: string; assigned?: string; tag?: string; account?: string; network?: string }) => {
     // Comments keeps its filters in the address, the typed keyword included.
     if (comments) return commentsHref({ ...cf, ...(search.trim() ? { q: search.trim() } : {}) }, { item: to.item, state: to.state ?? state, view: params.get("view") === "none" ? "none" : undefined });
     const s = new URLSearchParams();
     if ((to.state ?? state) === "done") s.set("state", "done");
     if (to.item) s.set("item", to.item);
     if (search.trim()) s.set("q", search.trim());
+    const k = to.kind ?? kind;
+    if (k !== "all" && k) s.set("kind", k);
     if (to.assigned ?? assigned) s.set("assigned", to.assigned ?? assigned);
     if (to.tag ?? tag) s.set("tag", to.tag ?? tag);
     if (to.account ?? account) s.set("account", to.account ?? account);
     if (to.network ?? network) s.set("network", to.network ?? network);
+    // Clear leaves its mark, so the default view does not come back until the next visit.
+    if (params.get("view") === "none") s.set("view", "none");
     return s.size ? `${base}?${s}` : base;
   };
 
@@ -383,15 +393,34 @@ export function Inbox({ inboxId, mode = "inbox" }: { inboxId?: string; mode?: "i
   const itemId = detail && !isFailure(detail) ? detail.id : asked && isUuid(asked) ? asked : null;
   // What is open, as the list knows it: a conversation matches its row whichever of its DMs the address names.
   const openKey = detail && !isFailure(detail) ? threadKey(detail) : itemId;
-  // A move of the Comments filters (a tick, a view, Clear) keeps the Done tab and the open item, and the keyword box follows the address.
+  // A move of the filters (a tick, a view, Clear) keeps the open item, and the keyword box follows the
+  // address. Comments also keeps its Done tab: its views never hold the tab, while an Inbox view does.
   const goFilters = (to: string) => {
     const next = new URLSearchParams(to.split("?")[1] ?? "");
-    if (state === "done" && !next.has("state")) next.set("state", "done");
+    if (comments && state === "done" && !next.has("state")) next.set("state", "done");
     if (asked && !next.has("item")) next.set("item", asked);
     setSearch(next.get("q") ?? "");
-    router.replace(next.size ? `/comments?${next}` : "/comments", { scroll: false });
+    const path = to.split("?")[0] || base;
+    router.replace(next.size ? `${path}?${next}` : path, { scroll: false });
   };
-  const views = useViews(comments, params, goFilters);
+  const views = useViews(
+    comments ? "comments" : "inbox",
+    params,
+    goFilters,
+    comments
+      ? {
+          href: (f, extra) => commentsHref(f as CommentFilters, { view: extra?.none ? "none" : undefined }),
+          bare: (p) => [...p.keys()].every((k) => k === "state"),
+        }
+      : {
+          href: (f, extra) => inboxFiltersHref(base, f, { view: extra?.none ? "none" : undefined }),
+          bare: (p) => p.size === 0,
+        },
+  );
+  // The Inbox's filters as the address has them, the keyword box included, and the view they match.
+  const inboxShown = comments ? {} : inboxFilters({ kind, state, q: search.trim(), assigned, tag, account, network });
+  const currentView = comments ? undefined : views.list.find((v) => sameInboxFilters(inboxShown, v.filters));
+  const filtersOn = Object.keys(inboxShown).length > 0;
   // The posts of ours the comments hang off, for the line under a comment and the By post cards.
   const posts = usePosts(comments ? [...items.map((i) => i.post_id), cf.post] : []);
   // An old link keeps working across the split: a comment or mention opened in "All inboxes" moves to Comments, and a DM opened in Comments to the Inbox.
@@ -417,8 +446,7 @@ export function Inbox({ inboxId, mode = "inbox" }: { inboxId?: string; mode?: "i
   // Clear every filter that can hide items: the account or network, kind, assignee and tag. The
   // tab and the search stay.
   function clearFilters() {
-    setKind("all");
-    router.replace(href({ assigned: "", tag: "", account: "", network: "", item: asked }), { scroll: false });
+    router.replace(href({ kind: "", assigned: "", tag: "", account: "", network: "", item: asked }), { scroll: false });
     // The button goes with the filter; the search box is the next useful stop.
     document.getElementById("inbox-search")?.focus();
   }
@@ -577,8 +605,6 @@ export function Inbox({ inboxId, mode = "inbox" }: { inboxId?: string; mode?: "i
     const onKey = (e: KeyboardEvent) => {
       const s = shortcutFor(e);
       if (!s || document.querySelector("dialog[open]")) return;
-      // Saved views and Clear are the Comments page's keys.
-      if (!comments && (s === "clear" || s.startsWith("view"))) return;
       // Esc belongs to an open menu first.
       if (e.key === "Escape" && (e.defaultPrevented || document.querySelector('[role="menu"], [role="listbox"], details[data-menu][open], [popover]:popover-open'))) return;
       e.preventDefault();
@@ -742,7 +768,7 @@ export function Inbox({ inboxId, mode = "inbox" }: { inboxId?: string; mode?: "i
 
   return (
     // From lg up the inbox fills the window under the top bar (3rem) and main's padding (2rem twice); each pane scrolls on its own.
-    <div className={`grid grid-cols-[minmax(0,1fr)] gap-6 lg:h-[calc(100dvh-7rem)] lg:grid-rows-[minmax(0,1fr)] lg:gap-4 xl:gap-6 ${comments ? "lg:grid-cols-[15rem_minmax(0,1fr)_minmax(0,1.25fr)] xl:grid-cols-[16rem_minmax(0,1fr)_minmax(0,1.25fr)]" : "lg:grid-cols-[11rem_minmax(0,1fr)_minmax(0,1.25fr)] xl:grid-cols-[12rem_minmax(0,1fr)_minmax(0,1.25fr)]"}`}>
+    <div className={`grid grid-cols-[minmax(0,1fr)] gap-6 lg:h-[calc(100dvh-7rem)] lg:grid-rows-[minmax(0,1fr)] lg:gap-4 xl:gap-6 ${comments ? "lg:grid-cols-[15rem_minmax(0,1fr)_minmax(0,1.25fr)] xl:grid-cols-[16rem_minmax(0,1fr)_minmax(0,1.25fr)]" : "lg:grid-cols-[14rem_minmax(0,1fr)_minmax(0,1.25fr)] xl:grid-cols-[15rem_minmax(0,1fr)_minmax(0,1.25fr)]"}`}>
       {comments ? (
         <aside aria-label="Views and filters" className={`${asked ? "hidden" : "block"} lg:block lg:overflow-y-auto lg:overflow-x-hidden lg:overscroll-contain lg:p-px`}>
           <CommentsPanel
@@ -759,7 +785,19 @@ export function Inbox({ inboxId, mode = "inbox" }: { inboxId?: string; mode?: "i
         </aside>
       ) : (
       <nav aria-labelledby="inboxes-heading" className={`${show("inboxes")} grid content-start gap-3 lg:block lg:overflow-y-auto lg:overscroll-contain`}>
-        <div className="flex items-center justify-between gap-2 lg:mb-3">
+        <SavedViews
+          id="inbox-views-heading"
+          scope="inbox"
+          noun="the Inbox"
+          example="For example: Instagram, unassigned"
+          filters={inboxShown}
+          active={filtersOn}
+          current={currentView}
+          views={views}
+          showActive
+          confirmDelete
+        />
+        <div className="mt-4 flex items-center justify-between gap-2 lg:mb-3">
           <h2 id="inboxes-heading" className="font-display text-lg font-extrabold tracking-tight">
             Inboxes
           </h2>
@@ -886,7 +924,7 @@ export function Inbox({ inboxId, mode = "inbox" }: { inboxId?: string; mode?: "i
           </div>
           {!comments && (
           <div className="flex flex-wrap items-center gap-1.5">
-            {!current?.is_all && <FilterMenu label="Kind" value={kind} options={kindOptions} onChange={setKind} />}
+            {!current?.is_all && <FilterMenu label="Kind" value={kind} options={kindOptions} onChange={(v) => router.replace(href({ kind: v, item: asked }), { scroll: false })} />}
             <AccountMenu
               value={chosen}
               groups={groups}
@@ -923,9 +961,9 @@ export function Inbox({ inboxId, mode = "inbox" }: { inboxId?: string; mode?: "i
               {kind !== "all" && (
                 <li className={chip}>
                   {kindOptions.find((o) => o.value === kind)?.label}
-                  <button type="button" aria-label="Clear the kind filter" className={chipClear} onClick={() => setKind("all")}>
+                  <Link href={href({ kind: "", item: asked })} scroll={false} aria-label="Clear the kind filter" className={chipClear}>
                     <Icon name="close" className="size-3" />
-                  </button>
+                  </Link>
                 </li>
               )}
               {assigned && (
