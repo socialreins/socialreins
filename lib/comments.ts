@@ -99,16 +99,31 @@ export function notInInbox(f: Filters): string[] {
   return out;
 }
 
-// "Automate comments like this": the builder, filled with the accounts the filters reach and the keyword. A set alone goes as the
-// set; any other pick goes as the accounts it names.
+// "Automate comments like this": the rule builder on the AI draft template (nothing is sent without a person), filled with the
+// accounts the filters reach and the keyword. A set alone goes as the set; any other pick goes as the accounts it names.
+// `null` when the pick reaches no account: a rule with no scope would answer every account, which is wider than the filters.
 export function automationHref(f: Filters, accounts: Connection[]) {
-  const q = new URLSearchParams({ template: "comment-to-dm" });
+  const q = new URLSearchParams({ template: "comment-ai-draft" });
   const pick = pickedAccounts(f, accounts);
   const sets = list(f.set);
   if (sets.length === 1 && !list(f.network).length && !list(f.account).length) q.set("set", sets[0]!);
-  else if (pick?.length) q.set("accounts", pick.slice(0, MAX_ACCOUNTS).map((a) => a.id).join(","));
+  else if (pick) {
+    if (!pick.length) return null;
+    q.set("accounts", pick.slice(0, MAX_ACCOUNTS).map((a) => a.id).join(","));
+  }
   if (f.q) q.set("keywords", f.q);
   return `/automations/new?${q}`;
+}
+
+// What a rule cannot carry over from the filters: a new comment is always unanswered, and a rule does not read these.
+export function notInRule(f: Filters): string[] {
+  const out: string[] = [];
+  if (f.post) out.push("one post");
+  if (f.from || f.to) out.push("the dates");
+  if (f.hidden) out.push("hidden or held");
+  if (f.assigned) out.push("who it is assigned to");
+  if (f.show === "activity") out.push("activity");
+  return out;
 }
 
 // The names the page shows for a filter that points at a set or account, or the plain word when it is gone.

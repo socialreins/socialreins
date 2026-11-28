@@ -36,6 +36,7 @@ import {
   relativeTime,
   replyLength,
   replyToItem,
+  discardDraft,
   runAction,
   sentAlready,
   setItemState,
@@ -1323,6 +1324,11 @@ function Detail({
       onChange(r);
       return r.assigned_to ? `Assigned to ${r.assigned_to.name}.` : "Unassigned.";
     });
+  const dropDraft = () =>
+    meta.run("draft", () => discardDraft(item.id), (r) => {
+      onChange(r);
+      return "Draft thrown away.";
+    });
   const saveTags = (tags: string[]) =>
     meta.run("tags", () => updateContact(item.contact_id!, { tags }), (c) => {
       onChange({ ...item, contact_tags: c.tags });
@@ -1637,6 +1643,22 @@ function Detail({
       {deleted && <p className="text-sm text-ink-soft">This comment was {item.platform === "youtube" ? "rejected" : "deleted"} on {platform}, so it takes no reply.</p>}
       {/* A follow, like or repost has nothing to reply to, nor does a deleted comment. */}
       <form onSubmit={onReply} hidden={isActivity(item.kind) || deleted} className="grid gap-2 border-t border-ink/10 pt-4 [&[hidden]]:hidden">
+        {item.ai_draft && !dm && (
+          <div className="grid gap-2 rounded-lg bg-ink/5 p-3 text-sm">
+            <p>
+              <strong>AI draft, not sent.</strong> An automation wrote this reply for you to review.
+            </p>
+            <p className="whitespace-pre-wrap break-words">{item.ai_draft}</p>
+            <div className="flex gap-2">
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setText(item.ai_draft ?? ""); boxRef.current?.focus(); }}>
+                Use this draft
+              </button>
+              <button type="button" className="btn btn-quiet btn-sm" disabled={meta.busy !== null} onClick={dropDraft}>
+                Throw it away
+              </button>
+            </div>
+          </div>
+        )}
         <div className="flex flex-wrap items-end justify-between gap-2">
           <label htmlFor="reply-text" className="label">
             {dm ? "Send DM" : "Reply publicly"}

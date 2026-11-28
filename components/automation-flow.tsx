@@ -128,6 +128,7 @@ export const stepIcon: Record<Step["type"], IconName> = {
   reply_publicly: "comment",
   ai_send_dm: "send",
   ai_reply_publicly: "comment",
+  ai_draft_reply: "comment",
   wait: "clock",
   wait_for_reply: "clock",
   tag_contact: "tag",

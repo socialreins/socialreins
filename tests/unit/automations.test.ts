@@ -153,6 +153,7 @@ const full: Draft = {
   firstPerAuthor: true,
   firstMessage: true,
   dm: "Hi {name}, see {page}",
+  aiDraft: "",
   publicReply: "Sent you a DM",
   fallbackOn: true,
   fallback: "Check your DMs",
@@ -333,6 +334,7 @@ describe("triggers", () => {
 
   it("opens each template on its trigger, and a saved automation with a reply and a fallback keeps both", () => {
     expect(templates.map((t) => [t.id, t.draft.trigger])).toEqual([
+      ["comment-ai-draft", "comment_received"],
       ["comment-to-dm", "comment_received"],
       ["dm-keyword", "dm_received"],
       ["welcome", "dm_received"],
@@ -920,5 +922,28 @@ describe("linkedin", () => {
       expect(blockText[code], code).toBeTruthy();
     }
     for (const code of ["linkedin_unsupported_trigger", "linkedin_no_hide"]) expect(blockText[code], code).toBeTruthy();
+  });
+});
+
+describe("an AI reply held for review", () => {
+  const scope = { account_ids: [] };
+  const base = draftOf(undefined, "comment-ai-draft");
+  it("starts from the draft template, with the 10 minute cool-down, and sends one ai_draft_reply and no reply text", () => {
+    expect(base).toMatchObject({ trigger: "comment_received", publicReply: "", dm: "", cooldown: "10" });
+    const input = automationInput({ ...base, keywords: ["price"] }, scope, []);
+    expect(input.actions).toEqual([{ type: "ai_draft_reply", prompt: base.aiDraft }]);
+    expect(input).toMatchObject({ trigger: "comment_received", cooldown_minutes: 10 });
+  });
+  it("reads a saved one back, edits it, and says what it does", () => {
+    const saved = { ...automationInput(base, scope, []), id: "a1", activated_at: "", created_by: null, created_at: "", updated_at: "" } as Automation;
+    expect(canEdit(saved)).toBe(true);
+    expect(draftOf(saved).aiDraft).toBe(base.aiDraft);
+    expect(actionsSummary(saved)).toBe("Drafts a reply with AI for review");
+    expect(actionsSummary({ ...saved, actions: [{ type: "send_dm", text: "hi" }, ...saved.actions, { type: "tag_contact", tag: "lead" }] })).toBe("Sends a DM and drafts a reply with AI for review, tag: lead");
+  });
+  it("is dropped by a trigger that has nothing to reply under and by a flow", () => {
+    expect(changeTrigger(base, "dm_received")).toMatchObject({ draft: { aiDraft: "" }, dropped: ["AI draft"] });
+    expect(automationInput({ ...base, trigger: "dm_received" }, scope, []).actions).toEqual([]);
+    expect(toFlow(base).dropped).toContain("the AI draft");
   });
 });

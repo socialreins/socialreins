@@ -70,6 +70,8 @@ export type Item = {
   contact_number?: number | null;
   contact_tags?: string[];
   assigned_to?: { id: string; name: string } | null;
+  // A reply an automation's `ai_draft_reply` wrote and held for a person to review; never sent by itself. Missing from an older brain.
+  ai_draft?: string | null;
   // The custom inboxes that hold it, for chips in All inboxes. Missing from an older brain.
   inbox_ids?: string[];
   // Photos, stickers, videos, files and links it carries, https only. Meta's links expire after a while. Missing from an older brain.
@@ -257,6 +259,9 @@ export const setItemState = (id: string, state: ItemState, conversation = false)
 // A team member's user id, or null for nobody.
 export const assignItem = (id: string, userId: string | null, conversation = false) =>
   api<Item>(`/v1/inbox-items/${enc(id)}`, "PATCH", { assigned_to: userId, ...whole(conversation) });
+
+// Drops the AI reply an automation held on the item.
+export const discardDraft = (id: string) => api<Item>(`/v1/inbox-items/${enc(id)}`, "PATCH", { discard_draft: true });
 
 // A page of a DM conversation, oldest first; `before` is the id of the oldest item on screen.
 export type ConversationPage = { items: Item[]; has_more: boolean };
