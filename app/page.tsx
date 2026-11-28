@@ -172,6 +172,9 @@ export default function Home() {
           <Link href="/docs" className={headerLink}>
             Docs
           </Link>
+          <Link href="/guides" className={headerLink}>
+            Guides
+          </Link>
           <Link href="/features" className={headerLink}>
             Features
           </Link>

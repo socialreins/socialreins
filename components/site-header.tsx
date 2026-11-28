@@ -28,6 +28,12 @@ export function SiteHeader({ className = "" }: { className?: string }) {
         <Link href="/docs" className={navLink}>
           Docs
         </Link>
+        {/* The bar is full below a laptop, where the Socials menu is hidden too: the footer and the guides index still link here. */}
+        <div className="max-lg:hidden">
+          <Link href="/guides" className={navLink}>
+            Guides
+          </Link>
+        </div>
         <div className="max-md:hidden">
           <GitHubMenu className="rounded-full border-2 border-ink px-3.5 py-1.5 font-bold hover:bg-ink hover:text-paper" />
         </div>
