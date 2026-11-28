@@ -62,13 +62,18 @@ const item = (id: string, kind: "comment" | "mention" | "dm" | "like" | "repost"
 
 // A small in-memory brain for the inbox.
 type Row = ReturnType<typeof item>;
+type View = { id: string; scope: string; name: string; filters: Record<string, string>; is_default: boolean; created_at: string; updated_at: string };
+const view = (id: string, name: string, filters: Record<string, string>, is_default = false, scope = "inbox"): View => ({ id, scope, name, filters, is_default, created_at: "", updated_at: "" });
 // brain groups DMs per person and account.
 const thread = (i: Row) => (i.kind === "dm" ? `${i.social_account_id}:${i.author.id}` : i.id);
 const oldestFirst = (a: Row, b: Row) => a.received_at.localeCompare(b.received_at);
 
-async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items?: Row[]; convoPage?: number; inboxes?: ReturnType<typeof inbox>[] } = {}) {
+async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items?: Row[]; convoPage?: number; inboxes?: ReturnType<typeof inbox>[]; views?: View[] } = {}) {
   const state = {
     inboxes: opts.inboxes ?? [inbox("all", "All"), inbox("i2", "Questions", { filters: { ...filters, keywords: ["price"] } })],
+    views: opts.views ?? ([] as View[]),
+    // The scopes the page asked for, in order.
+    scopes: [] as string[],
     items: opts.items ?? [
       item("p1", "comment", "What is the price?"),
       item("p2", "mention", "Loving @alice lately", { received_at: ago(90) }),
@@ -125,6 +130,32 @@ async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items
     // "All" lists DMs only, so brain also counts the DMs and the comments and mentions apart.
     const kindOpen = (dm: boolean) => state.items.filter((i) => i.state === "open" && !quiet(i) && (i.kind === "dm") === dm).length;
     return route.fulfill({ json: state.inboxes.map((i) => ({ ...i, open_count: open(i.id), open_dm_count: kindOpen(true), open_comment_count: kindOpen(false) })) });
+  });
+  await page.route("**/v1/views?*", (route) => {
+    const scope = new URL(route.request().url()).searchParams.get("scope") ?? "";
+    state.scopes.push(scope);
+    route.fulfill({ json: state.views.filter((v) => v.scope === scope).sort((a, b) => Number(b.is_default) - Number(a.is_default) || a.name.localeCompare(b.name)) });
+  });
+  await page.route("**/v1/views", (route) => {
+    const body = route.request().postDataJSON();
+    if (state.views.some((v) => v.scope === body.scope && v.name.toLowerCase() === String(body.name).toLowerCase())) return route.fulfill({ status: 409, json: { error: "name_taken" } });
+    if (body.is_default) state.views = state.views.map((v) => (v.scope === body.scope ? { ...v, is_default: false } : v));
+    const made = view(`v${state.views.length + 1}`, body.name, body.filters ?? {}, body.is_default, body.scope);
+    state.views.push(made);
+    return route.fulfill({ status: 201, json: made });
+  });
+  await page.route(/\/v1\/views\/[^/]+$/, (route) => {
+    const id = new URL(route.request().url()).pathname.split("/").at(-1)!;
+    const found = state.views.find((v) => v.id === id);
+    if (!found) return route.fulfill({ status: 404, json: { error: "not_found" } });
+    if (route.request().method() === "DELETE") {
+      state.views = state.views.filter((v) => v.id !== id);
+      return route.fulfill({ status: 204 });
+    }
+    const body = route.request().postDataJSON();
+    if (body.is_default) state.views = state.views.map((v) => (v.scope === found.scope ? { ...v, is_default: false } : v));
+    Object.assign(found, { ...body, is_default: body.is_default ?? found.is_default });
+    return route.fulfill({ json: found });
   });
   await page.route(/\/v1\/inboxes\/i2$/, (route) => {
     const req = route.request();
@@ -635,6 +666,77 @@ test("a kind filter asks brain for that kind, and load more keeps it", async ({ 
   expect(asked.at(-1)?.get("cursor")).toBe("p8");
 });
 
+test("saved Inbox views apply by click and by the number keys, Esc clears, and the address keeps them", async ({ page }) => {
+  await brain(page, "owner", { views: [view("v1", "About the price", { q: "price" }), view("v2", "Comments only", { kind: "comment" })] });
+  await page.goto("/inbox/i2");
+  const views = page.getByRole("list", { name: "Saved views" });
+  await expect(views.getByRole("button")).toHaveCount(2);
+  await views.getByRole("button", { name: /Comments only/ }).click();
+  await expect(page).toHaveURL(/kind=comment/);
+  await expect(page.getByRole("link", { name: /Loving @alice/ })).toHaveCount(0);
+  // A reload and a shared link keep the view's filters: the kind menu reads it from the address.
+  await page.reload();
+  await expect(page).toHaveURL(/kind=comment/);
+  await expect(page.getByRole("combobox", { name: "Kind" })).toHaveValue("comment");
+  await expect(views.getByRole("button", { name: /Comments only/ })).toHaveAttribute("aria-pressed", "true");
+  // Key 1 swaps to the first view (About the price), Esc clears every filter and marks it, and the views stay.
+  await page.keyboard.press("1");
+  await expect(page).toHaveURL(/q=price/);
+  await expect(page).not.toHaveURL(/kind=/);
+  await page.keyboard.press("Escape");
+  await expect(page).toHaveURL(/view=none/);
+  await expect(page).not.toHaveURL(/q=|kind=/);
+  await expect(views.getByRole("button")).toHaveCount(2);
+  // A number typed in the search box is text, not a view.
+  await page.getByRole("searchbox").fill("1");
+  await expect(page.getByRole("searchbox")).toHaveValue("1");
+  await expect(page).not.toHaveURL(/kind=/);
+});
+
+test("saves the Inbox filters as a view, opens it by default, says which view is on, and deletes it after a confirm", async ({ page }) => {
+  const b = await brain(page, "owner");
+  await page.goto("/inbox/i2?kind=comment&assigned=me");
+  await page.getByLabel("Save these filters as a view").fill("My comments");
+  await page.getByLabel("Open the Inbox with this view").click();
+  await page.getByRole("button", { name: "Save view" }).click();
+  await expect(page.getByRole("status").filter({ hasText: 'Saved the view "My comments", now your default' })).toBeVisible();
+  expect(b.views[0]).toMatchObject({ scope: "inbox", name: "My comments", is_default: true, filters: { kind: "comment", assigned: "me" } });
+  const views = page.getByRole("list", { name: "Saved views" });
+  await expect(views.getByRole("button", { name: /My comments/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("active-view")).toContainText("My comments");
+  // Opening the Inbox with no filters applies the default and says so.
+  await page.goto("/inbox/i2");
+  await expect(page).toHaveURL(/kind=comment/);
+  await expect(page).toHaveURL(/assigned=me/);
+  await expect(page.getByTestId("default-view")).toContainText("Default: My comments");
+  await expect(page.getByTestId("active-view")).toContainText("Showing My comments");
+  // Delete asks first; a No keeps it, a Yes removes it.
+  page.once("dialog", (d) => d.dismiss());
+  await page.getByLabel("Manage the view My comments").click();
+  await page.getByRole("button", { name: "Delete" }).click();
+  await expect(views.getByRole("button")).toHaveCount(1);
+  page.once("dialog", (d) => d.accept());
+  await page.getByLabel("Manage the view My comments").click();
+  await page.getByRole("button", { name: "Delete" }).click();
+  await expect(views).toHaveCount(0);
+  expect(b.views).toHaveLength(0);
+});
+
+test("the Inbox asks for inbox views only, so a Comments view never shows and the reverse", async ({ page }) => {
+  const b = await brain(page, "owner", { views: [view("v1", "For comments", { kind: "comment" }, false, "comments"), view("v2", "For the inbox", { kind: "dm" })] });
+  await page.goto("/inbox/i2");
+  const views = page.getByRole("list", { name: "Saved views" });
+  await expect(views.getByRole("button")).toHaveCount(1);
+  await expect(views.getByRole("button", { name: /For the inbox/ })).toBeVisible();
+  await expect(views.getByRole("button", { name: /For comments/ })).toHaveCount(0);
+  expect(b.scopes).toContain("inbox");
+  // A save here is an inbox view too.
+  await page.getByRole("combobox", { name: "Kind" }).selectOption({ label: "DMs" });
+  await page.getByLabel("Save these filters as a view").fill("DMs only");
+  await page.getByRole("button", { name: "Save view" }).click();
+  await expect.poll(() => b.views.find((v) => v.name === "DMs only")?.scope).toBe("inbox");
+});
+
 test("the open list picks up new items without a reload", async ({ page }) => {
   await page.clock.install();
   const state = await brain(page, "owner", { items: [item("p1", "comment", "Older comment")] });
@@ -998,14 +1100,15 @@ test.describe("conversations", () => {
     await expect(chips.getByRole("listitem")).toHaveText(["Comments", "Assigned: Me", "Tag: vip"]);
     await expect.poll(() => state.asked.at(-1)?.get("kind")).toBe("comment");
     expect(Object.fromEntries(state.asked.at(-1)!)).toEqual({ state: "open", group: "conversations", kind: "comment", q: "price", assigned: "me", tag: "vip" });
-    expect(Object.fromEntries(query(page))).toEqual({ item: "m1", q: "price", assigned: "me", tag: "vip" });
+    await expect.poll(() => query(page).get("kind")).toBe("comment");
+    expect(Object.fromEntries(query(page))).toEqual({ item: "m1", q: "price", kind: "comment", assigned: "me", tag: "vip" });
 
     // Done keeps them too.
     await page.getByRole("link", { name: "Done", exact: true }).click();
     await expect.poll(() => query(page).get("state")).toBe("done");
-    expect(Object.fromEntries(query(page))).toEqual({ state: "done", item: "m1", q: "price", assigned: "me", tag: "vip" });
+    expect(Object.fromEntries(query(page))).toEqual({ state: "done", item: "m1", q: "price", kind: "comment", assigned: "me", tag: "vip" });
 
-    await chips.getByRole("button", { name: "Clear the kind filter" }).click();
+    await chips.getByRole("link", { name: "Clear the kind filter" }).click();
     await expect(page.getByRole("combobox", { name: "Kind" })).toHaveValue("all");
     await chips.getByRole("link", { name: "Clear the assigned filter" }).click();
     await expect.poll(() => query(page).get("assigned")).toBeNull();

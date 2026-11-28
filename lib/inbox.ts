@@ -154,6 +154,51 @@ export type Narrowing = {
   hidden?: boolean;
   unanswered?: boolean;
 };
+// The Inbox page's own filters, as its address holds them; a saved view is the same map of short strings.
+// `state` is there only for Done and `kind` only when it is not All, so an empty map is the plain Open list.
+export const INBOX_FILTER_KEYS = ["kind", "state", "q", "assigned", "tag", "account", "network"] as const;
+export type InboxFilterKey = (typeof INBOX_FILTER_KEYS)[number];
+export type InboxFilters = Partial<Record<InboxFilterKey, string>>;
+
+const INBOX_KINDS: string[] = [...KINDS, "activity"];
+// One filter as a view stores it, or "" for none: trimmed, the search cut at brain's limit, and the two
+// values that are the absence of a filter left out.
+function inboxFilter(key: InboxFilterKey, value: string | undefined) {
+  const v = (value ?? "").trim();
+  if (!v) return "";
+  if (key === "q") return v.slice(0, 100);
+  if (key === "state") return v === "done" ? "done" : "";
+  if (key === "kind") return INBOX_KINDS.includes(v) ? v : "";
+  return v;
+}
+
+// The filters a view holds or a page shows, without the empty ones. Unknown keys are dropped.
+export function inboxFilters(f: Record<string, string | undefined>): InboxFilters {
+  const out: InboxFilters = {};
+  for (const k of INBOX_FILTER_KEYS) {
+    const v = inboxFilter(k, f[k]);
+    if (v) out[k] = v;
+  }
+  return out;
+}
+export function readInboxFilters(p: URLSearchParams): InboxFilters {
+  const out: InboxFilters = {};
+  for (const k of INBOX_FILTER_KEYS) {
+    const v = inboxFilter(k, p.get(k) ?? undefined);
+    if (v) out[k] = v;
+  }
+  return out;
+}
+// A view's key order is fixed, so two equal filters compare equal as text.
+export const sameInboxFilters = (a: InboxFilters, b: Record<string, string>) => INBOX_FILTER_KEYS.every((k) => (a[k] ?? "") === (b[k] ?? ""));
+// The address of a view's filters on an inbox: its own path, then the filters, then `view=none` after a Clear.
+export function inboxFiltersHref(base: string, f: InboxFilters, extra: { view?: "none" } = {}) {
+  const q = new URLSearchParams();
+  for (const k of INBOX_FILTER_KEYS) if (f[k]) q.set(k, f[k]!);
+  if (extra.view) q.set("view", extra.view);
+  return q.size ? `${base}?${q}` : base;
+}
+
 function narrow(q: URLSearchParams, kind: ListKind | null | undefined, search: string | undefined, more: Narrowing) {
   if (kind) q.set("kind", kind);
   if (search) q.set("q", search);

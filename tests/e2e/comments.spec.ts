@@ -140,7 +140,10 @@ async function brain(page: Page, opts: { views?: View[]; accounts?: typeof accou
     return route.fulfill({ json: at });
   });
   await page.route(/\/v1\/inbox-items\/[^/]+\/(thread|actions)$/, (route) => route.fulfill({ status: 422, json: { error: "not_a_thread" } }));
-  await page.route("**/v1/views?*", (route) => route.fulfill({ json: [...state.views].sort((a, b) => Number(b.is_default) - Number(a.is_default) || a.name.localeCompare(b.name)) }));
+  await page.route("**/v1/views?*", (route) => {
+    const scope = new URL(route.request().url()).searchParams.get("scope");
+    route.fulfill({ json: state.views.filter((v) => v.scope === scope).sort((a, b) => Number(b.is_default) - Number(a.is_default) || a.name.localeCompare(b.name)) });
+  });
   await page.route("**/v1/views", (route) => {
     const body = route.request().postDataJSON();
     state.viewCalls.push({ method: "POST", body });
