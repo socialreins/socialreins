@@ -33,6 +33,7 @@ import {
   statusName,
   updateBroadcast,
   type Broadcast,
+  type Broadcasts,
   type Counts,
   type Preview,
   type Problem,
@@ -47,7 +48,7 @@ import { useSession } from "@/components/app-shell";
 import { platformOf, platformName, PlatformIcon } from "@/components/platform-icons";
 import { TeamLink as Link, useTeamRouter as useRouter } from "@/components/team-link";
 import { isFailure, linkButton, problemText } from "@/components/team-ui";
-import { EmptyState, Icon, LoadFailed, Skeleton, SkeletonRows } from "@/components/ui";
+import { EmptyState, Icon, cappedLine, LoadFailed, Skeleton, SkeletonRows } from "@/components/ui";
 
 const say = (code: Failure, field?: string): ReactNode => broadcastText(code, field) ?? problemText(code);
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
@@ -148,7 +149,7 @@ export function Confirm({ id, title, about, yes, no, busy, danger, onYes, onNo }
 // The list: one card per broadcast, newest first.
 export function Broadcasts() {
   const canManage = useCanManage();
-  const [list, setList] = useState<Broadcast[] | Failure | null>(null);
+  const [list, setList] = useState<Broadcasts | Failure | null>(null);
   const [tries, setTries] = useState(0);
   useEffect(() => {
     let live = true;
@@ -183,7 +184,7 @@ export function Broadcasts() {
         Broadcasts couldn&apos;t be loaded. {say(list)}
       </LoadFailed>
     );
-  if (list.length === 0)
+  if (list.broadcasts.length === 0)
     return (
       <div className="grid max-w-3xl gap-4">
         <EmptyState
@@ -205,6 +206,7 @@ export function Broadcasts() {
         </section>
       </div>
     );
+  const capped = cappedLine(list.broadcasts.length, list.total, "broadcasts");
   return (
     <div className="enter grid max-w-3xl gap-3">
       {canManage && (
@@ -213,8 +215,9 @@ export function Broadcasts() {
           New broadcast
         </Link>
       )}
+      {capped && <p className="text-sm text-ink-soft">{capped}</p>}
       <ul aria-label="Broadcasts" className="grid gap-3">
-        {list.map((b) => (
+        {list.broadcasts.map((b) => (
           <li key={b.id}>
             <Link href={`/broadcasts/${address(b)}`} className="card grid gap-3 p-4 hover:shadow-[0_0_0_1px_var(--edge)]">
               <span className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">

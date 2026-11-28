@@ -28,7 +28,10 @@ export const setPublicPages = (on: boolean) => api<Team>("/v1/team", "PATCH", { 
 export const setNewsletter = (on: boolean) => api<Team>("/v1/team", "PATCH", { newsletter: on });
 export const setAutomationsPaused = (on: boolean) => api<Team>("/v1/team", "PATCH", { automations_paused: on });
 export const setRequireApproval = (on: boolean) => api<Team>("/v1/team", "PATCH", { require_approval: on });
-export const listSubscribers = () => api<{ subscribers: Subscriber[] }>("/v1/subscribers");
+// The team's newsletter sign-ups, newest first, at most the 5000 brain lists. `total` is every
+// sign-up of the team, shown or not; missing from an older brain.
+export type Subscribers = { subscribers: Subscriber[]; total?: number };
+export const listSubscribers = () => api<Subscribers>("/v1/subscribers");
 export const removeSubscriber = (id: string) => api(`/v1/subscribers/${enc(id)}`, "DELETE");
 export const renameTeam = (name: string) => api<Team>("/v1/team", "PATCH", { name });
 // The team's own address (/t/<slug>/...); null goes back to the code. Owners only, with a sign-in from the last 10 minutes
