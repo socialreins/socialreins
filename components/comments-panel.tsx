@@ -301,7 +301,7 @@ export function CommentsPanel({
                     {v.is_default && <span className="badge ml-auto shrink-0">Default</span>}
                     {n < 9 && <span className="sr-only"> (key {n + 1})</span>}
                   </button>
-                  <details data-menu="" className="relative" onKeyDown={(e) => e.key === "Escape" && (e.stopPropagation(), e.currentTarget.removeAttribute("open"))}>
+                  <details data-menu="" className="relative" onKeyDown={(e) => e.key === "Escape" && (e.preventDefault(), e.nativeEvent.stopImmediatePropagation(), e.currentTarget.removeAttribute("open"))}>
                     <summary className="grid size-8 cursor-pointer list-none place-items-center rounded-lg text-ink-soft hover:bg-ink/5 hover:text-ink focus-visible:outline-offset-[-3px]" aria-label={`Manage the view ${v.name}`}>
                       <Icon name="edit" className="size-4" />
                     </summary>

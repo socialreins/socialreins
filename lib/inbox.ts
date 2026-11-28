@@ -383,7 +383,7 @@ type KeyLike = { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolea
 export function shortcutFor(e: KeyLike): Shortcut | null {
   if (e.metaKey || e.ctrlKey || e.altKey) return null;
   const el = e.target as (Partial<HTMLElement> & { closest?: (s: string) => unknown }) | null;
-  if (el?.isContentEditable || el?.closest?.("input, textarea, select, [contenteditable], dialog, [role=menu]")) return null;
+  if (el?.isContentEditable || el?.closest?.("input:not([type=checkbox]):not([type=radio]), textarea, select, [contenteditable], dialog, [role=menu]")) return null;
   return SHORTCUTS[e.key.toLowerCase() as keyof typeof SHORTCUTS] ?? null;
 }
 
