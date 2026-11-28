@@ -203,7 +203,12 @@ test("the sender form shows until it is set, sends name and address, and puts br
 test("the logo is saved with the sender, sent again on every save, refused under its field, and heads the preview", async ({ page }) => {
   const logo = "https://cdn.example/logo.png";
   const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
-  await page.route("https://cdn.example/**", (route) => (route.request().url() === logo ? route.fulfill({ contentType: "image/png", body: png }) : route.fulfill({ status: 404 })));
+  // Every picture goes through brain now, so the mock answers brain's proxy, not the author's host.
+  const via = (url: string) => `http://localhost:8080/v1/public/image?url=${encodeURIComponent(url)}`;
+  await page.route("**/v1/public/image?**", (route) => {
+    const url = new URL(route.request().url()).searchParams.get("url");
+    return url === logo ? route.fulfill({ contentType: "image/png", body: png }) : route.fulfill({ status: 404 });
+  });
   const state = await brain(page);
   await page.goto("/newsletters");
   const card = page.getByRole("region", { name: "Sender" });
@@ -225,7 +230,7 @@ test("the logo is saved with the sender, sent again on every save, refused under
   await expect(page.getByLabel("Logo")).toHaveAttribute("aria-invalid", "true");
 
   await page.getByRole("button", { name: "Save sender details" }).click();
-  await expect(card.getByRole("img", { name: "Acme Bakery logo" })).toHaveAttribute("src", logo);
+  await expect(card.getByRole("img", { name: "Acme Bakery logo" })).toHaveAttribute("src", via(logo));
   expect(state.patches.at(-1)).toEqual({ newsletter_sender: { ...sender, logo } });
 
   // Only the name changes: the logo goes along, or brain would drop it.
@@ -239,7 +244,7 @@ test("the logo is saved with the sender, sent again on every save, refused under
   // The preview is headed by the logo, and by the name when the image does not load.
   await page.goto("/newsletters/new");
   const head = preview(page).getByTestId("preview-header");
-  await expect(head.getByRole("img", { name: "Acme" })).toHaveAttribute("src", logo);
+  await expect(head.getByRole("img", { name: "Acme" })).toHaveAttribute("src", via(logo));
   await expect(head).toHaveText("");
   state.team.newsletter_sender = { ...sender, logo: "https://cdn.example/gone.png" };
   await page.reload();
