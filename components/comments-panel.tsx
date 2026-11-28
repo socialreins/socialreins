@@ -250,7 +250,8 @@ export function CommentsPanel({
   const picked = (key: "set" | "network" | "account") => listOf(filters[key]);
 
   return (
-    <div className="grid content-start gap-3">
+    // One column that may shrink: a long view or account name truncates instead of widening the panel past its pane.
+    <div className="grid grid-cols-[minmax(0,1fr)] content-start gap-3">
       <h2 id="comments-views-heading" className={heading}>
         Views
       </h2>
@@ -267,7 +268,7 @@ export function CommentsPanel({
       ) : (
         <ul aria-label="Saved views" className="grid gap-1">
           {list.slice(0, 20).map((v, n) => (
-            <li key={v.id} className="group flex items-center gap-1">
+            <li key={v.id} className="group flex min-w-0 items-center gap-1">
               {editing?.id === v.id ? (
                 <form
                   className="flex min-w-0 flex-1 gap-1"
