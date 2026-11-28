@@ -9,6 +9,7 @@ import type { Failure } from "@/lib/auth";
 import { listConnections, safeAvatar, type Connection } from "@/lib/connections";
 import { listContactTags, updateContact } from "@/lib/contacts";
 import {
+  accountGroups,
   assignItem,
   attachmentName,
   authorName,
@@ -17,6 +18,7 @@ import {
   getItem,
   getThread,
   hasThread,
+  inboxCapable,
   inboxName,
   isActivity,
   itemSummary,
@@ -27,6 +29,7 @@ import {
   mergeConversation,
   mergeFresh,
   messageCount,
+  NETWORK_PREFIX,
   relativeTime,
   replyLength,
   replyToItem,
@@ -38,6 +41,7 @@ import {
   threadKey,
   unboxed,
   windowNote,
+  type AccountGroup,
   type Attachment,
   type Author,
   type ConversationPage,
@@ -162,6 +166,30 @@ function FilterMenu<T extends string>({ label, value, options, onChange }: { lab
   );
 }
 
+// The account menu: All accounts, then each network with its own row and its accounts under it.
+// A network narrows the list to its accounts; brain takes one account or one network per call.
+// A native select keeps it keyboard reachable, closes on Escape and keeps focus on itself.
+function AccountMenu({ value, groups, onChange }: { value: string; groups: AccountGroup[]; onChange: (v: string) => void }) {
+  return (
+    <label className="flex items-center gap-1 rounded-full border border-ink/15 py-1 pr-1 pl-3 text-sm text-ink-soft hover:border-ink/40 has-[:focus-visible]:border-ink">
+      Account
+      <select className="max-w-52 cursor-pointer truncate rounded-full bg-transparent py-0.5 pr-1 font-bold text-ink" value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">All accounts</option>
+        {groups.map((g) => (
+          <optgroup key={g.network} label={g.label}>
+            <option value={`${NETWORK_PREFIX}${g.network}`}>All {g.label}</option>
+            {g.accounts.map((a) => (
+              <option key={a.value} value={a.value}>
+                {a.label}
+              </option>
+            ))}
+          </optgroup>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function ShortcutsDialog({ onClose }: { onClose: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -231,6 +259,10 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   const q = (params.get("q") ?? "").trim().slice(0, 100);
   const assigned = params.get("assigned") ?? "";
   const tag = params.get("tag") ?? "";
+  // One account or one network of the inbox, from the account menu.
+  const account = params.get("account") ?? "";
+  const network = params.get("network") ?? "";
+  const chosen = account || (network ? `${NETWORK_PREFIX}${network}` : "");
   const [search, setSearch] = useState(q);
   const [members, setMembers] = useState<Person[]>([]);
   const [tagOptions, setTagOptions] = useState<string[]>([]);
@@ -269,20 +301,22 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   // A number the list does not know goes to brain as it is, which answers not found; only a list still loading waits.
   const currentId = current?.id ?? (inboxId && (isUuid(inboxId) || inboxes !== null) ? inboxId : undefined);
   const base = inboxId ? `/inbox/${current ? address(current) : encodeURIComponent(inboxId)}` : "/inbox";
-  const href = (to: { item?: string | null; state?: ItemState; assigned?: string; tag?: string }) => {
+  const href = (to: { item?: string | null; state?: ItemState; assigned?: string; tag?: string; account?: string; network?: string }) => {
     const s = new URLSearchParams();
     if ((to.state ?? state) === "done") s.set("state", "done");
     if (to.item) s.set("item", to.item);
     if (search.trim()) s.set("q", search.trim());
     if (to.assigned ?? assigned) s.set("assigned", to.assigned ?? assigned);
     if (to.tag ?? tag) s.set("tag", to.tag ?? tag);
+    if (to.account ?? account) s.set("account", to.account ?? account);
+    if (to.network ?? network) s.set("network", to.network ?? network);
     return s.size ? `${base}?${s}` : base;
   };
 
   const kindQ = kind === "all" ? null : kind;
-  const key = JSON.stringify([currentId, state, kind, q, assigned, tag]);
+  const key = JSON.stringify([currentId, state, kind, q, assigned, tag, account, network]);
   // Every list call, the poll and Load more included, carries the same filters.
-  const fetchItems = (id: string, cursor?: string | null) => listItems(id, state, cursor, kindQ, q, { assigned, tag, conversations: true });
+  const fetchItems = (id: string, cursor?: string | null) => listItems(id, state, cursor, kindQ, q, { assigned, tag, account, network, conversations: true });
   const page = loaded?.key === key ? loaded.page : null;
   const setPage = (f: (p: Page | Failure | null) => Page | Failure | null) =>
     // A late answer for another inbox or tab leaves the newer page alone.
@@ -306,6 +340,14 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
     heading.current = item?.id ?? null;
     router[how](href({ item: item && address(item) }), { scroll: false });
   };
+  // Clear every filter that can hide items: the account or network, kind, assignee and tag. The
+  // tab and the search stay.
+  function clearFilters() {
+    setKind("all");
+    router.replace(href({ assigned: "", tag: "", account: "", network: "", item: asked }), { scroll: false });
+    // The button goes with the filter; the search box is the next useful stop.
+    document.getElementById("inbox-search")?.focus();
+  }
 
   useEffect(() => {
     if (!currentId) return;
@@ -492,6 +534,21 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   const noAccounts = Array.isArray(accounts) && accounts.length === 0;
   const accountList = Array.isArray(accounts) ? accounts : [];
   const accountById = new Map(accountList.map((a) => [a.id, a]));
+  // The accounts this inbox holds ("All inboxes" holds every inbox-capable one), and the account
+  // menu built from them, grouped by network.
+  const heldAccounts = current?.is_all ? inboxCapable(accountList) : accountList.filter((a) => current?.account_ids.includes(a.id));
+  const groups = accountGroups(heldAccounts.map((a) => a.id), accountList);
+  const accountLabels = new Map(groups.flatMap((g) => g.accounts.map((a) => [a.value, a.label] as const)));
+  // A filter on an account or network the new inbox does not hold goes as the inbox changes.
+  useEffect(() => {
+    // Both lists must be in: until the accounts load, no inbox holds any.
+    if (!current || !Array.isArray(accounts)) return;
+    // One choice at a time: a crafted address with both keeps the account.
+    if (account && network) return router.replace(href({ network: "" }), { scroll: false });
+    if (account && !heldAccounts.some((a) => a.id === account)) router.replace(href({ account: "", network: "" }), { scroll: false });
+    else if (network && !heldAccounts.some((a) => a.provider === network)) router.replace(href({ network: "", account: "" }), { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the inbox and the chosen filter are the rule; heldAccounts follows both
+  }, [currentId, current?.is_all, account, network, accounts]);
   const custom = list.filter((i) => !i.is_all);
   const left = Array.isArray(inboxes) && Array.isArray(accounts) ? unboxed(accountList, list) : [];
   // The plan's inbox count is reached ("All inboxes" never counts); existing ones stay.
@@ -619,10 +676,38 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <FilterMenu label="Kind" value={kind} options={kindOptions} onChange={setKind} />
+            <AccountMenu
+              value={chosen}
+              groups={groups}
+              onChange={(v) =>
+                router.replace(
+                  v.startsWith(NETWORK_PREFIX)
+                    ? href({ network: v.slice(NETWORK_PREFIX.length), account: "", item: asked })
+                    : href({ account: v, network: "", item: asked }),
+                  { scroll: false },
+                )
+              }
+            />
             <FilterMenu label="Assigned" value={assigned} options={assignedOptions} onChange={(v) => router.replace(href({ assigned: v, item: asked }), { scroll: false })} />
           </div>
-          {(kind !== "all" || assigned || tag) && (
+          {(kind !== "all" || assigned || tag || account || network) && (
             <ul aria-label="Active filters" className="flex flex-wrap items-center gap-1.5">
+              {account && (
+                <li className={chip}>
+                  Account: {accountLabels.get(account) ?? "one account"}
+                  <Link href={href({ account: "", item: asked })} scroll={false} aria-label="Clear the account filter" className={chipClear}>
+                    <Icon name="close" className="size-3" />
+                  </Link>
+                </li>
+              )}
+              {network && (
+                <li className={chip}>
+                  Network: {platformName(network)}
+                  <Link href={href({ network: "", item: asked })} scroll={false} aria-label={`Clear the ${platformName(network)} filter`} className={chipClear}>
+                    <Icon name="close" className="size-3" />
+                  </Link>
+                </li>
+              )}
               {kind !== "all" && (
                 <li className={chip}>
                   {kindOptions.find((o) => o.value === kind)?.label}
@@ -690,7 +775,11 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
           ) : items.length === 0 ? (
             <>
             <p className="card p-5 text-ink-soft">
-              {q
+              {account
+                ? `Nothing from ${accountLabels.get(account) ?? "this account"} here.`
+                : network
+                ? `Nothing from ${platformName(network)} here.`
+                : q
                 ? `Nothing matches "${q}".`
                 : assigned || tag
                 ? "Nothing matches these filters."
@@ -702,6 +791,11 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
                   ? "This inbox has no accounts. Edit it to add some."
                   : "Nothing here yet. New comments, mentions and DMs show up here within a minute."}
             </p>
+            {(account || network || kind !== "all" || assigned || tag) && (
+              <button type="button" className="btn btn-secondary btn-sm justify-self-start" onClick={clearFilters}>
+                Clear filters
+              </button>
+            )}
             {loadMoreButton}
             </>
           ) : (

@@ -1,10 +1,40 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { assignItem, chatRows, moderateItem, windowNote, itemSummary, dayLabel, actionButtons, getConversation, getThread, runAction, hasThread, isActivity, listItems, maxFor, replyLength, mergeConversation, mergeFresh, messageCount, relativeTime, replyToItem, sentAlready, setItemState, threadKey, type Item } from "@/lib/inbox";
+import { assignItem, accountGroups, chatRows, moderateItem, windowNote, itemSummary, dayLabel, actionButtons, getConversation, getThread, runAction, hasThread, isActivity, listItems, maxFor, replyLength, mergeConversation, mergeFresh, messageCount, relativeTime, replyToItem, sentAlready, setItemState, threadKey, type Item } from "@/lib/inbox";
 import { apiUrl } from "@/lib/waitlist";
 
 const call = (fetch: ReturnType<typeof vi.fn>) => fetch.mock.calls[0] as unknown as [string, RequestInit];
 
 afterEach(() => vi.unstubAllGlobals());
+
+describe("accountGroups", () => {
+  const account = (id: string, provider: string, display_name: string | null, handle: string | null, external_id = id) => ({ id, provider, display_name, handle, external_id });
+
+  it("groups the inbox's accounts by network, a network row above its accounts", () => {
+    const accounts = [
+      account("x1", "x", "Xavier", "xavier"),
+      account("b2", "bluesky", "Blair", "blair.bsky.social"),
+      account("b1", "bluesky", "Alice", "alice.bsky.social"),
+      account("b3", "bluesky", null, "carol.bsky.social"),
+      account("other", "bluesky", "Not in the inbox", "other.bsky.social"),
+    ];
+    const groups = accountGroups(["b2", "b1", "b3", "x1"], accounts);
+    expect(groups.map((g) => [g.network, g.label])).toEqual([
+      ["bluesky", "Bluesky"],
+      ["x", "X"],
+    ]);
+    // Accounts go by label, and only the inbox's own are offered; a missing name falls to its handle.
+    expect(groups[0]!.accounts).toEqual([
+      { value: "b1", label: "Alice (@alice.bsky.social)" },
+      { value: "b2", label: "Blair (@blair.bsky.social)" },
+      { value: "b3", label: "@carol.bsky.social" },
+    ]);
+    expect(groups[1]!.accounts).toEqual([{ value: "x1", label: "Xavier (@xavier)" }]);
+  });
+
+  it("offers nothing for an inbox with no accounts", () => {
+    expect(accountGroups([], [account("b1", "bluesky", "Alice", "alice.bsky.social")])).toEqual([]);
+  });
+});
 
 describe("itemSummary", () => {
   it("says what an item carries when it has no text, and never (no text) then", () => {
@@ -34,6 +64,15 @@ describe("inbox requests", () => {
     expect(call(fetch)[0]).not.toContain("group");
     await listItems("all", "open", "c9", null, "", { conversations: true, assigned: "me" });
     expect((fetch.mock.calls[1] as unknown as [string])[0]).toBe(`${apiUrl}/v1/inboxes/all/items?state=open&group=conversations&assigned=me&cursor=c9`);
+  });
+
+  it("narrows to an account or a network", async () => {
+    const fetch = vi.fn(async () => Response.json({ items: [], next_cursor: null }));
+    vi.stubGlobal("fetch", fetch);
+    await listItems("all", "open", null, null, "", { account: "c1", conversations: true });
+    expect(call(fetch)[0]).toBe(`${apiUrl}/v1/inboxes/all/items?state=open&group=conversations&account_id=c1`);
+    await listItems("all", "open", null, null, "", { network: "bluesky", conversations: true });
+    expect((fetch.mock.calls[1] as unknown as [string])[0]).toBe(`${apiUrl}/v1/inboxes/all/items?state=open&group=conversations&platform=bluesky`);
   });
 
   it("patches the state", async () => {
