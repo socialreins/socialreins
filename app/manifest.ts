@@ -24,6 +24,7 @@ export default function manifest(): MetadataRoute.Manifest {
       { name: "Compose", url: "/posts/new" },
       { name: "Calendar", url: "/calendar" },
       { name: "Inbox", url: "/inbox" },
+      { name: "Comments", url: "/comments" },
     ].map((s) => ({ ...s, icons: [{ src: "/icon-192.png", sizes: "192x192", type: "image/png" }] })),
   };
 }

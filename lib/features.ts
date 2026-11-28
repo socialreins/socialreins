@@ -120,9 +120,9 @@ export const features: Feature[] = [
   {
     slug: "inboxes",
     name: "Inboxes",
-    short: "Comments, mentions and DMs in one place",
-    description: "Inboxes in SocialReins: comments, mentions and DMs in one place, DMs as conversations, with search, assigning and saved replies. See which networks work.",
-    intro: "Comments, mentions and DMs from your connected accounts arrive in one place, and you answer them there. Make custom inboxes, each showing only what you choose: 1 on Scheduler, 10 on Scheduler and Automation, as many as you like when you self-host.",
+    short: "DMs in the inbox, comments and mentions on their own page",
+    description: "Inbox and Comments in SocialReins: DMs as conversations, comments and mentions on their own page with filters you can save, assigning and saved replies.",
+    intro: "DMs from your connected accounts arrive in the Inbox, and comments and mentions arrive on the Comments page, and you answer them both there. Comments has filters by set, network and account that you can save and open in one click. Make custom inboxes, each showing only what you choose, comments only if you like: 1 on Scheduler, 10 on Scheduler and Automation, as many as you like when you self-host.",
     support,
     faq: [
       [
@@ -131,7 +131,15 @@ export const features: Feature[] = [
       ],
       [
         "Can I reply to comments and DMs in SocialReins?",
-        "Yes. Reply under a comment or mention, and answer a DM in its conversation, without leaving SocialReins. DMs with one person are grouped into one conversation, shown as a chat.",
+        "Yes. Reply under a comment or mention on the Comments page, and answer a DM in its conversation in the Inbox, without leaving SocialReins. DMs with one person are grouped into one conversation, shown as a chat.",
+      ],
+      [
+        "Where are comments and mentions?",
+        "On the Comments page, apart from the Inbox. It lists the comments and mentions of every connected account that has them, newest first, with the network, the account and the post each is on. The Inbox lists DMs. A custom inbox holds whatever you make it for, so you can still keep a comments-only inbox.",
+      ],
+      [
+        "Can I save my filters?",
+        "Yes. On the Comments page, filter by set, network, account, answered or not, assignee, keyword, post, dates, or hidden comments, then save the filters as a view. A view opens in one click or with the keys 1 to 9, 0 or Esc clears every filter, and one view can open by default. Views are yours: a teammate does not see them.",
       ],
       [
         "Can my team share an inbox?",
@@ -144,10 +152,21 @@ export const features: Feature[] = [
     ],
     sections: [
       {
+        heading: "Comments",
+        bullets: [
+          "Comments and mentions of every connected account in one list, newest first, each with its network, its account and the post it is on. A card per post shows its comments from every network and how many are unanswered.",
+          "Filter by set, network and account (several of each), by answered or not, by assignee, by keyword, by one post, by dates, and by hidden or held comments. Every filter is in the address, so a link shares them.",
+          "Save the filters as a view, open one with a click or with the keys 1 to 9, clear every filter with 0 or Esc, and pick one view to open by default. Clearing never deletes a view.",
+          "Save the filters as a custom inbox in one click, or open the comment automation builder with the same accounts and keyword filled in.",
+          "Facebook and Instagram comments can be hidden, liked and deleted from there, YouTube comments held and rejected. Follows, likes and reposts are under an Activity filter.",
+          "A network with no comments to read says so on the page: LinkedIn needs LinkedIn's approval, and X charges for reading.",
+        ],
+      },
+      {
         heading: "Custom inboxes",
         bullets: [
           "Pick the accounts each inbox holds, for example one inbox per brand. An account can be in more than one.",
-          "Filter by kind: comments, mentions or DMs.",
+          "Filter by kind: comments, mentions or DMs. An inbox of comments and mentions only is a comments inbox.",
           "Filter by keyword, or show only what nobody has answered yet.",
           "Everyone on the team sees the same inboxes.",
         ],
@@ -157,7 +176,7 @@ export const features: Feature[] = [
         bullets: [
           "Reply under a comment or mention, and answer a DM in its conversation, without leaving SocialReins.",
           "DMs with one person are grouped into one conversation, shown as a chat.",
-          "Search an inbox by text or by author.",
+          "Search the inbox or the comments by text or by author.",
           "Assign an item to a teammate, or to yourself.",
           "Keep saved replies and insert one into the reply box.",
           "Keyboard shortcuts move between items, mark one done, assign it and start a reply.",

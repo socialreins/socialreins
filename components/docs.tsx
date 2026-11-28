@@ -202,6 +202,8 @@ const shortcuts: [string, string][] = [
   ["/", "search this inbox"],
   ["?", "show the shortcuts"],
   ["Ctrl or Cmd + Enter", "send the reply"],
+  ["1 to 9 (Comments)", "apply the saved view with that number"],
+  ["0 or Esc (Comments)", "clear every filter"],
 ];
 
 function Use({ mode }: { mode: Mode }) {
@@ -306,9 +308,12 @@ function Use({ mode }: { mode: Mode }) {
         Open Library. The Media tab keeps links to images and videos, each with a name. The Snippets tab keeps Captions, Hashtag groups and Saved replies. In the composer, Add from library fills the media of a post and Insert snippet puts a caption or a hashtag group at the cursor.
       </p>
 
-      <h2 id="inbox">Answer comments and DMs in the inbox</h2>
+      <h2 id="inbox">Answer DMs in the inbox and comments on the Comments page</h2>
       <p>
-        Open Inbox. Comments and DMs arrive in one list, and DMs with one person are grouped into one conversation that opens as a chat. Search the list by text or author, switch between Open and Done, and filter with the Kind and Assigned menus. In the reader you reply, choose Mark done, assign the item to a teammate and insert a saved reply. The inbox is live on Bluesky; Facebook Pages and Instagram are in testing. Threads is in testing too: replies to your posts and posts that mention you arrive, you can reply and hide a reply, and Threads has no DMs (an account connected before replies were added needs to be connected again once). X is in testing too: under Accounts, open an X account&apos;s settings and turn on X inbox, choose how often it is read and the most it may spend a month (X charges for every post and message it returns), and reconnect the account once so X grants the DM permissions.
+        Open Inbox. DMs arrive there, and DMs with one person are grouped into one conversation that opens as a chat. Comments and mentions arrive on the Comments page, the next item in the sidebar. Search either list by text or author and switch between Open and Done; the inbox filters with the Assigned menu, and a custom inbox you make also has a Kind menu and can hold comments, mentions and DMs. In the reader you reply, choose Mark done, assign the item to a teammate and insert a saved reply. The inbox is live on Bluesky; Facebook Pages and Instagram are in testing. Threads is in testing too: replies to your posts and posts that mention you arrive, you can reply and hide a reply, and Threads has no DMs (an account connected before replies were added needs to be connected again once). X is in testing too: under Accounts, open an X account&apos;s settings and turn on X inbox, choose how often it is read and the most it may spend a month (X charges for every post and message it returns), and reconnect the account once so X grants the DM permissions.
+      </p>
+      <p>
+        On Comments, filter by set, network, account, answered or not, assignee, keyword, post, dates, or hidden comments; each filter is in the address, so a link shares it. Turn on By post to see a card per post with its comments from every network. Save the filters as a view: it opens in one click, or with the keys 1 to 9 for the first nine, 0 or Esc clears every filter, and one view can open by default (Clear never deletes a view). Save as inbox makes a custom inbox of the same accounts, and Automate comments like this opens the comment automation builder with the same accounts and keyword filled in. An old link to a comment in the inbox moves to Comments.
       </p>
       <p>Keyboard shortcuts, which wait while you type in a box:</p>
       <ul>
