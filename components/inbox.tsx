@@ -14,10 +14,12 @@ import {
   attachmentName,
   authorName,
   chatRows,
+  countItems,
   getConversation,
   getItem,
   getThread,
   hasThread,
+  inboxBadge,
   inboxCapable,
   inboxName,
   isActivity,
@@ -317,6 +319,19 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   const key = JSON.stringify([currentId, state, kind, q, assigned, tag, account, network]);
   // Every list call, the poll and Load more included, carries the same filters.
   const fetchItems = (id: string, cursor?: string | null) => listItems(id, state, cursor, kindQ, q, { assigned, tag, account, network, conversations: true });
+  // The view is narrowed past the inbox's own open list (the Done tab, a kind, a search, an
+  // assignee, a tag, an account or a network), so the badge of the inbox being viewed follows
+  // the filters instead of resting on the open total.
+  const narrowed = state === "done" || kindQ !== null || q !== "" || Boolean(assigned || tag || account || network);
+  // The current inbox's own count under the filters on screen, keyed like the loaded page so a
+  // late answer for another view is ignored. Null until it comes back; "All" never asks, its
+  // badge being the team's open total.
+  const [counted, setCounted] = useState<{ key: string; n: number } | null>(null);
+  const ownCount = counted?.key === key ? counted.n : null;
+  const fetchCount = (id: string) =>
+    countItems(id, state, kindQ, q, { assigned, tag, account, network }).then((r) => {
+      if (!isFailure(r)) setCounted({ key, n: r.count });
+    });
   const page = loaded?.key === key ? loaded.page : null;
   const setPage = (f: (p: Page | Failure | null) => Page | Failure | null) =>
     // A late answer for another inbox or tab leaves the newer page alone.
@@ -334,7 +349,11 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   const openKey = detail && !isFailure(detail) ? threadKey(detail) : itemId;
   // When the counts were last asked for by the refresh below; kept across filter changes, which restart that effect.
   const countsAt = useRef(0);
-  const refreshCounts = () => listInboxes().then((l) => Array.isArray(l) && setInboxes(l));
+  // The open totals move when an item is marked done or reopened; so does the narrowed count.
+  const refreshCounts = () => {
+    listInboxes().then((l) => Array.isArray(l) && setInboxes(l));
+    if (current && !current.is_all && narrowed) fetchCount(current.id);
+  };
   const go = (item: { id: string; number?: number } | null, how: "push" | "replace" = "replace") => {
     if (item) setOpened(item.id);
     heading.current = item?.id ?? null;
@@ -359,6 +378,14 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` holds every filter fetchItems reads
   }, [currentId, key, reloads]);
 
+  // The narrowed count of the inbox being viewed, asked with the list and after a reload. The
+  // poll below and the item changes above keep it fresh; this covers a filter change.
+  useEffect(() => {
+    if (!currentId || !current || current.is_all || !narrowed) return;
+    fetchCount(currentId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` holds every filter fetchCount reads
+  }, [currentId, key, reloads, current?.is_all]);
+
   useSearchInUrl(search, q);
 
   // While the tab shows, fold the newest page into the list (and now and then refresh the open counts); a failed check waits for the next.
@@ -372,6 +399,8 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
         countsAt.current = Date.now();
         listInboxes().then((l) => live && Array.isArray(l) && setInboxes(l));
       }
+      // The narrowed count rides the same path as the list, so the badge keeps up with the poll.
+      if (current && !current.is_all && narrowed) fetchCount(current.id);
       const r = await fetchItems(currentId);
       if (!live || isFailure(r)) return;
       setLoaded((l) => (l?.key === key && !isFailure(l.page) ? { key, page: mergeFresh(l.page, r) } : l));
@@ -558,6 +587,11 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
   // On small screens one pane shows at a time: inboxes, then items, then the item.
   const show = (pane: "inboxes" | "items" | "detail") =>
     (pane === "detail" ? asked : pane === "items" ? inboxId && !asked : !inboxId && !asked) ? "block" : "hidden";
+  // What the badge of the inbox being viewed counts: the view's own items, said plainly. Open
+  // work on the Open tab, done work on the Done tab, and for activity (stored done, counted
+  // whatever the tab) no word at all.
+  const ownWord = state === "done" ? "done" : kindQ === "activity" ? "" : "open";
+  const own = current && !current.is_all && ownCount !== null ? { n: ownCount, word: ownWord } : null;
 
   return (
     // From lg up the inbox fills the window under the top bar (3rem) and main's padding (2rem twice); each pane scrolls on its own.
@@ -580,6 +614,7 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
           <ul className="grid gap-0.5">
             {inboxes.map((i) => {
               const active = i.id === current?.id;
+              const badge = inboxBadge(i, current?.id, own);
               return (
                 <li key={i.id} className="group flex items-center gap-1">
                   <Link
@@ -603,10 +638,14 @@ export function Inbox({ inboxId }: { inboxId?: string }) {
                       </span>
                     )}
                   </Link>
-                  {Boolean(i.open_count) && (
+                  {Boolean(badge.n) && (
                     <span className="badge tone shrink-0 tabular-nums" data-kind="dm">
-                      {i.open_count}
-                      <span className="sr-only"> open in {inboxName(i)}</span>
+                      {badge.n}
+                      <span className="sr-only">
+                        {" "}
+                        {badge.word}
+                        {badge.word ? " " : ""}in {inboxName(i)}
+                      </span>
                     </span>
                   )}
                   {canManage && !i.is_all && (
