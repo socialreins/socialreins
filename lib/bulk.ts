@@ -27,16 +27,17 @@ export type BulkRow = {
 };
 
 const HTTPS = /^https:\/\/[^\s/]+\/?\S*$/;
-const TIME = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})$/;
+// Seconds are optional: a spreadsheet saved as CSV writes "2026-11-25 09:30:00".
+const TIME = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/;
 
 // "2026-11-25 09:30" in the browser's zone; null for a date or time that does not exist there
 // (30 February, or an hour a clock change skips).
 export function parseTime(value: string): Date | null {
   const m = TIME.exec(value);
   if (!m) return null;
-  const [y, mo, d, h, mi] = m.slice(1).map(Number) as [number, number, number, number, number];
-  const at = new Date(y, mo - 1, d, h, mi);
-  return at.getFullYear() === y && at.getMonth() === mo - 1 && at.getDate() === d && at.getHours() === h && at.getMinutes() === mi ? at : null;
+  const [y, mo, d, h, mi, s] = m.slice(1).map((part) => (part === undefined ? 0 : Number(part))) as [number, number, number, number, number, number];
+  const at = new Date(y, mo - 1, d, h, mi, s);
+  return at.getFullYear() === y && at.getMonth() === mo - 1 && at.getDate() === d && at.getHours() === h && at.getMinutes() === mi && at.getSeconds() === s ? at : null;
 }
 
 // One CSV row as a post for the set whose connected networks are `available`. TikTok is never one: its

@@ -6,6 +6,7 @@ import {
   overallStatus,
   timeline,
   type Post,
+  type RepeatForm,
   type Target,
   altList,
   capAlt,
@@ -40,8 +41,10 @@ import {
   noTikTok,
   noRepeat,
   repeatForm,
+  repeatProblem,
   repeatRule,
   repeatSummary,
+  untilLocal,
   untilUtc,
   monthWeeks,
   publishPost,
@@ -759,11 +762,31 @@ describe("repeat", () => {
 });
 
 describe("repeat until", () => {
-  it("round-trips a local end date through brain's UTC date", async () => {
-    const { untilLocal, untilUtc } = await import("@/lib/posts");
-    for (const day of ["2026-12-05", "2026-12-31", "2027-02-28"]) expect(untilLocal(untilUtc(day))).toBe(day);
-    // The local day's last second, as a UTC date.
-    expect(untilUtc("2026-12-05")).toBe(new Date(2026, 11, 5, 23, 59, 59).toISOString().slice(0, 10));
+  it("sends the picked end date as its own day, west of UTC too", () => {
+    const zone = process.env.TZ;
+    try {
+      // New York is behind UTC: converting the picked day to a UTC date used to send the day after, so a
+      // series ended one copy late.
+      process.env.TZ = "America/New_York";
+      for (const day of ["2026-12-05", "2026-12-31", "2027-02-28"]) expect(untilLocal(untilUtc(day))).toBe(day);
+      expect(untilUtc("2026-12-05")).toBe("2026-12-05");
+      expect(repeatRule({ ...noRepeat, every: "day", ends: "date", until: "2026-12-05" })).toEqual({
+        every: "day",
+        interval: 1,
+        until: "2026-12-05",
+        remaining: null,
+      });
+    } finally {
+      process.env.TZ = zone;
+    }
+  });
+  it("names an end date that is already gone", () => {
+    const rule: RepeatForm = { ...noRepeat, every: "week", ends: "date" };
+    expect(repeatProblem({ ...rule, until: "2026-12-04" }, "2026-12-05")).toMatch(/today or later/);
+    expect(repeatProblem({ ...rule, until: "2026-12-05" }, "2026-12-05")).toBeNull();
+    expect(repeatProblem({ ...rule, until: "2026-12-06" }, "2026-12-05")).toBeNull();
+    expect(repeatProblem({ ...rule, ends: "count", until: "2026-12-04" }, "2026-12-05")).toBeNull();
+    expect(repeatProblem({ ...noRepeat, every: "none", ends: "date", until: "2026-12-04" }, "2026-12-05")).toBeNull();
   });
 });
 
