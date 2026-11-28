@@ -2,13 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { SiteHeader, sitePage } from "@/components/site-header";
 import { networks as pages } from "@/lib/networks";
-import { publicPage } from "@/lib/seo";
+import { pageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "What you can post where: SocialReins",
-  description: "Text, images, videos, carousels, Reels, documents, threads and first comments: what SocialReins can post on each social network today.",
-  ...publicPage("/post-types"),
-};
+export const metadata: Metadata = pageMetadata("/post-types");
 
 const networks = ["Bluesky", "Threads", "LinkedIn", "Facebook Page", "Instagram", "YouTube", "X", "TikTok", "Pinterest"];
 

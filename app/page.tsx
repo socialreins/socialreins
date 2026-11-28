@@ -9,7 +9,7 @@ import { Reins } from "@/components/reins";
 import { SiteHeader } from "@/components/site-header";
 import { WaitlistForm } from "@/components/waitlist-form";
 import { groups } from "@/lib/features";
-import { org } from "@/lib/github";
+import { pageMetadata } from "@/lib/seo";
 
 const repo = "https://github.com/socialreins/socialreins";
 
@@ -27,23 +27,13 @@ cd socialreins && cp .env.example .env
 # edit .env: POSTGRES_PASSWORD, BRAIN_URL, WEB_URL
 docker compose up -d`;
 
-export const metadata: Metadata = { alternates: { canonical: "/" }, openGraph: { type: "website", url: "/" } };
-
-const organization = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "Organization",
-  name: "SocialReins",
-  url: "https://socialreins.com",
-  logo: "https://socialreins.com/icon-512.png",
-  sameAs: [org],
-});
+export const metadata: Metadata = pageMetadata("/");
 
 export default function Home() {
   return (
     <div className="mx-auto max-w-6xl px-5 sm:px-8">
       <SiteHeader className="py-6" />
 
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: organization }} />
       <main>
         <section id="waitlist" className="grid items-center gap-12 pt-8 pb-14 md:grid-cols-[1.05fr_1fr] md:pt-16 md:pb-20">
           <div className="grid gap-6">

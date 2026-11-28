@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { JsonLd } from "@/components/json-ld";
 import { SiteHeader, sitePage } from "@/components/site-header";
 import { feature } from "@/lib/features";
 import { networks } from "@/lib/networks";
-import { publicPage } from "@/lib/seo";
+import { breadcrumbSchema, faqSchema, pageMetadata } from "@/lib/seo";
 
 // One public page per feature: app/features/<slug>/page.tsx is two lines that call these with its slug.
 export function featureMetadata(slug: string): Metadata {
-  const f = feature(slug)!;
-  return { title: `${f.name}: SocialReins`, description: f.description, ...publicPage(`/features/${f.slug}`) };
+  return pageMetadata(`/features/${feature(slug)!.slug}`);
 }
 
 const link = "font-bold underline decoration-signal decoration-2 underline-offset-4 hover:text-signal-deep";
@@ -18,6 +18,14 @@ export function FeaturePage({ slug }: { slug: string }) {
   return (
     <main className={sitePage}>
       <SiteHeader />
+      <JsonLd
+        data={breadcrumbSchema([
+          { name: "Home", path: "/" },
+          { name: "Features", path: "/features" },
+          { name: f.name, path: `/features/${f.slug}` },
+        ])}
+      />
+      {f.faq && <JsonLd data={faqSchema(f.faq)} />}
       <div className="grid w-full gap-8">
         <div className="grid max-w-3xl gap-2">
           <h1 className="font-display text-4xl font-extrabold tracking-tight">{f.name}</h1>

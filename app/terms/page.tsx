@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import { publicPage } from "@/lib/seo";
+import { pageMetadata } from "@/lib/seo";
 import Link from "next/link";
 import { ContactLink, LegalPage } from "@/components/legal-page";
 
-export const metadata: Metadata = { title: "Terms of Service: SocialReins", ...publicPage("/terms") };
+export const metadata: Metadata = pageMetadata("/terms");
 
 export default function Terms() {
   return (

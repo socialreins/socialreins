@@ -3,13 +3,9 @@ import Link from "next/link";
 import { PlatformIcon, platforms } from "@/components/platform-icons";
 import { SiteHeader, sitePage } from "@/components/site-header";
 import { network } from "@/lib/networks";
-import { publicPage } from "@/lib/seo";
+import { pageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Supported social media: SocialReins",
-  description: "Every social network SocialReins posts to: Bluesky, Threads, LinkedIn, Facebook, Instagram, YouTube, X, TikTok and Pinterest, each with its own page.",
-  ...publicPage("/socials"),
-};
+export const metadata: Metadata = pageMetadata("/socials");
 
 export default function Socials() {
   return (

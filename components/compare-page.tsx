@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { JsonLd } from "@/components/json-ld";
 import { SiteHeader, sitePage } from "@/components/site-header";
 import { rival, rivals } from "@/lib/compare";
-import { publicPage } from "@/lib/seo";
+import { breadcrumbSchema, pageMetadata } from "@/lib/seo";
 
 // One public page per tool: app/compare/<slug>/page.tsx calls these with its slug.
 export function compareMetadata(slug: string): Metadata {
-  const r = rival(slug)!;
-  return { title: `SocialReins vs ${r.name}: SocialReins`, description: r.description, ...publicPage(`/compare/${r.slug}`) };
+  return pageMetadata(`/compare/${rival(slug)!.slug}`);
 }
 
 const link = "font-bold underline decoration-signal decoration-2 underline-offset-4 hover:text-signal-deep";
@@ -18,6 +18,13 @@ export function ComparePage({ slug }: { slug: string }) {
   return (
     <main className={sitePage}>
       <SiteHeader />
+      <JsonLd
+        data={breadcrumbSchema([
+          { name: "Home", path: "/" },
+          { name: "Compare", path: "/compare" },
+          { name: `SocialReins vs ${r.name}`, path: `/compare/${r.slug}` },
+        ])}
+      />
       <div className="grid w-full gap-8">
       <div className="grid max-w-3xl gap-2">
         <h1 className="font-display text-4xl font-extrabold tracking-tight">SocialReins vs {r.name}</h1>

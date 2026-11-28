@@ -1,14 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { JsonLd } from "@/components/json-ld";
 import { SiteHeader, sitePage } from "@/components/site-header";
 import { RULES } from "@/lib/broadcasts";
-import { publicPage } from "@/lib/seo";
+import { breadcrumbSchema, docPath, docTitles, pageMetadata } from "@/lib/seo";
+import type { Guide, Mode } from "@/lib/seo";
 
 // The docs live in this app for now: one guide per page, written once for both ways of running SocialReins.
 // Each guide is a function of the mode, so the self-hosted and cloud versions cannot drift apart.
-export type Mode = "self-hosted" | "cloud";
-export type Guide = "start" | "use" | "ai" | "apps";
+export type { Guide, Mode };
+export { docPath };
 
 const repo = "https://github.com/socialreins/socialreins";
 const link = "font-bold underline decoration-signal decoration-2 underline-offset-4 hover:text-signal-deep";
@@ -16,32 +18,6 @@ const link = "font-bold underline decoration-signal decoration-2 underline-offse
 const modes: Record<Mode, { name: string; web: string; api: string }> = {
   "self-hosted": { name: "Self-hosted", web: "https://app.example.com", api: "https://api.example.com" },
   cloud: { name: "Cloud", web: "https://socialreins.com", api: "https://brain.socialreins.com" },
-};
-
-const titles: Record<Guide, Record<Mode, string>> = {
-  start: { "self-hosted": "Install SocialReins on your own server", cloud: "Get started with SocialReins Cloud" },
-  use: { "self-hosted": "Connect accounts and publish, self-hosted", cloud: "Connect accounts and publish on SocialReins Cloud" },
-  ai: { "self-hosted": "Connect an AI assistant to your own SocialReins", cloud: "Connect an AI assistant to SocialReins Cloud" },
-  apps: { "self-hosted": "Create the network apps for your own SocialReins", cloud: "Network apps on SocialReins Cloud" },
-};
-
-const descriptions: Record<Guide, Record<Mode, string>> = {
-  start: {
-    "self-hosted": "Install SocialReins on your own server with Docker Compose: the settings to change, the first sign-in, domains, updates and the platform apps.",
-    cloud: "SocialReins Cloud is not open yet. Join the waitlist to hear when it opens, or self-host SocialReins for free today with the same features.",
-  },
-  use: {
-    "self-hosted": "How to use your own SocialReins install: connect accounts, schedule posts, set up the queue, feeds, approvals, the inbox, automations and more.",
-    cloud: "How SocialReins Cloud works once you have an account: connect accounts, schedule posts, set up the queue, feeds, approvals, the inbox and more.",
-  },
-  ai: {
-    "self-hosted": "Connect Claude or another AI assistant to your own SocialReins install through its MCP server, using an API token you create in the app.",
-    cloud: "Connect Claude or another AI assistant to SocialReins Cloud through its MCP server, using an API token you create in the app.",
-  },
-  apps: {
-    "self-hosted": "Create the developer app for each network, register the redirect address and add the keys to your own SocialReins install.",
-    cloud: "On SocialReins Cloud we register the developer apps with each network for you, so you only connect your accounts.",
-  },
 };
 
 const short: Record<Guide, Record<Mode, string>> = {
@@ -53,11 +29,10 @@ const short: Record<Guide, Record<Mode, string>> = {
 
 export const guides: Guide[] = ["start", "use", "ai", "apps"];
 export const docModes: Mode[] = ["self-hosted", "cloud"];
-export const docPath = (mode: Mode, guide: Guide) => `/docs/${mode}${guide === "start" ? "" : `/${guide}`}`;
 export const docTitle = (mode: Mode, guide: Guide) => short[guide][mode];
 
 export function docMetadata(mode: Mode, guide: Guide): Metadata {
-  return { title: titles[guide][mode], description: descriptions[guide][mode], ...publicPage(docPath(mode, guide)) };
+  return pageMetadata(docPath(mode, guide));
 }
 
 function Code({ children }: { children: string }) {
@@ -643,6 +618,14 @@ export function DocPage({ mode, guide }: { mode: Mode; guide: Guide }) {
   return (
     <main className={sitePage}>
       <SiteHeader />
+      <JsonLd
+        data={breadcrumbSchema([
+          { name: "Home", path: "/" },
+          { name: "Docs", path: "/docs" },
+          { name: modes[mode].name, path: `/docs/${mode}` },
+          ...(guide === "start" ? [] : [{ name: docTitles[guide][mode], path: docPath(mode, guide) }]),
+        ])}
+      />
       <div className="grid gap-8 md:grid-cols-[13rem_minmax(0,1fr)] md:gap-12">
         <aside className="grid content-start gap-5">
           <Switcher mode={mode} guide={guide} />
@@ -670,7 +653,7 @@ export function DocPage({ mode, guide }: { mode: Mode; guide: Guide }) {
               </Link>{" "}
               / {modes[mode].name}
             </p>
-            <h1 className="font-display text-4xl font-extrabold tracking-tight">{titles[guide][mode]}</h1>
+            <h1 className="font-display text-4xl font-extrabold tracking-tight">{docTitles[guide][mode]}</h1>
           </div>
           {mode === "cloud" && <CloudNotice />}
           <div className="legal grid min-w-0 gap-4 leading-relaxed">
