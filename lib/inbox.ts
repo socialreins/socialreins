@@ -14,7 +14,8 @@ export type ItemState = "open" | "done";
 // What narrows an inbox beyond its accounts. Empty lists mean any.
 export type Filters = { kinds: Kind[]; keywords: string[]; unanswered: boolean };
 // A custom inbox holds the items of its accounts; "All" (`is_all`) holds every item and no `account_ids`.
-// `open_count` (open items, follows left out) comes with the list only.
+// `open_count` (open items, follows left out) comes with the list only; a narrowed view asks
+// `countItems` for what it shows.
 export type Inbox = { id: string; number: number; name: string; is_all: boolean; account_ids: string[]; filters: Filters; open_count?: number; created_at: string; updated_at: string };
 
 // Platforms whose accounts have an inbox.
@@ -148,6 +149,30 @@ export function listItems(inboxId: string, state: ItemState, cursor?: string | n
   return api<ItemPage>(`/v1/inboxes/${enc(inboxId)}/items?${q}`);
 }
 export type Page = { items: Item[]; next: string | null };
+
+// The count of what the list would show under the same filters, one number instead of a page:
+// the badge of the inbox being viewed. "All" keeps its own `open_count` total, so it never asks.
+export function countItems(inboxId: string, state: ItemState, kind?: ListKind | null, search?: string, more: { assigned?: string; tag?: string; account?: string; network?: string } = {}) {
+  const q = new URLSearchParams();
+  // Activity is stored done and never open work: it is counted whatever the Open / Done choice is.
+  if (kind !== "activity") q.set("state", state);
+  if (kind) q.set("kind", kind);
+  if (search) q.set("q", search);
+  if (more.assigned) q.set("assigned", more.assigned);
+  if (more.tag) q.set("tag", more.tag);
+  if (more.account) q.set("account_id", more.account);
+  if (more.network) q.set("platform", more.network);
+  const query = q.toString();
+  return api<{ count: number }>(`/v1/inboxes/${enc(inboxId)}/count${query ? `?${query}` : ""}`);
+}
+
+// What the sidebar badge for `i` shows: `own` when `i` is the inbox being viewed and its
+// narrowed count has come back (never "All", whose badge stays the team's open total), else the
+// inbox's own open count. `word` says what the number is, for the badge's screen-reader text.
+export function inboxBadge(i: Pick<Inbox, "id" | "is_all" | "open_count">, currentId: string | undefined, own: { n: number; word: string } | null) {
+  const narrowed = own !== null && i.id === currentId && !i.is_all ? own : null;
+  return narrowed ? { n: narrowed.n, word: narrowed.word } : { n: i.open_count ?? 0, word: "open" };
+}
 
 // What the account menu offers: the inbox's own accounts, grouped by network, a network row above
 // its accounts. Networks follow the app's order, and accounts go by their label.

@@ -54,6 +54,9 @@ const item = (id: string, kind: "comment" | "mention" | "dm" | "like" | "repost"
   state: "open",
   replied_at: null as string | null,
   replies: [] as unknown[],
+  // Written by a PATCH in this mock; typed here so the count route can read them.
+  assigned_to: null as { id: string; name: string } | null,
+  contact_tags: [] as string[],
   ...extra,
 });
 
@@ -91,6 +94,20 @@ async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items
     verdicts: [] as unknown[],
   };
   const dms = (i: Row) => state.items.filter((x) => x.kind === "dm" && thread(x) === thread(i)).sort(oldestFirst);
+  // What one item must be to be in a list or a count: the kind, the search, the account and the
+  // network the caller asks for. Both routes share it, so the count equals the list.
+  const quiet = (i: Row) => ["follow", "like", "repost"].includes(i.kind);
+  const matching = (q: URLSearchParams) => {
+    const kind = q.get("kind");
+    const search = q.get("q")?.toLowerCase();
+    const account = q.get("account_id");
+    const platform = q.get("platform");
+    return (i: Row) =>
+      (kind === "activity" ? quiet(i) : kind ? i.kind === kind : !quiet(i)) &&
+      (!search || i.text.toLowerCase().includes(search)) &&
+      (!account || i.social_account_id === account) &&
+      (!platform || i.platform === platform);
+  };
   await page.route("**/auth/me", (route) => route.fulfill({ json: me(role) }));
   await page.route("**/v1/connections", (route) => route.fulfill({ json: opts.accounts ?? [alice] }));
   await page.route(/\/v1\/social-sets$/, (route) => route.fulfill({ json: [{ id: "d", name: "All sets", is_default: true, account_ids: ["c1"], account_count: 1, created_at: "", deleted_at: null }] }));
@@ -119,17 +136,8 @@ async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items
   await page.route(/\/v1\/inboxes\/[^/]+\/items/, (route) => {
     const q = new URL(route.request().url()).searchParams;
     const kind = q.get("kind");
-    const search = q.get("q")?.toLowerCase();
-    const account = q.get("account_id");
-    const platform = q.get("platform");
     state.asked.push(q);
-    // Activity (follows, likes, reposts) is listed only when asked for.
-    const quiet = (i: Row) => ["follow", "like", "repost"].includes(i.kind);
-    const match = (i: Row) =>
-      (kind === "activity" ? quiet(i) : kind ? i.kind === kind : !quiet(i)) &&
-      (!search || i.text.toLowerCase().includes(search)) &&
-      (!account || i.social_account_id === account) &&
-      (!platform || i.platform === platform);
+    const match = matching(q);
     // Activity is listed whatever the state asked for, as brain does.
     if (kind === "activity") return route.fulfill({ json: { items: state.items.filter(match).map((i) => ({ ...i, conversation: null })), next_cursor: null } });
     // One row per conversation: its latest DM. Open while any of its DMs is open, done once none is.
@@ -141,6 +149,20 @@ async function brain(page: Page, role: Role, opts: { accounts?: unknown[]; items
       return [{ ...i, conversation: { count: all.length, open_count: open, first_at: all[0]!.received_at, last_at: i.received_at } }];
     });
     return route.fulfill({ json: { items: rows.sort((a, b) => -oldestFirst(a, b)), next_cursor: null } });
+  });
+  // The count of what the list above would show, one number: the badge of the inbox being
+  // viewed. The state, assignee and tag narrow it like the list's rows do.
+  await page.route(/\/v1\/inboxes\/[^/]+\/count(\?.*)?$/, (route) => {
+    const q = new URL(route.request().url()).searchParams;
+    const match = matching(q);
+    const wanted = q.get("state");
+    const assigned = q.get("assigned");
+    const tag = q.get("tag");
+    const inView = (i: Row) =>
+      (q.get("kind") === "activity" || !wanted || i.state === wanted) &&
+      (!assigned || (assigned === "none" ? !i.assigned_to : Boolean(i.assigned_to))) &&
+      (!tag || (i.contact_tags ?? []).includes(tag));
+    return route.fulfill({ json: { count: state.items.filter((i) => match(i) && inView(i)).length } });
   });
   const itemId = (url: string) => new URL(url).pathname.split("/")[3]!;
   await page.route(/\/v1\/inbox-items\/[^/]+$/, (route) => {
@@ -261,6 +283,10 @@ test("the account menu narrows an inbox of two accounts on one network, and the 
   const list = page.getByRole("region", { name: "Questions" });
   const rows = list.getByRole("list", { name: "Items" }).getByRole("listitem");
   await expect(rows).toHaveCount(2);
+  const nav = page.getByRole("navigation", { name: "Inboxes" });
+  const questions = nav.getByRole("listitem").filter({ hasText: "Questions" });
+  // Nothing of the inbox's own is open under the mock's keyword filter, so no badge yet.
+  await expect(questions.getByText(/in Questions/)).toHaveCount(0);
   // Both accounts sit under their one network, and the inbox's accounts only.
   const menu = page.getByRole("combobox", { name: "Account" });
   await expect(menu.locator("optgroup")).toHaveAttribute("label", "Bluesky");
@@ -270,19 +296,25 @@ test("the account menu narrows an inbox of two accounts on one network, and the 
   await expect(rows).toHaveCount(1);
   await expect(list.getByRole("link", { name: /Alice gets this one/ })).toBeVisible();
   await expect(list.getByRole("link", { name: /Blair gets this one/ })).toHaveCount(0);
-  // A reload keeps the filter and its rows.
+  // The badge of the inbox being viewed follows the account filter; All inboxes keeps the total.
+  await expect(questions.getByText("1 open in Questions")).toBeAttached();
+  await expect(nav.getByRole("listitem").filter({ hasText: "All" }).getByText("2 open in All")).toBeAttached();
+  // A reload keeps the filter, its rows and the badge.
   await page.reload();
   await expect(menu).toHaveValue("c1");
   await expect(rows).toHaveCount(1);
-  // Choosing the other account switches, in the address too.
+  await expect(questions.getByText("1 open in Questions")).toBeAttached();
+  // Choosing the other account switches, in the address and the badge too.
   await menu.selectOption("c2");
   await expect(page).toHaveURL(/\/inbox\/i2\?account=c2$/);
   await expect(list.getByRole("link", { name: /Blair gets this one/ })).toBeVisible();
   await expect(list.getByRole("link", { name: /Alice gets this one/ })).toHaveCount(0);
-  // The network row takes in every account of the inbox again.
+  await expect(questions.getByText("1 open in Questions")).toBeAttached();
+  // The network row takes in every account of the inbox again, and the badge with it.
   await menu.selectOption("network:bluesky");
   await expect(page).toHaveURL(/\/inbox\/i2\?network=bluesky$/);
   await expect(rows).toHaveCount(2);
+  await expect(questions.getByText("2 open in Questions")).toBeAttached();
 });
 
 test("an account filter that hides everything names it and offers Clear filters", async ({ page }) => {

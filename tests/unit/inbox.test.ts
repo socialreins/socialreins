@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { assignItem, accountGroups, chatRows, moderateItem, windowNote, itemSummary, dayLabel, actionButtons, getConversation, getThread, runAction, hasThread, isActivity, listItems, maxFor, replyLength, mergeConversation, mergeFresh, messageCount, relativeTime, replyToItem, sentAlready, setItemState, threadKey, type Item } from "@/lib/inbox";
+import { assignItem, accountGroups, chatRows, countItems, inboxBadge, moderateItem, windowNote, itemSummary, dayLabel, actionButtons, getConversation, getThread, runAction, hasThread, isActivity, listItems, maxFor, replyLength, mergeConversation, mergeFresh, messageCount, relativeTime, replyToItem, sentAlready, setItemState, threadKey, type Inbox, type Item } from "@/lib/inbox";
 import { apiUrl } from "@/lib/waitlist";
 
 const call = (fetch: ReturnType<typeof vi.fn>) => fetch.mock.calls[0] as unknown as [string, RequestInit];
@@ -33,6 +33,35 @@ describe("accountGroups", () => {
 
   it("offers nothing for an inbox with no accounts", () => {
     expect(accountGroups([], [account("b1", "bluesky", "Alice", "alice.bsky.social")])).toEqual([]);
+  });
+});
+
+describe("inboxBadge", () => {
+  const box = (id: string, open_count = 0): Inbox => ({
+    id,
+    number: 1,
+    name: id,
+    is_all: id === "all",
+    account_ids: [],
+    filters: { kinds: [], keywords: [], unanswered: false },
+    open_count,
+    created_at: "",
+    updated_at: "",
+  });
+
+  it("shows the narrowed count for the inbox being viewed, the open total for the rest", () => {
+    // The viewed inbox, narrowed: its own count, and the word for what it counts.
+    expect(inboxBadge(box("sales"), "sales", { n: 4, word: "open" })).toEqual({ n: 4, word: "open" });
+    expect(inboxBadge(box("sales"), "sales", { n: 2, word: "done" })).toEqual({ n: 2, word: "done" });
+    expect(inboxBadge(box("sales"), "sales", { n: 3, word: "" })).toEqual({ n: 3, word: "" });
+    // Another inbox keeps its open total, and so does the viewed one before its count comes back.
+    expect(inboxBadge(box("sales", 9), "support", { n: 4, word: "open" })).toEqual({ n: 9, word: "open" });
+    expect(inboxBadge(box("sales", 9), "sales", null)).toEqual({ n: 9, word: "open" });
+    // "All inboxes" keeps the team's open total whichever filters are on screen.
+    expect(inboxBadge(box("all", 7), "all", { n: 1, word: "open" })).toEqual({ n: 7, word: "open" });
+    // Nothing open and nothing counted: no badge at all.
+    expect(inboxBadge(box("sales"), "sales", null).n).toBe(0);
+    expect(inboxBadge(box("sales"), "sales", { n: 0, word: "open" }).n).toBe(0);
   });
 });
 
@@ -73,6 +102,18 @@ describe("inbox requests", () => {
     expect(call(fetch)[0]).toBe(`${apiUrl}/v1/inboxes/all/items?state=open&group=conversations&account_id=c1`);
     await listItems("all", "open", null, null, "", { network: "bluesky", conversations: true });
     expect((fetch.mock.calls[1] as unknown as [string])[0]).toBe(`${apiUrl}/v1/inboxes/all/items?state=open&group=conversations&platform=bluesky`);
+  });
+
+  it("counts what the list would show, the same filters without the paging", async () => {
+    const fetch = vi.fn(async () => Response.json({ count: 2 }));
+    vi.stubGlobal("fetch", fetch);
+    await countItems("i 1", "done", "dm", "price list", { assigned: "me", tag: "big spender", account: "c1", network: "bluesky" });
+    expect(call(fetch)[0]).toBe(`${apiUrl}/v1/inboxes/i%201/count?state=done&kind=dm&q=price+list&assigned=me&tag=big+spender&account_id=c1&platform=bluesky`);
+    // Activity is stored done, so its count drops the state; with nothing else, no query at all.
+    await countItems("all", "open", "activity");
+    expect((fetch.mock.calls[1] as unknown as [string])[0]).toBe(`${apiUrl}/v1/inboxes/all/count?kind=activity`);
+    await countItems("i2", "open");
+    expect((fetch.mock.calls[2] as unknown as [string])[0]).toBe(`${apiUrl}/v1/inboxes/i2/count?state=open`);
   });
 
   it("patches the state", async () => {
