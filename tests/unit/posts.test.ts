@@ -6,6 +6,7 @@ import {
   overallStatus,
   timeline,
   type Post,
+  type RepeatForm,
   type Target,
   altList,
   capAlt,
@@ -40,8 +41,10 @@ import {
   noTikTok,
   noRepeat,
   repeatForm,
+  repeatProblem,
   repeatRule,
   repeatSummary,
+  untilLocal,
   untilUtc,
   monthWeeks,
   publishPost,
@@ -607,6 +610,18 @@ describe("public page text", () => {
     expect(pageMedia(["https://drive.google.com/file/d/d1/view"], true)).toEqual([{ kind: "image", src: "https://drive.google.com/thumbnail?id=d1&sz=w1600", href: "https://drive.google.com/file/d/d1/view" }]);
   });
 
+  it("gives each picture the author's alt text, in step with the media", async () => {
+    const { pageMedia } = await import("@/lib/posts");
+    const { apiUrl } = await import("@/lib/waitlist");
+    const via = (url: string) => `${apiUrl}/v1/public/image?url=${encodeURIComponent(url)}`;
+    expect(pageMedia(["https://e.test/a.png", "https://e.test/doc.pdf"], false, ["A cat on a wall", "too late"])).toEqual([
+      { kind: "image", src: via("https://e.test/a.png"), alt: "A cat on a wall" },
+      { kind: "link", href: "https://e.test/doc.pdf", label: "Open the file" },
+    ]);
+    // A blank alt is no alt: the picture stays out of a screen reader's way.
+    expect(pageMedia(["https://e.test/a.png"], false, ["  "])).toEqual([{ kind: "image", src: via("https://e.test/a.png") }]);
+  });
+
   it("drops hostile and non-https media and never builds a thumbnail without a clean Drive id", async () => {
     const { pageMedia } = await import("@/lib/posts");
     expect(pageMedia(["javascript:alert(1)//.png", "data:image/png;base64,AA.png", "http://e.test/a.png", "not a url", ""])).toEqual([]);
@@ -621,6 +636,15 @@ describe("public page text", () => {
       { kind: "link", href: "https://drive.google.com.evil.test/file/d/x/view", label: "Open the file" },
       { kind: "link", href: "https://www.dropbox.com/home/a.png", label: "Open the file" },
     ]);
+  });
+
+  it("reads a public page whose code picked up a capital or a space on the way", async () => {
+    const { getPublicPost, publicPageCode } = await import("@/lib/posts");
+    expect(publicPageCode(" Abcd234567 ")).toBe("abcd234567");
+    const fetch = reply(404);
+    vi.stubGlobal("fetch", fetch);
+    expect(await getPublicPost(" Abcd234567 ")).toBeNull();
+    expect(call(fetch)[0]).toBe(`${apiUrl}/v1/public/pages/abcd234567`);
   });
 
   it("builds a public page's link preview", async () => {
@@ -759,11 +783,31 @@ describe("repeat", () => {
 });
 
 describe("repeat until", () => {
-  it("round-trips a local end date through brain's UTC date", async () => {
-    const { untilLocal, untilUtc } = await import("@/lib/posts");
-    for (const day of ["2026-12-05", "2026-12-31", "2027-02-28"]) expect(untilLocal(untilUtc(day))).toBe(day);
-    // The local day's last second, as a UTC date.
-    expect(untilUtc("2026-12-05")).toBe(new Date(2026, 11, 5, 23, 59, 59).toISOString().slice(0, 10));
+  it("sends the picked end date as its own day, west of UTC too", () => {
+    const zone = process.env.TZ;
+    try {
+      // New York is behind UTC: converting the picked day to a UTC date used to send the day after, so a
+      // series ended one copy late.
+      process.env.TZ = "America/New_York";
+      for (const day of ["2026-12-05", "2026-12-31", "2027-02-28"]) expect(untilLocal(untilUtc(day))).toBe(day);
+      expect(untilUtc("2026-12-05")).toBe("2026-12-05");
+      expect(repeatRule({ ...noRepeat, every: "day", ends: "date", until: "2026-12-05" })).toEqual({
+        every: "day",
+        interval: 1,
+        until: "2026-12-05",
+        remaining: null,
+      });
+    } finally {
+      process.env.TZ = zone;
+    }
+  });
+  it("names an end date that is already gone", () => {
+    const rule: RepeatForm = { ...noRepeat, every: "week", ends: "date" };
+    expect(repeatProblem({ ...rule, until: "2026-12-04" }, "2026-12-05")).toMatch(/today or later/);
+    expect(repeatProblem({ ...rule, until: "2026-12-05" }, "2026-12-05")).toBeNull();
+    expect(repeatProblem({ ...rule, until: "2026-12-06" }, "2026-12-05")).toBeNull();
+    expect(repeatProblem({ ...rule, ends: "count", until: "2026-12-04" }, "2026-12-05")).toBeNull();
+    expect(repeatProblem({ ...noRepeat, every: "none", ends: "date", until: "2026-12-04" }, "2026-12-05")).toBeNull();
   });
 });
 

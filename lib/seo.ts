@@ -2,6 +2,7 @@ import type { Metadata, MetadataRoute } from "next";
 import { rivals } from "@/lib/compare";
 import { features } from "@/lib/features";
 import { org } from "@/lib/github";
+import { guides as articles } from "@/lib/guides";
 import { networks } from "@/lib/networks";
 import { plans } from "@/lib/pricing";
 
@@ -200,6 +201,25 @@ export const seoPages: SeoPage[] = [
     changeFrequency: "monthly",
   },
   ...docs,
+  {
+    path: "/guides",
+    title: "Guides: SocialReins",
+    description: "Practical guides to scheduling, approvals, self-hosting, inboxes and automations for small teams, from the team that builds SocialReins.",
+    keywords: ["social media guides", "social media scheduling", "social media approvals", "self-hosted social media"],
+    priority: 0.7,
+    changeFrequency: "monthly",
+  },
+  ...articles.map(
+    (g): SeoPage => ({
+      path: `/guides/${g.slug}`,
+      title: `${g.title}: SocialReins`,
+      description: g.description,
+      keywords: g.keywords,
+      priority: 0.6,
+      changeFrequency: "monthly",
+      lastModified: g.updated,
+    }),
+  ),
   ...networks.map(
     (n): SeoPage => ({
       path: `/${n.slug}`,
@@ -312,10 +332,11 @@ export function breadcrumbSchema(items: { name: string; path: string }[]) {
   };
 }
 
-export function faqSchema(pairs: [string, string][]) {
+export function faqSchema(pairs: [string, string][], url?: string) {
   return {
     "@context": "https://schema.org",
     "@type": "FAQPage",
+    ...(url ? { url } : {}),
     mainEntity: pairs.map(([question, answer]) => ({
       "@type": "Question",
       name: question,
