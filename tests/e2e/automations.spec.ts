@@ -70,12 +70,15 @@ const flowSteps = [
 const flowConditions = { social_set_id: null, account_ids: ["c1"], post_remote_ids: [], keywords: ["guide"], first_per_author: false };
 const guideFlow = (extra = {}) => automation("flow", "Guide flow", { conditions: flowConditions, actions: [], fallback_public_reply: null, steps: flowSteps, ...extra });
 
-async function brain(page: Page, role: Role) {
+async function brain(page: Page, role: Role, extra: unknown[] = []) {
   const state = { list: [automation("a1", "Price to DM", { runs: stats })], bodies: [] as unknown[], misses: [] as unknown[], estimate: { x: false, cost: null } as unknown };
+  const people = [alice, ...extra];
   await page.route(/\/v1\/automations\/estimate$/, (route) => route.fulfill({ json: state.estimate }));
   await page.route("**/auth/me", (route) => route.fulfill({ json: me(role) }));
-  await page.route("**/v1/connections", (route) => route.fulfill({ json: [alice] }));
-  await page.route(/\/v1\/social-sets$/, (route) => route.fulfill({ json: [{ id: "d", name: "All sets", is_default: true, account_ids: ["c1"], account_count: 1, created_at: "", deleted_at: null }] }));
+  await page.route("**/v1/connections", (route) => route.fulfill({ json: people }));
+  await page.route(/\/v1\/social-sets$/, (route) => route.fulfill({ json: [{ id: "d", name: "All sets", is_default: true, account_ids: people.map((p) => (p as { id: string }).id), account_count: people.length, created_at: "", deleted_at: null }] }));
+  // The post picker asks for the team's published posts; none by default.
+  await page.route(/\/v1\/posts(\?|$)/, (route) => route.fulfill({ json: [] }));
   await page.route("**/v1/automations", (route) => {
     const req = route.request();
     if (req.method() === "POST") {
@@ -320,6 +323,86 @@ test("creates a comment-to-DM automation with post links", async ({ page }) => {
     actions: [{ type: "send_dm", text: "Hi {name}, the guide: https://example.com" }],
     active: true,
     fallback_public_reply: "Sent you a DM!",
+  });
+});
+
+const annLee = {
+  id: "x1",
+  provider: "x",
+  external_id: "9",
+  handle: "ann_lee",
+  display_name: "Ann Lee",
+  avatar_url: null,
+  token_expires_at: null,
+  set_ids: ["d"],
+  dm_access: true,
+  created_at: "2026-10-20T10:00:00Z",
+};
+const fab = {
+  id: "f1",
+  provider: "facebook",
+  external_id: "page1",
+  handle: "Acme",
+  display_name: "Acme",
+  avatar_url: null,
+  token_expires_at: null,
+  set_ids: ["d"],
+  dm_access: true,
+  created_at: "2026-10-20T10:00:00Z",
+};
+
+test("limits a comment rule to a network and saves a post from that network", async ({ page }) => {
+  const state = await brain(page, "owner", [annLee]);
+  await page.goto("/automations/new?template=comment-to-dm");
+  await page.getByLabel("Name", { exact: true }).fill("X comments only");
+  const networks = page.getByRole("group", { name: "Networks" });
+  await expect(networks.getByRole("checkbox")).toHaveCount(2);
+  await expect(networks.getByRole("checkbox", { name: "Bluesky" })).toBeChecked();
+  await networks.getByRole("checkbox", { name: "Bluesky" }).uncheck();
+  await page.getByLabel("Specific posts").check();
+  await page.getByLabel("Post links").fill("https://x.com/ann_lee/status/1234567890");
+  await page.getByRole("button", { name: "Create automation" }).click();
+  await expect(page).toHaveURL("/t/acme22/automations/a2");
+  expect(state.bodies[0]).toMatchObject({
+    trigger: "comment_received",
+    conditions: { networks: ["x"], post_remote_ids: ["1234567890"] },
+  });
+});
+
+test("picks one of the team's posts for the rule, with the id that network matches", async ({ page }) => {
+  const state = await brain(page, "owner", [fab]);
+  await page.route(/\/v1\/posts(\?|$)/, (route) =>
+    route.fulfill({
+      json: [{ id: "p1", body: "Launch day", targets: [{ id: "t1", social_account_id: "f1", status: "published", remote_id: "123_456", remote_url: null, published_at: null, metrics: null, error: null, parts: [] }] }],
+    }),
+  );
+  await page.goto("/automations/new?template=comment-to-dm");
+  await page.getByLabel("Name", { exact: true }).fill("One post");
+  await page.getByLabel("Specific posts").check();
+  await page.getByLabel("Add one of your posts").selectOption("123_456");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(page.getByLabel("Post links")).toHaveValue("123_456");
+  await page.getByRole("button", { name: "Create automation" }).click();
+  await expect(page).toHaveURL("/t/acme22/automations/a2");
+  expect(state.bodies[0]).toMatchObject({ conditions: { post_remote_ids: ["123_456"] } });
+});
+
+test("a flow can hold a step that drafts a reply with AI for a member to send", async ({ page }) => {
+  const state = await brain(page, "owner");
+  await page.goto("/automations/new?template=comment-to-dm");
+  await page.getByLabel("Name", { exact: true }).fill("Draft flow");
+  const doThis = page.getByRole("group", { name: "Do this" });
+  await doThis.getByRole("radio", { name: "A flow of steps" }).check();
+  await doThis.getByRole("button", { name: "AI draft for review" }).click();
+  await step(page, 2).getByLabel("Prompt for the draft").fill("Thank them and offer the guide");
+  await expect(page.getByRole("region", { name: "Preview" })).toContainText("AI draft for your team");
+  await page.getByRole("button", { name: "Create automation" }).click();
+  await expect(page).toHaveURL("/t/acme22/automations/a2");
+  expect(state.bodies[0]).toMatchObject({
+    steps: [
+      { type: "send_dm", text: "Hi {name}, thanks for your comment! Here is the link: " },
+      { type: "ai_draft_reply", prompt: "Thank them and offer the guide" },
+    ],
   });
 });
 

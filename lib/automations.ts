@@ -1,4 +1,5 @@
 import { api } from "@/lib/auth";
+import { platformName } from "@/components/platform-icons";
 import { cleanTag } from "@/lib/contacts";
 import type { Connection } from "@/lib/connections";
 import { graphemes, threadsLength } from "@/lib/posts";
@@ -9,6 +10,8 @@ export type ScopeBody = { social_set_id?: string | null; account_ids: string[] }
 export type Conditions = ScopeBody & {
   // Bluesky at:// URIs of the posts commented on.
   post_remote_ids?: string[];
+  // Only items from these networks; empty: any. Comments and mentions only.
+  networks?: string[];
   keywords?: string[];
   first_per_author?: boolean;
   first_message?: boolean;
@@ -49,8 +52,6 @@ export const EFFECTS: EffectType[] = ["notify_team", "hide_comment", "like_comme
 // something on the account or in the team.
 export const isActivity = (t: Trigger) => t === "like_received" || t === "repost_received";
 export type AssignAction = { type: "assign"; user_id: string };
-// An AI reply held for review: brain writes it and keeps it on the comment, and a member sends it, edits it or throws it away.
-// Never sent by itself. Actions only (not a flow step), comments and mentions.
 export type AiDraftAction = { type: "ai_draft_reply"; prompt: string };
 export type Action = { type: "send_dm" | "reply_publicly"; text: string } | AiSend | AiDraftAction | TagAction | Effect | AssignAction;
 export const MAX_TAG_ACTIONS = 3;
@@ -213,23 +214,42 @@ export const sample = (text: string, name = "Sam") => text.replaceAll("{name}", 
 
 const plain = /^[A-Za-z0-9.\-_~:]+$/;
 
-// A Bluesky post link or at:// URI as the at://{did}/app.bsky.feed.post/{rkey} URI brain matches
-// comments against. A handle in a link must be one of the team's accounts (comments land on
-// their posts), so no lookup leaves the browser. null when it isn't one.
+// A post link as the id brain matches comments against, for every network whose link carries that
+// id: Bluesky (an at:// URI), X (the tweet id) and YouTube (the video id). A post's own id works
+// too when `numbers` is set. Instagram, Threads, Facebook and LinkedIn links hold a code that is
+// not the id, so those are picked from the team's published posts instead. null when it isn't one.
 export function postUri(input: string, accounts: Pick<Connection, "provider" | "handle" | "external_id">[], numbers = false): string | null {
   const s = input.trim();
-  // A post's own number as brain keeps it (a Threads post's `remote_id`): a Threads link holds a code, not this number, so the form lists the posts to pick.
+  // A post's own id as brain keeps it (a Threads post's `remote_id`): a Threads link holds a code, not this id, so the form lists the posts to pick.
   if (numbers && /^\d{8,25}$/.test(s)) return s;
   const at = /^at:\/\/([^/\s]+)\/app\.bsky\.feed\.post\/([^/\s]+)$/.exec(s);
   if (at) return at[1]!.startsWith("did:") && plain.test(at[1]!) && plain.test(at[2]!) ? s : null;
-  const link = /^https:\/\/bsky\.app\/profile\/([^/\s?#]+)\/post\/([^/\s?#]+)\/?(?:[?#]\S*)?$/.exec(s);
-  if (!link) return null;
-  const [, actor, rkey] = link as unknown as [string, string, string];
-  if (!plain.test(rkey) || !plain.test(actor)) return null;
-  const did = actor.startsWith("did:")
-    ? actor
-    : accounts.find((a) => a.provider === "bluesky" && a.handle?.toLowerCase() === actor.toLowerCase())?.external_id;
-  return did ? `at://${did}/app.bsky.feed.post/${rkey}` : null;
+  const bsky = /^https:\/\/bsky\.app\/profile\/([^/\s?#]+)\/post\/([^/\s?#]+)\/?(?:[?#]\S*)?$/.exec(s);
+  if (bsky) {
+    const [, actor, rkey] = bsky as unknown as [string, string, string];
+    if (!plain.test(rkey) || !plain.test(actor)) return null;
+    const did = actor.startsWith("did:")
+      ? actor
+      : accounts.find((a) => a.provider === "bluesky" && a.handle?.toLowerCase() === actor.toLowerCase())?.external_id;
+    return did ? `at://${did}/app.bsky.feed.post/${rkey}` : null;
+  }
+  // X: a post of one of the team's X accounts, by its id.
+  const x = /^https:\/\/(?:www\.|mobile\.)?(?:x|twitter)\.com\/([^/\s?#]+)\/status(?:es)?\/(\d{1,25})\/?(?:[?#]\S*)?$/.exec(s);
+  if (x) {
+    const [, handle, id] = x as unknown as [string, string, string];
+    return accounts.some((a) => a.provider === "x" && a.handle?.toLowerCase() === handle.toLowerCase()) ? id : null;
+  }
+  // YouTube: watch, youtu.be, shorts and embed links all name the video's id.
+  const youtube = [
+    /^https:\/\/(?:www\.|m\.)?youtube\.com\/watch\?(?:[^#\s]*&)?v=([A-Za-z0-9_-]{6,20})(?:[&#]\S*)?$/,
+    /^https:\/\/youtu\.be\/([A-Za-z0-9_-]{6,20})\/?(?:[?#]\S*)?$/,
+    /^https:\/\/(?:www\.|m\.)?youtube\.com\/(?:shorts|embed|live)\/([A-Za-z0-9_-]{6,20})\/?(?:[?#]\S*)?$/,
+  ];
+  for (const link of youtube) {
+    const m = link.exec(s);
+    if (m) return m[1]!;
+  }
+  return null;
 }
 
 // The bsky.app link for an at:// post URI, as brain's bluesky::post_url builds it.
@@ -250,6 +270,8 @@ export type Capability = {
   payloads: boolean;
   // The trigger carries text to read (keywords, a link, a mood): a follow, a tap and a story mention do not.
   text: boolean;
+  // Only comments and mentions can be limited to some networks.
+  networkFilter?: boolean;
   note: string | null;
   // The networks it runs on, as ids of `platforms`, for the marks in the template gallery.
   networks: string[];
@@ -269,9 +291,9 @@ const activity = (what: string): Capability => ({
 export const triggers: Record<Trigger, Capability> = {
   like_received: activity("like"),
   repost_received: activity("repost"),
-  comment_received: { label: "When someone comments", keywords: true, posts: true, firstPerAuthor: true, firstMessage: false, publicReply: true, payloads: false, text: true, note: null, networks: ["bluesky", "facebook", "instagram", "threads", "x", "youtube"] },
+  comment_received: { label: "When someone comments", keywords: true, posts: true, firstPerAuthor: true, firstMessage: false, publicReply: true, payloads: false, text: true, networkFilter: true, note: null, networks: ["bluesky", "facebook", "instagram", "threads", "x", "youtube"] },
   dm_received: { label: "When someone sends a DM", keywords: true, posts: false, firstPerAuthor: false, firstMessage: true, publicReply: false, payloads: false, text: true, note: null, networks: ["bluesky", "facebook", "instagram", "x"] },
-  mention_received: { label: "When someone mentions you", keywords: true, posts: false, firstPerAuthor: true, firstMessage: false, publicReply: true, payloads: false, text: true, note: null, networks: ["bluesky", "threads", "x"] },
+  mention_received: { label: "When someone mentions you", keywords: true, posts: false, firstPerAuthor: true, firstMessage: false, publicReply: true, payloads: false, text: true, networkFilter: true, note: null, networks: ["bluesky", "threads", "x"] },
   new_follower: {
     label: "When someone follows you",
     keywords: false,
@@ -347,7 +369,7 @@ function knownStep(s: unknown) {
   if (isEffectType(x.type)) return only();
   if (x.type === "reply_publicly") return only("text") && isText(x.text);
   if (x.type === "tag_contact") return only("tag") && isText(x.tag);
-  if (x.type === "ai_send_dm" || x.type === "ai_reply_publicly") return only("prompt") && isText((x as { prompt?: unknown }).prompt);
+  if (x.type === "ai_send_dm" || x.type === "ai_reply_publicly" || x.type === "ai_draft_reply") return only("prompt") && isText((x as { prompt?: unknown }).prompt);
   const buttons = x.buttons ?? [];
   return (
     x.type === "send_dm" &&
@@ -368,7 +390,7 @@ const knownAction = (a: unknown) => {
 // Whether the builder can show and save this automation without losing anything: a trigger it knows,
 // with plain actions or a flow of steps it knows. brain may send a newer trigger or shape, whatever
 // the type above says.
-const KNOWN_CONDITIONS = ["social_set_id", "account_ids", "post_remote_ids", "keywords", "first_per_author", "first_message", "payloads", "has_link", "sentiment"];
+const KNOWN_CONDITIONS = ["social_set_id", "account_ids", "post_remote_ids", "networks", "keywords", "first_per_author", "first_message", "payloads", "has_link", "sentiment"];
 export function canEdit(a: Automation) {
   const x = a as { trigger: string; actions?: unknown; steps?: unknown; conditions?: { payloads?: unknown } | null };
   if (!Object.hasOwn(triggers, x.trigger) || typeof x.conditions !== "object" || x.conditions === null || !Array.isArray(x.actions)) return false;
@@ -430,6 +452,8 @@ export type StepDraft = { id: number } & (
   // An AI send's prompt is kept as `text`, so it edits like the other sends.
   | { type: "ai_send_dm"; text: string }
   | { type: "ai_reply_publicly"; text: string }
+  // Writes a reply with AI and holds it for a member to review: nothing is sent.
+  | { type: "ai_draft_reply"; text: string }
   | { type: "wait"; amount: string; unit: WaitUnit }
   // Waits for the person's next DM, up to this long.
   | { type: "wait_for_reply"; amount: string; unit: WaitUnit }
@@ -439,6 +463,8 @@ export type StepDraft = { id: number } & (
 export const isWait = <T extends { type: string }>(x: T): x is Extract<T, { type: "wait" | "wait_for_reply" }> => x.type === "wait" || x.type === "wait_for_reply";
 // A step that sends something; a wait and a tag do not.
 export const isAi = (type: string): type is AiType => type === "ai_send_dm" || type === "ai_reply_publicly";
+// A step that writes a reply for a member to send, and sends nothing.
+export const isDraft = <T extends { type: string }>(s: T): s is Extract<T, { type: "ai_draft_reply" }> => s.type === "ai_draft_reply";
 export const isSend = <T extends { type: Step["type"] }>(s: T): s is Extract<T, { type: "send_dm" | "reply_publicly" | AiType }> => s.type === "send_dm" || s.type === "reply_publicly" || isAi(s.type);
 let lastStepId = 0;
 export function newStep(type: StepDraft["type"], text = ""): StepDraft {
@@ -457,8 +483,7 @@ const stepDraft = (s: Step): StepDraft => {
   if (s.type === "tag_contact") return { id, type: s.type, tag: s.tag };
   if (isEffect(s)) return { id, type: s.type };
   if (s.type === "ai_send_dm" || s.type === "ai_reply_publicly") return { id, type: s.type, text: s.prompt };
-  // Only an action list holds a draft, never a flow: the timeline shows it, the flow editor never gets one.
-  if (s.type === "ai_draft_reply") return { id, type: "ai_reply_publicly", text: s.prompt };
+  if (s.type === "ai_draft_reply") return { id, type: s.type, text: s.prompt };
   return s.type === "send_dm" ? { id, type: s.type, text: s.text, buttons: (s.buttons ?? []).map((b) => ({ ...b, own: true })) } : { id, type: s.type, text: s.text };
 };
 // The steps as brain takes them. A wait that is not a valid time goes as 0, which `flowProblems` catches first.
@@ -467,7 +492,7 @@ export const stepsBody = (steps: StepDraft[]): Step[] =>
     if (isWait(s)) return { type: s.type, minutes: waitMinutes(s.amount, s.unit) ?? 0 };
     if (isEffect(s)) return { type: s.type };
     if (s.type === "reply_publicly") return { type: s.type, text: s.text };
-    if (s.type === "ai_send_dm" || s.type === "ai_reply_publicly") return { type: s.type, prompt: s.text };
+    if (s.type === "ai_send_dm" || s.type === "ai_reply_publicly" || s.type === "ai_draft_reply") return { type: s.type, prompt: s.text };
     if (s.type === "tag_contact") return { type: s.type, tag: cleanTag(s.tag) };
     const buttons = s.buttons.map((b) => ({ label: b.label.trim(), payload: b.payload }));
     return { type: s.type, text: s.text, ...(buttons.length > 0 && { buttons }) };
@@ -484,7 +509,7 @@ export type FlowProblem = { step: number | null; text: string };
 export function flowProblems(steps: StepDraft[], trigger: Trigger, providers: string[] = []): FlowProblem[] {
   const out: FlowProblem[] = [];
   const pub = triggers[trigger].publicReply;
-  const acts = (s: StepDraft) => isSend(s) || (isEffect(s) && s.type !== "stop_automations");
+  const acts = (s: StepDraft) => isSend(s) || isDraft(s) || (isEffect(s) && s.type !== "stop_automations");
   if (!steps.some(acts))
     out.push({ step: null, text: isActivity(trigger) ? "A flow needs at least one step that does something. Add a follow back or a mail to your team." : "A flow needs at least one step that sends something. Add a DM, or a mail to your team or a moderation step." });
   else {
@@ -493,6 +518,12 @@ export function flowProblems(steps: StepDraft[], trigger: Trigger, providers: st
   }
   for (const type of EFFECTS)
     if (steps.filter((s) => s.type === type).length > 1) out.push({ step: null, text: `${stepName[type]} can be in a flow once.` });
+  const drafts = steps.filter(isDraft).length;
+  if (drafts > 1) out.push({ step: null, text: `${stepName.ai_draft_reply} can be in a flow once.` });
+  // A reply that goes out and a draft for a member to send would answer the comment twice.
+  if (drafts > 0 && steps.some((s) => s.type === "reply_publicly" || s.type === "ai_reply_publicly"))
+    out.push({ step: null, text: "Use a public reply or an AI draft, not both." });
+  if (drafts > 0 && !pub) out.push({ step: null, text: "This trigger has nothing to reply under. Remove the AI draft." });
   if (steps.some((s) => isEffect(s) && !effectFits(s.type, trigger)))
     out.push({ step: null, text: "Hiding works on comments, and liking and reposting on comments and mentions. Remove those steps." });
   if (isActivity(trigger) && steps.some((s) => isSend(s) || s.type === "tag_contact" || s.type === "wait_for_reply"))
@@ -511,7 +542,7 @@ export function flowProblems(steps: StepDraft[], trigger: Trigger, providers: st
       return;
     }
     if ((s.type === "reply_publicly" || s.type === "ai_reply_publicly") && !pub) say("This trigger has nothing to reply under. Remove this step.");
-    if (s.type === "ai_send_dm" || s.type === "ai_reply_publicly") {
+    if (s.type === "ai_send_dm" || s.type === "ai_reply_publicly" || s.type === "ai_draft_reply") {
       if (!s.text.trim()) say("Write the prompt.");
       else if ([...s.text].length > MAX_PROMPT) say(`Too long: at most ${MAX_PROMPT} characters.`);
       if (s.text.includes("{page}")) say("The AI can't use {page}. Remove it.");
@@ -574,22 +605,24 @@ const count = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 // One reply as a flow: the DM and the public reply become steps. The fallback has no place in a flow.
 export function toFlow(d: Draft): { steps: StepDraft[]; dropped: string[] } {
   const pub = triggers[d.trigger].publicReply;
+  const draft = pub && d.aiDraft.trim() && !d.publicReply.trim() ? [newStep("ai_draft_reply", d.aiDraft.trim())] : [];
   const steps = [...(d.dm.trim() ? [newStep("send_dm", d.dm)] : []), ...(pub && d.publicReply.trim() ? [newStep("reply_publicly", d.publicReply.trim())] : [])];
   return {
     // A DM to fill in only when nothing else in the reply does something.
     steps: [
       // A DM to fill in only when nothing else in the reply does something (and a like has nobody to message).
-      ...(steps.length || d.tags.length || d.also.some((e) => e !== "stop_automations") || isActivity(d.trigger) ? steps : [newStep("send_dm")]),
+      ...(steps.length || draft.length || d.tags.length || d.also.some((e) => e !== "stop_automations") || isActivity(d.trigger) ? steps : [newStep("send_dm")]),
+      ...draft,
       ...d.tags.map((t) => newStep("tag_contact", t)),
       ...EFFECTS.filter((e) => d.also.includes(e)).map((e) => newStep(e)),
     ],
-    dropped: [...(pub && d.fallbackOn && d.dm.trim() && d.fallback.trim() ? ["the fallback reply"] : []), ...(pub && d.aiDraft.trim() ? ["the AI draft"] : [])],
+    dropped: [...(pub && d.fallbackOn && d.dm.trim() && d.fallback.trim() ? ["the fallback reply"] : []), ...(pub && d.aiDraft.trim() && !draft.length ? ["the AI draft"] : [])],
   };
 }
 // A flow as one reply: its first DM and first public reply stay, and what One reply can't hold is named.
-export function toSimple(steps: StepDraft[]): { dm: string; publicReply: string; tags: string[]; also: EffectType[]; dropped: string[] } {
+export function toSimple(steps: StepDraft[]): { dm: string; publicReply: string; aiDraft: string; tags: string[]; also: EffectType[]; dropped: string[] } {
   const of = <T extends StepDraft["type"]>(type: T) => steps.filter((s): s is Extract<StepDraft, { type: T }> => s.type === type);
-  const [dms, replies, waits] = [of("send_dm"), of("reply_publicly"), [...of("wait"), ...of("wait_for_reply")]];
+  const [dms, replies, drafts, waits] = [of("send_dm"), of("reply_publicly"), of("ai_draft_reply"), [...of("wait"), ...of("wait_for_reply")]];
   const also = EFFECTS.filter((e) => steps.some((s) => s.type === e));
   const ai = steps.filter((s) => isAi(s.type)).length;
   const buttons = dms.reduce((n, s) => n + s.buttons.length, 0);
@@ -597,6 +630,7 @@ export function toSimple(steps: StepDraft[]): { dm: string; publicReply: string;
   const lost: [number, string, string][] = [
     [waits.length, "1 wait", "waits"],
     [ai, "1 AI step", "AI steps"],
+    [drafts.length - 1, "1 more AI draft", "more AI drafts"],
     [buttons, "1 button", "buttons"],
     [dms.length - 1, "1 more DM", "more DMs"],
     [replies.length - 1, "1 more public reply", "more public replies"],
@@ -607,16 +641,19 @@ export function toSimple(steps: StepDraft[]): { dm: string; publicReply: string;
     also,
     dm: dms[0]?.text ?? "",
     publicReply: replies[0]?.text ?? "",
-    dropped: lost.filter(([n]) => n > 0).map(([n, one, many]) => (n === 1 ? one : `${n} ${many}`)),
+    // A reply that goes out and a draft would answer twice, as brain refuses.
+    aiDraft: replies.length ? "" : (drafts[0]?.text ?? ""),
+    dropped: [...(replies.length && drafts.length ? ["the AI draft"] : []), ...lost.filter(([n]) => n > 0).map(([n, one, many]) => (n === 1 ? one : `${n} ${many}`))],
   };
 }
 
 // The ids to save for the post lines in the form. A line that still shows a post the automation was
-// loaded with keeps that id exactly (a Facebook or Instagram post id, any at:// URI); only a line the
-// user added or changed is read as a Bluesky link. null where a line is neither.
+// loaded with keeps that id exactly (a Facebook or Instagram post id, any at:// URI); a line picked
+// from `known` (the team's own published posts) is that id; only a line the user typed is read as a
+// Bluesky, X or YouTube link. null where a line is neither.
 // `numbers`: the accounts in scope include a Threads, Facebook or Instagram one, whose posts have such a number.
-export function postIds(lines: string[], loaded: string[], accounts: Parameters<typeof postUri>[1], numbers = false) {
-  const kept = new Map(loaded.flatMap((id) => [[postLink(id), id], [id, id]]));
+export function postIds(lines: string[], loaded: string[], accounts: Parameters<typeof postUri>[1], numbers = false, known: string[] = []) {
+  const kept = new Map([...loaded, ...known].flatMap((id) => [[postLink(id), id], [id, id]]));
   return lines.map((l) => kept.get(l) ?? postUri(l, accounts, numbers));
 }
 
@@ -628,6 +665,8 @@ export type Draft = {
   specific: boolean;
   // Post links, one per line.
   posts: string;
+  // Comments and mentions: only these networks (empty: any of them).
+  networks: string[];
   firstPerAuthor: boolean;
   firstMessage: boolean;
   dm: string;
@@ -677,6 +716,7 @@ const empty: Draft = {
   keywords: [],
   specific: false,
   posts: "",
+  networks: [],
   firstPerAuthor: false,
   firstMessage: false,
   dm: "",
@@ -784,6 +824,7 @@ export function draftOf(a?: Automation, templateId?: string | null, payload?: st
     keywords: c.keywords ?? [],
     specific: Boolean(c.post_remote_ids?.length),
     posts: (c.post_remote_ids ?? []).map(postLink).join("\n"),
+    networks: c.networks ?? [],
     firstPerAuthor: c.first_per_author ?? false,
     firstMessage: c.first_message ?? false,
     dm: text("send_dm"),
@@ -849,6 +890,7 @@ export function changeTrigger(d: Draft, to: Trigger): { draft: Draft; dropped: s
   };
   drop(!t.keywords && d.keywords.length > 0, "keywords", { keywords: [] });
   drop(!t.posts && d.specific, "specific posts", { specific: false, posts: "" });
+  drop(!t.networkFilter && d.networks.length > 0, "the networks", { networks: [] });
   drop(!t.firstPerAuthor && d.firstPerAuthor, "first comment per person", { firstPerAuthor: false });
   drop(!t.keywords && d.question, "only questions", { question: false });
   drop(!t.keywords && d.languages.length > 0, "languages", { languages: [] });
@@ -916,6 +958,7 @@ export function automationInput(d: Draft, scope: ScopeBody, uris: string[]): Aut
       ...scope,
       ...(t.keywords && { keywords: d.keywords }),
       ...(t.posts && { post_remote_ids: d.specific ? uris : [] }),
+      ...(t.networkFilter && d.networks.length > 0 && { networks: d.networks }),
       ...(t.firstPerAuthor && { first_per_author: d.firstPerAuthor }),
       ...(t.firstMessage && { first_message: d.firstMessage }),
       ...(t.payloads && { payloads: d.payloads }),
@@ -1049,6 +1092,7 @@ export const reasonWhy: Record<string, string> = {
 export const mismatchText: Record<string, string> = {
   wrong_set: "The account is not in the set this automation is limited to",
   wrong_account: "The account is not one this automation is limited to",
+  wrong_network: "The sample is from a network this automation is not limited to",
   wrong_post: "The sample is not under one of the posts listed",
   no_keyword: "The text has none of the keywords",
   not_first_from_author: "It is only for a person's first comment",
@@ -1066,6 +1110,7 @@ export const mismatchText: Record<string, string> = {
 export const notRunText: Record<string, string> = {
   wrong_set: "The account is not in the set this automation is limited to",
   wrong_account: "It came to an account this automation is not limited to",
+  wrong_network: "It came from a network this automation is not limited to",
   wrong_post: "It is not on one of the posts this automation is limited to",
   no_keyword: "The text has none of the keywords",
   not_first_from_author: "It is only for a person's first comment",
@@ -1163,6 +1208,7 @@ export function conditionNotes(c: Conditions) {
   const hours = w?.from_hour != null && w.to_hour != null ? `${w.from_hour}:00 to ${w.to_hour}:00` : null;
   return [
     n ? `On ${n === 1 ? "1 post" : `${n} posts`}` : null,
+    c.networks?.length ? `On ${c.networks.map(platformName).join(" and ")}` : null,
     c.first_per_author ? "First one per person" : null,
     c.first_message ? "First message only" : null,
     c.has_link === undefined ? null : c.has_link ? "Only text with a link" : "Only text without a link",
