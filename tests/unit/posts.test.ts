@@ -555,8 +555,10 @@ describe("public page text", () => {
     expect(linked("https://a.test https://b.test").filter((_, i) => i % 2)).toEqual(["https://a.test", "https://b.test"]);
   });
 
-  it("turns media links into pictures or link buttons for the public page", async () => {
+  it("turns media links into pictures fetched through brain, or link buttons for the public page", async () => {
     const { pageMedia } = await import("@/lib/posts");
+    const { apiUrl } = await import("@/lib/waitlist");
+    const via = (url: string) => `${apiUrl}/v1/public/image?url=${encodeURIComponent(url)}`;
     const thumb = (id: string) => `https://drive.google.com/thumbnail?id=${id}&sz=w1600`;
     expect(
       pageMedia([
@@ -572,17 +574,37 @@ describe("public page text", () => {
         "https://e.test/c.webm#t=1",
       ]),
     ).toEqual([
-      { kind: "image", src: "https://e.test/a.JPG?x=1" },
-      { kind: "image", src: thumb("abc_D-1"), href: "https://drive.google.com/file/d/abc_D-1/view?usp=sharing" },
-      { kind: "image", src: thumb("xyz"), href: "https://drive.google.com/open?id=xyz" },
-      { kind: "image", src: thumb("uc1"), href: "https://drive.google.com/uc?id=uc1&export=download" },
-      { kind: "image", src: "https://www.dropbox.com/scl/fi/k1/photo.png?rlkey=r&raw=1", href: "https://www.dropbox.com/scl/fi/k1/photo.png?rlkey=r&dl=0" },
-      { kind: "image", src: "https://dropbox.com/s/k2/pic.webp?raw=1", href: "https://dropbox.com/s/k2/pic.webp?dl=1" },
+      { kind: "image", src: via("https://e.test/a.JPG?x=1") },
+      { kind: "image", src: via(thumb("abc_D-1")), href: "https://drive.google.com/file/d/abc_D-1/view?usp=sharing" },
+      { kind: "image", src: via(thumb("xyz")), href: "https://drive.google.com/open?id=xyz" },
+      { kind: "image", src: via(thumb("uc1")), href: "https://drive.google.com/uc?id=uc1&export=download" },
+      { kind: "image", src: via("https://www.dropbox.com/scl/fi/k1/photo.png?rlkey=r&raw=1"), href: "https://www.dropbox.com/scl/fi/k1/photo.png?rlkey=r&dl=0" },
+      { kind: "image", src: via("https://dropbox.com/s/k2/pic.webp?raw=1"), href: "https://dropbox.com/s/k2/pic.webp?dl=1" },
       { kind: "link", href: "https://www.dropbox.com/scl/fi/k3/clip.mp4?dl=0", label: "Open the video" },
       { kind: "link", href: "https://e.test/c.MOV", label: "Open the video" },
       { kind: "link", href: "https://e.test/doc.pdf", label: "Open the file" },
       { kind: "link", href: "https://e.test/c.webm#t=1", label: "Open the video" },
     ]);
+  });
+
+  it("keeps the author's address in the proxy URL, percent-encoded, and the original for a link preview", async () => {
+    const { pageMedia } = await import("@/lib/posts");
+    const { apiUrl } = await import("@/lib/waitlist");
+    const author = "https://cdn.example.test/a folder/pic (1).png?x=1&y=2#frag";
+    const [picture] = pageMedia([author]);
+    expect(picture.kind).toBe("image");
+    const src = picture.kind === "image" ? picture.src : "";
+    expect(src.startsWith(`${apiUrl}/v1/public/image?url=`)).toBe(true);
+    // The URL as the browser holds it (a space already %20), then one more encoding so it is a single
+    // query value: brain decodes it once and gets the address back.
+    expect(src).toBe(`${apiUrl}/v1/public/image?url=${encodeURIComponent(new URL(author).href)}`);
+    // One query value: no second "?" or "&" of the author's leaks into the proxy's own query.
+    expect(src.split("?").length).toBe(2);
+    expect(src).toContain("https%3A%2F%2Fcdn.example.test%2Fa%2520folder%2Fpic%2520(1).png%3Fx%3D1%26y%3D2%23frag");
+    expect(decodeURIComponent(src.slice(src.indexOf("url=") + 4))).toBe(new URL(author).href);
+    // The link preview points a crawler at the author, since no reader is involved.
+    expect(pageMedia([author], true)).toEqual([{ kind: "image", src: new URL(author).href }]);
+    expect(pageMedia(["https://drive.google.com/file/d/d1/view"], true)).toEqual([{ kind: "image", src: "https://drive.google.com/thumbnail?id=d1&sz=w1600", href: "https://drive.google.com/file/d/d1/view" }]);
   });
 
   it("drops hostile and non-https media and never builds a thumbnail without a clean Drive id", async () => {

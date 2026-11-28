@@ -40,7 +40,7 @@ function Part({ body, media }: { body: string; media: string[] }) {
               <Icon name="external" className="size-4" />
             </a>
           );
-        // eslint-disable-next-line @next/next/no-img-element -- the author's own link, any host
+        // eslint-disable-next-line @next/next/no-img-element -- fetched by brain, never from the author's host
         const img = <img src={m.src} alt="" loading="lazy" referrerPolicy="no-referrer" className="max-h-[32rem] w-full rounded-2xl object-contain" />;
         return m.href ? (
           <a key={i} href={m.href} target="_blank" rel="nofollow ugc noopener noreferrer" aria-label="Open the picture">
